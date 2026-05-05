@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+}
+
+html,
+body {
+  background: #09090b;
+  color: #fafafa;
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}

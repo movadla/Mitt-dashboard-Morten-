@@ -1,0 +1,20 @@
+{
+  "name": "Mitt dashboard",
+  "short_name": "Dashboard",
+  "description": "Personlige oppgaver fra Salesforce, Asana, Outlook og Teams",
+  "lang": "nb-NO",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
