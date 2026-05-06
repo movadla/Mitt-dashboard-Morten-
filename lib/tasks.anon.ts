@@ -48,6 +48,10 @@ export type Task = {
   priority?: Priority;
   amestoEmail?: AmestoEmail;
   details?: CaseDetails;
+  lastModifiedAt?: string;
+  caseNumber?: string;
+  analysis?: string;
+  lastMessage?: { from: string; preview: string };
 };
 
 export const SOURCE_META: Record<
@@ -132,6 +136,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Mangler kreditnota – faktura 12345",
     context: "00100001 · Avventer kunde · Acme Bil AS",
     externalUrl: sfUrl("anon-mine-1"),
+    lastModifiedAt: "2026-05-06T08:00:00.000+0000",
     details: {
       kunde: "Acme Bil AS · Kundenr 30000",
       kontoType: "Kunde",
@@ -159,6 +164,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Spørsmål om månedlig fakturering",
     context: "00100002 · Ny · Demokunde 1",
     externalUrl: sfUrl("anon-mine-2"),
+    lastModifiedAt: "2026-05-05T14:00:00.000+0000",
     details: {
       kunde: "Demokunde 1 · Kundenr 20001",
       kontoType: "Kunde",
@@ -188,6 +194,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Dobbelfakturert kantinebidrag",
     context: "00100003 · Ny · Eksempel AS",
     externalUrl: sfUrl("anon-new-1"),
+    lastModifiedAt: "2026-05-06T07:30:00.000+0000",
     details: {
       kunde: "Eksempel AS · Kundenr 11111",
       kontoType: "Kunde",
@@ -214,6 +221,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Kreditnotaer sendt til feil mottaker",
     context: "00100004 · Ny · Test Bedrift AS",
     externalUrl: sfUrl("anon-new-2"),
+    lastModifiedAt: "2026-05-04T09:00:00.000+0000",
     details: {
       kunde: "Test Bedrift AS · Kundenr 22222",
       kontoType: "Kunde, Leverandør",
@@ -242,6 +250,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Mangler faktura for inneværende mnd",
     context: "00100005 · Avventer kunde · Sample Co AS",
     externalUrl: sfUrl("anon-pending-1"),
+    lastModifiedAt: "2026-05-05T11:00:00.000+0000",
     details: {
       kunde: "Sample Co AS · Kundenr 33333",
       kontoType: "Kunde",
@@ -265,6 +274,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Faktura mangler prosjektnummer",
     context: "00100006 · Avventer kunde · Demokunde 2",
     externalUrl: sfUrl("anon-pending-2"),
+    lastModifiedAt: "2026-05-04T09:00:00.000+0000",
     details: {
       kunde: "Demokunde 2 · Kundenr 44444",
       kontoType: "Kunde",
@@ -286,6 +296,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Trippelfakturert parkering",
     context: "00100007 · Iverksettes · Mock Bedrift AS",
     externalUrl: sfUrl("anon-pending-3"),
+    lastModifiedAt: "2026-05-03T15:00:00.000+0000",
     details: {
       kunde: "Mock Bedrift AS · Kundenr 55555",
       kontoType: "Kunde",
@@ -305,6 +316,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Prisendring uten varsel",
     context: "00100008 · Avventer kunde · Eksempelkunde",
     externalUrl: sfUrl("anon-pending-4"),
+    lastModifiedAt: "2026-05-02T10:00:00.000+0000",
     details: {
       kunde: "Eksempelkunde · Kundenr 66666",
       kontoType: "Kunde",
@@ -324,6 +336,7 @@ export const MOCK_TASKS: Task[] = [
     title: "Bankgaranti mangler",
     context: "00100009 · Avventer kunde · Demokunde 3",
     externalUrl: sfUrl("anon-pending-5"),
+    lastModifiedAt: "2026-05-01T08:00:00.000+0000",
     details: {
       kunde: "Demokunde 3 · Kundenr 77777",
       kontoType: "Kunde",
@@ -335,65 +348,7 @@ export const MOCK_TASKS: Task[] = [
       "Iht. leiekontrakt skal kunden stille bankgaranti. Frist nærmer seg.",
   },
 
-  // ── Asana ──────────────────────────────────────────────────────────────
-  {
-    id: "as-1",
-    source: "asana",
-    title: "Skriv brief for nytt nettsted",
-    context: "Marked · Q2 2026",
-    dueAt: "2026-05-07",
-    externalUrl: "https://app.asana.com/0/123/456",
-  },
-  {
-    id: "as-2",
-    source: "asana",
-    title: "Review utkast til årsrapport",
-    context: "Ledelse",
-    dueAt: "2026-05-05",
-    externalUrl: "https://app.asana.com/0/123/789",
-  },
-  {
-    id: "as-3",
-    source: "asana",
-    title: "Bestille møterom for kickoff",
-    context: "Adm",
-    externalUrl: "https://app.asana.com/0/123/321",
-  },
-
-  // ── Outlook ────────────────────────────────────────────────────────────
-  {
-    id: "ol-1",
-    source: "outlook",
-    title: "Svar: leiekontrakt vedlegg B",
-    context: "Fra: advokat@firma.no",
-    dueAt: "2026-05-05",
-    externalUrl: "https://outlook.office.com/mail/inbox/id/AAQk",
-  },
-  {
-    id: "ol-2",
-    source: "outlook",
-    title: "Bekreft møte med styret",
-    context: "Fra: styreleder@example.com",
-    dueAt: "2026-05-06",
-    externalUrl: "https://outlook.office.com/mail/inbox/id/AAQk2",
-  },
-
-  // ── Teams ──────────────────────────────────────────────────────────────
-  {
-    id: "tm-1",
-    source: "teams",
-    title: "Svare i tråd: budsjett 2026",
-    context: "Kanal: Økonomi",
-    externalUrl: "https://teams.microsoft.com/l/message/19:abc/123",
-  },
-  {
-    id: "tm-2",
-    source: "teams",
-    title: "@Morten – kan du se på dette?",
-    context: "DM: Per Hansen",
-    dueAt: "2026-05-05",
-    externalUrl: "https://teams.microsoft.com/l/message/19:def/456",
-  },
+  // Asana, Outlook og Teams er midlertidig fjernet. Fokus på Salesforce.
 ];
 
 export async function getTasks(): Promise<Task[]> {

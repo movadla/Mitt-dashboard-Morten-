@@ -8,7 +8,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Mitt dashboard",
+  title: "Arbeidsoppgaver",
   description: "Personlige oppgaver fra Salesforce, Asana, Outlook og Teams",
   manifest: "/manifest.webmanifest",
   icons: {
@@ -17,13 +17,13 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Dashboard",
+    title: "Arbeidsoppgaver",
     statusBarStyle: "black-translucent",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#09090b",
+  themeColor: "#0a0e18",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -36,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="nb" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full bg-zinc-950 text-zinc-100">{children}</body>
+      <body className="min-h-full text-slate-100">{children}</body>
     </html>
   );
 }
