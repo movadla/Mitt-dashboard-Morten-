@@ -9,16 +9,24 @@ import {
   TOPIC_META,
   type AmestoEmail,
   type CaseDetails,
+  type OutlookCategory,
   type Priority,
   type Source,
   type Task,
 } from "@/lib/tasks";
 
 type Filter = Source | "all";
-type SfBucket = "faktura" | "kreditnota" | "garanti" | "annet";
+type SfBucket = "alle" | "faktura" | "kreditnota" | "garanti" | "annet";
+type OutlookBucket = OutlookCategory;
 
 const FILTERS: Filter[] = ["all", "salesforce", "asana", "outlook", "teams"];
-const SF_BUCKETS: SfBucket[] = ["faktura", "kreditnota", "garanti", "annet"];
+const SF_BUCKETS: SfBucket[] = ["alle", "faktura", "kreditnota", "garanti", "annet"];
+const OUTLOOK_BUCKETS: OutlookBucket[] = ["trenger-oppfolging", "kopi", "til-info"];
+const OUTLOOK_BUCKET_LABEL: Record<OutlookBucket, string> = {
+  "trenger-oppfolging": "Oppfølging",
+  "kopi": "Kopi",
+  "til-info": "Til info",
+};
 
 const DONE_STORAGE_KEY = "mitt-dashboard:done:v1";
 const PRIORITY_OVERRIDES_KEY = "mitt-dashboard:priority-overrides:v1";
@@ -28,32 +36,32 @@ const LONG_PRESS_MS = 600;
 const SOURCE_TAB: Partial<Record<Filter, { inactive: string; active: string; badge: string }>> = {
   salesforce: {
     inactive: "rounded-full border border-sky-600/60 bg-sky-900/70 text-sky-200 hover:bg-sky-800/70",
-    active:   "rounded-t-xl rounded-b-none border border-b-0 border-sky-400/50 bg-sky-500/20 text-sky-50",
+    active:   "rounded-xl border border-sky-400/50 bg-sky-500/20 text-sky-50",
     badge: "text-sky-300/80",
   },
   asana: {
     inactive: "rounded-full border border-red-700/60 bg-red-900/70 text-red-200 hover:bg-red-800/70",
-    active:   "rounded-t-xl rounded-b-none border border-b-0 border-red-400/50 bg-red-500/25 text-red-50",
+    active:   "rounded-xl border border-red-400/50 bg-red-500/25 text-red-50",
     badge: "text-red-300/80",
   },
   outlook: {
     inactive: "rounded-full border border-amber-600/60 bg-amber-900/70 text-amber-200 hover:bg-amber-800/70",
-    active:   "rounded-t-xl rounded-b-none border border-b-0 border-amber-400/50 bg-amber-500/20 text-amber-50",
+    active:   "rounded-xl border border-amber-400/50 bg-amber-500/20 text-amber-50",
     badge: "text-amber-300/80",
   },
   teams: {
     inactive: "rounded-full border border-violet-600/60 bg-violet-900/70 text-violet-200 hover:bg-violet-800/70",
-    active:   "rounded-t-xl rounded-b-none border border-b-0 border-violet-400/50 bg-violet-500/20 text-violet-50",
+    active:   "rounded-xl border border-violet-400/50 bg-violet-500/20 text-violet-50",
     badge: "text-violet-300/80",
   },
 };
 
 const FULL_SHELL: Record<Filter, string> = {
-  all:        "rounded-2xl border border-zinc-700 bg-zinc-900/60 p-3",
-  salesforce: "rounded-2xl border border-t-0 border-sky-400/50 bg-sky-500/20 p-3",
-  asana:      "rounded-2xl border border-t-0 border-red-400/50 bg-red-500/25 p-3",
-  outlook:    "rounded-2xl border border-t-0 border-amber-400/50 bg-amber-500/20 p-3",
-  teams:      "rounded-2xl border border-t-0 border-violet-400/50 bg-violet-500/20 p-3",
+  all:        "rounded-2xl border border-white/20 bg-white/20 p-3 mt-2",
+  salesforce: "rounded-2xl border border-sky-400/50 bg-sky-500/20 p-3 mt-2",
+  asana:      "rounded-2xl border border-red-400/50 bg-red-500/25 p-3 mt-2",
+  outlook:    "rounded-2xl border border-amber-400/50 bg-amber-500/20 p-3 mt-2",
+  teams:      "rounded-2xl border border-violet-400/50 bg-violet-500/20 p-3 mt-2",
 };
 
 type SourceAccent = {
@@ -106,6 +114,7 @@ const SOURCE_CARD: Record<Source, SourceAccent> = {
 };
 
 const SF_BUCKET_LABEL: Record<SfBucket, string> = {
+  alle: "Alle",
   faktura: "Faktura",
   kreditnota: "Kreditnota",
   garanti: "Garanti",
@@ -137,13 +146,20 @@ function formatDue(iso: string | undefined, today: string): string | null {
   return d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
 }
 
-function buildAmestoMailto(email: AmestoEmail): string {
-  const params = new URLSearchParams({
-    subject: email.subject,
-    body: email.body,
-  });
-  // mailto wants %20 for spaces (URLSearchParams uses '+'); fix it.
-  return `mailto:${AMESTO_RECIPIENT}?${params.toString().replace(/\+/g, "%20")}`;
+// Salesforce logger e-poster som sendes til/fra kunde@mustadeiendom.no automatisk.
+// Ref-taggen i body knytter e-posten til riktig sak.
+const SF_LOGGING_CC = "kunde@mustadeiendom.no";
+const sfRef = (id: string) =>
+  `ref:!00D1t0osHt.!${id.slice(0, 6)}${id.slice(10, 15)}:ref`;
+
+function buildAmestoMailto(email: AmestoEmail, taskId: string): string {
+  const body = `${email.body}\n\n${sfRef(taskId)}`;
+  return (
+    `mailto:${AMESTO_RECIPIENT}` +
+    `?cc=${encodeURIComponent(SF_LOGGING_CC)}` +
+    `&subject=${encodeURIComponent(email.subject)}` +
+    `&body=${encodeURIComponent(body)}`
+  );
 }
 
 function buildMapsUrl(address: string): string {
@@ -194,8 +210,27 @@ function getCaseInfo(task: Task): CaseInfo {
 
 const STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
 
+function threadDate(task: Task): number {
+  const last = task.thread?.[task.thread.length - 1];
+  if (!last?.date) return 0;
+  const [d, m] = last.date.split(".").map(Number);
+  if (!d || !m) return 0;
+  const now = new Date();
+  const year = m > now.getMonth() + 1 ? now.getFullYear() - 1 : now.getFullYear();
+  return Date.UTC(year, m - 1, d, 10, 0, 0);
+}
+
 function lastModifiedTime(task: Task): number {
-  return task.lastModifiedAt ? Date.parse(task.lastModifiedAt) : 0;
+  if (task.lastModifiedAt) {
+    const t = Date.parse(task.lastModifiedAt);
+    const asDate = new Date(t);
+    const isMidnightPlaceholder =
+      asDate.getUTCHours() === 0 &&
+      asDate.getUTCMinutes() === 0 &&
+      asDate.getUTCSeconds() === 0;
+    if (!isMidnightPlaceholder) return t;
+  }
+  return threadDate(task) || (task.lastModifiedAt ? Date.parse(task.lastModifiedAt) : 0);
 }
 
 function priorityRank(priority: Priority | undefined): number {
@@ -203,9 +238,13 @@ function priorityRank(priority: Priority | undefined): number {
 }
 
 function actionOwnerRank(task: Task): number {
+  if (task.awaiting === "deg!") return 0;
+  if (task.awaiting) return 1;
   const status = getCaseInfo(task).status;
-  if (status === "Ny" || status === "Iverksettes") return 0; // min tur
-  if (status === "Avventer kunde" || status === "Avventer Kunde") return 1; // venter
+  if (status === "Ny" || status === "Iverksettes") return 0;
+  if (status === "Avventer kunde" || status === "Avventer Kunde") return 1;
+  // SF-saker uten eksplisitt awaiting er alltid Mortens tur – ingen andre eier saken
+  if (task.source === "salesforce") return 0;
   return 2;
 }
 
@@ -237,20 +276,50 @@ function staleLabel(
   return `${days} d uten oppdatering`;
 }
 
+function shortName(name: string): string {
+  const match = name.match(/^(.+?)\s*\((.+)\)$/);
+  if (match && match[1].includes(" ")) return match[2];
+  return name;
+}
+
 function timeSinceUpdate(task: Task, nowMs: number): string | null {
   if (!task.lastModifiedAt) return null;
   const diffMs = nowMs - lastModifiedTime(task);
-  const hours = diffMs / (60 * 60 * 1000);
-  if (hours < 1) return "<1t";
-  if (hours < 6) return "1+t";
-  if (hours < 12) return "6+t";
-  if (hours < 24) return "12+t";
-  const days = hours / 24;
-  if (days < 7) return `${Math.floor(days)}+d`;
-  const weeks = days / 7;
-  if (weeks < 4) return `${Math.floor(weeks)}+u`;
-  const months = days / 30;
-  return `${Math.floor(months)}+m`;
+  const hours = Math.floor(diffMs / (60 * 60 * 1000));
+  if (hours < 1) return "< 1t";
+  if (hours < 24) return `${hours}t`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}u`;
+  return `${Math.floor(days / 30)}m`;
+}
+
+function parseContactEmail(kontaktperson: string | undefined): string | null {
+  if (!kontaktperson) return null;
+  const match = kontaktperson.match(/[\w.+%-]+@[\w.-]+\.[a-z]{2,}/i);
+  return match ? match[0] : null;
+}
+
+function buildSfReplyMailto(task: Task): string {
+  const to = parseContactEmail(task.details?.kontaktperson) ?? "";
+  const subject = `SV: ${task.title}`;
+  const lines: string[] = ["", ""];
+  if (task.thread && task.thread.length > 0) {
+    for (const msg of [...task.thread].reverse()) {
+      lines.push("________________________________________");
+      lines.push(`${msg.date}  ${msg.from}`);
+      lines.push(msg.preview);
+      lines.push("");
+    }
+  }
+  lines.push(sfRef(task.id));
+  return (
+    `mailto:${to}` +
+    `?cc=${encodeURIComponent(SF_LOGGING_CC)}` +
+    `&subject=${encodeURIComponent(subject)}` +
+    `&body=${encodeURIComponent(lines.join("\n"))}`
+  );
 }
 
 function buildAskClaudeUrl(task: Task): string {
@@ -261,41 +330,28 @@ function buildAskClaudeUrl(task: Task): string {
 
 function buildClaudeShareText(task: Task): string {
   const lines: string[] = [];
+  const caseInfo = getCaseInfo(task);
   lines.push(task.title);
   lines.push("");
 
-  const statusBits: string[] = [];
-  if (task.context) statusBits.push(task.context);
-  if (task.priority) statusBits.push(`Prioritet: ${PRIORITY_META[task.priority].label}`);
-  if (task.topic) statusBits.push(`Kategori: ${TOPIC_META[task.topic].label}`);
-  if (statusBits.length) lines.push(statusBits.join(" · "));
+  const customer = task.details?.kunde ?? caseInfo.customer;
+  if (customer) lines.push(`• Kunde: ${customer}`);
+  if (task.details?.bygg) lines.push(`• Bygg: ${task.details.bygg}`);
+  if (task.topic) lines.push(`• Kategori: ${TOPIC_META[task.topic].label}`);
+
+  if (task.summary) {
+    task.summary.split("\n").filter(Boolean).forEach((line) => lines.push(`• ${line}`));
+  }
+
+  if (task.awaiting) lines.push(`• Avventer: ${task.awaiting}`);
 
   if (task.details) {
-    lines.push("");
     const d = task.details;
-    if (d.kunde) lines.push(`Kunde: ${d.kunde}`);
-    if (d.kontoType) lines.push(`Konto-type: ${d.kontoType}`);
-    if (d.kontaktperson) lines.push(`Kontaktperson: ${d.kontaktperson}`);
-    if (d.bygg) {
-      lines.push(`Bygg: ${d.bygg}${d.byggInherited ? " (fra kunde)" : ""}`);
-    }
-    if (d.kontoeier) lines.push(`Kontoeier (KAM): ${d.kontoeier}`);
-    if (d.hovedkontrakt) lines.push(`Hovedkontrakt: ${d.hovedkontrakt}`);
     if (d.note) {
       lines.push("");
       lines.push(`Merk: ${d.note}`);
     }
   }
-
-  if (task.summary) {
-    lines.push("");
-    lines.push("Sammendrag:");
-    lines.push(task.summary);
-  }
-
-  lines.push("");
-  const urlLabel = task.source === "asana" ? "Asana" : "SF";
-  lines.push(`${urlLabel}: ${task.externalUrl}`);
 
   return lines.join("\n");
 }
@@ -355,13 +411,22 @@ function PriorityDot({
     };
   }, [open]);
 
+  const indicator =
+    priority === "high" ? (
+      <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+    ) : (
+      <span className="h-1.5 w-1.5 rounded-full border border-zinc-600" />
+    );
+
   if (!onChange) {
     return (
       <span
-        className={`inline-block h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+        className="inline-grid h-4 w-4 shrink-0 place-items-center"
         title={`Prioritet: ${meta.label}`}
         aria-label={`Prioritet ${meta.label}`}
-      />
+      >
+        {indicator}
+      </span>
     );
   }
 
@@ -386,13 +451,13 @@ function PriorityDot({
         className="-m-1 inline-grid h-5 w-5 cursor-pointer place-items-center rounded-full p-1 hover:bg-zinc-800/70"
         title={`Prioritet: ${meta.label} (tap for å endre)`}
       >
-        <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+        {indicator}
       </span>
 
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute left-0 top-7 z-20 flex gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 p-1.5 shadow-lg"
+          className="absolute left-0 top-7 z-20 flex gap-1 rounded-lg border border-zinc-700 bg-zinc-900 p-1.5 shadow-lg"
           role="menu"
         >
           {(["high", "medium", "low"] as Priority[]).map((p) => {
@@ -407,15 +472,18 @@ function PriorityDot({
                   onChange(p);
                   setOpen(false);
                 }}
-                className={`grid h-7 w-7 place-items-center rounded-full ring-1 transition ${
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
                   active
-                    ? "ring-zinc-300"
-                    : "ring-zinc-700 hover:ring-zinc-500"
+                    ? p === "high"
+                      ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30"
+                      : p === "medium"
+                        ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30"
+                        : "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
                 }`}
                 aria-label={`Sett prioritet ${pmeta.label}`}
-                title={pmeta.label}
               >
-                <span className={`h-3 w-3 rounded-full ${pmeta.dot}`} />
+                {pmeta.label}
               </button>
             );
           })}
@@ -599,7 +667,7 @@ function TaskCard({
 
   const due = formatDue(task.dueAt, today);
   const overdue = task.dueAt !== undefined && task.dueAt < today && !isDone;
-  const isExpandable = task.source === "salesforce" || task.source === "asana";
+  const isExpandable = task.source === "salesforce" || task.source === "asana" || task.source === "outlook";
   const asanaArea = task.context
     ? task.context.split(" · ").filter((p) => !KNOWN_STATUSES.has(p)).join(" · ")
     : null;
@@ -607,12 +675,11 @@ function TaskCard({
   const ago = timeSinceUpdate(task, nowMs);
   const isWaiting = actionOwnerRank(task) === 1;
   const isMinTur = actionOwnerRank(task) === 0;
+  const isCloseable = task.closeable === true;
   const ageMs = task.lastModifiedAt
     ? nowMs - Date.parse(task.lastModifiedAt)
     : 0;
-  const autoDimmed =
-    !isDone && isWaiting && task.lastModifiedAt !== undefined && ageMs <= STALE_THRESHOLD_MS;
-  const dimmed = !isDone && (autoDimmed || isSnoozedExternally);
+  const dimmed = !isDone && !isCloseable && (isWaiting || isSnoozedExternally);
 
   function startLongPress() {
     wasLongPressRef.current = false;
@@ -647,14 +714,6 @@ function TaskCard({
 
   const body = (
     <div className="flex min-w-0 items-start gap-2">
-      {priority && (
-        <span className="mt-0.5">
-          <PriorityDot
-            priority={priority}
-            onChange={(next) => onChangePriority(task.id, next)}
-          />
-        </span>
-      )}
       <div className="min-w-0 flex-1">
         <p
           className={`text-[15px] font-medium leading-snug text-zinc-100 ${
@@ -663,24 +722,39 @@ function TaskCard({
         >
           {task.title}
         </p>
-        {(caseInfo.customer || caseInfo.status || due) && (
-          <div className="mt-1.5 flex min-w-0 items-baseline gap-2 text-xs">
+        {(caseInfo.customer || caseInfo.status || due || task.awaiting || task.closeable || priority === "high") && (
+          <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
             <span className="min-w-0 flex-1 truncate font-medium text-sky-300">
               {caseInfo.customer ?? ""}
             </span>
-            {caseInfo.status && (
-              <span className={`shrink-0 ${statusColorClass(caseInfo.status)}`}>
-                {statusDisplayLabel(caseInfo.status)}
-              </span>
+            {priority === "high" && (
+              <span className="shrink-0 text-[11px] font-semibold text-rose-400">Kritisk</span>
             )}
-            {due && (
-              <span
-                className={`shrink-0 tabular-nums ${
-                  overdue ? "text-rose-400" : "text-zinc-400"
-                }`}
-              >
-                {due}
+            {task.closeable ? (
+              <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/25">
+                ✓ Kan lukkes
               </span>
+            ) : task.awaiting === "deg!" || (!task.awaiting && actionOwnerRank(task) === 0) ? (
+              <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-amber-500/15 text-amber-300 ring-amber-500/25">
+                ▸ Din tur
+              </span>
+            ) : task.awaiting ? (
+              <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-zinc-800/80 text-zinc-400 ring-zinc-700/60">
+                {`Avventer ${task.awaiting}`}
+              </span>
+            ) : (
+              <>
+                {caseInfo.status && caseInfo.status !== "Ny" && caseInfo.status !== "Avventer kunde" && caseInfo.status !== "Avventer Kunde" && (
+                  <span className={`shrink-0 ${statusColorClass(caseInfo.status)}`}>
+                    {statusDisplayLabel(caseInfo.status)}
+                  </span>
+                )}
+                {due && (
+                  <span className={`shrink-0 tabular-nums ${overdue ? "text-rose-400" : "text-zinc-400"}`}>
+                    {due}
+                  </span>
+                )}
+              </>
             )}
           </div>
         )}
@@ -694,9 +768,11 @@ function TaskCard({
       className={`group rounded-2xl border p-3 shadow-lg shadow-black/20 backdrop-blur-sm transition ${
         isExpanded
           ? `${accent.expandedBorder} bg-zinc-900/80 ${accent.expandedShadow}`
-          : isMinTur
-            ? `border-amber-500/25 ${accent.bg}`
-            : `${accent.border} ${accent.bg}`
+          : isCloseable
+            ? "border-emerald-500/25 bg-emerald-500/5"
+            : isMinTur
+              ? `border-amber-500/25 ${accent.bg}`
+              : `${accent.border} ${accent.bg}`
       } ${isDone ? "opacity-50" : dimmed ? "opacity-50" : ""}`}
     >
       <div className="flex items-start gap-3">
@@ -739,7 +815,7 @@ function TaskCard({
             <div className="min-w-0 flex-1">{body}</div>
             <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
               {ago && (
-                <span className="text-[11px] font-medium tabular-nums text-zinc-400">
+                <span className="text-xs font-semibold tabular-nums text-zinc-300">
                   {ago}
                 </span>
               )}
@@ -767,13 +843,89 @@ function TaskCard({
           >
             <div className="min-w-0 flex-1">{body}</div>
             {ago && (
-              <span className="shrink-0 pt-0.5 text-[11px] font-medium tabular-nums text-zinc-400">
+              <span className="shrink-0 pt-0.5 text-xs font-semibold tabular-nums text-zinc-300">
                 {ago}
               </span>
             )}
           </a>
         )}
       </div>
+
+      {isExpanded && task.source === "outlook" && (() => {
+        const senderEmail = task.context?.split(" · ")[0] ?? "";
+        const quotedBody = task.analysis
+          ? `\n\n________________________________________\nFra: ${task.lastMessage?.from ?? senderEmail}\n\n${task.analysis}`
+          : "";
+        const replyHref = `mailto:${senderEmail}?subject=SV%3A%20${encodeURIComponent(task.title)}${quotedBody ? `&body=${encodeURIComponent(quotedBody)}` : ""}`;
+        return (
+          <div className={`mt-3 ml-9 border-l-2 ${accent.innerLine} pl-3`}>
+            {task.outlookCategory && (
+              <p className={`mb-2 text-[11px] font-medium uppercase tracking-wider ${accent.accentText}`}>
+                {task.outlookCategory === "trenger-oppfolging" ? "Trenger oppfølging" : task.outlookCategory === "kopi" ? "Kopi" : "Til info"}
+              </p>
+            )}
+            <p className="text-sm leading-relaxed text-zinc-300">
+              {task.summary ?? "Ingen beskrivelse tilgjengelig."}
+              {(task.analysis || task.lastMessage) && (
+                <button
+                  type="button"
+                  onClick={() => setAnalysisOpen((v) => !v)}
+                  className="ml-1 inline-block w-[58px] text-left text-xs font-medium text-amber-400 hover:text-amber-300"
+                >
+                  {analysisOpen ? "Mindre" : "Mer.."}
+                </button>
+              )}
+            </p>
+            {analysisOpen && (
+              <div className={`mt-2 rounded-lg border-l-2 ${accent.innerLine} ${accent.analysisBg} px-3 py-2 text-sm leading-relaxed text-zinc-300`}>
+                {task.analysis && <p className="mb-2">{task.analysis}</p>}
+                {task.lastMessage && (
+                  <p className="text-xs text-zinc-400 italic">
+                    <span className="font-medium not-italic text-zinc-300">{task.lastMessage.from}:</span>{" "}
+                    {task.lastMessage.preview}
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="mt-3 flex gap-2">
+              <a
+                href={replyHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 ring-1 ring-amber-500/40 transition hover:bg-amber-500/30"
+              >
+                Svar
+                <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 10 L8 4 L8 7 C12 7 14 9 14 13 C12 10 9 9 8 9 L8 12 Z" />
+                </svg>
+              </a>
+              <a
+                href={task.externalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 ring-1 ring-zinc-700 transition hover:bg-zinc-700"
+              >
+                Åpne i Outlook
+                <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 3h7v7M13 3l-9 9" />
+                </svg>
+              </a>
+              <button
+                type="button"
+                onClick={handleShareClaude}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition ${
+                  copied
+                    ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
+                    : "bg-zinc-800 text-zinc-300 ring-zinc-700 hover:bg-zinc-700"
+                }`}
+                aria-live="polite"
+              >
+                {copied ? "✓ Kopiert" : "Kopier til Claude"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {isExpanded && task.source === "asana" && (
         <div className={`mt-3 ml-9 border-l-2 ${accent.innerLine} pl-3`}>
@@ -830,45 +982,66 @@ function TaskCard({
 
       {isExpanded && task.source === "salesforce" && (
         <div className={`mt-3 ml-9 border-l-2 ${accent.innerLine} pl-3`}>
-          <p className="text-sm leading-relaxed text-zinc-300">
-            {task.summary ?? "Ingen beskrivelse tilgjengelig."}
-            {task.analysis && (
-              <button
-                type="button"
-                onClick={() => setAnalysisOpen((v) => !v)}
-                className="ml-1 inline-block w-[58px] text-left text-xs font-medium text-sky-400 hover:text-sky-300"
-              >
-                {analysisOpen ? "Mindre" : "Mer.."}
-              </button>
-            )}
-          </p>
-          {analysisOpen && (task.analysis || task.lastMessage) && (
-            <div className={`mt-2 space-y-3 rounded-lg border-l-2 ${accent.innerLine} ${accent.analysisBg} px-3 py-2`}>
-              {task.lastMessage && (
-                <div>
-                  <p className={`mb-1 text-[10px] font-semibold uppercase tracking-wider ${accent.accentText}`}>
-                    Siste melding
-                  </p>
-                  <p className="text-sm leading-relaxed text-zinc-200">
-                    <span className="font-medium">
-                      {task.lastMessage.from}:
-                    </span>{" "}
-                    {task.lastMessage.preview}
-                  </p>
-                </div>
-              )}
-              {task.analysis && (
-                <div>
-                  <p className={`mb-1 text-[10px] font-semibold uppercase tracking-wider ${accent.accentText}`}>
-                    Hva skal gjøres
-                  </p>
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
-                    {task.analysis}
-                  </p>
-                </div>
-              )}
+          {(task.thread && task.thread.length > 0) ? (
+            <div className="space-y-0">
+              {task.thread.map((msg, i) => {
+                const isLast = i === task.thread!.length - 1;
+                const isChatter = msg.from.includes("[Chatter]") || msg.from.includes("[via Chatter]");
+                const cleanFrom = msg.from.replace(/\s*\[.*?\]/g, "").trim();
+                const arrowIdx = cleanFrom.indexOf(" → ");
+                let sender: string;
+                let recipient: string;
+                if (arrowIdx !== -1) {
+                  sender = cleanFrom.slice(0, arrowIdx);
+                  recipient = cleanFrom.slice(arrowIdx + 3);
+                } else {
+                  sender = cleanFrom;
+                  const isFromMorten = cleanFrom === "Morten" || cleanFrom.startsWith("Morten ");
+                  const isFromInternal = cleanFrom.includes("(Amesto)") || cleanFrom.includes("(Mustad)") || isChatter;
+                  if (isFromMorten) {
+                    recipient = getCaseInfo(task).customer ?? task.details?.kunde?.split(" · ")[0] ?? "kunden";
+                  } else if (isFromInternal) {
+                    recipient = "Morten";
+                  } else {
+                    recipient = "Morten";
+                  }
+                }
+                return (
+                  <div key={i} className="relative pl-5 pb-3">
+                    {i < task.thread!.length - 1 && (
+                      <span className="absolute left-[7px] top-3 bottom-0 w-px bg-zinc-700" />
+                    )}
+                    {isLast && (
+                      <span className="absolute left-0 top-1 h-3.5 w-3.5 animate-ping rounded-full border-2 border-sky-400 opacity-60" />
+                    )}
+                    <span className={`absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 ${
+                      isLast
+                        ? "border-sky-400 bg-sky-400/20"
+                        : msg.resolved
+                        ? "border-emerald-500 bg-emerald-500/20"
+                        : "border-zinc-600 bg-zinc-900"
+                    }`} />
+                    <div className="text-xs leading-snug">
+                      <div className="flex items-baseline gap-1">
+                        <span className={`font-semibold ${isLast ? "text-zinc-100" : msg.resolved ? "text-emerald-400" : "text-zinc-200"}`}>{shortName(sender)}</span>
+                        <span className={msg.resolved ? "text-emerald-700" : "text-zinc-400"}>→</span>
+                        <span className={msg.resolved ? "text-emerald-600" : isLast ? "text-zinc-400" : "text-zinc-400"}>{shortName(recipient)}</span>
+                        <span className="ml-auto tabular-nums text-zinc-500">{msg.date}</span>
+                      </div>
+                      <p className={`mt-0.5 ${isLast ? "text-zinc-300" : msg.resolved ? "text-emerald-600/80" : "text-zinc-400"}`}>{msg.preview}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          ) : task.lastMessage ? (
+            <p className="text-sm leading-relaxed text-zinc-200">
+              <span className="font-semibold">{task.lastMessage.from}:</span>{" "}
+              {task.lastMessage.preview}
+            </p>
+          ) : task.summary ? (
+            <p className="text-sm leading-relaxed text-zinc-300">{task.summary}</p>
+          ) : null}
           <div className="mt-3 flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <a
@@ -877,7 +1050,7 @@ function TaskCard({
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-200 ring-1 ring-sky-500/30 transition hover:bg-sky-500/25"
               >
-                Åpne i Salesforce
+                Åpne i SF
                 <svg
                   viewBox="0 0 16 16"
                   className="h-3 w-3"
@@ -912,14 +1085,14 @@ function TaskCard({
               <button
                 type="button"
                 onClick={handleShareClaude}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition ${
+                className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium ring-1 transition ${
                   copied
                     ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
                     : "bg-zinc-800 text-zinc-300 ring-zinc-700 hover:bg-zinc-700"
                 }`}
                 aria-live="polite"
               >
-                {copied ? "Kopiert" : "Kopier"}
+                {copied ? "✓ Kopiert" : "Kopier til Claude"}
                 <svg
                   viewBox="0 0 16 16"
                   className="h-3 w-3"
@@ -965,7 +1138,7 @@ function TaskCard({
             </div>
             {task.amestoEmail && (
               <a
-                href={buildAmestoMailto(task.amestoEmail)}
+                href={buildAmestoMailto(task.amestoEmail, task.id)}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25"
               >
                 Send til Amesto
@@ -982,6 +1155,15 @@ function TaskCard({
                 </svg>
               </a>
             )}
+            <a
+              href={buildSfReplyMailto(task)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
+            >
+              Svar til kunde
+              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 10 L8 4 L8 7 C12 7 14 9 14 13 C12 10 9 9 8 9 L8 12 Z" />
+              </svg>
+            </a>
           </div>
           {detailsOpen && task.details && (
             <DetailsPanel
@@ -1009,6 +1191,7 @@ export default function Dashboard({
   const nowMs = Date.parse(now);
   const [filter, setFilter] = useState<Filter>("all");
   const [sfBucket, setSfBucket] = useState<SfBucket>("faktura");
+  const [outlookBucket, setOutlookBucket] = useState<OutlookBucket>("trenger-oppfolging");
   const [done, setDone] = useState<Set<string>>(new Set());
   const [priorityOverrides, setPriorityOverrides] = useState<
     Record<string, Priority>
@@ -1017,6 +1200,10 @@ export default function Dashboard({
   const [hydrated, setHydrated] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (g: string) =>
+    setCollapsedGroups((prev) => { const s = new Set(prev); s.has(g) ? s.delete(g) : s.add(g); return s; });
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     try {
@@ -1140,15 +1327,20 @@ export default function Dashboard({
   }, [tasks, done, priorityOverrides]);
 
   const isDimmedCard = (task: Task): boolean => {
-    if (actionOwnerRank(task) !== 1) return false;
-    if (!task.lastModifiedAt) return false;
-    const ageMs = nowMs - Date.parse(task.lastModifiedAt);
-    return ageMs <= STALE_THRESHOLD_MS;
+    return actionOwnerRank(task) === 1;
   };
 
   const sortFn = (a: Task, b: Task): number => {
-    const ao = actionOwnerRank(a) - actionOwnerRank(b);
+    const effectiveRank = (t: Task) => {
+      const r = actionOwnerRank(t);
+      return t.closeable && r > 0 ? 0.5 : r;
+    };
+    const ao = effectiveRank(a) - effectiveRank(b);
     if (ao !== 0) return ao;
+    // Within rank 0: explicit "deg!" above status-based items
+    const aDeg = a.awaiting === "deg!" ? 0 : 1;
+    const bDeg = b.awaiting === "deg!" ? 0 : 1;
+    if (aDeg !== bDeg) return aDeg - bDeg;
     // Innen seksjon: tydelige (ikke dempet) først
     const ad = isDimmedCard(a) ? 1 : 0;
     const bd = isDimmedCard(b) ? 1 : 0;
@@ -1191,6 +1383,7 @@ export default function Dashboard({
 
   const sfBucketCounts = useMemo(() => {
     const c: Record<SfBucket, number> = {
+      alle: 0,
       faktura: 0,
       kreditnota: 0,
       garanti: 0,
@@ -1199,14 +1392,27 @@ export default function Dashboard({
     for (const t of tasks) {
       if (done.has(t.id)) continue;
       const b = bucketFor(t);
-      if (b) c[b] += 1;
+      if (b) { c[b] += 1; c.alle += 1; }
+    }
+    return c;
+  }, [tasks, done]);
+
+  const outlookBucketCounts = useMemo(() => {
+    const c: Record<OutlookBucket, number> = {
+      "trenger-oppfolging": 0,
+      "kopi": 0,
+      "til-info": 0,
+    };
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      if (t.source === "outlook" && t.outlookCategory) c[t.outlookCategory] += 1;
     }
     return c;
   }, [tasks, done]);
 
   const visibleSf = useMemo(() => {
     return tasks.filter(
-      (t) => t.source === "salesforce" && bucketFor(t) === sfBucket,
+      (t) => t.source === "salesforce" && (sfBucket === "alle" || bucketFor(t) === sfBucket),
     );
   }, [tasks, sfBucket]);
 
@@ -1214,9 +1420,20 @@ export default function Dashboard({
     let list: Task[];
     if (filter === "all") list = tasks;
     else if (filter === "salesforce") list = visibleSf;
+    else if (filter === "outlook") list = tasks.filter((t) => t.source === "outlook" && t.outlookCategory === outlookBucket);
     else list = tasks.filter((t) => t.source === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.context?.toLowerCase().includes(q) ||
+          t.details?.kunde?.toLowerCase().includes(q) ||
+          t.caseNumber?.toLowerCase().includes(q)
+      );
+    }
     return list.slice().sort(sortFn);
-  }, [tasks, filter, visibleSf, priorityOverrides]);
+  }, [tasks, filter, visibleSf, outlookBucket, priorityOverrides, search]);
 
   function toggleDone(id: string) {
     setDone((prev) => {
@@ -1237,13 +1454,28 @@ export default function Dashboard({
   }
 
   const showSfTabs = filter === "salesforce";
+  const showOutlookTabs = filter === "outlook";
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6 sm:pt-10">
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6 sm:pt-10 md:max-w-5xl md:px-8">
       <header className="mb-7">
-        <h1 className="text-[28px] font-semibold tracking-tight text-zinc-50">
-          Arbeidsoppgaver
-        </h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-[28px] font-semibold tracking-tight text-zinc-50">
+            Arbeidsoppgaver Morten
+          </h1>
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Søk..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-32 rounded-full border border-zinc-700 bg-zinc-800/80 py-1.5 pl-8 pr-3 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-500 focus:w-44 transition-all duration-200"
+            />
+          </div>
+        </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400">
           <span>
             {counts.all} {counts.all === 1 ? "oppgave igjen" : "oppgaver igjen"}
@@ -1270,14 +1502,18 @@ export default function Dashboard({
       </header>
 
       <div
-        className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 leading-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
         aria-label="Kilder"
       >
         {FILTERS.map((f) => {
           const active = filter === f;
           const label = f === "all" ? "Alle" : SOURCE_META[f].label;
-          const tabStyle = f !== "all" ? SOURCE_TAB[f] : null;
+          const tabStyle = f !== "all" ? SOURCE_TAB[f] : {
+            inactive: "rounded-full border border-zinc-400/40 bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60",
+            active:   "rounded-xl border border-zinc-300/60 bg-zinc-700/40 text-white",
+            badge: "text-zinc-300/80",
+          };
           return (
             <button
               key={f}
@@ -1345,6 +1581,36 @@ export default function Dashboard({
         </div>
       )}
 
+      {showOutlookTabs && (
+        <div
+          className="mb-5 flex gap-1 rounded-xl bg-zinc-900/60 p-1 ring-1 ring-zinc-800"
+          role="tablist"
+          aria-label="Outlook-kategori"
+        >
+          {OUTLOOK_BUCKETS.map((bucket) => {
+            const active = outlookBucket === bucket;
+            return (
+              <button
+                key={bucket}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setOutlookBucket(bucket)}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? "bg-amber-500/15 text-amber-200 ring-1 ring-amber-500/30"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <span>{OUTLOOK_BUCKET_LABEL[bucket]}</span>
+                <span className={`tabular-nums ${active ? "text-amber-300/80" : "text-zinc-500"}`}>
+                  {outlookBucketCounts[bucket]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-800 px-4 py-10 text-center text-sm text-zinc-500">
           Ingen oppgaver her. Nyt stillheten.
@@ -1379,36 +1645,57 @@ export default function Dashboard({
             <div className="flex flex-col gap-5">
               {minTur.length > 0 && (
                 <section>
-                  <h3 className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-amber-300">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("min-tur")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-amber-300 hover:text-amber-200"
+                  >
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                     Min tur
                     <span className="text-amber-400/70">({minTur.length})</span>
-                  </h3>
-                  <ul className="flex flex-col gap-2">
-                    {minTur.map(renderCard)}
-                  </ul>
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("min-tur") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("min-tur") && (
+                    <ul className="flex flex-col gap-2">{minTur.map(renderCard)}</ul>
+                  )}
                 </section>
               )}
               {venter.length > 0 && (
                 <section>
-                  <h3 className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("avventer")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-400"
+                  >
                     <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
                     Avventer
                     <span className="text-zinc-600">({venter.length})</span>
-                  </h3>
-                  <ul className="flex flex-col gap-2">
-                    {venter.map(renderCard)}
-                  </ul>
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("avventer") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("avventer") && (
+                    <ul className="flex flex-col gap-2">{venter.map(renderCard)}</ul>
+                  )}
                 </section>
               )}
               {ukjent.length > 0 && (
                 <section>
-                  <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("annet")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-400"
+                  >
                     Annet ({ukjent.length})
-                  </h3>
-                  <ul className="flex flex-col gap-2">
-                    {ukjent.map(renderCard)}
-                  </ul>
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("annet") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("annet") && (
+                    <ul className="flex flex-col gap-2">{ukjent.map(renderCard)}</ul>
+                  )}
                 </section>
               )}
             </div>

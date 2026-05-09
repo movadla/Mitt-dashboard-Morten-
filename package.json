@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "tunnel": "powershell -ExecutionPolicy Bypass -File start-dev.ps1"
   },
   "dependencies": {
     "next": "16.2.4",

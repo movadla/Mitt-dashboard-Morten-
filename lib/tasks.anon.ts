@@ -6,6 +6,8 @@ export type Source = "salesforce" | "asana" | "outlook" | "teams";
 
 export type SalesforceCategory = "mine" | "new" | "pending";
 
+export type OutlookCategory = "trenger-oppfolging" | "kopi" | "til-info";
+
 export type CaseTopic =
   | "missing-invoice"
   | "double-billed"
@@ -43,6 +45,7 @@ export type Task = {
   dueAt?: string;
   externalUrl: string;
   category?: SalesforceCategory;
+  outlookCategory?: OutlookCategory;
   summary?: string;
   topic?: CaseTopic;
   priority?: Priority;
