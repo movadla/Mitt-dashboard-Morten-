@@ -67,6 +67,8 @@ const FULL_SHELL: Record<Filter, string> = {
 type SourceAccent = {
   border: string;
   bg: string;
+  minTurBorder: string;
+  minTurBg: string;
   expandedBorder: string;
   expandedShadow: string;
   innerLine: string;
@@ -78,6 +80,8 @@ const SOURCE_CARD: Record<Source, SourceAccent> = {
   salesforce: {
     border: "border-sky-700/50",
     bg: "bg-sky-500/5",
+    minTurBorder: "border-sky-400/70",
+    minTurBg: "bg-sky-900/50",
     expandedBorder: "border-sky-500/40",
     expandedShadow: "shadow-sky-500/5",
     innerLine: "border-sky-500/30",
@@ -87,6 +91,8 @@ const SOURCE_CARD: Record<Source, SourceAccent> = {
   asana: {
     border: "border-red-700/50",
     bg: "bg-red-600/10",
+    minTurBorder: "border-red-400/70",
+    minTurBg: "bg-red-900/50",
     expandedBorder: "border-red-500/40",
     expandedShadow: "shadow-red-500/5",
     innerLine: "border-red-500/30",
@@ -96,6 +102,8 @@ const SOURCE_CARD: Record<Source, SourceAccent> = {
   outlook: {
     border: "border-amber-700/40",
     bg: "bg-amber-500/5",
+    minTurBorder: "border-amber-400/70",
+    minTurBg: "bg-amber-900/50",
     expandedBorder: "border-amber-500/40",
     expandedShadow: "shadow-amber-500/5",
     innerLine: "border-amber-500/30",
@@ -105,6 +113,8 @@ const SOURCE_CARD: Record<Source, SourceAccent> = {
   teams: {
     border: "border-violet-700/50",
     bg: "bg-violet-500/5",
+    minTurBorder: "border-violet-400/70",
+    minTurBg: "bg-violet-900/50",
     expandedBorder: "border-violet-500/40",
     expandedShadow: "shadow-violet-500/5",
     innerLine: "border-violet-500/30",
@@ -152,6 +162,34 @@ const SF_LOGGING_CC = "kunde@mustadeiendom.no";
 const sfRef = (id: string) =>
   `ref:!00D1t0osHt.!${id.slice(0, 6)}${id.slice(10, 15)}:ref`;
 
+function buildOutlookAskClaudeUrl(task: Task): string {
+  const lines: string[] = [task.title, ""];
+  if (task.summary) lines.push(task.summary, "");
+  if (task.emailBody) lines.push("E-post:", task.emailBody);
+  const prompt = lines.join("\n") + "\n\nKan du hjelpe meg med å svare på denne e-posten?";
+  return `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+}
+
+function buildTeamsAskClaudeUrl(task: Task): string {
+  const lines: string[] = [task.title, ""];
+  if (task.summary) lines.push(task.summary, "");
+  if (task.emailBody) lines.push("Melding:", task.emailBody);
+  const prompt = lines.join("\n") + "\n\nKan du hjelpe meg å svare på denne Teams-meldingen?";
+  return `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+}
+
+function buildOutlookAmestoMailto(task: Task): string {
+  const subject = `Vs: ${task.title}`;
+  const body = task.emailBody ?? task.summary ?? "";
+  return `mailto:Mustad@amesto.no?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function buildOutlookForwardMailto(task: Task): string {
+  const subject = `Vs: ${task.title}`;
+  const body = task.emailBody ?? task.summary ?? "";
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function buildAmestoMailto(email: AmestoEmail, taskId: string): string {
   const body = `${email.body}\n\n${sfRef(taskId)}`;
   return (
@@ -198,7 +236,7 @@ function getCaseInfo(task: Task): CaseInfo {
       if (!caseNumber) caseNumber = parts[i];
       i += 1;
     }
-    if (parts[i] && KNOWN_STATUSES.has(parts[i])) {
+    if (parts[i] && (KNOWN_STATUSES.has(parts[i]) || parts[i].startsWith("Avventer"))) {
       status = parts[i];
       i += 1;
     }
@@ -238,7 +276,7 @@ function priorityRank(priority: Priority | undefined): number {
 }
 
 function actionOwnerRank(task: Task): number {
-  if (task.awaiting === "deg!") return 0;
+  if (task.awaiting === "deg!" || task.awaiting === "Morten") return 0;
   if (task.awaiting) return 1;
   const status = getCaseInfo(task).status;
   if (status === "Ny" || status === "Iverksettes") return 0;
@@ -649,7 +687,6 @@ function TaskCard({
   nowMs: number;
 }) {
   const [copied, setCopied] = useState(false);
-  const [analysisOpen, setAnalysisOpen] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
   const accent = SOURCE_CARD[task.source];
   const wasLongPressRef = useRef(false);
@@ -667,7 +704,7 @@ function TaskCard({
 
   const due = formatDue(task.dueAt, today);
   const overdue = task.dueAt !== undefined && task.dueAt < today && !isDone;
-  const isExpandable = task.source === "salesforce" || task.source === "asana" || task.source === "outlook";
+  const isExpandable = task.source === "salesforce" || task.source === "asana" || task.source === "outlook" || task.source === "teams";
   const asanaArea = task.context
     ? task.context.split(" · ").filter((p) => !KNOWN_STATUSES.has(p)).join(" · ")
     : null;
@@ -715,13 +752,25 @@ function TaskCard({
   const body = (
     <div className="flex min-w-0 items-start gap-2">
       <div className="min-w-0 flex-1">
-        <p
-          className={`text-[15px] font-medium leading-snug text-zinc-100 ${
-            isDone ? "line-through" : ""
-          }`}
-        >
-          {task.title}
-        </p>
+        <div className="flex items-start gap-2">
+          <p
+            className={`flex-1 text-[15px] font-medium leading-snug text-zinc-100 ${
+              isDone ? "line-through" : ""
+            }`}
+          >
+            {task.title}
+          </p>
+          {task.cc && (
+            <span className="mt-0.5 shrink-0 rounded border border-amber-700/50 bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-400/80">
+              Kopi
+            </span>
+          )}
+          {task.attachments && task.attachments.length > 0 && (
+            <svg viewBox="0 0 16 16" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-500" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Vedlegg">
+              <path d="M13 8.5V11a4 4 0 01-8 0V4a2.5 2.5 0 015 0v7a1 1 0 01-2 0V5" />
+            </svg>
+          )}
+        </div>
         {(caseInfo.customer || caseInfo.status || due || task.awaiting || task.closeable || priority === "high") && (
           <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
             <span className="min-w-0 flex-1 truncate font-medium text-sky-300">
@@ -734,7 +783,7 @@ function TaskCard({
               <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/25">
                 ✓ Kan lukkes
               </span>
-            ) : task.awaiting === "deg!" || (!task.awaiting && actionOwnerRank(task) === 0) ? (
+            ) : task.awaiting === "deg!" || task.awaiting === "Morten" || (!task.awaiting && actionOwnerRank(task) === 0) ? (
               <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-amber-500/15 text-amber-300 ring-amber-500/25">
                 ▸ Din tur
               </span>
@@ -771,7 +820,7 @@ function TaskCard({
           : isCloseable
             ? "border-emerald-500/25 bg-emerald-500/5"
             : isMinTur
-              ? `border-amber-500/25 ${accent.bg}`
+              ? `${accent.minTurBorder} ${accent.minTurBg}`
               : `${accent.border} ${accent.bg}`
       } ${isDone ? "opacity-50" : dimmed ? "opacity-50" : ""}`}
     >
@@ -852,76 +901,302 @@ function TaskCard({
       </div>
 
       {isExpanded && task.source === "outlook" && (() => {
-        const senderEmail = task.context?.split(" · ")[0] ?? "";
-        const quotedBody = task.analysis
-          ? `\n\n________________________________________\nFra: ${task.lastMessage?.from ?? senderEmail}\n\n${task.analysis}`
-          : "";
-        const replyHref = `mailto:${senderEmail}?subject=SV%3A%20${encodeURIComponent(task.title)}${quotedBody ? `&body=${encodeURIComponent(quotedBody)}` : ""}`;
+        const shownBody = task.emailBody ?? task.analysis;
+        const isLong = (shownBody?.length ?? 0) > 600;
         return (
-          <div className={`mt-3 ml-9 border-l-2 ${accent.innerLine} pl-3`}>
-            {task.outlookCategory && (
-              <p className={`mb-2 text-[11px] font-medium uppercase tracking-wider ${accent.accentText}`}>
-                {task.outlookCategory === "trenger-oppfolging" ? "Trenger oppfølging" : task.outlookCategory === "kopi" ? "Kopi" : "Til info"}
-              </p>
-            )}
-            <p className="text-sm leading-relaxed text-zinc-300">
-              {task.summary ?? "Ingen beskrivelse tilgjengelig."}
-              {(task.analysis || task.lastMessage) && (
-                <button
-                  type="button"
-                  onClick={() => setAnalysisOpen((v) => !v)}
-                  className="ml-1 inline-block w-[58px] text-left text-xs font-medium text-amber-400 hover:text-amber-300"
-                >
-                  {analysisOpen ? "Mindre" : "Mer.."}
-                </button>
-              )}
-            </p>
-            {analysisOpen && (
-              <div className={`mt-2 rounded-lg border-l-2 ${accent.innerLine} ${accent.analysisBg} px-3 py-2 text-sm leading-relaxed text-zinc-300`}>
-                {task.analysis && <p className="mb-2">{task.analysis}</p>}
-                {task.lastMessage && (
-                  <p className="text-xs text-zinc-400 italic">
-                    <span className="font-medium not-italic text-zinc-300">{task.lastMessage.from}:</span>{" "}
-                    {task.lastMessage.preview}
-                  </p>
+          <div className="mt-3 ml-9">
+            <div className={`mt-2 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+              <div className={`border-b ${accent.innerLine} bg-amber-500/10 px-3 py-2`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>
+                  {task.outlookCategory === "kopi" ? "Kopi" : task.outlookCategory === "til-info" ? "Til info" : "Oppsummering"}
+                </span>
+              </div>
+              <div className="px-3 py-2.5">
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {task.summary ?? task.lastMessage?.preview ?? "Ingen beskrivelse tilgjengelig."}
+                </p>
+                {task.attachments && task.attachments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {task.attachments.map((name) => (
+                      <a key={name} href={task.externalUrl} target="_blank" rel="noopener noreferrer" className={`inline-flex items-center gap-1 rounded border ${accent.innerLine} bg-zinc-800/60 px-2 py-0.5 text-[11px] text-zinc-300 transition hover:bg-zinc-700/60`}>
+                        <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0 text-zinc-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M13 8.5V11a4 4 0 01-8 0V4a2.5 2.5 0 015 0v7a1 1 0 01-2 0V5" />
+                        </svg>
+                        {name}
+                      </a>
+                    ))}
+                  </div>
                 )}
               </div>
+            </div>
+            {shownBody && (
+              <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+                <div className={`border-b ${accent.innerLine} bg-amber-500/10 px-3 py-2`}>
+                  <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Siste e-post</span>
+                </div>
+                <div className="px-3 py-2.5 text-sm leading-relaxed text-zinc-300">
+                  <p className="whitespace-pre-line">{shownBody}</p>
+                  {isLong && (
+                    <p className="mt-2 text-xs italic text-zinc-500">(Åpne i Outlook for å lese hele e-posten)</p>
+                  )}
+                </div>
+              </div>
             )}
-            <div className="mt-3 flex gap-2">
+            {task.thread && task.thread.length > 0 && (
+              <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+                <div className={`border-b ${accent.innerLine} bg-amber-500/10 px-3 py-2`}>
+                  <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Historikk</span>
+                </div>
+                <div className="px-3 pt-3 pb-1">
+                  {task.thread.map((msg, i) => {
+                    const isLast = i === task.thread!.length - 1;
+                    const cleanFrom = msg.from.replace(/\s*\[.*?\]/g, "").trim();
+                    const arrowIdx = cleanFrom.indexOf(" → ");
+                    let sender: string;
+                    let recipient: string;
+                    if (arrowIdx !== -1) {
+                      sender = cleanFrom.slice(0, arrowIdx);
+                      recipient = cleanFrom.slice(arrowIdx + 3);
+                    } else {
+                      sender = cleanFrom;
+                      recipient = "Morten";
+                    }
+                    return (
+                      <div key={i} className="relative pl-5 pb-3">
+                        {i < task.thread!.length - 1 && (
+                          <span className="absolute left-[7px] top-3 bottom-0 w-px bg-zinc-700" />
+                        )}
+                        {isLast && (
+                          <span className="absolute left-0 top-1 h-3.5 w-3.5 animate-ping rounded-full border-2 border-amber-400 opacity-60" />
+                        )}
+                        <span className={`absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 ${
+                          isLast ? "border-amber-400 bg-amber-400/20" : "border-zinc-600 bg-zinc-900"
+                        }`} />
+                        <div className="text-xs leading-snug">
+                          <div className="flex items-baseline gap-1">
+                            <span className={`font-semibold ${isLast ? "text-zinc-100" : "text-zinc-200"}`}>{shortName(sender)}</span>
+                            <span className="text-zinc-400">→</span>
+                            <span className="text-zinc-400">{shortName(recipient)}</span>
+                            <span className="ml-auto tabular-nums text-zinc-500">{msg.date}</span>
+                          </div>
+                          <p className={`mt-0.5 ${isLast ? "text-zinc-300" : "text-zinc-400"}`}>{msg.preview}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={task.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 ring-1 ring-zinc-700 transition hover:bg-zinc-700"
+                >
+                  Åpne i Outlook
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 3h7v7M13 3l-9 9" />
+                  </svg>
+                </a>
+                <a
+                  href={buildOutlookAskClaudeUrl(task)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                >
+                  Spør Claude
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 4h10a1 1 0 011 1v6a1 1 0 01-1 1H8l-3 2v-2H3a1 1 0 01-1-1V5a1 1 0 011-1z" />
+                  </svg>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleShareClaude}
+                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium ring-1 transition ${
+                    copied
+                      ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
+                      : "bg-zinc-800 text-zinc-300 ring-zinc-700 hover:bg-zinc-700"
+                  }`}
+                  aria-live="polite"
+                >
+                  {copied ? "✓ Kopiert" : "Kopier til Claude"}
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {copied ? (
+                      <path d="M3 8.5L6.5 12 13 5" />
+                    ) : (
+                      <>
+                        <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                        <path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-800/50 px-3 py-1.5 text-xs font-medium text-zinc-500 ring-1 ring-zinc-700/50"
+                >
+                  Detaljer
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                </button>
+              </div>
               <a
-                href={replyHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 ring-1 ring-amber-500/40 transition hover:bg-amber-500/30"
+                href={buildOutlookAmestoMailto(task)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25"
               >
-                Svar
+                Send til Amesto
                 <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 10 L8 4 L8 7 C12 7 14 9 14 13 C12 10 9 9 8 9 L8 12 Z" />
+                  <path d="M2 4l6 5 6-5M2 4v8h12V4" />
                 </svg>
               </a>
               <a
-                href={task.externalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 ring-1 ring-zinc-700 transition hover:bg-zinc-700"
+                href={buildOutlookForwardMailto(task)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25"
               >
-                Åpne i Outlook
+                Videresend
                 <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 3h7v7M13 3l-9 9" />
+                  <path d="M8 4l5 4-5 4V9C5 9 3 10 2 13c0-4 2-7 6-7V4z" />
                 </svg>
               </a>
-              <button
-                type="button"
-                onClick={handleShareClaude}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                  copied
-                    ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
-                    : "bg-zinc-800 text-zinc-300 ring-zinc-700 hover:bg-zinc-700"
-                }`}
-                aria-live="polite"
-              >
-                {copied ? "✓ Kopiert" : "Kopier til Claude"}
-              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {isExpanded && task.source === "teams" && (() => {
+        const shownBody = task.emailBody;
+        const isLong = (shownBody?.length ?? 0) > 600;
+        const sammenhengLabel =
+          task.teamsCategory === "mention" ? "@Nevnt" :
+          task.teamsCategory === "group-mention" ? "@Alle" :
+          "Sammenheng";
+        return (
+          <div className="mt-3 ml-9">
+            <div className={`mt-2 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+              <div className={`border-b ${accent.innerLine} bg-violet-500/10 px-3 py-2`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>
+                  {sammenhengLabel}
+                </span>
+              </div>
+              <div className="px-3 py-2.5">
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {task.summary ?? task.lastMessage?.preview ?? "Ingen beskrivelse tilgjengelig."}
+                </p>
+              </div>
+            </div>
+
+            {shownBody && (
+              <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+                <div className={`border-b ${accent.innerLine} bg-violet-500/10 px-3 py-2`}>
+                  <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Siste melding</span>
+                </div>
+                <div className="px-3 py-2.5 text-sm leading-relaxed text-zinc-300">
+                  <p className="whitespace-pre-line">{shownBody}</p>
+                  {isLong && (
+                    <p className="mt-2 text-xs italic text-zinc-500">(Åpne i Teams for å lese hele samtalen)</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {task.thread && task.thread.length > 0 && (
+              <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+                <div className={`border-b ${accent.innerLine} bg-violet-500/10 px-3 py-2`}>
+                  <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Historikk</span>
+                </div>
+                <div className="px-3 pt-3 pb-1">
+                  {task.thread.map((msg, i) => {
+                    const isLast = i === task.thread!.length - 1;
+                    const cleanFrom = msg.from.replace(/\s*\[.*?\]/g, "").trim();
+                    const arrowIdx = cleanFrom.indexOf(" → ");
+                    let sender: string;
+                    let recipient: string;
+                    if (arrowIdx !== -1) {
+                      sender = cleanFrom.slice(0, arrowIdx);
+                      recipient = cleanFrom.slice(arrowIdx + 3);
+                    } else {
+                      sender = cleanFrom;
+                      recipient = "Morten";
+                    }
+                    return (
+                      <div key={i} className="relative pl-5 pb-3">
+                        {i < task.thread!.length - 1 && (
+                          <span className="absolute left-[7px] top-3 bottom-0 w-px bg-zinc-700" />
+                        )}
+                        {isLast && (
+                          <span className="absolute left-0 top-1 h-3.5 w-3.5 animate-ping rounded-full border-2 border-violet-400 opacity-60" />
+                        )}
+                        <span className={`absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 ${
+                          isLast ? "border-violet-400 bg-violet-400/20" : "border-zinc-600 bg-zinc-900"
+                        }`} />
+                        <div className="text-xs leading-snug">
+                          <div className="flex items-baseline gap-1">
+                            <span className={`font-semibold ${isLast ? "text-zinc-100" : "text-zinc-200"}`}>{shortName(sender)}</span>
+                            <span className="text-zinc-400">→</span>
+                            <span className="text-zinc-400">{shortName(recipient)}</span>
+                            <span className="ml-auto tabular-nums text-zinc-500">{msg.date}</span>
+                          </div>
+                          <p className={`mt-0.5 ${isLast ? "text-zinc-300" : "text-zinc-400"}`}>{msg.preview}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={task.externalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                >
+                  Åpne i Teams
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 3h7v7M13 3l-9 9" />
+                  </svg>
+                </a>
+                <a
+                  href={buildTeamsAskClaudeUrl(task)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                >
+                  Spør Claude
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 4h10a1 1 0 011 1v6a1 1 0 01-1 1H8l-3 2v-2H3a1 1 0 01-1-1V5a1 1 0 011-1z" />
+                  </svg>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleShareClaude}
+                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium ring-1 transition ${
+                    copied
+                      ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
+                      : "bg-zinc-800 text-zinc-300 ring-zinc-700 hover:bg-zinc-700"
+                  }`}
+                  aria-live="polite"
+                >
+                  {copied ? "✓ Kopiert" : "Kopier til Claude"}
+                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {copied ? (
+                      <path d="M3 8.5L6.5 12 13 5" />
+                    ) : (
+                      <>
+                        <rect x="5" y="5" width="9" height="9" rx="1.5" />
+                        <path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <div className="inline-flex items-center justify-center rounded-lg bg-zinc-800/50 px-3 py-1.5 text-xs font-medium text-zinc-600 ring-1 ring-zinc-700/50" />
+              </div>
             </div>
           </div>
         );
@@ -981,67 +1256,89 @@ function TaskCard({
       )}
 
       {isExpanded && task.source === "salesforce" && (
-        <div className={`mt-3 ml-9 border-l-2 ${accent.innerLine} pl-3`}>
-          {(task.thread && task.thread.length > 0) ? (
-            <div className="space-y-0">
-              {task.thread.map((msg, i) => {
-                const isLast = i === task.thread!.length - 1;
-                const isChatter = msg.from.includes("[Chatter]") || msg.from.includes("[via Chatter]");
-                const cleanFrom = msg.from.replace(/\s*\[.*?\]/g, "").trim();
-                const arrowIdx = cleanFrom.indexOf(" → ");
-                let sender: string;
-                let recipient: string;
-                if (arrowIdx !== -1) {
-                  sender = cleanFrom.slice(0, arrowIdx);
-                  recipient = cleanFrom.slice(arrowIdx + 3);
-                } else {
-                  sender = cleanFrom;
-                  const isFromMorten = cleanFrom === "Morten" || cleanFrom.startsWith("Morten ");
-                  const isFromInternal = cleanFrom.includes("(Amesto)") || cleanFrom.includes("(Mustad)") || isChatter;
-                  if (isFromMorten) {
-                    recipient = getCaseInfo(task).customer ?? task.details?.kunde?.split(" · ")[0] ?? "kunden";
-                  } else if (isFromInternal) {
-                    recipient = "Morten";
-                  } else {
-                    recipient = "Morten";
-                  }
-                }
-                return (
-                  <div key={i} className="relative pl-5 pb-3">
-                    {i < task.thread!.length - 1 && (
-                      <span className="absolute left-[7px] top-3 bottom-0 w-px bg-zinc-700" />
-                    )}
-                    {isLast && (
-                      <span className="absolute left-0 top-1 h-3.5 w-3.5 animate-ping rounded-full border-2 border-sky-400 opacity-60" />
-                    )}
-                    <span className={`absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 ${
-                      isLast
-                        ? "border-sky-400 bg-sky-400/20"
-                        : msg.resolved
-                        ? "border-emerald-500 bg-emerald-500/20"
-                        : "border-zinc-600 bg-zinc-900"
-                    }`} />
-                    <div className="text-xs leading-snug">
-                      <div className="flex items-baseline gap-1">
-                        <span className={`font-semibold ${isLast ? "text-zinc-100" : msg.resolved ? "text-emerald-400" : "text-zinc-200"}`}>{shortName(sender)}</span>
-                        <span className={msg.resolved ? "text-emerald-700" : "text-zinc-400"}>→</span>
-                        <span className={msg.resolved ? "text-emerald-600" : isLast ? "text-zinc-400" : "text-zinc-400"}>{shortName(recipient)}</span>
-                        <span className="ml-auto tabular-nums text-zinc-500">{msg.date}</span>
-                      </div>
-                      <p className={`mt-0.5 ${isLast ? "text-zinc-300" : msg.resolved ? "text-emerald-600/80" : "text-zinc-400"}`}>{msg.preview}</p>
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="mt-3 ml-9">
+          {task.summary && (
+            <div className={`mt-2 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+              <div className={`border-b ${accent.innerLine} bg-sky-500/10 px-3 py-2`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Oppsummering</span>
+              </div>
+              <div className="px-3 py-2.5">
+                <p className="text-sm leading-relaxed text-zinc-300 whitespace-pre-line">{task.summary}</p>
+              </div>
             </div>
-          ) : task.lastMessage ? (
-            <p className="text-sm leading-relaxed text-zinc-200">
-              <span className="font-semibold">{task.lastMessage.from}:</span>{" "}
-              {task.lastMessage.preview}
-            </p>
-          ) : task.summary ? (
-            <p className="text-sm leading-relaxed text-zinc-300">{task.summary}</p>
-          ) : null}
+          )}
+
+          {task.lastMessage && (
+            <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+              <div className={`border-b ${accent.innerLine} bg-sky-500/10 px-3 py-2`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Siste melding</span>
+              </div>
+              <div className="px-3 py-2.5">
+                <p className="mb-1 text-[11px] font-semibold text-zinc-400">{task.lastMessage.from}</p>
+                <p className="text-sm leading-relaxed text-zinc-300">{task.lastMessage.preview}</p>
+              </div>
+            </div>
+          )}
+
+          {task.thread && task.thread.length > 0 && (
+            <div className={`mt-4 overflow-hidden rounded-lg border ${accent.innerLine} bg-zinc-900/50`}>
+              <div className={`border-b ${accent.innerLine} bg-sky-500/10 px-3 py-2`}>
+                <span className={`text-xs font-bold uppercase tracking-widest ${accent.accentText}`}>Historikk</span>
+              </div>
+              <div className="px-3 pt-3 pb-1">
+                {task.thread.map((msg, i) => {
+                  const isLast = i === task.thread!.length - 1;
+                  const isChatter = msg.from.includes("[Chatter]") || msg.from.includes("[via Chatter]");
+                  const cleanFrom = msg.from.replace(/\s*\[.*?\]/g, "").trim();
+                  const arrowIdx = cleanFrom.indexOf(" → ");
+                  let sender: string;
+                  let recipient: string;
+                  if (arrowIdx !== -1) {
+                    sender = cleanFrom.slice(0, arrowIdx);
+                    recipient = cleanFrom.slice(arrowIdx + 3);
+                  } else {
+                    sender = cleanFrom;
+                    const isFromMorten = cleanFrom === "Morten" || cleanFrom.startsWith("Morten ");
+                    const isFromInternal = cleanFrom.includes("(Amesto)") || cleanFrom.includes("(Mustad)") || isChatter;
+                    if (isFromMorten) {
+                      recipient = getCaseInfo(task).customer ?? task.details?.kunde?.split(" · ")[0] ?? "kunden";
+                    } else if (isFromInternal) {
+                      recipient = "Morten";
+                    } else {
+                      recipient = "Morten";
+                    }
+                  }
+                  return (
+                    <div key={i} className="relative pl-5 pb-3">
+                      {i < task.thread!.length - 1 && (
+                        <span className="absolute left-[7px] top-3 bottom-0 w-px bg-zinc-700" />
+                      )}
+                      {isLast && (
+                        <span className="absolute left-0 top-1 h-3.5 w-3.5 animate-ping rounded-full border-2 border-sky-400 opacity-60" />
+                      )}
+                      <span className={`absolute left-0 top-1 h-3.5 w-3.5 rounded-full border-2 ${
+                        isLast
+                          ? "border-sky-400 bg-sky-400/20"
+                          : msg.resolved
+                          ? "border-emerald-500 bg-emerald-500/20"
+                          : "border-zinc-600 bg-zinc-900"
+                      }`} />
+                      <div className="text-xs leading-snug">
+                        <div className="flex items-baseline gap-1">
+                          <span className={`font-semibold ${isLast ? "text-zinc-100" : msg.resolved ? "text-emerald-400" : "text-zinc-200"}`}>{shortName(sender)}</span>
+                          <span className={msg.resolved ? "text-emerald-700" : "text-zinc-400"}>→</span>
+                          <span className={msg.resolved ? "text-emerald-600" : "text-zinc-400"}>{shortName(recipient)}</span>
+                          <span className="ml-auto tabular-nums text-zinc-500">{msg.date}</span>
+                        </div>
+                        <p className={`mt-0.5 ${isLast ? "text-zinc-300" : msg.resolved ? "text-emerald-600/80" : "text-zinc-400"}`}>{msg.preview}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 flex flex-col gap-2">
             <div className="grid grid-cols-2 gap-2">
               <a

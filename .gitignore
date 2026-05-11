@@ -57,3 +57,5 @@ start-dev.ps1
 
 # ekte Mustad-data – aldri push til GitHub
 lib/tasks.local.ts
+
+.vercel

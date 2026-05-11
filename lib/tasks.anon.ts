@@ -55,6 +55,13 @@ export type Task = {
   caseNumber?: string;
   analysis?: string;
   lastMessage?: { from: string; preview: string };
+  thread?: Array<{ from: string; date: string; preview: string; resolved?: boolean }>;
+  awaiting?: string;
+  closeable?: boolean;
+  cc?: boolean;
+  emailBody?: string;
+  attachments?: string[];
+  teamsCategory?: "dm" | "mention" | "group-mention";
 };
 
 export const SOURCE_META: Record<
@@ -351,7 +358,46 @@ export const MOCK_TASKS: Task[] = [
       "Iht. leiekontrakt skal kunden stille bankgaranti. Frist nærmer seg.",
   },
 
-  // Asana, Outlook og Teams er midlertidig fjernet. Fokus på Salesforce.
+  // ── Teams: DM-er ───────────────────────────────────────────────────────
+  {
+    id: "anon-teams-dm-1",
+    source: "teams",
+    teamsCategory: "dm",
+    title: "Demo Kollega",
+    context: "Direktemelding · 11. mai",
+    externalUrl: "https://teams.microsoft.com/l/chat/19%3Aanon-chat-1%40unq.gbl.spaces/0",
+    lastModifiedAt: "2026-05-11T11:46:21.000+0000",
+    awaiting: "deg!",
+    summary: "Demo Kollega varslet leietakerne om trekk i husleie og spør om du kan bistå videre.",
+    emailBody: "Hei, jeg har varslet leietakerne. Kan du bistå?",
+    lastMessage: { from: "Demo Kollega", preview: "Hei, jeg har varslet leietakerne. Kan du bistå?" },
+    thread: [
+      { from: "Demo Kollega → Morten", date: "6. mai", preview: "Leietakerne har vært uten varmtvann – hva blir summen for leiefritak?" },
+      { from: "Morten → Demo Kollega", date: "6. mai", preview: "Sendte beregning – snittet gir riktig trekk." },
+      { from: "Demo Kollega → Morten", date: "6. mai", preview: "Tusen takk" },
+      { from: "Demo Kollega → Morten", date: "11. mai", preview: "Hei, jeg har varslet leietakerne. Kan du bistå?" },
+    ],
+  },
+  {
+    id: "anon-teams-dm-2",
+    source: "teams",
+    teamsCategory: "dm",
+    title: "Demo KAM",
+    context: "Direktemelding · 11. mai",
+    externalUrl: "https://teams.microsoft.com/l/chat/19%3Aanon-chat-2%40unq.gbl.spaces/0",
+    lastModifiedAt: "2026-05-11T08:28:38.000+0000",
+    awaiting: "deg!",
+    summary: "Demo KAM spør om hvor leieavtalene ligger i systemet – finner ingenting under vedlegg.",
+    emailBody: "Hvor ligger selve leieavtalene i systemet? Finner ingenting under vedlegg for Eksempelbygg.",
+    lastMessage: { from: "Demo KAM", preview: "Hvor ligger selve leieavtalene i systemet?" },
+    thread: [
+      { from: "Morten → Demo KAM", date: "29. apr", preview: "Hadde vi Eksempelbygg i prognosen, eller kom de inn fra sidelinjen?" },
+      { from: "Demo KAM → Morten", date: "29. apr", preview: "Fra sidelinjen, tror jeg!" },
+      { from: "Morten → Demo KAM", date: "30. apr", preview: "Var det ikke i det lokalet Demo Leietaker leide tidligere?" },
+      { from: "Demo KAM → Morten", date: "30. apr", preview: "Nei, sorry. Det er et annet lokale!" },
+      { from: "Demo KAM → Morten", date: "11. mai", preview: "Hvor ligger selve leieavtalene i systemet? Finner ingenting under vedlegg." },
+    ],
+  },
 ];
 
 export async function getTasks(): Promise<Task[]> {
