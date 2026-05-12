@@ -281,8 +281,8 @@ function actionOwnerRank(task: Task): number {
   const status = getCaseInfo(task).status;
   if (status === "Ny" || status === "Iverksettes") return 0;
   if (status === "Avventer kunde" || status === "Avventer Kunde") return 1;
-  // SF-saker uten eksplisitt awaiting er alltid Mortens tur – ingen andre eier saken
-  if (task.source === "salesforce") return 0;
+  // SF- og Outlook-saker uten eksplisitt awaiting er alltid Mortens tur
+  if (task.source === "salesforce" || task.source === "outlook") return 0;
   return 2;
 }
 
@@ -773,12 +773,14 @@ function TaskCard({
         </div>
         {(caseInfo.customer || caseInfo.status || due || task.awaiting || task.closeable || priority === "high") && (
           <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
-            <span className="min-w-0 flex-1 truncate font-medium text-sky-300">
-              {caseInfo.customer ?? ""}
-            </span>
-            {priority === "high" && (
-              <span className="shrink-0 text-[11px] font-semibold text-rose-400">Kritisk</span>
-            )}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <span className="truncate font-medium text-sky-300">
+                {caseInfo.customer ?? ""}
+              </span>
+              {priority === "high" && (
+                <span className="shrink-0 text-[11px] font-semibold text-rose-400">Kritisk</span>
+              )}
+            </div>
             {task.closeable ? (
               <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/25">
                 ✓ Kan lukkes
@@ -818,7 +820,7 @@ function TaskCard({
         isExpanded
           ? `${accent.expandedBorder} bg-zinc-900/80 ${accent.expandedShadow}`
           : isCloseable
-            ? "border-emerald-500/25 bg-emerald-500/5"
+            ? `${accent.minTurBorder} ${accent.minTurBg}`
             : isMinTur
               ? `${accent.minTurBorder} ${accent.minTurBg}`
               : `${accent.border} ${accent.bg}`
@@ -1634,6 +1636,13 @@ export default function Dashboard({
     };
     const ao = effectiveRank(a) - effectiveRank(b);
     if (ao !== 0) return ao;
+    // I "alle"-fanen: Teams øverst, så Salesforce, så Outlook
+    if (filter === "all") {
+      const sourceOrder: Partial<Record<Source, number>> = { teams: 0, salesforce: 1, outlook: 2 };
+      const as = sourceOrder[a.source] ?? 3;
+      const bs = sourceOrder[b.source] ?? 3;
+      if (as !== bs) return as - bs;
+    }
     // Within rank 0: explicit "deg!" above status-based items
     const aDeg = a.awaiting === "deg!" ? 0 : 1;
     const bDeg = b.awaiting === "deg!" ? 0 : 1;
@@ -1803,7 +1812,7 @@ export default function Dashboard({
         role="tablist"
         aria-label="Kilder"
       >
-        {FILTERS.map((f) => {
+        {FILTERS.filter((f) => f === "all" || counts[f] > 0).map((f) => {
           const active = filter === f;
           const label = f === "all" ? "Alle" : SOURCE_META[f].label;
           const tabStyle = f !== "all" ? SOURCE_TAB[f] : {
