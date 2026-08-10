@@ -2,7 +2,7 @@ let cache: { data: unknown; expires: number } | null = null;
 
 const TEAMS = [
   { key: "fisak" as const, id: 5648598 },
-  { key: "boko"  as const, id: 6452137 },
+  { key: "boko"  as const, id: 1276183 },
 ];
 type TeamKey = "fisak" | "boko";
 

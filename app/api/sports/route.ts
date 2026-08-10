@@ -179,6 +179,46 @@ function getGolfMajors(): SportEvent[] {
   );
 }
 
+// ── Friidrett (manuell kalender — TheSportsDB/ESPN har ikke Diamond League
+//    eller utendørs-EM, så datoene må oppdateres for hånd hver sesong) ────────
+function getAthleticsCalendar(): SportEvent[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const events: SportEvent[] = [];
+
+  const diamondLeague: { city: string; date: string }[] = [
+    { city: "Lausanne",         date: "2026-08-21" },
+    { city: "Silesia",          date: "2026-08-23" },
+    { city: "Zürich",           date: "2026-08-27" },
+    { city: "Brussel (finale)", date: "2026-09-04" },
+  ];
+  for (const m of diamondLeague) {
+    if (m.date < today) continue;
+    events.push({
+      id: `athletics-dl-${m.date}`,
+      category: "athletics",
+      name: `Diamond League — ${m.city}`,
+      date: m.date,
+      competition: "Diamond League",
+    });
+  }
+
+  // EM friidrett 2026, Birmingham — 10.–16. august
+  for (let d = new Date("2026-08-10T00:00:00"); d.toISOString().slice(0, 10) <= "2026-08-16"; d.setDate(d.getDate() + 1)) {
+    const date = d.toISOString().slice(0, 10);
+    if (date < today) continue;
+    events.push({
+      id: `athletics-em-${date}`,
+      category: "athletics",
+      name: "EM friidrett — Birmingham",
+      venue: "Alexander Stadium, Birmingham",
+      date,
+      competition: "European Athletics Championships",
+    });
+  }
+
+  return events;
+}
+
 // ── Source list — add new sports here ───────────────────────────────────────
 const SOURCES: Array<() => Promise<SportEvent[]>> = [
   fetchF1,
@@ -186,8 +226,8 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
   () => fetchESPN("nor.1", "football_eli",  "Eliteserien",    null,     60),
   () => fetchESPN("nor.2", "football_obos", "Obosligaen",     null,     40),
   () => fetchESPN("eng.1", "football_pl",   "Premier League", null,     60),
-  () => fetchTsdbLeague("Darts",      "PDC",            "darts",     10),
-  () => fetchTsdbLeague("Athletics",  "Diamond League", "athletics", 10),
+  () => fetchTsdbLeague("Darts", "PDC", "darts", 10),
+  () => Promise.resolve(getAthleticsCalendar()),
   () => Promise.resolve(getGolfMajors()),
 ];
 
