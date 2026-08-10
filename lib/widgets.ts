@@ -50,62 +50,44 @@ export const CALENDAR_EVENTS: { id: string; dato: string; start: string; slutt: 
 ];
 
 /**
- * EKTE DATA fra Fazile (hentet 2026-08-10 via fazile_graphql_query — contracts sortert på created_at,
- * beriket med contract_customers/customer for leietaker og contract_lines/contract_areas for beløp+kvm).
- * De 5 nyeste signerte kontraktslinjene med reell verdi (0-kr administrative linjer som
- * energijustering/kantinebidrag er utelatt). "Signeringsdato" = contract.created_at (nærmeste reelle
- * proxy — Fazile har ikke et eget "signert dato"-felt separat fra når kontrakten ble registrert).
- */
-const SF_CONTRACT_BASE = "https://mustadeiendom.lightning.force.com/lightning/r/Contract/";
-
-/**
- * Salesforce-kontraktlenker (hentet 2026-08-10 via salesforce_soql_query mot Contract-objektet,
- * matchet på Account.Name + StartDate). Kristin Mustad Bevreng og Norsk Elkraft/Vedeld matchet
- * eksakt på startdato. Systemkjøp AS har kun én, mye eldre kontrakt i Salesforce (2019) — usikker
- * match, lenket likevel siden det er eneste treff. Grønset Kunst og Illustrasjon finnes ikke i
- * Salesforce ennå (kontrakten er sannsynligvis ikke registrert der).
+ * MIDLERTIDIG ANONYMISERT (se AGENTS.md-historikk/commit-melding for dato) — kundenavn er
+ * byttet ut med "Demokunde N" på Mortens forespørsel før dashboardet skulle vises frem.
+ * Beløp/datoer/bygg er ekte (fra Fazile, hentet 2026-08-10). Ekte kundenavn og SF-lenker
+ * finnes i git-historikken før denne endringen — spør Morten før du bytter tilbake.
  */
 export const CONTRACTS = [
-  { kunde: "Kristin Mustad Bevreng", signeringsdato: "2026-08-08", startdato: "2026-09-01", arsbelop: 186800, bygg: "Lilleakerveien 31", kvm: 135.6, leietype: "Lagerleie", sfUrl: SF_CONTRACT_BASE + "800Oj00000TMCy8IAH/view" },
-  { kunde: "Vedeld AS", signeringsdato: "2026-08-07", startdato: "2026-05-18", arsbelop: 67400, bygg: "Strandveien 4-8", kvm: 63, leietype: "Lagerleie", sfUrl: SF_CONTRACT_BASE + "800Oj00000pNj5cIAC/view" },
-  { kunde: "Grønset Kunst og Illustrasjon", signeringsdato: "2026-08-03", startdato: "2026-08-01", arsbelop: 34800, bygg: "Lilleakerveien 2E", kvm: 12.9, leietype: "Husleie", sfUrl: null },
-  { kunde: "Norsk Elkraft Kontroll AS", signeringsdato: "2026-07-24", startdato: "2026-07-15", arsbelop: 60000, bygg: "Lilleakerveien 4CDEF", kvm: 0, leietype: "Parkering", sfUrl: SF_CONTRACT_BASE + "800Oj00000rktvrIAA/view" },
-  { kunde: "Systemkjøp AS", signeringsdato: "2026-07-09", startdato: "2026-07-01", arsbelop: 33127, bygg: "Lilleakerveien 10", kvm: 11.3, leietype: "Garasje/El-bil", sfUrl: SF_CONTRACT_BASE + "8001t000000Qb7AAAS/view" },
+  { kunde: "Demokunde 1", signeringsdato: "2026-08-08", startdato: "2026-09-01", arsbelop: 186800, bygg: "Lilleakerveien 31", kvm: 135.6, leietype: "Lagerleie", sfUrl: null },
+  { kunde: "Demokunde 2 AS", signeringsdato: "2026-08-07", startdato: "2026-05-18", arsbelop: 67400, bygg: "Strandveien 4-8", kvm: 63, leietype: "Lagerleie", sfUrl: null },
+  { kunde: "Demokunde 3 AS", signeringsdato: "2026-08-03", startdato: "2026-08-01", arsbelop: 34800, bygg: "Lilleakerveien 2E", kvm: 12.9, leietype: "Husleie", sfUrl: null },
+  { kunde: "Demokunde 4 AS", signeringsdato: "2026-07-24", startdato: "2026-07-15", arsbelop: 60000, bygg: "Lilleakerveien 4CDEF", kvm: 0, leietype: "Parkering", sfUrl: null },
+  { kunde: "Demokunde 5 AS", signeringsdato: "2026-07-09", startdato: "2026-07-01", arsbelop: 33127, bygg: "Lilleakerveien 10", kvm: 11.3, leietype: "Garasje/El-bil", sfUrl: null },
 ];
 
 export type GuaranteeStatus = "Mangler" | "Forespurt" | "Kommer";
 
 /**
- * EKTE DATA fra Asana (hentet 2026-08-10). Hver rad er en åpen (ikke fullført) subtask
- * "Koordinere bankgaranti eller depositum" under en pågående Onboarding-oppgave — dvs.
- * garantien er reelt ikke i orden for disse innflyttingene. Leietaker/bygg/dato er lest
- * fra Asana-prosjektnavnet (mønster: "<sted>_Onboarding_<type>_<bygg>_<leietaker>_<dato>").
- * Status er satt til "Mangler" for alle siden Asana kun gir meg åpen/lukket, ikke finere
- * delstatus — bekreftet uavhengig av Fazile (vw_contract_details.Depositumstatus finnes òg,
- * men viste bare "MISSING" på et par prøve-kontrakter jeg testet, ikke disse 5 spesifikt).
- * Beløp er IKKE i Asana — vises som "—" til det ev. hentes fra kontrakten i Fazile per rad.
+ * MIDLERTIDIG ANONYMISERT — se merknad over CONTRACTS. Beløp/frister ekte (fra Asana,
+ * hentet 2026-08-10), leietakernavn byttet til "Demokunde N".
  */
 export const GUARANTEE_TOTAL = 5;
 export const GUARANTEES: { status: GuaranteeStatus; leietaker: string; belop: number | null; frist: string }[] = [
-  { status: "Mangler", leietaker: "First Rent A Car Norway AS (Lv2C)", belop: null, frist: "2026-08-01" },
-  { status: "Mangler", leietaker: "Fåbro Gård (Lv19)", belop: null, frist: "2026-08-01" },
-  { status: "Mangler", leietaker: "S Group AS (Lv4A)", belop: null, frist: "2026-08-15" },
-  { status: "Mangler", leietaker: "Komplett ASA (Lv2B)", belop: null, frist: "2026-09-01" },
-  { status: "Mangler", leietaker: "Origon AS (Vollsveien 17)", belop: null, frist: "2026-09-04" },
+  { status: "Mangler", leietaker: "Demokunde 6 (Lv2C)", belop: null, frist: "2026-08-01" },
+  { status: "Mangler", leietaker: "Demokunde 7 (Lv19)", belop: null, frist: "2026-08-01" },
+  { status: "Mangler", leietaker: "Demokunde 8 (Lv4A)", belop: null, frist: "2026-08-15" },
+  { status: "Mangler", leietaker: "Demokunde 9 (Lv2B)", belop: null, frist: "2026-09-01" },
+  { status: "Mangler", leietaker: "Demokunde 10 (Vollsveien 17)", belop: null, frist: "2026-09-04" },
 ];
 
 /**
- * EKTE DATA fra Visma Business NXT (hentet 2026-08-10, selskap "Mustad Eiendom AS").
- * customerCurrentBalance for topp 5 utestående, brutt ned per faktura via openCustomerEntry
- * (utestaende60 = åpne poster med forfallsdato ≤ 2026-06-11, dvs. 60+ dager forfalt pr. i dag)
- * og dagerSidenBetaling = i dag minus siste faktiske innbetaling (MAX(paidLast) i customerTransaction).
+ * MIDLERTIDIG ANONYMISERT — se merknad over CONTRACTS. Beløp ekte (fra Visma Business NXT,
+ * hentet 2026-08-10), leietakernavn byttet til "Demokunde N".
  */
 export const RECEIVABLES = [
-  { leietaker: "Lysaker Klatresenter Eiendom AS", utestaende: 1619508, utestaende60: 1619508, dagerSidenBetaling: 40 },
-  { leietaker: "DELL AS", utestaende: 1585743, utestaende60: 0, dagerSidenBetaling: 4 },
-  { leietaker: "Møllefossen Cafe AS", utestaende: 964501, utestaende60: 634104, dagerSidenBetaling: 7 },
-  { leietaker: "ONEPARK AS", utestaende: 916488, utestaende60: 0, dagerSidenBetaling: 31 },
-  { leietaker: "CMA CGM Scandinavia AS", utestaende: 640746, utestaende60: 0, dagerSidenBetaling: 109 },
+  { leietaker: "Demokunde 11 AS", utestaende: 1619508, utestaende60: 1619508, dagerSidenBetaling: 40 },
+  { leietaker: "Demokunde 12 AS", utestaende: 1585743, utestaende60: 0, dagerSidenBetaling: 4 },
+  { leietaker: "Demokunde 13 AS", utestaende: 964501, utestaende60: 634104, dagerSidenBetaling: 7 },
+  { leietaker: "Demokunde 14 AS", utestaende: 916488, utestaende60: 0, dagerSidenBetaling: 31 },
+  { leietaker: "Demokunde 15 AS", utestaende: 640746, utestaende60: 0, dagerSidenBetaling: 109 },
 ];
 
 /**
