@@ -1347,7 +1347,7 @@ function KpiWidget({ title, value, hint, detail }: WidgetSpec) {
       type="button"
       onClick={() => setOpen((v) => !v)}
       aria-expanded={open}
-      className={`${CARD_SHELL} p-3.5 text-left transition hover:border-line-strong`}
+      className={`${CARD_SHELL} p-4 text-left transition hover:border-line-strong`}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="text-2xs font-medium text-ink-4">{title}</p>

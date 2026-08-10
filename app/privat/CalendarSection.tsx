@@ -25,7 +25,7 @@ function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (
         type="button"
         onClick={() => onRemove(event.id)}
         aria-label="Slett hendelse"
-        className="shrink-0 text-ink-4 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
         ×
       </button>
@@ -34,10 +34,11 @@ function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (
 }
 
 export default function CalendarSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender", true);
   const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -82,6 +83,7 @@ export default function CalendarSection() {
         setDate("");
         setStartTime("");
         setEndTime("");
+        setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
     } finally {
@@ -110,43 +112,64 @@ export default function CalendarSection() {
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Tittel..."
-              className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-            />
-            <div className="flex flex-wrap items-center gap-2">
+          {showForm ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                type="text"
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowForm(false);
+                }}
+                placeholder="Tittel..."
+                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-              />
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-              />
-              <button
-                type="button"
-                onClick={handleAdd}
-                disabled={!title.trim() || !date || submitting}
-                className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-white transition hover:bg-accent/85 disabled:opacity-40"
-              >
-                Legg til
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="text-xs font-medium text-ink-4 hover:text-ink-2"
+                >
+                  Avbryt
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={!title.trim() || !date || submitting}
+                  className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                >
+                  Legg til
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+            >
+              <span className="text-base leading-none">+</span> Ny hendelse
+            </button>
+          )}
 
           {loading ? (
             <p className="text-sm text-ink-3">Laster…</p>
@@ -172,7 +195,7 @@ export default function CalendarSection() {
               <button
                 type="button"
                 onClick={() => setShowAll((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
+                className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
               </button>

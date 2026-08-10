@@ -37,6 +37,10 @@
   --color-source-outlook: #199e70;
   --color-source-teams: #8b5cf6;
   --color-status-action: #c25a9e; /* "Din tur"/"Min tur" — egen nyanse, valgt for å ikke kollidere med source-outlook (aqua) som cyan gjorde tidligere */
+
+  /* Privat-fanens egen aksent (varm, adskilt fra Jobb sin blå --color-accent)
+     — en liten fargekode-ledetråd for hvilken fane man er i, uavhengig av toppbryteren. */
+  --color-accent-privat: #f59e0b;
 }
 
 html,

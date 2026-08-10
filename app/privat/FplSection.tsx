@@ -407,7 +407,7 @@ export function FplHero({ fpl }: { fpl: FplData }) {
   const [picks, setPicks] = useState<Record<TeamKey, PicksResult | null>>({ fisak: null, boko: null });
 
   useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1_000);
+    const id = setInterval(() => setTick(t => t + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -436,10 +436,7 @@ export function FplHero({ fpl }: { fpl: FplData }) {
   }, [fetchPicks]);
 
   if (!fpl.active || !fpl.gw?.deadline) return null;
-  const { d, h, m, s } = fplParts(fpl.gw.deadline);
-  const totalHours = d * 24 + h;
-  const isWarning = totalHours < 48;
-  const isUrgent = totalHours < 12;
+  const { d } = fplParts(fpl.gw.deadline);
   const isPulsing = d === 0;
 
   const fisak = fpl.teams?.find(t => t.teamKey === "fisak");
@@ -449,17 +446,13 @@ export function FplHero({ fpl }: { fpl: FplData }) {
   const anyLive = Object.values(picks).some(p => p?.hasLivePlayers);
   const gwAverage = picks.fisak?.gwAverage ?? picks.boko?.gwAverage ?? fpl.gw.average ?? null;
 
-  const clockColor = isUrgent ? "#ef4444" : isWarning ? "#f59e0b" : "#34d399";
-  const clockMuted = isUrgent ? "rgba(239,68,68,0.40)" : isWarning ? "rgba(245,158,11,0.40)" : "rgba(52,211,153,0.42)";
-  const deadlineMuted = isUrgent ? "rgba(239,68,68,0.45)" : isWarning ? "rgba(245,158,11,0.45)" : "rgba(255,255,255,0.30)";
-
   return (
-    <div className="rounded-[20px] overflow-hidden relative"
-      style={{ background: "#0c3d22", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 0 1px color-mix(in srgb, var(--ds-fpl) 24%, transparent), 0 18px 44px -18px rgba(0,0,0,0.78), 0 0 32px -10px color-mix(in srgb, var(--ds-fpl) 30%, transparent)" }}>
+    <div className="rounded-2xl overflow-hidden relative"
+      style={{ background: "#0c3d22", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 0 1px color-mix(in srgb, var(--ds-fpl) 18%, transparent), 0 10px 26px -14px rgba(0,0,0,0.65)" }}>
 
       <img src="/Topplogofpl.webp" alt=""
         className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
-        style={{ objectPosition: "left top", opacity: 0.55, zIndex: 0 }} />
+        style={{ objectPosition: "left top", opacity: 0.35, zIndex: 0 }} />
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: "linear-gradient(to right, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.80) 100%)", zIndex: 0 }} />
       <div className="absolute inset-0 pointer-events-none"
@@ -470,61 +463,21 @@ export function FplHero({ fpl }: { fpl: FplData }) {
           style={{ boxShadow: "inset 0 0 0 2px rgba(239,68,68,0.55), 0 0 16px rgba(239,68,68,0.15)", zIndex: 20 }} />
       )}
 
-      <div className="relative flex flex-col justify-between border-b"
-        style={{ borderColor: "rgba(255,255,255,0.08)", minHeight: 110, zIndex: 1 }}>
-
-        <div className="relative flex items-center justify-between px-5 pt-4 pb-2">
-          {currentGwId && (
-            <span className="font-display text-[9px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-lg border"
-              style={{ color: "#34d399", borderColor: "rgba(52,211,153,0.35)", background: "rgba(0,0,0,0.30)" }}>
-              GW{currentGwId}
-            </span>
-          )}
-          {anyLive && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg border ml-auto"
-              style={{ borderColor: "rgba(239,68,68,0.45)", background: "rgba(0,0,0,0.35)" }}>
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
-              <span className="text-[9px] font-black tracking-[0.1em] uppercase" style={{ color: "#f87171" }}>Live</span>
-            </div>
-          )}
-        </div>
-
-        {(() => {
-          const pad = (n: number) => String(n).padStart(2, "0");
-          const units = [{ v: d, l: "dag" }, { v: h, l: "tim" }, { v: m, l: "min" }, { v: s, l: "sek" }];
-          return (
-            <div className="relative px-5 pt-0 pb-3">
-              <p className="font-black uppercase tracking-[0.18em] mb-1.5"
-                style={{ fontSize: 6.5, color: deadlineMuted }}>
-                neste deadline
-              </p>
-              <div className="flex items-center gap-1.5">
-                {units.map(({ v, l }, i) => (
-                  <div key={l} className="flex items-center gap-1.5">
-                    {i > 0 && (
-                      <span className="font-black leading-none shrink-0"
-                        style={{ fontSize: 8, color: `${clockColor}30` }}>:</span>
-                    )}
-                    <div className="flex flex-col items-center">
-                      <span className="font-display tabular-nums font-bold leading-none"
-                        style={{
-                          fontSize: isUrgent ? 15 : isWarning ? 12 : 10,
-                          color: clockColor,
-                          textShadow: `0 0 14px ${clockColor}45`,
-                        }}>
-                        {pad(v)}
-                      </span>
-                      <span className="font-bold uppercase"
-                        style={{ fontSize: 5.5, letterSpacing: "0.12em", color: clockMuted, marginTop: 2 }}>
-                        {l}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+      <div className="relative flex items-center justify-between border-b px-5 py-3"
+        style={{ borderColor: "rgba(255,255,255,0.08)", zIndex: 1 }}>
+        {currentGwId && (
+          <span className="font-display text-[9px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-lg border"
+            style={{ color: "#34d399", borderColor: "rgba(52,211,153,0.35)", background: "rgba(0,0,0,0.30)" }}>
+            GW{currentGwId}
+          </span>
+        )}
+        {anyLive && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg border ml-auto"
+            style={{ borderColor: "rgba(239,68,68,0.45)", background: "rgba(0,0,0,0.35)" }}>
+            <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
+            <span className="text-[9px] font-black tracking-[0.1em] uppercase" style={{ color: "#f87171" }}>Live</span>
+          </div>
+        )}
       </div>
 
       <div className="flex relative px-3 pt-3 pb-3 gap-2.5 border-b"

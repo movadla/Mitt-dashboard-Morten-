@@ -26,7 +26,7 @@ export default function PrivatPanel() {
   }, []);
 
   return (
-    <div className="privat-scope flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <TodaySummary />
       {fpl && <FplBox fpl={fpl} />}
       <RemindersSection />

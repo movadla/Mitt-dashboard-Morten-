@@ -49,33 +49,41 @@ export function CardHeader({
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between gap-2">
+  const inner = (
+    <>
       <h3 className="text-sm font-semibold text-ink-1">{title}</h3>
       <div className="flex shrink-0 items-baseline gap-2">
         {subtitle && <span className="text-xs text-ink-3">{subtitle}</span>}
         {onToggleCollapse && (
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
-            aria-expanded={!collapsed}
-            className="text-ink-3 hover:text-ink-1"
+          <svg
+            viewBox="0 0 16 16"
+            className={`h-3.5 w-3.5 text-ink-3 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              viewBox="0 0 16 16"
-              className={`h-3.5 w-3.5 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M4 6l4 4 4-4" />
-            </svg>
-          </button>
+            <path d="M4 6l4 4 4-4" />
+          </svg>
         )}
       </div>
-    </div>
+    </>
+  );
+
+  if (!onToggleCollapse) {
+    return <div className="mb-3 flex items-baseline justify-between gap-2">{inner}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onToggleCollapse}
+      aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
+      aria-expanded={!collapsed}
+      className="-mx-1 mb-3 flex w-full items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+    >
+      {inner}
+    </button>
   );
 }
