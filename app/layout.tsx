@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -7,9 +7,14 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "Arbeidsoppgaver",
-  description: "Personlige oppgaver fra Salesforce, Asana, Outlook og Teams",
+  title: "Mitt dashboard",
+  description: "Personlig dashboard for jobb og privat — Salesforce, Asana, Outlook, Teams og nøkkeltall",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/icon.svg",
@@ -17,13 +22,13 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Arbeidsoppgaver",
+    title: "Dashboard",
     statusBarStyle: "black-translucent",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0e18",
+  themeColor: "#12161e",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -35,8 +40,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nb" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full text-slate-100">{children}</body>
+    <html lang="nb" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      <body className="min-h-full">{children}</body>
     </html>
   );
 }

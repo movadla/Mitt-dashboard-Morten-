@@ -2,19 +2,134 @@
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.375rem;
+
+  --color-surface-0: #12161e;
+  --color-surface-1: #202838;
+  --color-surface-2: #293244;
+  --color-surface-3: #333d52;
+
+  --color-ink-1: #f4f6f9;
+  --color-ink-2: #c7cdd9;
+  --color-ink-3: #8b93a3;
+  --color-ink-4: #5b6478;
+
+  --color-line: #313a4c;
+  --color-line-strong: #454f66;
+
+  --color-chart-1: var(--color-accent);
+
+  /* Semantisk palett — validert med dataviz-skillens validate_palette.js
+     (adjacent-sjekk for kilde-fargene, egen sjekk for status-fargene) mot
+     surface-0/surface-1. Kilde-fargene står i fast rekkefølge og gjenbrukes
+     aldri som status; status-fargene er reservert og gjenbrukes aldri som
+     kilde-identitet. */
+  --color-accent: #3987e5;
+  --color-status-danger: #d03b3b;
+  --color-status-warning: #c08a0e;
+  --color-status-positive: #0e9e79;
+  --color-source-asana: #eb4a35;
+  --color-source-outlook: #199e70;
+  --color-source-teams: #8b5cf6;
+  --color-status-action: #c25a9e; /* "Din tur"/"Min tur" — egen nyanse, valgt for å ikke kollidere med source-outlook (aqua) som cyan gjorde tidligere */
 }
 
 html,
 body {
-  color: #f1f5f9;
+  color: var(--color-ink-2);
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
 body {
   min-height: 100vh;
+  background-color: var(--color-surface-0);
   background:
-    radial-gradient(ellipse 1100px 700px at 30% -10%, rgba(99, 102, 241, 0.10), transparent 55%),
-    radial-gradient(ellipse 900px 600px at 90% 110%, rgba(20, 184, 166, 0.05), transparent 60%),
-    linear-gradient(180deg, #0e1320 0%, #0a0e18 100%);
+    radial-gradient(ellipse 1100px 700px at 30% -10%, rgba(57, 135, 229, 0.07), transparent 55%),
+    radial-gradient(ellipse 900px 600px at 90% 110%, rgba(57, 135, 229, 0.035), transparent 60%),
+    linear-gradient(180deg, #171d29 0%, var(--color-surface-0) 100%);
   background-attachment: fixed;
+}
+
+/* ─── Privat-fane: Sport/Fantasy, portert fra mitt-private ──────────────────
+   Egne --ds-*-tokens (kolliderer ikke med --color-*-systemet over) slik at
+   komponentene beholder sitt opprinnelige utseende uten omskriving. */
+:root {
+  --ds-bg: #07090f;
+  --ds-surface: #0d111b;
+  --ds-surface-2: #131826;
+  --ds-ink: rgba(255, 255, 255, 0.92);
+  --ds-ink-2: rgba(255, 255, 255, 0.62);
+  --ds-muted: rgba(255, 255, 255, 0.4);
+  --ds-faint: rgba(255, 255, 255, 0.2);
+  --ds-hairline: rgba(255, 255, 255, 0.08);
+  --ds-fpl: #34d399;
+  --ds-vm: #ef4444;
+  --ds-trips: #f59e0b;
+  --ds-sport: #3b82f6;
+  --ds-wc: #eab308;
+  --font-inter: var(--font-geist-sans);
+  --font-grotesk: var(--font-geist-sans);
+}
+
+.font-display {
+  font-family: var(--font-grotesk), var(--font-inter), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--ds-surface);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 10px 30px -12px rgba(0, 0, 0, 0.65);
+}
+
+.section {
+  position: relative;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%),
+    var(--ds-surface);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 18px 44px -18px rgba(0, 0, 0, 0.75);
+}
+
+.section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 60% at 50% 0%,
+    color-mix(in srgb, var(--accent, transparent) 24%, transparent),
+    transparent 70%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@keyframes tab-fade {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tab-fade {
+  animation: tab-fade 0.15s ease;
 }

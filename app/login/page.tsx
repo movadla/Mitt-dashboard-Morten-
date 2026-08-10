@@ -28,12 +28,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "#07090f" }}>
+    <div className="min-h-screen flex items-center justify-center bg-surface-0">
       <form
         onSubmit={handleSubmit}
         className="flex flex-col gap-4 w-full max-w-xs px-6"
       >
-        <p className="text-zinc-400 text-sm text-center tracking-widest uppercase">Dashboard</p>
+        <p className="text-ink-3 text-sm text-center tracking-widest uppercase">Dashboard</p>
         <input
           type="password"
           inputMode="numeric"
@@ -41,15 +41,15 @@ export default function LoginPage() {
           value={pin}
           onChange={(e) => setPin(e.target.value)}
           autoFocus
-          className="bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-zinc-100 text-center text-xl tracking-widest focus:outline-none focus:border-zinc-500"
+          className="bg-surface-1 border border-line rounded-xl px-4 py-3 text-ink-1 font-mono text-center text-xl tracking-widest focus:outline-none focus:border-line-strong"
         />
         {error && (
-          <p className="text-red-400 text-xs text-center">Feil PIN, prøv igjen</p>
+          <p className="text-status-danger text-xs text-center">Feil PIN, prøv igjen</p>
         )}
         <button
           type="submit"
           disabled={loading || pin.length === 0}
-          className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-100 rounded-lg py-3 text-sm transition-colors"
+          className="bg-surface-2 hover:bg-surface-3 disabled:opacity-40 text-ink-1 rounded-xl py-3 text-sm font-medium transition-colors"
         >
           {loading ? "Sjekker…" : "Logg inn"}
         </button>
