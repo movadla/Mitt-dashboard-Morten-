@@ -5,6 +5,7 @@ import { FplBox, type FplData } from "./FplSection";
 import { SportSection, WorldCupSection, type SportEvent } from "./SportSection";
 import RemindersSection from "./RemindersSection";
 import CalendarSection from "./CalendarSection";
+import TodaySummary from "./TodaySummary";
 
 export default function PrivatPanel() {
   const [fpl, setFpl] = useState<FplData | null>(null);
@@ -26,6 +27,7 @@ export default function PrivatPanel() {
 
   return (
     <div className="privat-scope flex flex-col gap-3">
+      <TodaySummary />
       {fpl && <FplBox fpl={fpl} />}
       <RemindersSection />
       <CalendarSection />

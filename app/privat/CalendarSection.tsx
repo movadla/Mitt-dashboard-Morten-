@@ -82,6 +82,7 @@ export default function CalendarSection() {
         setDate("");
         setStartTime("");
         setEndTime("");
+        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
     } finally {
       setSubmitting(false);
@@ -91,6 +92,7 @@ export default function CalendarSection() {
   async function handleRemove(id: string) {
     setEvents((prev) => prev.filter((e) => e.id !== id));
     await fetch(`/api/privat-calendar/${id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
   const today = new Date().toISOString().slice(0, 10);

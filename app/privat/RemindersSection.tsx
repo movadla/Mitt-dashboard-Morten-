@@ -116,6 +116,7 @@ export default function RemindersSection() {
         setText("");
         setDueDate("");
         setRecurrence("none");
+        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
     } finally {
       setSubmitting(false);
@@ -127,12 +128,14 @@ export default function RemindersSection() {
     if (res.ok) {
       const updated: Reminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
   }
 
   async function handleRemove(id: string) {
     setReminders((prev) => prev.filter((r) => r.id !== id));
     await fetch(`/api/reminders/${id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
   const today = new Date().toISOString().slice(0, 10);
