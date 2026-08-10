@@ -2,28 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import TeamPitch from "./TeamPitch";
+import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
 
-interface FplLeague {
-  id: number; name: string; rank: number; lastRank: number | null;
-  targetRank?: number;
-  gapToTarget?: number; pointsAtTarget?: number | null;
-  topEntries?: { name: string; total: number; rank: number }[];
-}
-type TeamKey = "fisak" | "boko";
-interface FplTeam {
-  teamKey: TeamKey; teamId: number; teamName: string;
-  overallRank?: number; totalPoints?: number;
-  currentGwPoints?: number; currentGw?: number;
-  gapToTop100k?: number;
-  gwHistory?: { event: number; rank: number; points?: number }[];
-  leagues: FplLeague[];
-}
-export interface FplData {
-  active: boolean;
-  gw?: { id?: number; name?: string; deadline?: string; average?: number | null } | null;
-  teams?: FplTeam[];
-  error?: boolean;
-}
+export type { FplData } from "@/lib/fpl";
+
 interface PicksResult {
   gw: number; hasLivePlayers: boolean;
   liveGwPoints: number; playingCount: number;

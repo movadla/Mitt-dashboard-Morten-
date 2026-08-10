@@ -29,6 +29,9 @@ export default function ChatWidget() {
         ? data.text
         : `Feil: ${data.error ?? "Noe gikk galt"}`;
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      if (res.ok && data.changed) {
+        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -74,7 +77,7 @@ export default function ChatWidget() {
           <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
               <p className="text-xs leading-relaxed text-ink-3">
-                Spør om nøkkeltallene i dashboardet (foreløpig testdata). Kalender og mail kommer i en senere fase.
+                Spør om nøkkeltallene i dashboardet, eller be meg legge til en påminnelse eller kalenderhendelse i Privat-fanen.
               </p>
             )}
             <div className="flex flex-col gap-3">

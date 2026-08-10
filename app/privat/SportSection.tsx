@@ -2,16 +2,9 @@
 
 import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award } from "lucide-react";
+import type { SportEvent } from "@/lib/sports";
 
-export interface SportEvent {
-  id: string;
-  category: string;
-  name: string;
-  venue?: string;
-  date: string;
-  time?: string;
-  competition: string;
-}
+export type { SportEvent } from "@/lib/sports";
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);

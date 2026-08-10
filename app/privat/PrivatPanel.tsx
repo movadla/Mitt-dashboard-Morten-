@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { FplHero, type FplData } from "./FplSection";
 import { SportSection, WorldCupSection, type SportEvent } from "./SportSection";
+import RemindersSection from "./RemindersSection";
+import CalendarSection from "./CalendarSection";
 
 export default function PrivatPanel() {
   const [fpl, setFpl] = useState<FplData | null>(null);
@@ -25,6 +27,8 @@ export default function PrivatPanel() {
   return (
     <div className="privat-scope flex flex-col gap-3">
       {fpl && <FplHero fpl={fpl} />}
+      <RemindersSection />
+      <CalendarSection />
       <SportSection events={sports} loading={sportsLoading} />
       <WorldCupSection events={worldCup} />
     </div>
