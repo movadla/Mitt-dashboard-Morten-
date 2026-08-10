@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
+import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 
 export type { FplData } from "@/lib/fpl";
 
@@ -15,7 +16,7 @@ interface PicksResult {
   error?: string;
 }
 
-function fplParts(deadline: string) {
+export function fplParts(deadline: string) {
   const diff = Math.max(0, new Date(deadline).getTime() - Date.now());
   return {
     d: Math.floor(diff / 86_400_000),
@@ -557,6 +558,37 @@ export function FplHero({ fpl }: { fpl: FplData }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function fplCountdownText(deadline: string): string {
+  const { d, h, m } = fplParts(deadline);
+  if (d > 0) return `${d}d ${h}t til deadline`;
+  if (h > 0) return `${h}t ${m}min til deadline`;
+  return `${m}min til deadline`;
+}
+
+export function FplBox({ fpl }: { fpl: FplData }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Fantasy", true);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!fpl.active || !fpl.gw?.deadline) return null;
+
+  return (
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="Fantasy Premier League"
+        subtitle={fplCountdownText(fpl.gw.deadline)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && <FplHero fpl={fpl} />}
     </div>
   );
 }

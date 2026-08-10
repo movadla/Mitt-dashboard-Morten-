@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CollapsibleSection } from "./SportSection";
+import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import type { Recurrence, Reminder } from "@/lib/reminders";
 
 const RECURRENCE_LABEL: Record<Recurrence, string> = {
@@ -11,7 +11,16 @@ const RECURRENCE_LABEL: Record<Recurrence, string> = {
   monthly: "Månedlig",
 };
 
-const ACCENT = "var(--ds-trips)";
+function formatDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+function isDueToday(r: Reminder, today: string): boolean {
+  if (r.done) return false;
+  if (!r.dueDate) return true; // ingen frist -> alltid aktuell
+  return r.dueDate <= today; // forfaller i dag eller er oversittet
+}
 
 function sortReminders(a: Reminder, b: Reminder): number {
   if (a.done !== b.done) return a.done ? 1 : -1;
@@ -21,9 +30,59 @@ function sortReminders(a: Reminder, b: Reminder): number {
   return a.dueDate.localeCompare(b.dueDate);
 }
 
+function ReminderRow({
+  reminder,
+  onToggle,
+  onRemove,
+}: {
+  reminder: Reminder;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <li className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <button
+        type="button"
+        onClick={() => onToggle(reminder.id)}
+        aria-pressed={reminder.done}
+        aria-label={reminder.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
+        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
+          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+        }`}
+      >
+        {reminder.done && (
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 8.5L6.5 12 13 5" />
+          </svg>
+        )}
+      </button>
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+        {(reminder.dueDate || reminder.recurrence !== "none") && (
+          <p className="mt-0.5 text-2xs text-ink-4">
+            {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+            {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
+            {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
+          </p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(reminder.id)}
+        aria-label="Slett påminnelse"
+        className="shrink-0 text-ink-4 hover:text-rose-400"
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
 export default function RemindersSection() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser");
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
@@ -76,116 +135,95 @@ export default function RemindersSection() {
     await fetch(`/api/reminders/${id}`, { method: "DELETE" });
   }
 
-  const openCount = reminders.filter((r) => !r.done).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const todays = reminders.filter((r) => isDueToday(r, today));
+  const rest = reminders.filter((r) => !isDueToday(r, today));
 
   return (
-    <CollapsibleSection
-      accent={ACCENT}
-      title="Påminnelser"
-      defaultOpen={false}
-      count={openCount > 0 ? `${openCount} ugjort` : undefined}
-    >
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-2 rounded-xl p-2.5" style={{ background: "rgba(0,0,0,0.20)" }}>
-          <input
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleAdd();
-            }}
-            placeholder="Ny påminnelse..."
-            className="rounded-lg border px-3 py-2 text-[13px] outline-none"
-            style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink)" }}
-          />
-          <div className="flex flex-wrap items-center gap-2">
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="Påminnelser"
+        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
             <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-[12px] outline-none"
-              style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink-2)" }}
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAdd();
+              }}
+              placeholder="Ny påminnelse..."
+              className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
-            <div className="flex gap-1">
-              {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRecurrence(r)}
-                  className="rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wide"
-                  style={{
-                    background: recurrence === r ? ACCENT : "rgba(255,255,255,0.05)",
-                    color: recurrence === r ? "#000" : "rgba(255,255,255,0.4)",
-                  }}
-                >
-                  {RECURRENCE_LABEL[r]}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={!text.trim() || submitting}
-              className="ml-auto rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
-              style={{ background: ACCENT, color: "#000" }}
-            >
-              Legg til
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <p className="px-1 text-[11px]" style={{ color: "var(--ds-muted)" }}>Laster…</p>
-        ) : reminders.length === 0 ? (
-          <p className="px-1 text-[11px]" style={{ color: "var(--ds-muted)" }}>Ingen påminnelser ennå.</p>
-        ) : (
-          reminders.map((r) => (
-            <div key={r.id} className="flex items-center gap-3 px-1 py-1.5">
-              <button
-                type="button"
-                onClick={() => handleToggle(r.id)}
-                aria-pressed={r.done}
-                aria-label={r.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
-                className="grid h-6 w-6 shrink-0 place-items-center rounded-full"
-                style={{
-                  background: r.done ? ACCENT : "transparent",
-                  boxShadow: `0 0 0 1px ${r.done ? ACCENT : "rgba(255,255,255,0.18)"}`,
-                }}
-              >
-                {r.done && (
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="#000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 8.5L6.5 12 13 5" />
-                  </svg>
-                )}
-              </button>
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`text-[13px] ${r.done ? "line-through" : ""}`}
-                  style={{ color: r.done ? "var(--ds-muted)" : "var(--ds-ink)" }}
-                >
-                  {r.text}
-                </p>
-                {(r.dueDate || r.recurrence !== "none") && (
-                  <p className="mt-0.5 text-[10px]" style={{ color: "var(--ds-muted)" }}>
-                    {r.dueDate ?? ""}
-                    {r.dueDate && r.recurrence !== "none" ? " · " : ""}
-                    {r.recurrence !== "none" ? RECURRENCE_LABEL[r.recurrence] : ""}
-                  </p>
-                )}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+              />
+              <div className="flex gap-1">
+                {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRecurrence(r)}
+                    className={`rounded-lg px-2 py-1 text-2xs font-medium uppercase tracking-wide ${
+                      recurrence === r ? "bg-accent text-white" : "bg-surface-3 text-ink-3 hover:text-ink-1"
+                    }`}
+                  >
+                    {RECURRENCE_LABEL[r]}
+                  </button>
+                ))}
               </div>
               <button
                 type="button"
-                onClick={() => handleRemove(r.id)}
-                aria-label="Slett påminnelse"
-                className="shrink-0 text-[16px] leading-none"
-                style={{ color: "var(--ds-faint)" }}
+                onClick={handleAdd}
+                disabled={!text.trim() || submitting}
+                className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-white transition hover:bg-accent/85 disabled:opacity-40"
               >
-                ×
+                Legg til
               </button>
             </div>
-          ))
-        )}
-      </div>
-    </CollapsibleSection>
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-ink-3">Laster…</p>
+          ) : todays.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {todays.map((r) => (
+                <ReminderRow key={r.id} reminder={r} onToggle={handleToggle} onRemove={handleRemove} />
+              ))}
+            </ul>
+          )}
+
+          {rest.length > 0 && (
+            <>
+              {showAll && (
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {rest.map((r) => (
+                    <ReminderRow key={r.id} reminder={r} onToggle={handleToggle} onRemove={handleRemove} />
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
+              >
+                {showAll ? "Vis mindre" : `Mer (${rest.length})`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

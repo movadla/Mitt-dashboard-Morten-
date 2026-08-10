@@ -1,14 +1,43 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CollapsibleSection } from "./SportSection";
+import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 
-const ACCENT = "var(--ds-vm)";
+function formatDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (id: string) => void }) {
+  return (
+    <li className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-ink-1">{event.title}</p>
+        <p className="mt-0.5 text-2xs text-ink-4">
+          {formatDMY(event.date)}
+          {event.startTime ? ` ${event.startTime}` : ""}
+          {event.endTime ? `–${event.endTime}` : ""}
+          {event.note ? ` — ${event.note}` : ""}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(event.id)}
+        aria-label="Slett hendelse"
+        className="shrink-0 text-ink-4 hover:text-rose-400"
+      >
+        ×
+      </button>
+    </li>
+  );
+}
 
 export default function CalendarSection() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender");
   const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -66,87 +95,89 @@ export default function CalendarSection() {
 
   const today = new Date().toISOString().slice(0, 10);
   const upcoming = events.filter((e) => e.date >= today);
+  const todays = upcoming.filter((e) => e.date === today);
+  const rest = upcoming.filter((e) => e.date !== today);
 
   return (
-    <CollapsibleSection
-      accent={ACCENT}
-      title="Kalender"
-      defaultOpen={false}
-      count={upcoming.length > 0 ? `${upcoming.length} kommende` : undefined}
-    >
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-col gap-2 rounded-xl p-2.5" style={{ background: "rgba(0,0,0,0.20)" }}>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Tittel..."
-            className="rounded-lg border px-3 py-2 text-[13px] outline-none"
-            style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink)" }}
-          />
-          <div className="flex flex-wrap items-center gap-2">
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="Kalender"
+        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-[12px] outline-none"
-              style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink-2)" }}
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Tittel..."
+              className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-[12px] outline-none"
-              style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink-2)" }}
-            />
-            <input
-              type="time"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-              className="rounded-lg border px-2 py-1.5 text-[12px] outline-none"
-              style={{ background: "rgba(0,0,0,0.25)", borderColor: "var(--ds-hairline)", color: "var(--ds-ink-2)" }}
-            />
-            <button
-              type="button"
-              onClick={handleAdd}
-              disabled={!title.trim() || !date || submitting}
-              className="ml-auto rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase disabled:opacity-40"
-              style={{ background: ACCENT, color: "#000" }}
-            >
-              Legg til
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <p className="px-1 text-[11px]" style={{ color: "var(--ds-muted)" }}>Laster…</p>
-        ) : upcoming.length === 0 ? (
-          <p className="px-1 text-[11px]" style={{ color: "var(--ds-muted)" }}>Ingen hendelser ennå.</p>
-        ) : (
-          upcoming.map((e) => (
-            <div key={e.id} className="flex items-center gap-3 px-1 py-1.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px]" style={{ color: "var(--ds-ink)" }}>{e.title}</p>
-                <p className="mt-0.5 text-[10px]" style={{ color: "var(--ds-muted)" }}>
-                  {e.date}
-                  {e.startTime ? ` ${e.startTime}` : ""}
-                  {e.endTime ? `–${e.endTime}` : ""}
-                  {e.note ? ` — ${e.note}` : ""}
-                </p>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+              />
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+              />
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+              />
               <button
                 type="button"
-                onClick={() => handleRemove(e.id)}
-                aria-label="Slett hendelse"
-                className="shrink-0 text-[16px] leading-none"
-                style={{ color: "var(--ds-faint)" }}
+                onClick={handleAdd}
+                disabled={!title.trim() || !date || submitting}
+                className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-white transition hover:bg-accent/85 disabled:opacity-40"
               >
-                ×
+                Legg til
               </button>
             </div>
-          ))
-        )}
-      </div>
-    </CollapsibleSection>
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-ink-3">Laster…</p>
+          ) : todays.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen hendelser i dag.</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {todays.map((e) => (
+                <EventRow key={e.id} event={e} onRemove={handleRemove} />
+              ))}
+            </ul>
+          )}
+
+          {rest.length > 0 && (
+            <>
+              {showAll && (
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {rest.map((e) => (
+                    <EventRow key={e.id} event={e} onRemove={handleRemove} />
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
+              >
+                {showAll ? "Vis mindre" : `Mer (${rest.length})`}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

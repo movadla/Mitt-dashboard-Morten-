@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award } from "lucide-react";
 import type { SportEvent } from "@/lib/sports";
+import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 
 export type { SportEvent } from "@/lib/sports";
 
@@ -48,46 +49,6 @@ const SPORT_ICON: Record<string, LucideComp> = {
 };
 
 const LEAGUE_CATS = new Set(["football_eli", "football_obos", "football_pl"]);
-
-export function CollapsibleSection({
-  accent, title, count, defaultOpen = true, children,
-}: {
-  accent: string; title: string; count?: React.ReactNode; defaultOpen?: boolean; children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="section p-3" style={{ "--accent": accent } as React.CSSProperties}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        className={`w-full flex items-center gap-2.5 -mx-3 px-3 py-2.5 active:opacity-80 transition-opacity ${open ? "rounded-t-[20px]" : "rounded-[20px]"}`}
-        style={{
-          background: `linear-gradient(to right, color-mix(in srgb, ${accent} 12%, transparent) 0%, transparent 60%)`,
-          borderBottom: open ? "1px solid var(--ds-hairline)" : "none",
-          marginTop: -12,
-          marginBottom: open ? 12 : -12,
-        }}>
-        <div className="w-[3px] h-3.5 rounded-full shrink-0" style={{ background: accent, boxShadow: `0 0 8px ${accent}` }} />
-        <p className="font-display text-[11px] font-semibold uppercase tracking-[0.26em]"
-          style={{ color: "var(--ds-ink-2)" }}>{title}</p>
-        {count != null && (
-          <span className="ml-auto font-display text-[9px] tabular-nums font-medium" style={{ color: "var(--ds-faint)" }}>
-            {count}
-          </span>
-        )}
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
-          className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""} ${count != null ? "ml-2" : "ml-auto"}`}
-          style={{ color: "var(--ds-faint)" }}>
-          <polyline points="4,6 8,10 12,6" />
-        </svg>
-      </button>
-      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.28s ease" }}>
-        <div style={{ overflow: "hidden", minHeight: 0 }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolean }) {
   const col = SPORT_COLOR[ev.category] ?? "#6b7280";
@@ -227,34 +188,61 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
 }
 
 export function SportSection({ events, loading }: { events: SportEvent[]; loading: boolean }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Sport");
+  const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
-  const days = Array.from({ length: 7 }, (_, i) => {
+  const todayEvents = events.filter(e => e.date === today);
+  const restDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + i);
     return d.toISOString().slice(0, 10);
-  });
-  const todayCount = events.filter(e => e.date === today).length;
+  }).filter(day => day !== today && events.some(e => e.date === day));
 
   return (
-    <CollapsibleSection accent="var(--ds-sport)" title="Sport" defaultOpen={false}
-      count={todayCount > 0 ? `${todayCount} i dag` : undefined}>
-      {loading && !events.length ? (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map(n => (
-            <div key={n} className="rounded-xl px-4 py-3.5 animate-pulse"
-              style={{ background: "rgba(255,255,255,0.08)" }}>
-              <div className="h-3 w-1/2 rounded" style={{ background: "rgba(255,255,255,0.12)" }} />
-              <div className="h-2.5 w-1/3 rounded mt-1.5" style={{ background: "rgba(255,255,255,0.07)" }} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {days.filter(day => events.some(e => e.date === day)).map(day => (
-            <SportDayCard key={day} date={day} allEvents={events} />
-          ))}
-        </div>
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="Sport"
+        subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        loading && !events.length ? (
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2].map(n => (
+              <div key={n} className="h-12 rounded-xl bg-surface-2 animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {todayEvents.length > 0 ? (
+              <div className="rounded-xl overflow-hidden" style={{ background: "var(--ds-surface-2)", boxShadow: "0 0 0 1px rgba(255,255,255,0.05)" }}>
+                {todayEvents.map((ev, i) => <SportEventRow key={ev.id} ev={ev} border={i > 0} />)}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-3">Ingen kamper i dag.</p>
+            )}
+            {restDays.length > 0 && (
+              <>
+                {showWeek && (
+                  <div className="mt-1 flex flex-col gap-2">
+                    {restDays.map(day => (
+                      <SportDayCard key={day} date={day} allEvents={events} />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowWeek(v => !v)}
+                  className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
+                >
+                  {showWeek ? "Vis mindre" : "Mer (resten av uken)"}
+                </button>
+              </>
+            )}
+          </div>
+        )
       )}
-    </CollapsibleSection>
+    </div>
   );
 }
 
@@ -301,6 +289,7 @@ function WorldCupDayCard({ date, matches, defaultOpen }: { date: string; matches
 }
 
 export function WorldCupSection({ events }: { events: SportEvent[] }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("VM 2026");
   if (!events.length) return null;
 
   const byDay = new Map<string, SportEvent[]>();
@@ -318,12 +307,20 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
   const days = [...byDay.keys()].sort();
 
   return (
-    <CollapsibleSection accent="var(--ds-wc)" title="VM 2026" count={`${events.length} kamper`}>
-      <div className="flex flex-col gap-2">
-        {days.map((day, i) => (
-          <WorldCupDayCard key={day} date={day} matches={byDay.get(day)!} defaultOpen={i === 0} />
-        ))}
-      </div>
-    </CollapsibleSection>
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="VM 2026"
+        subtitle={`${events.length} kamper`}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <div className="flex flex-col gap-2">
+          {days.map((day, i) => (
+            <WorldCupDayCard key={day} date={day} matches={byDay.get(day)!} defaultOpen={i === 0} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
