@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-// PIN-innlogging midlertidig avslått på Mortens forespørsel.
-export function middleware() {
-  return NextResponse.next();
+export function middleware(request: NextRequest) {
+  const auth = request.cookies.get("auth")?.value;
+  if (auth === process.env.AUTH_SECRET) return NextResponse.next();
+  return NextResponse.redirect(new URL("/login", request.url));
 }
 
 export const config = {
