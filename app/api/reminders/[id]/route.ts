@@ -1,15 +1,24 @@
 import { NextResponse } from "next/server";
-import { deleteReminder, toggleReminder } from "@/lib/reminders";
+import { deleteReminder, toggleReminder, updateReminder, type ReminderUpdateInput } from "@/lib/reminders";
 
 export const dynamic = "force-dynamic";
 
+// Uten body (som fra avhukingsknappen) -> huk av/på. Med body -> rediger felt.
 export async function PATCH(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  let body: ReminderUpdateInput | null = null;
   try {
-    const reminder = await toggleReminder(id);
+    body = await request.json();
+  } catch {
+    body = null;
+  }
+
+  try {
+    const reminder =
+      body && Object.keys(body).length > 0 ? await updateReminder(id, body) : await toggleReminder(id);
     if (!reminder) return NextResponse.json({ error: "Fant ikke påminnelsen" }, { status: 404 });
     return NextResponse.json(reminder);
   } catch (err) {

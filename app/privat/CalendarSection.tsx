@@ -11,12 +11,103 @@ function formatDMY(iso: string): string {
   return `${d}.${m}.${y}`;
 }
 
-function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (id: string) => void }) {
+function EventEditForm({
+  event,
+  onCancel,
+  onSave,
+}: {
+  event: PrivatCalendarEvent;
+  onCancel: () => void;
+  onSave: (updates: { title: string; date: string; startTime?: string; endTime?: string }) => void;
+}) {
+  const [title, setTitle] = useState(event.title);
+  const [date, setDate] = useState(event.date);
+  const [startTime, setStartTime] = useState(event.startTime ?? "");
+  const [endTime, setEndTime] = useState(event.endTime ?? "");
+
+  function save() {
+    if (!title.trim() || !date) return;
+    onSave({ title: title.trim(), date, startTime: startTime || undefined, endTime: endTime || undefined });
+  }
+
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+        }}
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <input
+          type="time"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <input
+          type="time"
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!title.trim() || !date}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function EventRow({
+  event,
+  editing,
+  onRemove,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+}: {
+  event: PrivatCalendarEvent;
+  editing: boolean;
+  onRemove: (id: string) => void;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string, updates: { title: string; date: string; startTime?: string; endTime?: string }) => void;
+}) {
+  if (editing) {
+    return (
+      <EventEditForm event={event} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(event.id, updates)} />
+    );
+  }
+
   return (
     <li>
       <SwipeableRow onSwipeLeft={() => onRemove(event.id)} leftLabel="Slett">
         <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-          <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onStartEdit(event.id)}
+            aria-label="Rediger hendelse"
+            className="min-w-0 flex-1 text-left"
+          >
             <p className="text-sm text-ink-1">{event.title}</p>
             <p className="mt-0.5 text-2xs text-ink-4">
               {formatDMY(event.date)}
@@ -24,7 +115,7 @@ function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (
               {event.endTime ? `–${event.endTime}` : ""}
               {event.note ? ` — ${event.note}` : ""}
             </p>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => onRemove(event.id)}
@@ -50,6 +141,7 @@ export default function CalendarSection() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/privat-calendar")
@@ -102,6 +194,32 @@ export default function CalendarSection() {
     vibrate([10, 30, 10]);
     await fetch(`/api/privat-calendar/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+  }
+
+  async function handleSaveEdit(
+    id: string,
+    updates: { title: string; date: string; startTime?: string; endTime?: string },
+  ) {
+    const res = await fetch(`/api/privat-calendar/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: updates.title,
+        date: updates.date,
+        startTime: updates.startTime ?? null,
+        endTime: updates.endTime ?? null,
+      }),
+    });
+    if (res.ok) {
+      const updated: PrivatCalendarEvent = await res.json();
+      setEvents((prev) =>
+        prev
+          .map((e) => (e.id === id ? updated : e))
+          .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")),
+      );
+      setEditingId(null);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -185,7 +303,15 @@ export default function CalendarSection() {
           ) : (
             <ul className="flex flex-col gap-1.5">
               {todays.map((e) => (
-                <EventRow key={e.id} event={e} onRemove={handleRemove} />
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  editing={editingId === e.id}
+                  onRemove={handleRemove}
+                  onStartEdit={setEditingId}
+                  onCancelEdit={() => setEditingId(null)}
+                  onSaveEdit={handleSaveEdit}
+                />
               ))}
             </ul>
           )}
@@ -195,7 +321,15 @@ export default function CalendarSection() {
               {showAll && (
                 <ul className="mt-1 flex flex-col gap-1.5">
                   {rest.map((e) => (
-                    <EventRow key={e.id} event={e} onRemove={handleRemove} />
+                    <EventRow
+                      key={e.id}
+                      event={e}
+                      editing={editingId === e.id}
+                      onRemove={handleRemove}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                    />
                   ))}
                 </ul>
               )}

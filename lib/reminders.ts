@@ -17,6 +17,12 @@ export interface NewReminderInput {
   recurrence?: Recurrence;
 }
 
+export interface ReminderUpdateInput {
+  text?: string;
+  dueDate?: string | null; // null fjerner fristen, undefined lar den stå urørt
+  recurrence?: Recurrence;
+}
+
 const HASH_KEY = "privat:reminders";
 
 function addDays(iso: string, n: number): string {
@@ -76,6 +82,23 @@ export async function toggleReminder(id: string): Promise<Reminder | null> {
       ? { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false }
       : { ...current, done: !current.done };
 
+  await hsetJSON(HASH_KEY, id, next);
+  return next;
+}
+
+export async function updateReminder(id: string, updates: ReminderUpdateInput): Promise<Reminder | null> {
+  const current = await hgetJSON<Reminder>(HASH_KEY, id);
+  if (!current) return null;
+
+  const text = updates.text !== undefined ? updates.text.trim() : current.text;
+  if (!text) throw new Error("Påminnelse mangler tekst");
+
+  const next: Reminder = {
+    ...current,
+    text,
+    dueDate: updates.dueDate !== undefined ? (updates.dueDate ?? undefined) : current.dueDate,
+    recurrence: updates.recurrence !== undefined ? updates.recurrence : current.recurrence,
+  };
   await hsetJSON(HASH_KEY, id, next);
   return next;
 }

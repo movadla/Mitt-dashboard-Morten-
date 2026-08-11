@@ -32,15 +32,98 @@ function sortReminders(a: Reminder, b: Reminder): number {
   return a.dueDate.localeCompare(b.dueDate);
 }
 
-function ReminderRow({
+function ReminderEditForm({
   reminder,
-  onToggle,
-  onRemove,
+  onCancel,
+  onSave,
 }: {
   reminder: Reminder;
+  onCancel: () => void;
+  onSave: (updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
+}) {
+  const [text, setText] = useState(reminder.text);
+  const [dueDate, setDueDate] = useState(reminder.dueDate ?? "");
+  const [recurrence, setRecurrence] = useState<Recurrence>(reminder.recurrence);
+
+  function save() {
+    if (!text.trim()) return;
+    onSave({ text: text.trim(), dueDate: dueDate || undefined, recurrence });
+  }
+
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") onCancel();
+        }}
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <select
+          value={recurrence}
+          onChange={(e) => setRecurrence(e.target.value as Recurrence)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
+            <option key={r} value={r}>
+              {RECURRENCE_LABEL[r]}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!text.trim()}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function ReminderRow({
+  reminder,
+  editing,
+  onToggle,
+  onRemove,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+}: {
+  reminder: Reminder;
+  editing: boolean;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string, updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
 }) {
+  if (editing) {
+    return (
+      <ReminderEditForm
+        reminder={reminder}
+        onCancel={onCancelEdit}
+        onSave={(updates) => onSaveEdit(reminder.id, updates)}
+      />
+    );
+  }
+
   return (
     <li>
       <SwipeableRow
@@ -65,7 +148,12 @@ function ReminderRow({
               </svg>
             )}
           </button>
-          <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => onStartEdit(reminder.id)}
+            aria-label="Rediger påminnelse"
+            className="min-w-0 flex-1 text-left"
+          >
             <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
             {(reminder.dueDate || reminder.recurrence !== "none") && (
               <p className="mt-0.5 text-2xs text-ink-4">
@@ -74,7 +162,7 @@ function ReminderRow({
                 {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
               </p>
             )}
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => onRemove(reminder.id)}
@@ -99,6 +187,7 @@ export default function RemindersSection() {
   const [dueDate, setDueDate] = useState("");
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/reminders")
@@ -151,6 +240,23 @@ export default function RemindersSection() {
     vibrate([10, 30, 10]);
     await fetch(`/api/reminders/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+  }
+
+  async function handleSaveEdit(
+    id: string,
+    updates: { text: string; dueDate?: string; recurrence: Recurrence },
+  ) {
+    const res = await fetch(`/api/reminders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: updates.text, dueDate: updates.dueDate ?? null, recurrence: updates.recurrence }),
+    });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
+      setEditingId(null);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -233,7 +339,16 @@ export default function RemindersSection() {
           ) : (
             <ul className="flex flex-col gap-1.5">
               {todays.map((r) => (
-                <ReminderRow key={r.id} reminder={r} onToggle={handleToggle} onRemove={handleRemove} />
+                <ReminderRow
+                  key={r.id}
+                  reminder={r}
+                  editing={editingId === r.id}
+                  onToggle={handleToggle}
+                  onRemove={handleRemove}
+                  onStartEdit={setEditingId}
+                  onCancelEdit={() => setEditingId(null)}
+                  onSaveEdit={handleSaveEdit}
+                />
               ))}
             </ul>
           )}
@@ -243,7 +358,16 @@ export default function RemindersSection() {
               {showAll && (
                 <ul className="mt-1 flex flex-col gap-1.5">
                   {rest.map((r) => (
-                    <ReminderRow key={r.id} reminder={r} onToggle={handleToggle} onRemove={handleRemove} />
+                    <ReminderRow
+                      key={r.id}
+                      reminder={r}
+                      editing={editingId === r.id}
+                      onToggle={handleToggle}
+                      onRemove={handleRemove}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                    />
                   ))}
                 </ul>
               )}
