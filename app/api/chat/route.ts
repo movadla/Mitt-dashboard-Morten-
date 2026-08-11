@@ -2,8 +2,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { buildDashboardContext } from "@/lib/widgets";
 import { buildPrivatContext } from "@/lib/privatContext";
-import { addReminder } from "@/lib/reminders";
-import { addPrivatEvent } from "@/lib/privatCalendar";
+import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
+import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
+import { getMilestones, toggleMilestone } from "@/lib/alfred";
 
 const MODEL = "claude-haiku-4-5";
 const MAX_TOOL_ROUNDS = 3;
@@ -42,12 +43,95 @@ const ADD_CALENDAR_EVENT_TOOL: Anthropic.Tool = {
   },
 };
 
+const TOGGLE_REMINDER_TOOL: Anthropic.Tool = {
+  name: "toggle_reminder",
+  description: "Huk en påminnelse av eller på (ferdig/ikke ferdig). Identifiser den med et utdrag av teksten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      textMatch: { type: "string", description: "Del av teksten i påminnelsen som skal hukes av/på." },
+    },
+    required: ["textMatch"],
+  },
+};
+
+const DELETE_REMINDER_TOOL: Anthropic.Tool = {
+  name: "delete_reminder",
+  description: "Slett en påminnelse. Identifiser den med et utdrag av teksten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      textMatch: { type: "string", description: "Del av teksten i påminnelsen som skal slettes." },
+    },
+    required: ["textMatch"],
+  },
+};
+
+const DELETE_CALENDAR_EVENT_TOOL: Anthropic.Tool = {
+  name: "delete_calendar_event",
+  description: "Slett en hendelse i den private kalenderen. Identifiser den med et utdrag av tittelen.",
+  input_schema: {
+    type: "object",
+    properties: {
+      titleMatch: { type: "string", description: "Del av tittelen på hendelsen som skal slettes." },
+    },
+    required: ["titleMatch"],
+  },
+};
+
+const TOGGLE_MILESTONE_TOOL: Anthropic.Tool = {
+  name: "toggle_milestone",
+  description:
+    "Huk et sjekklistepunkt for Alfred av eller på (motorisk utvikling, barnehageplan eller kommende fokus). Identifiser med et utdrag av teksten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      labelMatch: { type: "string", description: "Del av teksten i sjekklistepunktet." },
+    },
+    required: ["labelMatch"],
+  },
+};
+
+function findOneMatch<T>(items: T[], getText: (item: T) => string, query: string, kind: string): T {
+  const q = query.toLowerCase();
+  const matches = items.filter((item) => getText(item).toLowerCase().includes(q));
+  if (matches.length === 0) throw new Error(`Fant ingen ${kind} som matcher "${query}".`);
+  if (matches.length > 1) {
+    throw new Error(
+      `Flere ${kind} matcher "${query}": ${matches.map(getText).join(", ")}. Vær mer spesifikk.`,
+    );
+  }
+  return matches[0];
+}
+
 async function runTool(name: string, input: unknown): Promise<unknown> {
   if (name === "add_reminder") {
     return addReminder(input as Parameters<typeof addReminder>[0]);
   }
   if (name === "add_calendar_event") {
     return addPrivatEvent(input as Parameters<typeof addPrivatEvent>[0]);
+  }
+  if (name === "toggle_reminder") {
+    const { textMatch } = input as { textMatch: string };
+    const reminder = findOneMatch(await getReminders(), (r) => r.text, textMatch, "påminnelser");
+    return toggleReminder(reminder.id);
+  }
+  if (name === "delete_reminder") {
+    const { textMatch } = input as { textMatch: string };
+    const reminder = findOneMatch(await getReminders(), (r) => r.text, textMatch, "påminnelser");
+    await deleteReminder(reminder.id);
+    return { ok: true, deleted: reminder.text };
+  }
+  if (name === "delete_calendar_event") {
+    const { titleMatch } = input as { titleMatch: string };
+    const event = findOneMatch(await getPrivatEvents(), (e) => e.title, titleMatch, "hendelser");
+    await deletePrivatEvent(event.id);
+    return { ok: true, deleted: event.title };
+  }
+  if (name === "toggle_milestone") {
+    const { labelMatch } = input as { labelMatch: string };
+    const milestone = findOneMatch(await getMilestones(), (m) => m.label, labelMatch, "sjekklistepunkter");
+    return toggleMilestone(milestone.id);
   }
   throw new Error(`Ukjent verktøy: ${name}`);
 }
@@ -75,13 +159,33 @@ export async function POST(request: NextRequest) {
     "(Fazile, Outlook og Asana — hentet 2026-08-10). Kundefordringer er fortsatt TESTDATA " +
     "(Fazile sitt fakturaverktøy er nedafor akkurat nå) — gjør det klart hvis du bruker de tallene, " +
     "f.eks. 'ifølge testdataene i dashboardet'. Sport, FPL, påminnelser og privat kalender under er " +
-    "EKTE og oppdatert live. Du kan legge til nye påminnelser og kalenderhendelser med verktøyene " +
-    "add_reminder/add_calendar_event når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde.\n\n" +
+    "EKTE og oppdatert live, det samme er lån (Økonomi) og Alfred-data under. Du kan legge til, " +
+    "huke av/på og slette påminnelser og kalenderhendelser, og huke av/på Alfreds sjekklistepunkter, " +
+    "med verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde. Hvis et " +
+    "verktøy feiler fordi flere eller ingen elementer matcher, forklar det kort til brukeren i stedet " +
+    "for å gjette.\n\n" +
     buildDashboardContext() +
     "\n" +
     (await buildPrivatContext());
 
-  const tools: Anthropic.Tool[] = [ADD_REMINDER_TOOL, ADD_CALENDAR_EVENT_TOOL];
+  // Ephemeral prompt-caching: systemprompten (kontrakter/garantier/lån/Alfred osv.) er lang og
+  // identisk for hver oppfølgingsmelding i samme samtale innenfor cache-vinduet (~5 min) — caching
+  // reduserer tokenkostnad/latency på Anthropics side. Ingen risiko for utdatert data: endres
+  // systemprompt-teksten (f.eks. etter en verktøy-endring), er det bare et cache-miss, ikke en feil.
+  const systemBlocks: Anthropic.TextBlockParam[] = [
+    { type: "text", text: system, cache_control: { type: "ephemeral" } },
+  ];
+
+  // cache_control på siste verktøy: verktøylisten er statisk på tvers av ALLE forespørsler
+  // (ikke bare innenfor én samtale), så denne prefiksen kan caches enda bredere enn systemprompten.
+  const tools: Anthropic.Tool[] = [
+    ADD_REMINDER_TOOL,
+    ADD_CALENDAR_EVENT_TOOL,
+    TOGGLE_REMINDER_TOOL,
+    DELETE_REMINDER_TOOL,
+    DELETE_CALENDAR_EVENT_TOOL,
+    { ...TOGGLE_MILESTONE_TOOL, cache_control: { type: "ephemeral" } },
+  ];
   const convo: Anthropic.MessageParam[] = [...messages];
   let changed = false;
 
@@ -89,7 +193,7 @@ export async function POST(request: NextRequest) {
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 500,
-      system,
+      system: systemBlocks,
       messages: convo,
       tools,
     });

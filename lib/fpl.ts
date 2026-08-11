@@ -1,4 +1,9 @@
-let cache: { data: FplData; expires: number } | null = null;
+import { getJSON, setJSON } from "./kv";
+
+// Lagres i Redis (ikke modul-minne) slik at cachen overlever serverless
+// cold starts på Vercel — et rent JS-objekt nullstilles ved hver kalde start.
+const CACHE_KEY = "cache:fpl";
+const CACHE_TTL_SECONDS = 60 * 60;
 
 const TEAMS = [
   { key: "fisak" as const, id: 3798160 },
@@ -108,7 +113,8 @@ async function fetchTeam(entry: EntryData, myPoints: number): Promise<Omit<FplTe
 }
 
 export async function getFplData(): Promise<FplData> {
-  if (cache && cache.expires > Date.now()) return cache.data;
+  const cached = await getJSON<FplData>(CACHE_KEY);
+  if (cached) return cached;
 
   try {
     const [bootstrapRes, overall100kRes, ...entryAndHistResps] = await Promise.all([
@@ -172,7 +178,7 @@ export async function getFplData(): Promise<FplData> {
       fetchedAt: now,
     };
 
-    cache = { data: result, expires: now + 60 * 60 * 1000 };
+    await setJSON(CACHE_KEY, result, CACHE_TTL_SECONDS);
     return result;
   } catch {
     return { active: false, error: true, teams: [] };

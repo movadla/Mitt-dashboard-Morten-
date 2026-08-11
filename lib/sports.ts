@@ -1,10 +1,16 @@
 // Unified sports aggregator.
 // Add a new sport by appending an entry to SOURCES — nothing else to change.
 
+import { getJSON, setJSON } from "./kv";
+
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
 
-let cache: { data: SportEvent[]; expires: number; fetchedAt: number } | null = null;
+// Lagres i Redis (ikke modul-minne) slik at cachen overlever serverless
+// cold starts på Vercel — et rent JS-objekt nullstilles ved hver kalde start.
+const CACHE_KEY = "cache:sports";
+const CACHE_TTL_SECONDS = 3 * 60 * 60;
+let lastFetchedAt: number | null = null;
 
 export interface SportEvent {
   id: string;
@@ -232,7 +238,11 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
 ];
 
 export async function getSportEvents(): Promise<SportEvent[]> {
-  if (cache && cache.expires > Date.now()) return cache.data;
+  const cached = await getJSON<{ data: SportEvent[]; fetchedAt: number }>(CACHE_KEY);
+  if (cached) {
+    lastFetchedAt = cached.fetchedAt;
+    return cached.data;
+  }
 
   const results = await Promise.allSettled(SOURCES.map(fn => fn()));
 
@@ -249,12 +259,13 @@ export async function getSportEvents(): Promise<SportEvent[]> {
     e.category !== "football_eli" || !featuredKeys.has(`${e.date}|${e.name.toLowerCase()}`)
   );
 
-  cache = { data: events, expires: Date.now() + 3 * 60 * 60 * 1000, fetchedAt: Date.now() };
+  lastFetchedAt = Date.now();
+  await setJSON(CACHE_KEY, { data: events, fetchedAt: lastFetchedAt }, CACHE_TTL_SECONDS);
   return events;
 }
 
 export function getSportsFetchedAt(): number | null {
-  return cache?.fetchedAt ?? null;
+  return lastFetchedAt;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────

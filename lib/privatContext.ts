@@ -2,6 +2,9 @@ import { getSportEvents } from "./sports";
 import { getFplData } from "./fpl";
 import { getReminders } from "./reminders";
 import { getPrivatEvents } from "./privatCalendar";
+import { getLoans } from "./loans";
+import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
+import { formatKr } from "./widgets";
 
 /**
  * Utvidet kontekst for Privat-fanen: sport-fixtures, FPL og de ekte,
@@ -18,12 +21,17 @@ import { getPrivatEvents } from "./privatCalendar";
  * bygget). app/api/chat/route.ts (en server-only route) er eneste bruker.
  */
 export async function buildPrivatContext(): Promise<string> {
-  const [sportsResult, fplResult, remindersResult, eventsResult] = await Promise.allSettled([
-    getSportEvents(),
-    getFplData(),
-    getReminders(),
-    getPrivatEvents(),
-  ]);
+  const [sportsResult, fplResult, remindersResult, eventsResult, loansResult, alfredProfileResult, growthResult, milestonesResult] =
+    await Promise.allSettled([
+      getSportEvents(),
+      getFplData(),
+      getReminders(),
+      getPrivatEvents(),
+      getLoans(),
+      getAlfredProfile(),
+      getGrowthEntries(),
+      getMilestones(),
+    ]);
 
   const lines: string[] = [];
 
@@ -69,6 +77,51 @@ export async function buildPrivatContext(): Promise<string> {
     }
   } else {
     lines.push("- Ingen hendelser lagt inn ennå.");
+  }
+
+  lines.push("\nØKONOMI — LÅN (ekte, redigerbart via Økonomi-boksen):");
+  if (loansResult.status === "fulfilled" && loansResult.value.length > 0) {
+    const total = loansResult.value.reduce((sum, l) => sum + l.remainingAmount, 0);
+    lines.push(`Totalt gjenstående på tvers av alle lån: ${formatKr(total)}.`);
+    for (const l of loansResult.value) {
+      lines.push(
+        `- ${l.name} (${l.lender}): ${formatKr(l.remainingAmount)} gjenstående av ${l.originalAmount ? formatKr(l.originalAmount) : "ukjent opprinnelig beløp"}` +
+          `${l.nominalRate !== undefined ? `, ${l.nominalRate}% nominell rente` : ""}${l.nextPaymentDate ? `, neste betaling ${l.nextPaymentDate}` : ""}` +
+          `${l.rateFixedUntil ? `, fastrente til ${l.rateFixedUntil}` : ""}${l.maturityDate ? `, innfrielsesdato ${l.maturityDate}` : ""}`,
+      );
+    }
+  } else {
+    lines.push("- Ingen lån lagt inn ennå. Sparing og lønn er heller ikke lagt inn ennå.");
+  }
+
+  lines.push("\nALFRED (Mortens sønn, født 29.12.2025 — ekte, redigerbart via Alfred-boksen):");
+  if (alfredProfileResult.status === "fulfilled" && alfredProfileResult.value) {
+    const p = alfredProfileResult.value;
+    lines.push(`Foreldre: ${p.parents}. Bor: ${p.address}.`);
+    if (p.helseNotat) lines.push(`Helse: ${p.helseNotat}`);
+    if (p.matOgSovnNotat) lines.push(`Mat og søvn: ${p.matOgSovnNotat}`);
+    if (p.motorikkNotat) lines.push(`Motorisk (notat): ${p.motorikkNotat}`);
+    if (p.permisjonNotat) lines.push(`Permisjon: ${p.permisjonNotat}`);
+    if (p.barnehageNotat) lines.push(`Barnehage: ${p.barnehageNotat}`);
+    if (p.barnesikringNotat) lines.push(`Barnesikring: ${p.barnesikringNotat}`);
+  }
+  if (growthResult.status === "fulfilled" && growthResult.value.length > 0) {
+    const latest = growthResult.value[growthResult.value.length - 1];
+    lines.push(
+      `Siste vekstmåling: ${latest.weightKg} kg${latest.lengthCm ? ` / ${latest.lengthCm} cm` : ""} (${latest.date}).`,
+    );
+  }
+  if (milestonesResult.status === "fulfilled" && milestonesResult.value.length > 0) {
+    const open = milestonesResult.value.filter((m) => !m.done);
+    const done = milestonesResult.value.filter((m) => m.done);
+    if (done.length > 0) lines.push(`Allerede oppnådd: ${done.map((m) => m.label).join("; ")}.`);
+    if (open.length > 0) lines.push(`Gjenstår/kommende fokus: ${open.map((m) => m.label).join("; ")}.`);
+  }
+  if (
+    (alfredProfileResult.status !== "fulfilled" || !alfredProfileResult.value) &&
+    (growthResult.status !== "fulfilled" || growthResult.value.length === 0)
+  ) {
+    lines.push("- Ingen data om Alfred lagt inn ennå.");
   }
 
   return lines.join("\n");
