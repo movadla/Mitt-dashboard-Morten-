@@ -6,6 +6,7 @@ import { getLoans } from "./loans";
 import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
+import { getShoppingItems } from "./shoppingList";
 import { formatKr } from "./widgets";
 
 /**
@@ -34,6 +35,7 @@ export async function buildPrivatContext(): Promise<string> {
     alfredProfileResult,
     growthResult,
     milestonesResult,
+    shoppingResult,
   ] = await Promise.allSettled([
     getSportEvents(),
     getFplData(),
@@ -45,6 +47,7 @@ export async function buildPrivatContext(): Promise<string> {
     getAlfredProfile(),
     getGrowthEntries(),
     getMilestones(),
+    getShoppingItems(),
   ]);
 
   const lines: string[] = [];
@@ -158,6 +161,20 @@ export async function buildPrivatContext(): Promise<string> {
     (growthResult.status !== "fulfilled" || growthResult.value.length === 0)
   ) {
     lines.push("- Ingen data om Alfred lagt inn ennå.");
+  }
+
+  lines.push("\nHANDLELISTE (ekte, redigerbar via Handleliste-boksen):");
+  if (shoppingResult.status === "fulfilled" && shoppingResult.value.length > 0) {
+    const open = shoppingResult.value.filter((i) => !i.done);
+    if (open.length > 0) {
+      for (const i of open) {
+        lines.push(`- ${i.name}${i.quantity ? ` (${i.quantity})` : ""} — ${i.section}`);
+      }
+    } else {
+      lines.push("- Alt er huket av som kjøpt.");
+    }
+  } else {
+    lines.push("- Ingen varer lagt inn ennå.");
   }
 
   return lines.join("\n");

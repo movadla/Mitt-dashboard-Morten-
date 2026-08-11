@@ -9,6 +9,7 @@ import TodaySummary from "./TodaySummary";
 import DartsBox from "./DartsBox";
 import FinanceSection from "./FinanceSection";
 import AlfredSection from "./AlfredSection";
+import ShoppingListSection from "./ShoppingListSection";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
 
 export default function PrivatPanel() {
@@ -48,6 +49,7 @@ export default function PrivatPanel() {
         <CalendarSection />
         <FinanceSection />
         <AlfredSection />
+        <ShoppingListSection />
         {fplLoading ? (
           <div className={`${CARD_SHELL} col-span-1 p-4`}>
             <SkeletonRows count={1} className="h-5" />
