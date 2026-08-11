@@ -1,7 +1,7 @@
 let cache: { data: FplData; expires: number } | null = null;
 
 const TEAMS = [
-  { key: "fisak" as const, id: 5648598 },
+  { key: "fisak" as const, id: 3798160 },
   { key: "boko"  as const, id: 1276183 },
 ];
 export type TeamKey = "fisak" | "boko";
