@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL } from "../CardShell";
+import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import type { SportEvent } from "@/lib/sports";
@@ -57,7 +57,7 @@ export default function TodaySummary() {
     <div className={`${CARD_SHELL} p-4`}>
       <h2 className="mb-3 text-sm font-semibold text-ink-1">I dag</h2>
       {loading ? (
-        <p className="text-sm text-ink-3">Laster…</p>
+        <SkeletonRows count={3} className="h-6" />
       ) : (
         <div className="flex flex-col gap-3">
           {overdue.length > 0 && (

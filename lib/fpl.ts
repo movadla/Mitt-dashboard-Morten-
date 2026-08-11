@@ -25,6 +25,7 @@ export interface FplData {
   gw?: { id?: number; name?: string; deadline?: string; average?: number | null } | null;
   teams?: FplTeam[];
   error?: boolean;
+  fetchedAt?: number;
 }
 
 // Target rank per league (matched by name, case-insensitive)
@@ -168,6 +169,7 @@ export async function getFplData(): Promise<FplData> {
         ? { id: nextGw.id, name: nextGw.name, deadline: nextGw.deadline_time, average: gwAverage }
         : null,
       teams,
+      fetchedAt: now,
     };
 
     cache = { data: result, expires: now + 60 * 60 * 1000 };

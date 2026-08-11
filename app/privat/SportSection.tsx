@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award } from "lucide-react";
 import type { SportEvent } from "@/lib/sports";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { timeAgo } from "@/lib/timeAgo";
 
 export type { SportEvent } from "@/lib/sports";
 
@@ -202,7 +203,15 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
   );
 }
 
-export function SportSection({ events, loading }: { events: SportEvent[]; loading: boolean }) {
+export function SportSection({
+  events,
+  loading,
+  fetchedAt,
+}: {
+  events: SportEvent[];
+  loading: boolean;
+  fetchedAt?: number | null;
+}) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Sport", true);
   const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
@@ -257,6 +266,7 @@ export function SportSection({ events, loading }: { events: SportEvent[]; loadin
                 </button>
               </>
             )}
+            {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
           </div>
         ))}
     </div>

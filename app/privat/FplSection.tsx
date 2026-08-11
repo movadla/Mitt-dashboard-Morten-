@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { timeAgo } from "@/lib/timeAgo";
 
 export type { FplData } from "@/lib/fpl";
 
@@ -540,7 +541,12 @@ export function FplBox({ fpl }: { fpl: FplData }) {
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
       />
-      {!collapsed && <FplHero fpl={fpl} />}
+      {!collapsed && (
+        <>
+          <FplHero fpl={fpl} />
+          {fpl.fetchedAt && <p className="mt-2 text-2xs text-ink-4">Oppdatert {timeAgo(fpl.fetchedAt)}</p>}
+        </>
+      )}
     </div>
   );
 }

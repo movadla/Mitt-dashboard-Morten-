@@ -87,3 +87,13 @@ export function CardHeader({
     </button>
   );
 }
+
+export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number; className?: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={`animate-pulse rounded-xl bg-surface-2 ${className}`} />
+      ))}
+    </div>
+  );
+}

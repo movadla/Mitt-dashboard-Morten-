@@ -4,7 +4,7 @@
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
 
-let cache: { data: SportEvent[]; expires: number } | null = null;
+let cache: { data: SportEvent[]; expires: number; fetchedAt: number } | null = null;
 
 export interface SportEvent {
   id: string;
@@ -249,8 +249,12 @@ export async function getSportEvents(): Promise<SportEvent[]> {
     e.category !== "football_eli" || !featuredKeys.has(`${e.date}|${e.name.toLowerCase()}`)
   );
 
-  cache = { data: events, expires: Date.now() + 3 * 60 * 60 * 1000 };
+  cache = { data: events, expires: Date.now() + 3 * 60 * 60 * 1000, fetchedAt: Date.now() };
   return events;
+}
+
+export function getSportsFetchedAt(): number | null {
+  return cache?.fetchedAt ?? null;
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
