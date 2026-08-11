@@ -269,6 +269,51 @@ function MilestoneGroup({
   );
 }
 
+function WeightChart({ entries }: { entries: GrowthEntry[] }) {
+  if (entries.length < 2) return null;
+
+  const width = 280;
+  const height = 84;
+  const padX = 4;
+  const padTop = 10;
+  const padBottom = 18;
+
+  const dates = entries.map((e) => new Date(e.date + "T00:00:00Z").getTime());
+  const weights = entries.map((e) => e.weightKg);
+  const minDate = Math.min(...dates);
+  const maxDate = Math.max(...dates);
+  const minW = Math.min(...weights);
+  const maxW = Math.max(...weights);
+  const spanDate = maxDate - minDate || 1;
+  const spanW = maxW - minW || 1;
+
+  const x = (i: number) => padX + ((dates[i] - minDate) / spanDate) * (width - padX * 2);
+  const y = (i: number) => height - padBottom - ((weights[i] - minW) / spanW) * (height - padTop - padBottom);
+
+  const points = entries.map((_, i) => `${x(i).toFixed(1)},${y(i).toFixed(1)}`).join(" ");
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-accent-privat" role="img" aria-label="Vekt over tid">
+        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {entries.map((e, i) => (
+          <circle key={e.id} cx={x(i)} cy={y(i)} r="2.5" fill="currentColor" />
+        ))}
+        <text x={padX} y={height - 4} className="fill-ink-4" fontSize="8">
+          {formatDMY(entries[0].date)}
+        </text>
+        <text x={width - padX} y={height - 4} textAnchor="end" className="fill-ink-4" fontSize="8">
+          {formatDMY(entries[entries.length - 1].date)}
+        </text>
+      </svg>
+      <div className="mt-0.5 flex justify-between text-2xs text-ink-4">
+        <span>Lavest: {minW.toLocaleString("nb-NO")} kg</span>
+        <span>Høyest: {maxW.toLocaleString("nb-NO")} kg</span>
+      </div>
+    </div>
+  );
+}
+
 function GrowthSection({
   entries,
   onAdd,
@@ -305,6 +350,7 @@ function GrowthSection({
           </p>
         )}
       </div>
+      <WeightChart entries={entries} />
       {entries.length > 0 && (
         <ul className="flex flex-col gap-1">
           {[...entries].reverse().map((e) => (

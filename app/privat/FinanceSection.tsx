@@ -221,6 +221,17 @@ function LoanRow({
             {loan.nominalRate !== undefined ? ` · ${loan.nominalRate.toLocaleString("nb-NO")}% rente` : ""}
             {loan.nextPaymentDate ? ` · neste betaling ${formatDateDMY(loan.nextPaymentDate)}` : ""}
           </p>
+          {loan.originalAmount && loan.originalAmount > 0 && (() => {
+            const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount!));
+            return (
+              <div className="mt-1.5 flex items-center gap-2">
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
+                  <div className="h-full rounded-full bg-accent-privat" style={{ width: `${(paidDown * 100).toFixed(1)}%` }} />
+                </div>
+                <span className="shrink-0 text-2xs tabular-nums text-ink-4">{Math.round(paidDown * 100)}% nedbetalt</span>
+              </div>
+            );
+          })()}
         </button>
         <button
           type="button"
