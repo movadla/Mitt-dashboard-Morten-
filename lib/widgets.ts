@@ -1,8 +1,3 @@
-import { getSportEvents } from "./sports";
-import { getFplData } from "./fpl";
-import { getReminders } from "./reminders";
-import { getPrivatEvents } from "./privatCalendar";
-
 export function formatKr(n: number, signed = false): string {
   const sign = signed && n > 0 ? "+" : "";
   return `${sign}${n.toLocaleString("nb-NO")} kr`;
@@ -153,69 +148,6 @@ export function buildDashboardContext(): string {
   lines.push("\nLEIEINNTEKT 2026 per bygg (ekte tall, topp 5 — Fazile har ikke budsjett-data):");
   for (const b of BUILDINGS) {
     lines.push(`- ${b.navn}: ${formatKr(b.leieinntekt2026)} (${b.antallLinjer} kontraktslinjer)`);
-  }
-
-  return lines.join("\n");
-}
-
-/**
- * Utvidet kontekst for Privat-fanen: sport-fixtures, FPL og de ekte,
- * skyllagrede påminnelsene/kalenderhendelsene. Hver kilde hentes uavhengig
- * (Promise.allSettled) slik at én treg/feilende kilde ikke velter hele
- * chat-svaret.
- */
-export async function buildPrivatContext(): Promise<string> {
-  const [sportsResult, fplResult, remindersResult, eventsResult] = await Promise.allSettled([
-    getSportEvents(),
-    getFplData(),
-    getReminders(),
-    getPrivatEvents(),
-  ]);
-
-  const lines: string[] = [];
-
-  lines.push("\nSPORT (kommende, hentet live):");
-  if (sportsResult.status === "fulfilled" && sportsResult.value.length > 0) {
-    for (const e of sportsResult.value.slice(0, 15)) {
-      lines.push(`- ${e.date}${e.time ? ` ${e.time}` : ""} ${e.name} (${e.competition})${e.venue ? ` — ${e.venue}` : ""}`);
-    }
-  } else {
-    lines.push("- Ingen sportsdata tilgjengelig akkurat nå.");
-  }
-
-  lines.push("\nFANTASY PREMIER LEAGUE:");
-  if (fplResult.status === "fulfilled" && fplResult.value.active && fplResult.value.teams?.length) {
-    const fpl = fplResult.value;
-    lines.push(`Neste deadline: ${fpl.gw?.deadline ?? "ukjent"} (${fpl.gw?.name ?? ""})`);
-    for (const t of fpl.teams ?? []) {
-      lines.push(
-        `- ${t.teamName}: ${t.totalPoints ?? "—"} poeng totalt, verdensrangering ${t.overallRank ?? "—"}, GW${t.currentGw ?? "—"}: ${t.currentGwPoints ?? "—"} poeng`,
-      );
-    }
-  } else {
-    lines.push("- Ingen FPL-data tilgjengelig akkurat nå.");
-  }
-
-  lines.push("\nPÅMINNELSER (ekte, kan endres av deg eller av deg via chat):");
-  if (remindersResult.status === "fulfilled" && remindersResult.value.length > 0) {
-    for (const r of remindersResult.value) {
-      lines.push(
-        `- [${r.done ? "Ferdig" : "Ikke ferdig"}] ${r.text}${r.dueDate ? ` (frist ${r.dueDate})` : ""}${r.recurrence !== "none" ? ` — gjentar ${r.recurrence}` : ""}`,
-      );
-    }
-  } else {
-    lines.push("- Ingen påminnelser lagt inn ennå.");
-  }
-
-  lines.push("\nPRIVAT KALENDER (ekte, redigerbar):");
-  if (eventsResult.status === "fulfilled" && eventsResult.value.length > 0) {
-    for (const e of eventsResult.value) {
-      lines.push(
-        `- ${e.date}${e.startTime ? ` ${e.startTime}` : ""}${e.endTime ? `–${e.endTime}` : ""} ${e.title}${e.note ? ` — ${e.note}` : ""}`,
-      );
-    }
-  } else {
-    lines.push("- Ingen hendelser lagt inn ennå.");
   }
 
   return lines.join("\n");

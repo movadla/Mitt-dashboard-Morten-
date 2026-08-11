@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getRedis } from "./kv";
+import { hdel, hgetallJSON, hsetJSON } from "./kv";
 
 export interface PrivatCalendarEvent {
   id: string;
@@ -29,8 +29,8 @@ function sortEvents(events: PrivatCalendarEvent[]): PrivatCalendarEvent[] {
 }
 
 export async function getPrivatEvents(): Promise<PrivatCalendarEvent[]> {
-  const map = await getRedis().hgetall<Record<string, PrivatCalendarEvent>>(HASH_KEY);
-  return sortEvents(Object.values(map ?? {}));
+  const map = await hgetallJSON<PrivatCalendarEvent>(HASH_KEY);
+  return sortEvents(Object.values(map));
 }
 
 export async function addPrivatEvent(input: NewPrivatEventInput): Promise<PrivatCalendarEvent> {
@@ -44,10 +44,10 @@ export async function addPrivatEvent(input: NewPrivatEventInput): Promise<Privat
     endTime: input.endTime,
     note: input.note,
   };
-  await getRedis().hset(HASH_KEY, { [event.id]: event });
+  await hsetJSON(HASH_KEY, event.id, event);
   return event;
 }
 
 export async function deletePrivatEvent(id: string): Promise<void> {
-  await getRedis().hdel(HASH_KEY, id);
+  await hdel(HASH_KEY, id);
 }

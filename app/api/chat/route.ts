@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
-import { buildDashboardContext, buildPrivatContext } from "@/lib/widgets";
+import { buildDashboardContext } from "@/lib/widgets";
+import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder } from "@/lib/reminders";
 import { addPrivatEvent } from "@/lib/privatCalendar";
 

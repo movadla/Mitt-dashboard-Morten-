@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getRedis } from "./kv";
+import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
 export type Recurrence = "none" | "daily" | "weekly" | "monthly";
 
@@ -50,8 +50,8 @@ function sortReminders(reminders: Reminder[]): Reminder[] {
 }
 
 export async function getReminders(): Promise<Reminder[]> {
-  const map = await getRedis().hgetall<Record<string, Reminder>>(HASH_KEY);
-  return sortReminders(Object.values(map ?? {}));
+  const map = await hgetallJSON<Reminder>(HASH_KEY);
+  return sortReminders(Object.values(map));
 }
 
 export async function addReminder(input: NewReminderInput): Promise<Reminder> {
@@ -63,12 +63,12 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     recurrence: input.recurrence ?? "none",
     done: false,
   };
-  await getRedis().hset(HASH_KEY, { [reminder.id]: reminder });
+  await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
 }
 
 export async function toggleReminder(id: string): Promise<Reminder | null> {
-  const current = await getRedis().hget<Reminder>(HASH_KEY, id);
+  const current = await hgetJSON<Reminder>(HASH_KEY, id);
   if (!current) return null;
 
   const next: Reminder =
@@ -76,10 +76,10 @@ export async function toggleReminder(id: string): Promise<Reminder | null> {
       ? { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false }
       : { ...current, done: !current.done };
 
-  await getRedis().hset(HASH_KEY, { [id]: next });
+  await hsetJSON(HASH_KEY, id, next);
   return next;
 }
 
 export async function deleteReminder(id: string): Promise<void> {
-  await getRedis().hdel(HASH_KEY, id);
+  await hdel(HASH_KEY, id);
 }
