@@ -155,7 +155,7 @@ async function persistExchange(messages: Anthropic.MessageParam[], assistantText
 export async function POST(request: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY er ikke satt i .env.local" },
+      { error: "ANTHROPIC_API_KEY er ikke satt" },
       { status: 500 },
     );
   }
