@@ -7,5 +7,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // api/backup har sin egen autorisering (cookie ELLER CRON_SECRET) siden en
+  // planlagt jobb uten nettleser-cookie må kunne nå den — se app/api/backup/route.ts.
+  matcher: ["/((?!login|api/auth|api/backup|_next/static|_next/image|favicon.ico).*)"],
 };
