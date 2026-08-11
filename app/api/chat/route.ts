@@ -5,6 +5,7 @@ import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
+import { appendChatMessages } from "@/lib/chatHistory";
 
 const MODEL = "claude-haiku-4-5";
 const MAX_TOOL_ROUNDS = 3;
@@ -136,6 +137,21 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
   throw new Error(`Ukjent verktøy: ${name}`);
 }
 
+function lastUserText(messages: Anthropic.MessageParam[]): string {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") return "";
+  return typeof last.content === "string" ? last.content : "";
+}
+
+async function persistExchange(messages: Anthropic.MessageParam[], assistantText: string): Promise<void> {
+  const userText = lastUserText(messages);
+  if (!userText) return;
+  await appendChatMessages([
+    { role: "user", content: userText },
+    { role: "assistant", content: assistantText },
+  ]);
+}
+
 export async function POST(request: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
@@ -203,6 +219,7 @@ export async function POST(request: NextRequest) {
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
         .join("\n");
+      await persistExchange(messages, text);
       return NextResponse.json({ text, changed });
     }
 
@@ -224,5 +241,7 @@ export async function POST(request: NextRequest) {
     convo.push({ role: "user", content: toolResults });
   }
 
-  return NextResponse.json({ text: "Fikk ikke fullført forespørselen. Prøv igjen.", changed });
+  const fallback = "Fikk ikke fullført forespørselen. Prøv igjen.";
+  await persistExchange(messages, fallback);
+  return NextResponse.json({ text: fallback, changed });
 }

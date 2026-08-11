@@ -68,3 +68,7 @@ export async function getJSON<T>(key: string): Promise<T | null> {
     return null;
   }
 }
+
+export async function del(key: string): Promise<void> {
+  await getClient().del(key);
+}

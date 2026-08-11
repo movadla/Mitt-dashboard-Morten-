@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -9,7 +9,20 @@ export default function ChatWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    fetch("/api/chat/history")
+      .then((r) => r.json())
+      .then((d) => setMessages((d.messages ?? []) as ChatMessage[]))
+      .finally(() => setHistoryLoaded(true));
+  }, []);
+
+  async function clearConversation() {
+    setMessages([]);
+    await fetch("/api/chat/history", { method: "DELETE" });
+  }
 
   async function send() {
     const text = input.trim();
@@ -62,22 +75,36 @@ export default function ChatWidget() {
         <div className="fixed bottom-24 right-5 z-40 flex h-[70vh] w-[min(92vw,380px)] flex-col rounded-2xl border border-line bg-surface-1 shadow-2xl shadow-black/25">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold text-ink-1">Assistent</p>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Lukk"
-              className="text-ink-3 hover:text-ink-1"
-            >
-              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4l8 8M12 4l-8 8" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-3">
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearConversation}
+                  aria-label="Tøm samtale"
+                  className="text-2xs font-medium text-ink-3 hover:text-ink-1"
+                >
+                  Tøm
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Lukk"
+                className="text-ink-3 hover:text-ink-1"
+              >
+                <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4l8 8M12 4l-8 8" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
               <p className="text-xs leading-relaxed text-ink-3">
-                Spør om nøkkeltallene i dashboardet, eller be meg legge til en påminnelse eller kalenderhendelse i Privat-fanen.
+                {historyLoaded
+                  ? "Spør om nøkkeltallene i dashboardet, eller be meg legge til en påminnelse eller kalenderhendelse i Privat-fanen."
+                  : "Laster samtale…"}
               </p>
             )}
             <div className="flex flex-col gap-3">
