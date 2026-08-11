@@ -28,9 +28,9 @@ export default function PrivatPanel() {
   return (
     <div className="flex flex-col gap-3">
       <TodaySummary />
-      {fpl && <FplBox fpl={fpl} />}
       <RemindersSection />
       <CalendarSection />
+      {fpl && <FplBox fpl={fpl} />}
       <SportSection events={sports} loading={sportsLoading} />
       <WorldCupSection events={worldCup} />
     </div>

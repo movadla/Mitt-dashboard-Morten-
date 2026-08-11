@@ -53,16 +53,11 @@ export default function TodaySummary() {
     setBadgeCount(overdue.length + dueToday.length);
   }, [loading, overdue.length, dueToday.length]);
 
-  const isEmpty =
-    !loading && overdue.length === 0 && dueToday.length === 0 && todaysEvents.length === 0 && todaysSports.length === 0;
-
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <h2 className="mb-3 text-sm font-semibold text-ink-1">I dag</h2>
       {loading ? (
         <p className="text-sm text-ink-3">Laster…</p>
-      ) : isEmpty ? (
-        <p className="text-sm text-ink-3">Ingenting planlagt i dag.</p>
       ) : (
         <div className="flex flex-col gap-3">
           {overdue.length > 0 && (
@@ -79,9 +74,12 @@ export default function TodaySummary() {
               </ul>
             </div>
           )}
-          {dueToday.length > 0 && (
-            <div>
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Påminnelser</p>
+
+          {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
+              aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
+          <div>
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Påminnelser</p>
+            {dueToday.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {dueToday.map((r) => (
                   <li key={r.id} className="text-sm text-ink-1">
@@ -89,11 +87,14 @@ export default function TodaySummary() {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-          {todaysEvents.length > 0 && (
-            <div>
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Kalender</p>
+            ) : (
+              <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
+            )}
+          </div>
+
+          <div>
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Kalender</p>
+            {todaysEvents.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {todaysEvents.map((e) => (
                   <li key={e.id} className="text-sm text-ink-1">
@@ -102,8 +103,11 @@ export default function TodaySummary() {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-ink-3">Ingen hendelser i dag.</p>
+            )}
+          </div>
+
           {todaysSports.length > 0 && (
             <div>
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Sport</p>
