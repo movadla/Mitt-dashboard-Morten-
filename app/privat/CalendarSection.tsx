@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
+import { vibrate } from "@/lib/haptics";
+import SwipeableRow from "./SwipeableRow";
 
 function formatDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -11,24 +13,28 @@ function formatDMY(iso: string): string {
 
 function EventRow({ event, onRemove }: { event: PrivatCalendarEvent; onRemove: (id: string) => void }) {
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-ink-1">{event.title}</p>
-        <p className="mt-0.5 text-2xs text-ink-4">
-          {formatDMY(event.date)}
-          {event.startTime ? ` ${event.startTime}` : ""}
-          {event.endTime ? `–${event.endTime}` : ""}
-          {event.note ? ` — ${event.note}` : ""}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={() => onRemove(event.id)}
-        aria-label="Slett hendelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-      >
-        ×
-      </button>
+    <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(event.id)} leftLabel="Slett">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-ink-1">{event.title}</p>
+            <p className="mt-0.5 text-2xs text-ink-4">
+              {formatDMY(event.date)}
+              {event.startTime ? ` ${event.startTime}` : ""}
+              {event.endTime ? `–${event.endTime}` : ""}
+              {event.note ? ` — ${event.note}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(event.id)}
+            aria-label="Slett hendelse"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            ×
+          </button>
+        </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -93,6 +99,7 @@ export default function CalendarSection() {
 
   async function handleRemove(id: string) {
     setEvents((prev) => prev.filter((e) => e.id !== id));
+    vibrate([10, 30, 10]);
     await fetch(`/api/privat-calendar/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
@@ -172,7 +179,7 @@ export default function CalendarSection() {
           )}
 
           {loading ? (
-            <p className="text-sm text-ink-3">Laster…</p>
+            <SkeletonRows count={2} />
           ) : todays.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen hendelser i dag.</p>
           ) : (

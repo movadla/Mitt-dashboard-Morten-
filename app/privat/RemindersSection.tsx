@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { Recurrence, Reminder } from "@/lib/reminders";
+import { vibrate } from "@/lib/haptics";
+import SwipeableRow from "./SwipeableRow";
 
 const RECURRENCE_LABEL: Record<Recurrence, string> = {
   none: "Ingen",
@@ -40,40 +42,49 @@ function ReminderRow({
   onRemove: (id: string) => void;
 }) {
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <button
-        type="button"
-        onClick={() => onToggle(reminder.id)}
-        aria-pressed={reminder.done}
-        aria-label={reminder.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
-        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
-          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
-        }`}
+    <li>
+      <SwipeableRow
+        onSwipeRight={() => onToggle(reminder.id)}
+        onSwipeLeft={() => onRemove(reminder.id)}
+        rightLabel={reminder.done ? "Ikke ferdig" : "Fullført"}
+        leftLabel="Slett"
       >
-        {reminder.done && (
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 8.5L6.5 12 13 5" />
-          </svg>
-        )}
-      </button>
-      <div className="min-w-0 flex-1">
-        <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
-        {(reminder.dueDate || reminder.recurrence !== "none") && (
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
-            {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
-            {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
-          </p>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={() => onRemove(reminder.id)}
-        aria-label="Slett påminnelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-      >
-        ×
-      </button>
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onToggle(reminder.id)}
+            aria-pressed={reminder.done}
+            aria-label={reminder.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
+            className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
+              reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+            }`}
+          >
+            {reminder.done && (
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 8.5L6.5 12 13 5" />
+              </svg>
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+            {(reminder.dueDate || reminder.recurrence !== "none") && (
+              <p className="mt-0.5 text-2xs text-ink-4">
+                {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+                {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
+                {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(reminder.id)}
+            aria-label="Slett påminnelse"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            ×
+          </button>
+        </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -131,11 +142,13 @@ export default function RemindersSection() {
       const updated: Reminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      vibrate(updated.done ? 15 : 8);
     }
   }
 
   async function handleRemove(id: string) {
     setReminders((prev) => prev.filter((r) => r.id !== id));
+    vibrate([10, 30, 10]);
     await fetch(`/api/reminders/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
@@ -214,7 +227,7 @@ export default function RemindersSection() {
           )}
 
           {loading ? (
-            <p className="text-sm text-ink-3">Laster…</p>
+            <SkeletonRows count={2} />
           ) : todays.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
           ) : (
