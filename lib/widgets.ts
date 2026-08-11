@@ -3,8 +3,6 @@ import { getFplData } from "./fpl";
 import { getReminders } from "./reminders";
 import { getPrivatEvents } from "./privatCalendar";
 
-export type WidgetSpec = { title: string; value: string; hint: string; detail: string };
-
 export function formatKr(n: number, signed = false): string {
   const sign = signed && n > 0 ? "+" : "";
   return `${sign}${n.toLocaleString("nb-NO")} kr`;
@@ -115,21 +113,6 @@ export const BUILDINGS = [
   { navn: "Lilleakerveien 8", leieinntekt2026: 43776365, antallLinjer: 107 },
 ];
 
-export const PRIVAT_WIDGETS: WidgetSpec[] = [
-  {
-    title: "Permisjon/familie",
-    value: "Dag 42",
-    hint: "av foreldrepermisjon",
-    detail: "42 dager inn i permisjonen. Neste oppfølging hos NAV om 8 dager.",
-  },
-  {
-    title: "Darts",
-    value: "42,8",
-    hint: "snitt siste 10 kamper (Scolia)",
-    detail: "3-dart-snitt 42,8 siste 10 kamper. Checkout-treff 38 %.",
-  },
-];
-
 /**
  * Kompakt tekst-sammendrag av dashboardets egne data, til bruk som kontekst for chatboten.
  * Ekte data: kontrakter (Fazile+Salesforce), leieinntekt per bygg (Fazile), kalender (Outlook),
@@ -171,9 +154,6 @@ export function buildDashboardContext(): string {
   for (const b of BUILDINGS) {
     lines.push(`- ${b.navn}: ${formatKr(b.leieinntekt2026)} (${b.antallLinjer} kontraktslinjer)`);
   }
-
-  lines.push("\nPRIVAT:");
-  for (const w of PRIVAT_WIDGETS) lines.push(`- ${w.title}: ${w.value} (${w.hint}). ${w.detail}`);
 
   return lines.join("\n");
 }

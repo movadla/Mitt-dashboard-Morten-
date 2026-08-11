@@ -20,12 +20,10 @@ import {
   GUARANTEES,
   GUARANTEE_TOTAL,
   type GuaranteeStatus,
-  PRIVAT_WIDGETS,
   RECEIVABLES,
   RECEIVABLES_TREND,
   formatDateDMY,
   formatKr,
-  type WidgetSpec,
 } from "@/lib/widgets";
 import ChatWidget from "./ChatWidget";
 import PrivatPanel from "./privat/PrivatPanel";
@@ -1340,40 +1338,6 @@ function TaskCard({
   );
 }
 
-function KpiWidget({ title, value, hint, detail }: WidgetSpec) {
-  const [open, setOpen] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => setOpen((v) => !v)}
-      aria-expanded={open}
-      className={`${CARD_SHELL} p-4 text-left transition hover:border-line-strong`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-2xs font-medium text-ink-4">{title}</p>
-        <svg
-          viewBox="0 0 16 16"
-          className={`mt-0.5 h-3 w-3 shrink-0 text-ink-3 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
-      </div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink-1">{value}</p>
-      <p className="mt-0.5 text-xs text-ink-3">{hint}</p>
-      {open && (
-        <p className="mt-2 border-t border-line pt-2 text-xs leading-relaxed text-ink-3">
-          {detail}
-        </p>
-      )}
-    </button>
-  );
-}
-
 function useCalendarNotes(): [Record<string, string[]>, (id: string, value: string) => void, (id: string, index: number) => void] {
   const [notes, setNotes] = useState<Record<string, string[]>>({});
   const [hydrated, setHydrated] = useState(false);
@@ -2212,24 +2176,21 @@ export default function Dashboard({
         )}
       </header>
 
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Nøkkeltall · Ekte data: kontrakter, leieinntekt, kalender, garantier og kundefordringer · Testdata: ukesgraf
-      </p>
       {mode === "jobb" ? (
-        <div className="mb-6 flex flex-col gap-3">
-          <CalendarCard today={today} />
-          <ContractsCard />
-          <GuaranteesCard />
-          <ReceivablesCard />
-          <ForecastCard />
-        </div>
+        <>
+          <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
+            Nøkkeltall · Ekte data: kontrakter, leieinntekt, kalender, garantier og kundefordringer · Testdata: ukesgraf
+          </p>
+          <div className="mb-6 flex flex-col gap-3">
+            <CalendarCard today={today} />
+            <ContractsCard />
+            <GuaranteesCard />
+            <ReceivablesCard />
+            <ForecastCard />
+          </div>
+        </>
       ) : (
         <div className="mb-6 flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {PRIVAT_WIDGETS.map((w) => (
-              <KpiWidget key={w.title} {...w} />
-            ))}
-          </div>
           <PrivatPanel />
         </div>
       )}
