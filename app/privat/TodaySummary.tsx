@@ -6,8 +6,10 @@ import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import type { SportEvent } from "@/lib/sports";
 import type { Loan } from "@/lib/loans";
-import type { Milestone } from "@/lib/alfred";
+import type { FplData } from "@/lib/fpl";
+import type { WeatherData } from "@/lib/weather";
 import { formatKr } from "@/lib/widgets";
+import { Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, CloudSnow, CloudLightning, CloudFog } from "lucide-react";
 
 function daysUntil(dateIso: string, todayIso: string): number {
   const target = new Date(dateIso + "T00:00:00Z").getTime();
@@ -31,12 +33,34 @@ function setBadgeCount(count: number) {
   else nav.clearAppBadge?.().catch(() => {});
 }
 
+function baseSymbol(s: string): string {
+  return s.replace(/_day|_night|_polartwilight/, "");
+}
+
+function WeatherIcon({ symbol, className }: { symbol: string; className?: string }) {
+  const s = baseSymbol(symbol);
+  if (s.includes("thunder")) return <CloudLightning className={className} />;
+  if (s === "heavyrain" || s === "rain") return <CloudRain className={className} />;
+  if (s.includes("rain") || s.includes("shower") || s.includes("sleet")) return <CloudDrizzle className={className} />;
+  if (s.includes("snow")) return <CloudSnow className={className} />;
+  if (s === "fog") return <CloudFog className={className} />;
+  if (s === "clearsky") return <Sun className={className} />;
+  if (s === "fair" || s.includes("partly")) return <CloudSun className={className} />;
+  return <Cloud className={className} />;
+}
+
+function hourLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function TodaySummary() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
   const [sports, setSports] = useState<SportEvent[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [fpl, setFpl] = useState<FplData | null>(null);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -45,13 +69,15 @@ export default function TodaySummary() {
       fetch("/api/privat-calendar").then((r) => r.json()),
       fetch("/api/sports").then((r) => r.json()),
       fetch("/api/loans").then((r) => r.json()),
-      fetch("/api/alfred/milestones").then((r) => r.json()),
-    ]).then(([r, e, s, l, m]) => {
+      fetch("/api/fpl").then((r) => r.json()),
+      fetch("/api/weather").then((r) => r.json()),
+    ]).then(([r, e, s, l, f, w]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
       setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
-      setMilestones(m.status === "fulfilled" ? ((m.value.milestones ?? []) as Milestone[]) : []);
+      setFpl(f.status === "fulfilled" && !f.value.error ? (f.value as FplData) : null);
+      setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
       setLoading(false);
     });
   }, []);
@@ -73,7 +99,10 @@ export default function TodaySummary() {
     .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, today) }))
     .filter(({ days }) => days >= 0 && days <= 7)
     .sort((a, b) => a.days - b.days);
-  const nextAlfredFocus = milestones.find((m) => m.category === "fokus" && !m.done);
+  const fplDeadlineToday =
+    fpl?.active && fpl.gw?.deadline && new Date(fpl.gw.deadline).toDateString() === new Date().toDateString()
+      ? fpl.gw.deadline
+      : null;
 
   useEffect(() => {
     if (loading) return;
@@ -82,13 +111,42 @@ export default function TodaySummary() {
 
   return (
     <div className={`${CARD_SHELL} p-4`}>
-      <h2 className="mb-3 text-sm font-semibold text-ink-1">I dag</h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink-1">I dag</h2>
+        {weather && (
+          <button
+            type="button"
+            onClick={() => setWeatherExpanded((v) => !v)}
+            aria-expanded={weatherExpanded}
+            aria-label="Vis vær time for time"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
+          >
+            <WeatherIcon symbol={weather.symbol} className="h-4 w-4 text-accent" />
+            <span className="tabular-nums">{weather.temp}°</span>
+          </button>
+        )}
+      </div>
+
+      {weather && weatherExpanded && (
+        <div className="mb-3 overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
+          <div className="flex w-max gap-4">
+            {weather.hourly.map((h) => (
+              <div key={h.time} className="flex flex-col items-center gap-1 text-center">
+                <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
+                <WeatherIcon symbol={h.symbol} className="h-4 w-4 text-accent" />
+                <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <SkeletonRows count={3} className="h-6" />
       ) : (
         <div className="flex flex-col gap-2">
           {overdue.length > 0 && (
-            <div className="rounded-r-lg border-l-2 border-status-danger bg-status-danger/8 py-1.5 pl-3">
+            <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-danger">
                 Oversittet ({overdue.length})
               </p>
@@ -104,7 +162,7 @@ export default function TodaySummary() {
 
           {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
               aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
-          <div className="rounded-r-lg border-l-2 border-accent-privat bg-accent-privat/8 py-1.5 pl-3">
+          <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
             <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent-privat">Påminnelser</p>
             {dueToday.length > 0 ? (
               <ul className="flex flex-col gap-1">
@@ -119,7 +177,7 @@ export default function TodaySummary() {
             )}
           </div>
 
-          <div className="rounded-r-lg border-l-2 border-source-teams bg-source-teams/8 py-1.5 pl-3">
+          <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
             <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-teams">Kalender</p>
             {todaysEvents.length > 0 ? (
               <ul className="flex flex-col gap-1">
@@ -136,7 +194,7 @@ export default function TodaySummary() {
           </div>
 
           {todaysSports.length > 0 && (
-            <div className="rounded-r-lg border-l-2 border-accent bg-accent/8 py-1.5 pl-3">
+            <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent">Sport</p>
               <ul className="flex flex-col gap-1">
                 {todaysSports.map((s) => (
@@ -149,8 +207,20 @@ export default function TodaySummary() {
             </div>
           )}
 
+          {fplDeadlineToday && (
+            <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-action">Fantasy Premier League</p>
+              <p className="text-sm text-ink-1">
+                Deadline i dag kl.{" "}
+                <span className="tabular-nums">
+                  {new Date(fplDeadlineToday).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </p>
+            </div>
+          )}
+
           {upcomingPayments.length > 0 && (
-            <div className="rounded-r-lg border-l-2 border-source-outlook bg-source-outlook/8 py-1.5 pl-3">
+            <div className="rounded-lg border border-source-outlook/40 bg-source-outlook/8 px-3 py-1.5">
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-outlook">Låneavdrag</p>
               <ul className="flex flex-col gap-1">
                 {upcomingPayments.map(({ loan, days }) => (
@@ -160,13 +230,6 @@ export default function TodaySummary() {
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {nextAlfredFocus && (
-            <div className="rounded-r-lg border-l-2 border-status-action bg-status-action/8 py-1.5 pl-3">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-action">Alfred — neste fokus</p>
-              <p className="text-sm text-ink-1">{nextAlfredFocus.label}</p>
             </div>
           )}
         </div>

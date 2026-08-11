@@ -376,7 +376,7 @@ export default function RemindersSection() {
   const rest = reminders.filter((r) => !isDueToday(r, today));
 
   return (
-    <div className={`${CARD_SHELL} border-l-4 border-l-accent-privat p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} !border-2 !border-accent-privat p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
