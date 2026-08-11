@@ -2125,14 +2125,18 @@ export default function Dashboard({
 
   return (
     <>
-    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:max-w-5xl md:px-8">
-      <header className="mb-7">
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 md:max-w-5xl md:px-8">
+      <div
+        className="sticky top-0 z-40 -mx-4 bg-surface-0/95 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] backdrop-blur supports-[backdrop-filter]:bg-surface-0/80 sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8"
+      >
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-ink-1">
             I dag
           </h1>
           <ModeToggle mode={mode} onChange={setMode} />
         </div>
+      </div>
+      <header className="mb-7">
         {mode === "jobb" && (
           <>
             <div className="mt-3 flex justify-end">
