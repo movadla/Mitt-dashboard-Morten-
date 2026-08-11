@@ -517,9 +517,8 @@ export function FplHero({ fpl }: { fpl: FplData }) {
 
 function fplCountdownText(deadline: string): string {
   const { d, h, m } = fplParts(deadline);
-  if (d > 0) return `${d}d ${h}t til deadline`;
-  if (h > 0) return `${h}t ${m}min til deadline`;
-  return `${m}min til deadline`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d)}:${pad(h)}:${pad(m)}`;
 }
 
 export function FplBox({ fpl }: { fpl: FplData }) {

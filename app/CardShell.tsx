@@ -53,7 +53,7 @@ export function CardHeader({
     <>
       <h3 className="text-sm font-semibold text-ink-1">{title}</h3>
       <div className="flex shrink-0 items-baseline gap-2">
-        {subtitle && <span className="text-xs text-ink-3">{subtitle}</span>}
+        {subtitle && <span className="text-xs tabular-nums text-ink-3">{subtitle}</span>}
         {onToggleCollapse && (
           <svg
             viewBox="0 0 16 16"
