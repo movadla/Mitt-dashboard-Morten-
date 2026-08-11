@@ -228,7 +228,7 @@ export default function CalendarSection() {
   const rest = upcoming.filter((e) => e.date !== today);
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Kalender"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

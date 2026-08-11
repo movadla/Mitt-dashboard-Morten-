@@ -526,7 +526,7 @@ export default function AlfredSection() {
       : "Ukentlig";
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader title="Alfred" subtitle={subtitle} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       {!collapsed && (
         <div className="flex flex-col gap-3">

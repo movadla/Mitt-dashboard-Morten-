@@ -223,7 +223,7 @@ export function SportSection({
   }).filter((day) => day !== today && events.some((e) => e.date === day));
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Sport"
         subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
@@ -345,7 +345,7 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
   const days = [...byDay.keys()].sort();
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       {!collapsed && (
         <div className="flex flex-col gap-2">

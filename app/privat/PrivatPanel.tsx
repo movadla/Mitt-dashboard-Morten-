@@ -40,20 +40,25 @@ export default function PrivatPanel() {
   return (
     <div className="flex flex-col gap-3">
       <TodaySummary />
-      <RemindersSection />
-      <CalendarSection />
-      <FinanceSection />
-      <AlfredSection />
-      {fplLoading ? (
-        <div className={`${CARD_SHELL} p-4`}>
-          <SkeletonRows count={1} className="h-5" />
-        </div>
-      ) : (
-        fpl && <FplBox fpl={fpl} />
-      )}
-      <DartsBox />
-      <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />
-      <WorldCupSection events={worldCup} />
+      {/* Kollapsede bokser sitter halv bredde, to og to på rad (col-span-1, satt av
+          hver seksjon selv basert på egen collapsed-state); en utvidet boks tar full
+          bredde (col-span-2) og CSS Grid flyter automatisk resten rundt den. */}
+      <div className="grid grid-cols-2 gap-3">
+        <RemindersSection />
+        <CalendarSection />
+        <FinanceSection />
+        <AlfredSection />
+        {fplLoading ? (
+          <div className={`${CARD_SHELL} col-span-1 p-4`}>
+            <SkeletonRows count={1} className="h-5" />
+          </div>
+        ) : (
+          fpl && <FplBox fpl={fpl} />
+        )}
+        <DartsBox />
+        <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />
+        <WorldCupSection events={worldCup} />
+      </div>
     </div>
   );
 }
