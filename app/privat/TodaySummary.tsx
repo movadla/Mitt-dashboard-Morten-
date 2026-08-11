@@ -86,9 +86,9 @@ export default function TodaySummary() {
       {loading ? (
         <SkeletonRows count={3} className="h-6" />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {overdue.length > 0 && (
-            <div>
+            <div className="rounded-r-lg border-l-2 border-status-danger bg-status-danger/8 py-1.5 pl-3">
               <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-danger">
                 Oversittet ({overdue.length})
               </p>
@@ -104,8 +104,8 @@ export default function TodaySummary() {
 
           {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
               aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
-          <div>
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Påminnelser</p>
+          <div className="rounded-r-lg border-l-2 border-accent-privat bg-accent-privat/8 py-1.5 pl-3">
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent-privat">Påminnelser</p>
             {dueToday.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {dueToday.map((r) => (
@@ -119,8 +119,8 @@ export default function TodaySummary() {
             )}
           </div>
 
-          <div>
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Kalender</p>
+          <div className="rounded-r-lg border-l-2 border-source-teams bg-source-teams/8 py-1.5 pl-3">
+            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-teams">Kalender</p>
             {todaysEvents.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {todaysEvents.map((e) => (
@@ -136,8 +136,8 @@ export default function TodaySummary() {
           </div>
 
           {todaysSports.length > 0 && (
-            <div>
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Sport</p>
+            <div className="rounded-r-lg border-l-2 border-accent bg-accent/8 py-1.5 pl-3">
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent">Sport</p>
               <ul className="flex flex-col gap-1">
                 {todaysSports.map((s) => (
                   <li key={s.id} className="text-sm text-ink-1">
@@ -150,8 +150,8 @@ export default function TodaySummary() {
           )}
 
           {upcomingPayments.length > 0 && (
-            <div>
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Låneavdrag</p>
+            <div className="rounded-r-lg border-l-2 border-source-outlook bg-source-outlook/8 py-1.5 pl-3">
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-outlook">Låneavdrag</p>
               <ul className="flex flex-col gap-1">
                 {upcomingPayments.map(({ loan, days }) => (
                   <li key={loan.id} className="text-sm text-ink-1">
@@ -164,8 +164,8 @@ export default function TodaySummary() {
           )}
 
           {nextAlfredFocus && (
-            <div>
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Alfred — neste fokus</p>
+            <div className="rounded-r-lg border-l-2 border-status-action bg-status-action/8 py-1.5 pl-3">
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-action">Alfred — neste fokus</p>
               <p className="text-sm text-ink-1">{nextAlfredFocus.label}</p>
             </div>
           )}
