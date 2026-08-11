@@ -5,6 +5,21 @@ import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import type { SportEvent } from "@/lib/sports";
+import type { Loan } from "@/lib/loans";
+import type { Milestone } from "@/lib/alfred";
+import { formatKr } from "@/lib/widgets";
+
+function daysUntil(dateIso: string, todayIso: string): number {
+  const target = new Date(dateIso + "T00:00:00Z").getTime();
+  const from = new Date(todayIso + "T00:00:00Z").getTime();
+  return Math.round((target - from) / (1000 * 60 * 60 * 24));
+}
+
+function relativeDayLabel(days: number): string {
+  if (days === 0) return "i dag";
+  if (days === 1) return "i morgen";
+  return `om ${days} dager`;
+}
 
 function setBadgeCount(count: number) {
   if (typeof navigator === "undefined") return;
@@ -20,6 +35,8 @@ export default function TodaySummary() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
   const [sports, setSports] = useState<SportEvent[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -27,10 +44,14 @@ export default function TodaySummary() {
       fetch("/api/reminders").then((r) => r.json()),
       fetch("/api/privat-calendar").then((r) => r.json()),
       fetch("/api/sports").then((r) => r.json()),
-    ]).then(([r, e, s]) => {
+      fetch("/api/loans").then((r) => r.json()),
+      fetch("/api/alfred/milestones").then((r) => r.json()),
+    ]).then(([r, e, s, l, m]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
+      setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
+      setMilestones(m.status === "fulfilled" ? ((m.value.milestones ?? []) as Milestone[]) : []);
       setLoading(false);
     });
   }, []);
@@ -47,6 +68,12 @@ export default function TodaySummary() {
   const dueToday = activeReminders.filter((r) => !r.dueDate || r.dueDate === today);
   const todaysEvents = events.filter((e) => e.date === today);
   const todaysSports = sports.filter((s) => s.date === today);
+  const upcomingPayments = loans
+    .filter((l) => l.nextPaymentDate)
+    .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, today) }))
+    .filter(({ days }) => days >= 0 && days <= 7)
+    .sort((a, b) => a.days - b.days);
+  const nextAlfredFocus = milestones.find((m) => m.category === "fokus" && !m.done);
 
   useEffect(() => {
     if (loading) return;
@@ -119,6 +146,27 @@ export default function TodaySummary() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {upcomingPayments.length > 0 && (
+            <div>
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Låneavdrag</p>
+              <ul className="flex flex-col gap-1">
+                {upcomingPayments.map(({ loan, days }) => (
+                  <li key={loan.id} className="text-sm text-ink-1">
+                    {loan.name} — {formatKr(loan.remainingAmount)}{" "}
+                    <span className="text-ink-3">({relativeDayLabel(days)})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {nextAlfredFocus && (
+            <div>
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-ink-4">Alfred — neste fokus</p>
+              <p className="text-sm text-ink-1">{nextAlfredFocus.label}</p>
             </div>
           )}
         </div>
