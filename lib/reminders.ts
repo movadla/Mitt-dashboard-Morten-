@@ -9,6 +9,7 @@ export interface Reminder {
   dueDate?: string; // "YYYY-MM-DD"
   recurrence: Recurrence;
   done: boolean;
+  order: number; // manuell prioritet i "i dag"-lista, lavest først
 }
 
 export interface NewReminderInput {
@@ -57,7 +58,22 @@ function sortReminders(reminders: Reminder[]): Reminder[] {
 
 export async function getReminders(): Promise<Reminder[]> {
   const map = await hgetallJSON<Reminder>(HASH_KEY);
-  return sortReminders(Object.values(map));
+  const reminders = sortReminders(Object.values(map));
+
+  // Selv-helbredende migrering: eldre påminnelser mangler `order`. Tildel dem
+  // verdier som bevarer dagens (dato-baserte) rekkefølge, uten synlig hopp.
+  const missingOrder = reminders.filter((r) => r.order === undefined);
+  if (missingOrder.length > 0) {
+    await Promise.all(
+      reminders.map((r, i) => {
+        if (r.order !== undefined) return Promise.resolve();
+        r.order = i;
+        return hsetJSON(HASH_KEY, r.id, r);
+      }),
+    );
+  }
+
+  return reminders;
 }
 
 export async function addReminder(input: NewReminderInput): Promise<Reminder> {
@@ -68,6 +84,7 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     dueDate: input.dueDate,
     recurrence: input.recurrence ?? "none",
     done: false,
+    order: Date.now(),
   };
   await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
@@ -105,4 +122,17 @@ export async function updateReminder(id: string, updates: ReminderUpdateInput): 
 
 export async function deleteReminder(id: string): Promise<void> {
   await hdel(HASH_KEY, id);
+}
+
+// Setter order = posisjon i den oppgitte lista. Brukes for å persistere manuell
+// dra-og-slipp-rekkefølge for et delsett (typisk "i dag"-lista), ikke hele settet.
+export async function reorderReminders(ids: string[]): Promise<Reminder[]> {
+  await Promise.all(
+    ids.map(async (id, index) => {
+      const current = await hgetJSON<Reminder>(HASH_KEY, id);
+      if (!current) return;
+      await hsetJSON(HASH_KEY, id, { ...current, order: index });
+    }),
+  );
+  return getReminders();
 }
