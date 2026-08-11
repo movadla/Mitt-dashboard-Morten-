@@ -3,6 +3,8 @@ import { getFplData } from "./fpl";
 import { getReminders } from "./reminders";
 import { getPrivatEvents } from "./privatCalendar";
 import { getLoans } from "./loans";
+import { getSavings } from "./savings";
+import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
 import { formatKr } from "./widgets";
 
@@ -21,17 +23,29 @@ import { formatKr } from "./widgets";
  * bygget). app/api/chat/route.ts (en server-only route) er eneste bruker.
  */
 export async function buildPrivatContext(): Promise<string> {
-  const [sportsResult, fplResult, remindersResult, eventsResult, loansResult, alfredProfileResult, growthResult, milestonesResult] =
-    await Promise.allSettled([
-      getSportEvents(),
-      getFplData(),
-      getReminders(),
-      getPrivatEvents(),
-      getLoans(),
-      getAlfredProfile(),
-      getGrowthEntries(),
-      getMilestones(),
-    ]);
+  const [
+    sportsResult,
+    fplResult,
+    remindersResult,
+    eventsResult,
+    loansResult,
+    savingsResult,
+    salaryResult,
+    alfredProfileResult,
+    growthResult,
+    milestonesResult,
+  ] = await Promise.allSettled([
+    getSportEvents(),
+    getFplData(),
+    getReminders(),
+    getPrivatEvents(),
+    getLoans(),
+    getSavings(),
+    getSalaryEntries(),
+    getAlfredProfile(),
+    getGrowthEntries(),
+    getMilestones(),
+  ]);
 
   const lines: string[] = [];
 
@@ -91,7 +105,29 @@ export async function buildPrivatContext(): Promise<string> {
       );
     }
   } else {
-    lines.push("- Ingen lån lagt inn ennå. Sparing og lønn er heller ikke lagt inn ennå.");
+    lines.push("- Ingen lån lagt inn ennå.");
+  }
+
+  lines.push("\nØKONOMI — SPARING (ekte, redigerbart via Økonomi-boksen):");
+  if (savingsResult.status === "fulfilled" && savingsResult.value.length > 0) {
+    const total = savingsResult.value.reduce((sum, s) => sum + s.balance, 0);
+    lines.push(`Totalt på tvers av alle sparekontoer: ${formatKr(total)}.`);
+    for (const s of savingsResult.value) {
+      lines.push(`- ${s.name} (${s.institution}): ${formatKr(s.balance)}${s.note ? ` — ${s.note}` : ""}`);
+    }
+  } else {
+    lines.push("- Ingen sparing lagt inn ennå.");
+  }
+
+  lines.push("\nØKONOMI — LØNN (ekte, redigerbart via Økonomi-boksen):");
+  if (salaryResult.status === "fulfilled" && salaryResult.value.length > 0) {
+    for (const s of salaryResult.value) {
+      lines.push(
+        `- ${s.person} (${s.employer}): ${formatKr(s.grossMonthly)}/mnd brutto${s.netMonthly !== undefined ? `, ${formatKr(s.netMonthly)}/mnd netto` : ""}${s.note ? ` — ${s.note}` : ""}`,
+      );
+    }
+  } else {
+    lines.push("- Ingen lønn lagt inn ennå.");
   }
 
   lines.push("\nALFRED (Mortens sønn, født 29.12.2025 — ekte, redigerbart via Alfred-boksen):");
