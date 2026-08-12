@@ -9,6 +9,7 @@ import type { SalaryEntry } from "@/lib/salary";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import { Wallet } from "lucide-react";
 
 function formatUsd(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -783,6 +784,8 @@ export default function FinanceSection() {
         subtitle={loans.length > 0 ? formatKr(totalRemaining) : "Ukentlig"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Wallet}
+        iconColorClass="text-source-outlook"
       />
       {!collapsed && (
         <div className="flex flex-col gap-4">

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
+import { PartyPopper } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { EventCategory, LifeEvent } from "@/lib/payday";
@@ -12,12 +13,12 @@ import SwipeableRow from "./SwipeableRow";
 
 type DisplayCategory = EventCategory | "lonn";
 
-const CATEGORY_META: Record<DisplayCategory, { label: string; border: string; bg: string; text: string }> = {
-  lonn: { label: "Lønn", border: "border-l-source-outlook", bg: "bg-source-outlook/8", text: "text-source-outlook" },
-  bursdag: { label: "Bursdag", border: "border-l-status-action", bg: "bg-status-action/8", text: "text-status-action" },
-  permisjon: { label: "Permisjon", border: "border-l-accent-privat", bg: "bg-accent-privat/8", text: "text-accent-privat" },
-  bolig: { label: "Bolig", border: "border-l-accent", bg: "bg-accent/8", text: "text-accent" },
-  annet: { label: "Annet", border: "border-l-source-teams", bg: "bg-source-teams/8", text: "text-source-teams" },
+const CATEGORY_META: Record<DisplayCategory, { label: string; bg: string; text: string }> = {
+  lonn: { label: "Lønn", bg: "bg-source-outlook/8", text: "text-source-outlook" },
+  bursdag: { label: "Bursdag", bg: "bg-status-action/8", text: "text-status-action" },
+  permisjon: { label: "Permisjon", bg: "bg-accent-privat/8", text: "text-accent-privat" },
+  bolig: { label: "Bolig", bg: "bg-accent/8", text: "text-accent" },
+  annet: { label: "Annet", bg: "bg-source-teams/8", text: "text-source-teams" },
 };
 
 const CATEGORY_OPTIONS: EventCategory[] = ["bursdag", "permisjon", "bolig", "annet"];
@@ -150,7 +151,7 @@ function EventRow({
 
   const meta = CATEGORY_META[row.category];
   const content = (
-    <div className={`flex items-center gap-3 rounded-xl border-l-2 ${meta.border} ${meta.bg} px-3 py-2`}>
+    <div className={`flex items-center gap-3 rounded-xl ${meta.bg} px-3 py-2`}>
       <button
         type="button"
         onClick={() => row.event && onStartEdit(row.event.id)}
@@ -302,6 +303,8 @@ export default function EventsSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny hendelse"
+        icon={PartyPopper}
+        iconColorClass="text-status-danger"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

@@ -255,6 +255,8 @@ export function SportSection({
         subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Trophy}
+        iconColorClass="text-accent"
       />
       {!collapsed &&
         (loading && !events.length ? (
@@ -375,7 +377,7 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
 
   return (
     <div className={`${CARD_SHELL} p-4`}>
-      <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+      <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={Trophy} />
       {!collapsed && (
         <div className="flex flex-col gap-2">
           {days.map((day, i) => (

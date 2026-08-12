@@ -9,6 +9,7 @@ import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
+import { Calendar } from "lucide-react";
 
 function formatDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -273,6 +274,8 @@ export default function CalendarSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny kalenderhendelse"
+        icon={Calendar}
+        iconColorClass="text-source-teams"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

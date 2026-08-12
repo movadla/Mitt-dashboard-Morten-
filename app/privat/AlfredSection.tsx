@@ -5,6 +5,7 @@ import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, 
 import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import { Bot } from "lucide-react";
 
 const CATEGORY_LABEL: Record<MilestoneCategory, string> = {
   motorikk: "Motorisk utvikling",
@@ -568,7 +569,14 @@ export default function AlfredSection() {
 
   return (
     <div className={`${CARD_SHELL} !border-2 !border-status-action p-4`}>
-      <CardHeader title="Alfred" subtitle={subtitle} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+      <CardHeader
+        title="Alfred"
+        subtitle={subtitle}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={Bot}
+        iconColorClass="text-status-action"
+      />
       {!collapsed && (
         <div className="flex flex-col gap-3">
           {loading ? (

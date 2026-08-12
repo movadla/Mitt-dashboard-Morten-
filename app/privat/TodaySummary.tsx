@@ -40,24 +40,25 @@ function formatUsd(n: number): string {
 const MAX_OFFSET = 365;
 const SWIPE_THRESHOLD = 60;
 
-// Kategori-header i "I dag" vises som ikon i stedet for tekst (kompakt, rask å
-// skanne) — men beholder en skjult tekst for skjermlesere og en title-tooltip.
-function CategoryLabel({
+// Kategori-ikonet ligger til venstre for teksten, på linje med den (ikke som
+// en egen rad over) — men beholder en skjult tekst for skjermlesere og en
+// title-tooltip.
+function CategoryRow({
   icon: Icon,
   colorClass,
   label,
-  count,
+  children,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   colorClass: string;
   label: string;
-  count?: number;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="mb-1 flex items-center gap-1.5" title={label}>
-      <Icon className={`h-4 w-4 ${colorClass}`} />
+    <div className="flex items-start gap-2" title={label}>
+      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} />
       <span className="sr-only">{label}</span>
-      {count !== undefined && <span className={`text-2xs font-semibold tabular-nums ${colorClass}`}>{count}</span>}
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -171,18 +172,20 @@ function baseSymbol(s: string): string {
   return s.replace(/_day|_night|_polartwilight/, "");
 }
 
-// Fargekoding for raskere skanning av timeoversikten — sol gul, regn/snø
-// blåtoner, skyer/tåke gråtoner, torden lilla. Fargen kommer fra symbolet
-// selv (ikke fra kalleren sin className), så alle bruksstedene får den
-// samme fargelogikken uten å måtte gjenta den.
+// Fargekoding for raskere skanning av timeoversikten. Fire tydelig atskilte
+// fargefamilier for de fire vanligste tilstandene — sol (gul), delvis skyet
+// (oransje, skiller seg fra solens gul), overskyet (grå, ingen varme), regn
+// (blå) — pluss snø/tåke/torden. Fargen kommer fra symbolet selv (ikke fra
+// kalleren sin className), så alle bruksstedene får samme fargelogikk.
 function weatherColorClass(s: string): string {
   if (s.includes("thunder")) return "text-violet-400";
-  if (s === "heavyrain" || s === "rain") return "text-blue-400";
+  if (s === "heavyrain" || s === "rain") return "text-blue-500";
   if (s.includes("rain") || s.includes("shower") || s.includes("sleet")) return "text-blue-300";
   if (s.includes("snow")) return "text-sky-100";
   if (s === "fog") return "text-slate-400";
-  if (s === "clearsky") return "text-yellow-400";
-  if (s === "fair" || s.includes("partly")) return "text-amber-300";
+  if (s === "clearsky") return "text-yellow-300";
+  if (s === "cloudy") return "text-slate-300";
+  if (s === "fair" || s.includes("partly")) return "text-orange-300";
   return "text-slate-300";
 }
 
@@ -195,6 +198,7 @@ function WeatherIcon({ symbol, className }: { symbol: string; className?: string
   if (s.includes("snow")) return <CloudSnow className={cls} />;
   if (s === "fog") return <CloudFog className={cls} />;
   if (s === "clearsky") return <Sun className={cls} />;
+  if (s === "cloudy") return <Cloud className={cls} />;
   if (s === "fair" || s.includes("partly")) return <CloudSun className={cls} />;
   return <Cloud className={cls} />;
 }
@@ -367,7 +371,7 @@ export default function TodaySummary() {
             aria-label="Vis vær time for time"
             className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
           >
-            <WeatherIcon symbol={weather.symbol} className="h-4 w-4" />
+            <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
             <span className="tabular-nums">{weather.temp}°</span>
           </button>
         )}
@@ -379,7 +383,7 @@ export default function TodaySummary() {
             {weather.hourly.map((h) => (
               <div key={h.time} className="flex flex-col items-center gap-1 text-center">
                 <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
-                <WeatherIcon symbol={h.symbol} className="h-4 w-4" />
+                <WeatherIcon symbol={h.symbol} className="h-5 w-5" />
                 <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
               </div>
             ))}
@@ -403,109 +407,116 @@ export default function TodaySummary() {
           <div key={viewedOffset} className={`flex flex-col gap-2 ${slideClass}`}>
             {isToday && aiUsage && (aiUsage.overDaily || aiUsage.overMonthly) && (
               <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-                <CategoryLabel icon={Bot} colorClass="text-status-danger" label="AI-bruk" />
-                <p className="text-sm text-ink-1">
-                  {aiUsage.overDaily && `${formatUsd(aiUsage.last24hUsd)} siste 24t (over ${formatUsd(aiUsage.dailyAlertUsd)}/dag)`}
-                  {aiUsage.overDaily && aiUsage.overMonthly && " · "}
-                  {aiUsage.overMonthly &&
-                    `${formatUsd(aiUsage.last30daysUsd)} siste 30 dager (over ${formatUsd(aiUsage.monthlyAlertUsd)})`}
-                </p>
+                <CategoryRow icon={Bot} colorClass="text-status-danger" label="AI-bruk">
+                  <p className="text-sm text-ink-1">
+                    {aiUsage.overDaily && `${formatUsd(aiUsage.last24hUsd)} siste 24t (over ${formatUsd(aiUsage.dailyAlertUsd)}/dag)`}
+                    {aiUsage.overDaily && aiUsage.overMonthly && " · "}
+                    {aiUsage.overMonthly &&
+                      `${formatUsd(aiUsage.last30daysUsd)} siste 30 dager (over ${formatUsd(aiUsage.monthlyAlertUsd)})`}
+                  </p>
+                </CategoryRow>
               </div>
             )}
 
             {isToday && news.length > 0 && (
-              <div className="rounded-lg border border-status-positive/40 bg-status-positive/8 px-3 py-1.5">
-                <CategoryLabel icon={Newspaper} colorClass="text-status-positive" label="Toppnyhet" />
-                <a
-                  href={news[0].link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-ink-1 hover:underline"
-                >
-                  {news[0].title}
-                </a>
+              <div className="rounded-lg border border-white/40 bg-white/8 px-3 py-1.5">
+                <CategoryRow icon={Newspaper} colorClass="text-white" label="Toppnyhet">
+                  <a
+                    href={news[0].link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-ink-1 hover:underline"
+                  >
+                    {news[0].title}
+                  </a>
+                </CategoryRow>
               </div>
             )}
 
             {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
                 aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
             <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
-              <CategoryLabel icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser" />
-              {reminderRows.length > 0 ? (
-                <ul className="flex flex-col gap-1">
-                  {reminderRows.map(({ reminder, overdue }) => (
-                    <ReminderLine
-                      key={reminder.id}
-                      reminder={reminder}
-                      overdue={overdue}
-                      editing={editingReminderId === reminder.id}
-                      onStartEdit={() => setEditingReminderId(reminder.id)}
-                      onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
-                      onCancelEdit={() => setEditingReminderId(null)}
-                    />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
-              )}
+              <CategoryRow icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser">
+                {reminderRows.length > 0 ? (
+                  <ul className="flex flex-col gap-1">
+                    {reminderRows.map(({ reminder, overdue }) => (
+                      <ReminderLine
+                        key={reminder.id}
+                        reminder={reminder}
+                        overdue={overdue}
+                        editing={editingReminderId === reminder.id}
+                        onStartEdit={() => setEditingReminderId(reminder.id)}
+                        onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
+                        onCancelEdit={() => setEditingReminderId(null)}
+                      />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
+                )}
+              </CategoryRow>
             </div>
 
             <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
-              <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
-              {eventsOnViewed.length > 0 ? (
-                <ul className="flex flex-col gap-1">
-                  {eventsOnViewed.map((e) => (
-                    <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
-                      <span className="min-w-0 truncate">{e.title}</span>
-                      {e.startTime && <span className="shrink-0 tabular-nums text-ink-3">{e.startTime}</span>}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-ink-3">{isToday ? "Ingen hendelser i dag." : "Ingen hendelser denne dagen."}</p>
-              )}
+              <CategoryRow icon={Calendar} colorClass="text-source-teams" label="Kalender">
+                {eventsOnViewed.length > 0 ? (
+                  <ul className="flex flex-col gap-1">
+                    {eventsOnViewed.map((e) => (
+                      <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
+                        <span className="min-w-0 truncate">{e.title}</span>
+                        {e.startTime && <span className="shrink-0 tabular-nums text-ink-3">{e.startTime}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-ink-3">{isToday ? "Ingen hendelser i dag." : "Ingen hendelser denne dagen."}</p>
+                )}
+              </CategoryRow>
             </div>
 
             {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0) && (
               <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
-                <CategoryLabel icon={Trophy} colorClass="text-accent" label="Sport" />
-                <ul className="flex flex-col gap-1">
-                  {sportsOnViewed.map((s) => (
-                    <li key={s.id} className="text-sm text-ink-1">
-                      {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
-                      {s.name}
-                    </li>
-                  ))}
-                  {sportRoundsOnViewed.map((g) => (
-                    <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
-                  ))}
-                </ul>
+                <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
+                  <ul className="flex flex-col gap-1">
+                    {sportsOnViewed.map((s) => (
+                      <li key={s.id} className="text-sm text-ink-1">
+                        {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
+                        {s.name}
+                      </li>
+                    ))}
+                    {sportRoundsOnViewed.map((g) => (
+                      <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
+                    ))}
+                  </ul>
+                </CategoryRow>
               </div>
             )}
 
             {fplDeadlineOnViewed && (
               <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
-                <CategoryLabel icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League" />
-                <p className="text-sm text-ink-1">
-                  Deadline kl.{" "}
-                  <span className="tabular-nums">
-                    {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </p>
+                <CategoryRow icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League">
+                  <p className="text-sm text-ink-1">
+                    Deadline kl.{" "}
+                    <span className="tabular-nums">
+                      {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </p>
+                </CategoryRow>
               </div>
             )}
 
             {(paydayOnViewed || lifeEventsOnViewed.length > 0) && (
               <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
-                <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
-                <ul className="flex flex-col gap-1">
-                  {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
-                  {lifeEventsOnViewed.map((e) => (
-                    <li key={e.id} className="text-sm text-ink-1">
-                      {e.title}
-                    </li>
-                  ))}
-                </ul>
+                <CategoryRow icon={PartyPopper} colorClass="text-status-warning" label="Hendelser">
+                  <ul className="flex flex-col gap-1">
+                    {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
+                    {lifeEventsOnViewed.map((e) => (
+                      <li key={e.id} className="text-sm text-ink-1">
+                        {e.title}
+                      </li>
+                    ))}
+                  </ul>
+                </CategoryRow>
               </div>
             )}
           </div>

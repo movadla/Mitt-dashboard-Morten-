@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { Note } from "@/lib/notes";
-import { Plus } from "lucide-react";
+import { Plus, StickyNote } from "lucide-react";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("nb-NO", {
@@ -156,6 +156,8 @@ export default function NotesSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={openAddForm}
         addLabel="Nytt notat"
+        icon={StickyNote}
+        iconColorClass="text-status-warning"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

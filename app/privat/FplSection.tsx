@@ -5,6 +5,7 @@ import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
+import { Shirt } from "lucide-react";
 
 export type { FplData } from "@/lib/fpl";
 
@@ -540,6 +541,7 @@ export function FplBox({ fpl }: { fpl: FplData }) {
         subtitle={fplCountdownText(fpl.gw.deadline)}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Shirt}
       />
       {!collapsed && (
         <>

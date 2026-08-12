@@ -5,6 +5,7 @@ import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, 
 import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./SwipeableRow";
+import { ShoppingCart } from "lucide-react";
 
 // Rekkefølge = typisk gangrute i en dagligvarebutikk (inngang -> kasse).
 // Hver seksjon får en egen fast farge, gjenbrukt fra de eksisterende fargetokenene
@@ -171,6 +172,7 @@ export default function ShoppingListSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny vare"
+        icon={ShoppingCart}
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

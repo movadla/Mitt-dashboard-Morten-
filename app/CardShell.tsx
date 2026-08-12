@@ -46,6 +46,8 @@ export function CardHeader({
   onToggleCollapse,
   onAdd,
   addLabel,
+  icon: Icon,
+  iconColorClass = "text-ink-3",
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -53,6 +55,8 @@ export function CardHeader({
   onToggleCollapse?: () => void;
   onAdd?: () => void;
   addLabel?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  iconColorClass?: string;
 }) {
   // Kollapset kort viser KUN tittelen — ingen forhåndsvisningstekst (tall,
   // status osv.). Subtitle kommer tilbake så snart kortet åpnes igjen.
@@ -60,7 +64,10 @@ export function CardHeader({
 
   const inner = (
     <>
-      <h3 className="text-sm font-semibold text-ink-1">{title}</h3>
+      <div className="flex min-w-0 items-center gap-1.5">
+        {Icon && <Icon className={`h-4 w-4 shrink-0 ${iconColorClass}`} />}
+        <h3 className="truncate text-sm font-semibold text-ink-1">{title}</h3>
+      </div>
       <div className="flex shrink-0 items-baseline gap-2">
         {showSubtitle && <span className="text-xs tabular-nums text-ink-3">{subtitle}</span>}
         {onToggleCollapse && (
@@ -99,7 +106,7 @@ export function CardHeader({
 
   if (!onToggleCollapse) {
     return (
-      <div className="mb-3 flex items-baseline justify-between gap-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
         {inner}
         {addButton}
       </div>
@@ -113,7 +120,7 @@ export function CardHeader({
         onClick={onToggleCollapse}
         aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
         aria-expanded={!collapsed}
-        className="-mx-1 mb-3 flex w-full items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+        className="-mx-1 mb-2 flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
       >
         {inner}
       </button>
@@ -121,13 +128,13 @@ export function CardHeader({
   }
 
   return (
-    <div className="-mx-1 mb-3 flex items-center gap-1">
+    <div className="-mx-1 mb-2 flex items-center gap-1">
       <button
         type="button"
         onClick={onToggleCollapse}
         aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
         aria-expanded={!collapsed}
-        className="flex min-w-0 flex-1 items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+        className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
       >
         {inner}
       </button>

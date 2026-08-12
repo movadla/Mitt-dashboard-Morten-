@@ -46,7 +46,7 @@ export async function getWeather(): Promise<WeatherData> {
   const details = current.data.instant.details;
   const next = current.data.next_1_hours ?? current.data.next_6_hours;
 
-  const hourly: HourlyForecast[] = timeseries.slice(0, 12).map((e) => ({
+  const hourly: HourlyForecast[] = timeseries.slice(0, 24).map((e) => ({
     time: e.time,
     temp: Math.round(e.data.instant.details.air_temperature),
     symbol: (e.data.next_1_hours ?? e.data.next_6_hours)?.summary?.symbol_code ?? "cloudy",

@@ -9,7 +9,7 @@ import type { Recurrence, Reminder } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
-import { GripVertical, Plus } from "lucide-react";
+import { GripVertical, Lightbulb, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -462,6 +462,8 @@ export default function RemindersSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny påminnelse"
+        icon={Lightbulb}
+        iconColorClass="text-accent-privat"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

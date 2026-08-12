@@ -53,6 +53,8 @@ export default function PrivatPanel() {
         <EventsSection />
         <NotesSection />
         <FinanceSection />
+        <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />
+        <WorldCupSection events={worldCup} />
         <AlfredSection />
         <ShoppingListSection />
         <NewsSection />
@@ -64,8 +66,6 @@ export default function PrivatPanel() {
           fpl && <FplBox fpl={fpl} />
         )}
         <DartsBox />
-        <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />
-        <WorldCupSection events={worldCup} />
       </div>
     </div>
   );

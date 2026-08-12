@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { NewsItem } from "@/lib/news";
+import { Newspaper } from "lucide-react";
 
 function timeLabel(pubDate?: string): string {
   if (!pubDate) return "";
@@ -74,12 +75,14 @@ export default function NewsSection() {
   }, [load]);
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-white p-4`}>
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Newspaper}
+        iconColorClass="text-white"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

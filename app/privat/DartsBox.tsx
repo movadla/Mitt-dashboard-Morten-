@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
+import { Target } from "lucide-react";
 import type { DartsMatch, DartsStats } from "@/lib/darts";
 
 function formatDMY(iso: string): string {
@@ -57,6 +58,7 @@ export default function DartsBox() {
         subtitle={stats ? `${stats.hitPct}% treff` : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Target}
       />
       {!collapsed &&
         (loading ? (
