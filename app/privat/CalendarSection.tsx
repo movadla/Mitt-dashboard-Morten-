@@ -268,7 +268,7 @@ export default function CalendarSection() {
     <div className={`${CARD_SHELL} !border-2 !border-source-teams p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Kalender"
-        subtitle={collapsed ? undefined : todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}

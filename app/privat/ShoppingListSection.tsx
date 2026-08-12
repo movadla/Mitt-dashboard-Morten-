@@ -166,7 +166,7 @@ export default function ShoppingListSection() {
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Handleliste"
-        subtitle={collapsed ? undefined : notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
+        subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}

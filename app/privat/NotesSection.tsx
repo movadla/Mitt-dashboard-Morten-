@@ -128,7 +128,7 @@ export default function NotesSection() {
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="#Notater"
-        subtitle={collapsed ? undefined : notes.length > 0 ? `${notes.length} notater` : "Tomt"}
+        subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         onAdd={openAddForm}

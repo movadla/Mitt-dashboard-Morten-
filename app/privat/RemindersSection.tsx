@@ -457,7 +457,7 @@ export default function RemindersSection() {
     <div className={`${CARD_SHELL} !border-2 !border-accent-privat p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Påminnelser"
-        subtitle={collapsed ? undefined : todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}

@@ -54,11 +54,15 @@ export function CardHeader({
   onAdd?: () => void;
   addLabel?: string;
 }) {
+  // Kollapset kort viser KUN tittelen — ingen forhåndsvisningstekst (tall,
+  // status osv.). Subtitle kommer tilbake så snart kortet åpnes igjen.
+  const showSubtitle = subtitle && !collapsed;
+
   const inner = (
     <>
       <h3 className="text-sm font-semibold text-ink-1">{title}</h3>
       <div className="flex shrink-0 items-baseline gap-2">
-        {subtitle && <span className="text-xs tabular-nums text-ink-3">{subtitle}</span>}
+        {showSubtitle && <span className="text-xs tabular-nums text-ink-3">{subtitle}</span>}
         {onToggleCollapse && (
           <svg
             viewBox="0 0 16 16"
