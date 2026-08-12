@@ -6,7 +6,7 @@ import type { Recurrence, Reminder } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Plus } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -440,9 +440,11 @@ export default function RemindersSection() {
             <button
               type="button"
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+              aria-label="Ny påminnelse"
+              title="Ny påminnelse"
+              className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
             >
-              <span className="text-base leading-none">+</span> Ny påminnelse
+              <Plus className="h-4 w-4" />
             </button>
           )}
 

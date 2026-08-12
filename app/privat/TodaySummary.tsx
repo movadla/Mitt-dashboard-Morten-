@@ -11,7 +11,45 @@ import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { isPaydayToday, localDateString, nextOccurrence } from "@/lib/payday";
 import { formatKr } from "@/lib/widgets";
-import { Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, CloudSnow, CloudLightning, CloudFog } from "lucide-react";
+import {
+  Sun,
+  Cloud,
+  CloudSun,
+  CloudRain,
+  CloudDrizzle,
+  CloudSnow,
+  CloudLightning,
+  CloudFog,
+  AlertTriangle,
+  Lightbulb,
+  Calendar,
+  Trophy,
+  Shirt,
+  PartyPopper,
+  Banknote,
+} from "lucide-react";
+
+// Kategori-header i "I dag" vises som ikon i stedet for tekst (kompakt, rask å
+// skanne) — men beholder en skjult tekst for skjermlesere og en title-tooltip.
+function CategoryLabel({
+  icon: Icon,
+  colorClass,
+  label,
+  count,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  colorClass: string;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <div className="mb-1 flex items-center gap-1.5" title={label}>
+      <Icon className={`h-4 w-4 ${colorClass}`} />
+      <span className="sr-only">{label}</span>
+      {count !== undefined && <span className={`text-2xs font-semibold tabular-nums ${colorClass}`}>{count}</span>}
+    </div>
+  );
+}
 
 function daysUntil(dateIso: string, todayIso: string): number {
   const target = new Date(dateIso + "T00:00:00Z").getTime();
@@ -154,9 +192,7 @@ export default function TodaySummary() {
         <div className="flex flex-col gap-2">
           {overdue.length > 0 && (
             <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-danger">
-                Oversittet ({overdue.length})
-              </p>
+              <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Oversittet" count={overdue.length} />
               <ul className="flex flex-col gap-1">
                 {overdue.map((r) => (
                   <li key={r.id} className="text-sm text-ink-1">
@@ -170,7 +206,7 @@ export default function TodaySummary() {
           {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
               aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
           <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent-privat">Påminnelser</p>
+            <CategoryLabel icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser" />
             {dueToday.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {dueToday.map((r) => (
@@ -185,7 +221,7 @@ export default function TodaySummary() {
           </div>
 
           <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
-            <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-teams">Kalender</p>
+            <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
             {todaysEvents.length > 0 ? (
               <ul className="flex flex-col gap-1">
                 {todaysEvents.map((e) => (
@@ -202,7 +238,7 @@ export default function TodaySummary() {
 
           {todaysSports.length > 0 && (
             <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-accent">Sport</p>
+              <CategoryLabel icon={Trophy} colorClass="text-accent" label="Sport" />
               <ul className="flex flex-col gap-1">
                 {todaysSports.map((s) => (
                   <li key={s.id} className="text-sm text-ink-1">
@@ -216,7 +252,7 @@ export default function TodaySummary() {
 
           {fplDeadlineToday && (
             <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-action">Fantasy Premier League</p>
+              <CategoryLabel icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League" />
               <p className="text-sm text-ink-1">
                 Deadline i dag kl.{" "}
                 <span className="tabular-nums">
@@ -228,7 +264,7 @@ export default function TodaySummary() {
 
           {(paydayToday || todaysLifeEvents.length > 0) && (
             <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-warning">Hendelser</p>
+              <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
               <ul className="flex flex-col gap-1">
                 {paydayToday && <li className="text-sm text-ink-1">Lønningsdag</li>}
                 {todaysLifeEvents.map((e) => (
@@ -242,7 +278,7 @@ export default function TodaySummary() {
 
           {upcomingPayments.length > 0 && (
             <div className="rounded-lg border border-source-outlook/40 bg-source-outlook/8 px-3 py-1.5">
-              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-source-outlook">Låneavdrag</p>
+              <CategoryLabel icon={Banknote} colorClass="text-source-outlook" label="Låneavdrag" />
               <ul className="flex flex-col gap-1">
                 {upcomingPayments.map(({ loan, days }) => (
                   <li key={loan.id} className="text-sm text-ink-1">
