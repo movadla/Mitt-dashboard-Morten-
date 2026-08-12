@@ -7,6 +7,8 @@ import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
 import { getShoppingItems } from "./shoppingList";
+import { getLifeEvents, isPaydayToday, nextOccurrence, nextPaydayFrom } from "./events";
+import { localDateString } from "./payday";
 import { formatKr } from "./widgets";
 
 /**
@@ -36,6 +38,7 @@ export async function buildPrivatContext(): Promise<string> {
     growthResult,
     milestonesResult,
     shoppingResult,
+    lifeEventsResult,
   ] = await Promise.allSettled([
     getSportEvents(),
     getFplData(),
@@ -48,6 +51,7 @@ export async function buildPrivatContext(): Promise<string> {
     getGrowthEntries(),
     getMilestones(),
     getShoppingItems(),
+    getLifeEvents(),
   ]);
 
   const lines: string[] = [];
@@ -175,6 +179,17 @@ export async function buildPrivatContext(): Promise<string> {
     }
   } else {
     lines.push("- Ingen varer lagt inn ennå.");
+  }
+
+  lines.push("\nHENDELSER (bursdager, permisjon, bolig, annet — ekte, redigerbart via Hendelser-boksen):");
+  const today = localDateString();
+  lines.push(`- Neste lønningsdag: ${nextPaydayFrom(today)}${isPaydayToday(today) ? " (i dag)" : ""}.`);
+  if (lifeEventsResult.status === "fulfilled" && lifeEventsResult.value.length > 0) {
+    for (const e of lifeEventsResult.value) {
+      lines.push(`- ${e.title} (${e.category}) — ${nextOccurrence(e, today)}${e.yearly ? " (årlig)" : ""}`);
+    }
+  } else {
+    lines.push("- Ingen andre hendelser lagt inn ennå.");
   }
 
   return lines.join("\n");

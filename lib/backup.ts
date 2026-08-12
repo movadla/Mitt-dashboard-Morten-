@@ -5,6 +5,7 @@ import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
 import { getShoppingItems } from "./shoppingList";
+import { getLifeEvents } from "./events";
 import { getChatHistory } from "./chatHistory";
 
 /**
@@ -15,7 +16,7 @@ import { getChatHistory } from "./chatHistory";
  * eksterne API-er og ikke verdt å ta vare på.
  */
 export async function buildBackup() {
-  const [reminders, events, loans, savings, salary, alfredProfile, growth, milestones, shopping, chatHistory] =
+  const [reminders, events, loans, savings, salary, alfredProfile, growth, milestones, shopping, lifeEvents, chatHistory] =
     await Promise.all([
       getReminders(),
       getPrivatEvents(),
@@ -26,6 +27,7 @@ export async function buildBackup() {
       getGrowthEntries(),
       getMilestones(),
       getShoppingItems(),
+      getLifeEvents(),
       getChatHistory(),
     ]);
 
@@ -38,6 +40,7 @@ export async function buildBackup() {
     salary,
     alfred: { profile: alfredProfile, growth, milestones },
     shopping,
+    lifeEvents,
     chatHistory,
   };
 }

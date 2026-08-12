@@ -8,6 +8,8 @@ import type { SportEvent } from "@/lib/sports";
 import type { Loan } from "@/lib/loans";
 import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
+import type { LifeEvent } from "@/lib/payday";
+import { isPaydayToday, localDateString, nextOccurrence } from "@/lib/payday";
 import { formatKr } from "@/lib/widgets";
 import { Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, CloudSnow, CloudLightning, CloudFog } from "lucide-react";
 
@@ -60,6 +62,7 @@ export default function TodaySummary() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [fpl, setFpl] = useState<FplData | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -71,13 +74,15 @@ export default function TodaySummary() {
       fetch("/api/loans").then((r) => r.json()),
       fetch("/api/fpl").then((r) => r.json()),
       fetch("/api/weather").then((r) => r.json()),
-    ]).then(([r, e, s, l, f, w]) => {
+      fetch("/api/events").then((r) => r.json()),
+    ]).then(([r, e, s, l, f, w, ev]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
       setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
       setFpl(f.status === "fulfilled" && !f.value.error ? (f.value as FplData) : null);
       setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
+      setLifeEvents(ev.status === "fulfilled" ? ((ev.value.events ?? []) as LifeEvent[]) : []);
       setLoading(false);
     });
   }, []);
@@ -88,7 +93,7 @@ export default function TodaySummary() {
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
   }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const activeReminders = reminders.filter((r) => !r.done && (!r.dueDate || r.dueDate <= today));
   const overdue = activeReminders.filter((r) => r.dueDate && r.dueDate < today);
   const dueToday = activeReminders.filter((r) => !r.dueDate || r.dueDate === today);
@@ -103,6 +108,8 @@ export default function TodaySummary() {
     fpl?.active && fpl.gw?.deadline && new Date(fpl.gw.deadline).toDateString() === new Date().toDateString()
       ? fpl.gw.deadline
       : null;
+  const todaysLifeEvents = lifeEvents.filter((e) => nextOccurrence(e, today) === today);
+  const paydayToday = isPaydayToday(today);
 
   useEffect(() => {
     if (loading) return;
@@ -216,6 +223,20 @@ export default function TodaySummary() {
                   {new Date(fplDeadlineToday).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </p>
+            </div>
+          )}
+
+          {(paydayToday || todaysLifeEvents.length > 0) && (
+            <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
+              <p className="mb-1 text-2xs font-medium uppercase tracking-wide text-status-warning">Hendelser</p>
+              <ul className="flex flex-col gap-1">
+                {paydayToday && <li className="text-sm text-ink-1">Lønningsdag</li>}
+                {todaysLifeEvents.map((e) => (
+                  <li key={e.id} className="text-sm text-ink-1">
+                    {e.title}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

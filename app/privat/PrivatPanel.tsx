@@ -11,6 +11,7 @@ import FinanceSection from "./FinanceSection";
 import AlfredSection from "./AlfredSection";
 import ShoppingListSection from "./ShoppingListSection";
 import NewsSection from "./NewsSection";
+import EventsSection from "./EventsSection";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
 
 export default function PrivatPanel() {
@@ -48,6 +49,7 @@ export default function PrivatPanel() {
       <div className="grid grid-cols-2 gap-3">
         <RemindersSection />
         <CalendarSection />
+        <EventsSection />
         <FinanceSection />
         <AlfredSection />
         <ShoppingListSection />

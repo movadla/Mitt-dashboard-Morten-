@@ -60,7 +60,6 @@ export default function NewsSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Nyheter", true);
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAll, setShowAll] = useState(false);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -73,9 +72,6 @@ export default function NewsSection() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const top = items.slice(0, 4);
-  const rest = items.slice(4);
 
   return (
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
@@ -92,41 +88,16 @@ export default function NewsSection() {
           ) : items.length === 0 ? (
             <p className="text-sm text-ink-3">Fikk ikke hentet nyheter akkurat nå.</p>
           ) : (
-            <>
-              <ul className="flex flex-col gap-1.5">
-                {top.map((item) => (
-                  <NewsRow
-                    key={item.link}
-                    item={item}
-                    expanded={expandedLink === item.link}
-                    onToggle={() => setExpandedLink((v) => (v === item.link ? null : item.link))}
-                  />
-                ))}
-              </ul>
-              {rest.length > 0 && (
-                <>
-                  {showAll && (
-                    <ul className="mt-1 flex flex-col gap-1.5">
-                      {rest.map((item) => (
-                        <NewsRow
-                          key={item.link}
-                          item={item}
-                          expanded={expandedLink === item.link}
-                          onToggle={() => setExpandedLink((v) => (v === item.link ? null : item.link))}
-                        />
-                      ))}
-                    </ul>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowAll((v) => !v)}
-                    className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                  >
-                    {showAll ? "Vis mindre" : `Mer (${rest.length})`}
-                  </button>
-                </>
-              )}
-            </>
+            <ul className="flex flex-col gap-1.5">
+              {items.map((item) => (
+                <NewsRow
+                  key={item.link}
+                  item={item}
+                  expanded={expandedLink === item.link}
+                  onToggle={() => setExpandedLink((v) => (v === item.link ? null : item.link))}
+                />
+              ))}
+            </ul>
           )}
         </div>
       )}
