@@ -11,7 +11,6 @@ import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
-import type { NewsItem } from "@/lib/news";
 import {
   Sun,
   Cloud,
@@ -27,7 +26,6 @@ import {
   Trophy,
   Shirt,
   PartyPopper,
-  Newspaper,
   ChevronLeft,
   ChevronDown,
   Bot,
@@ -215,7 +213,6 @@ export default function TodaySummary() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
-  const [news, setNews] = useState<NewsItem[]>([]);
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewedOffset, setViewedOffset] = useState(0);
@@ -234,8 +231,7 @@ export default function TodaySummary() {
       fetch("/api/weather").then((r) => r.json()),
       fetch("/api/events").then((r) => r.json()),
       fetch("/api/ai-usage").then((r) => r.json()),
-      fetch("/api/news").then((r) => r.json()),
-    ]).then(([r, e, s, f, w, ev, au, n]) => {
+    ]).then(([r, e, s, f, w, ev, au]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
@@ -243,7 +239,6 @@ export default function TodaySummary() {
       setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
       setLifeEvents(ev.status === "fulfilled" ? ((ev.value.events ?? []) as LifeEvent[]) : []);
       setAiUsage(au.status === "fulfilled" && !au.value.error ? (au.value as AiUsageSummary) : null);
-      setNews(n.status === "fulfilled" ? ((n.value.items ?? []) as NewsItem[]) : []);
       setLoading(false);
     });
   }, []);
@@ -414,21 +409,6 @@ export default function TodaySummary() {
                     {aiUsage.overMonthly &&
                       `${formatUsd(aiUsage.last30daysUsd)} siste 30 dager (over ${formatUsd(aiUsage.monthlyAlertUsd)})`}
                   </p>
-                </CategoryRow>
-              </div>
-            )}
-
-            {isToday && news.length > 0 && (
-              <div className="rounded-lg border border-white/40 bg-white/8 px-3 py-1.5">
-                <CategoryRow icon={Newspaper} colorClass="text-white" label="Toppnyhet">
-                  <a
-                    href={news[0].link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-ink-1 hover:underline"
-                  >
-                    {news[0].title}
-                  </a>
                 </CategoryRow>
               </div>
             )}

@@ -39,6 +39,45 @@ export function usePersistedCollapse(key: string, defaultCollapsed = false): [bo
   return [collapsed, () => setCollapsed((v) => !v)];
 }
 
+// Lar brukeren dra kort til egen rekkefølge (f.eks. flytte Sport-kortet opp en
+// periode) — rent lokalt UI-preferanse, samme localStorage-mønster som
+// usePersistedCollapse. Ukjente/fjernede id-er luket bort ved lasting, nye
+// id-er (f.eks. et nytt kort lagt til i en senere versjon) legges til på slutten
+// i stedet for å forsvinne, slik at rekkefølgen aldri mister et kort.
+export function usePersistedOrder(storageKey: string, defaultOrder: string[]): [string[], (order: string[]) => void] {
+  const [order, setOrder] = useState<string[]>(defaultOrder);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(storageKey);
+      if (stored) {
+        const parsed = JSON.parse(stored) as string[];
+        const known = new Set(defaultOrder);
+        const kept = parsed.filter((id) => known.has(id));
+        const missing = defaultOrder.filter((id) => !kept.includes(id));
+        setOrder([...kept, ...missing]);
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+    setHydrated(true);
+    // defaultOrder er stabil per kalleside (definert utenfor komponenten) — kun storageKey skal trigge re-lasting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(order));
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [order, hydrated, storageKey]);
+
+  return [order, setOrder];
+}
+
 export function CardHeader({
   title,
   subtitle,
@@ -48,6 +87,7 @@ export function CardHeader({
   addLabel,
   icon: Icon,
   iconColorClass = "text-ink-3",
+  alwaysShowSubtitle = false,
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -57,10 +97,12 @@ export function CardHeader({
   addLabel?: string;
   icon?: React.ComponentType<{ className?: string }>;
   iconColorClass?: string;
+  // Kollapset kort viser normalt KUN tittelen — ingen forhåndsvisningstekst
+  // (tall, status osv.). Sett denne når subtitle er en aktiv frist/nedtelling
+  // (f.eks. FPL-deadline) som er nyttig å se selv når kortet er lukket.
+  alwaysShowSubtitle?: boolean;
 }) {
-  // Kollapset kort viser KUN tittelen — ingen forhåndsvisningstekst (tall,
-  // status osv.). Subtitle kommer tilbake så snart kortet åpnes igjen.
-  const showSubtitle = subtitle && !collapsed;
+  const showSubtitle = subtitle && (alwaysShowSubtitle || !collapsed);
 
   const inner = (
     <>

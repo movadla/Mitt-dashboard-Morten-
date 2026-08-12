@@ -201,8 +201,10 @@ export default function EventsSection() {
   const [date, setDate] = useState("");
   const [category, setCategory] = useState<EventCategory>("annet");
   const [yearly, setYearly] = useState(false);
+  const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(5);
   const confirmDelete = useConfirmDelete<string>();
   const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
 
@@ -219,6 +221,12 @@ export default function EventsSection() {
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
   }, [load]);
 
+  // Start alltid på 5 synlige hendelser når kortet åpnes på nytt — "+10 til"
+  // utvider gradvis i stedet for å vise hele lista med det samme.
+  useEffect(() => {
+    if (collapsed) setVisibleCount(5);
+  }, [collapsed]);
+
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
     setSubmitting(true);
@@ -231,10 +239,12 @@ export default function EventsSection() {
       if (res.ok) {
         const created: LifeEvent = await res.json();
         setEvents((prev) => [...prev, created]);
+        if (note.trim()) await addComment("life-event", created.id, note.trim());
         setTitle("");
         setDate("");
         setCategory("annet");
         setYearly(false);
+        setNote("");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
@@ -322,6 +332,16 @@ export default function EventsSection() {
                 placeholder="F.eks. Bursdag: Kari"
                 className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowForm(false);
+                }}
+                placeholder="Notat (valgfritt), f.eks. født i 1998"
+                rows={2}
+                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              />
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
@@ -374,25 +394,36 @@ export default function EventsSection() {
           {loading ? (
             <SkeletonRows count={2} />
           ) : (
-            <ul className="flex flex-col gap-1.5">
-              {rows.map((row) => (
-                <EventRow
-                  key={row.key}
-                  row={row}
-                  editing={editingId === row.key}
-                  onRemove={confirmDelete.request}
-                  onStartEdit={setEditingId}
-                  onCancelEdit={() => setEditingId(null)}
-                  onSaveEdit={handleSaveEdit}
-                  comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
-                  onAddComment={(tekst) => row.event && addComment("life-event", row.event.id, tekst)}
-                  onDeleteComment={(commentId, preview) =>
-                    row.event &&
-                    confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
-                  }
-                />
-              ))}
-            </ul>
+            <>
+              <ul className="flex flex-col gap-1.5">
+                {rows.slice(0, visibleCount).map((row) => (
+                  <EventRow
+                    key={row.key}
+                    row={row}
+                    editing={editingId === row.key}
+                    onRemove={confirmDelete.request}
+                    onStartEdit={setEditingId}
+                    onCancelEdit={() => setEditingId(null)}
+                    onSaveEdit={handleSaveEdit}
+                    comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
+                    onAddComment={(tekst) => row.event && addComment("life-event", row.event.id, tekst)}
+                    onDeleteComment={(commentId, preview) =>
+                      row.event &&
+                      confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
+                    }
+                  />
+                ))}
+              </ul>
+              {rows.length > visibleCount && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 10)}
+                  className="self-start text-xs font-medium text-status-danger hover:text-status-danger/80"
+                >
+                  +10 til
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

@@ -542,6 +542,7 @@ export function FplBox({ fpl }: { fpl: FplData }) {
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Shirt}
+        alwaysShowSubtitle
       />
       {!collapsed && (
         <>

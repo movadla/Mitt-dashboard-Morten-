@@ -22,16 +22,16 @@ const SECTION_ORDER: StoreSection[] = [
   "husholdning",
 ];
 
-const SECTION_META: Record<StoreSection, { label: string; border: string; bg: string; text: string }> = {
-  "frukt-gront": { label: "Frukt & grønt", border: "border-l-status-positive", bg: "bg-status-positive/8", text: "text-status-positive" },
-  bakervarer: { label: "Bakervarer", border: "border-l-status-warning", bg: "bg-status-warning/8", text: "text-status-warning" },
-  "kjott-fisk": { label: "Kjøtt & fisk", border: "border-l-status-danger", bg: "bg-status-danger/8", text: "text-status-danger" },
-  meieri: { label: "Meieri & egg", border: "border-l-accent", bg: "bg-accent/8", text: "text-accent" },
-  torrvarer: { label: "Tørrvarer", border: "border-l-source-asana", bg: "bg-source-asana/8", text: "text-source-asana" },
-  frys: { label: "Frys", border: "border-l-source-teams", bg: "bg-source-teams/8", text: "text-source-teams" },
-  drikke: { label: "Drikke", border: "border-l-accent-privat", bg: "bg-accent-privat/8", text: "text-accent-privat" },
-  snacks: { label: "Snacks & godteri", border: "border-l-source-outlook", bg: "bg-source-outlook/8", text: "text-source-outlook" },
-  husholdning: { label: "Husholdning & hygiene", border: "border-l-status-action", bg: "bg-status-action/8", text: "text-status-action" },
+const SECTION_META: Record<StoreSection, { label: string; bg: string; text: string }> = {
+  "frukt-gront": { label: "Frukt & grønt", bg: "bg-status-positive/8", text: "text-status-positive" },
+  bakervarer: { label: "Bakervarer", bg: "bg-status-warning/8", text: "text-status-warning" },
+  "kjott-fisk": { label: "Kjøtt & fisk", bg: "bg-status-danger/8", text: "text-status-danger" },
+  meieri: { label: "Meieri & egg", bg: "bg-accent/8", text: "text-accent" },
+  torrvarer: { label: "Tørrvarer", bg: "bg-source-asana/8", text: "text-source-asana" },
+  frys: { label: "Frys", bg: "bg-source-teams/8", text: "text-source-teams" },
+  drikke: { label: "Drikke", bg: "bg-accent-privat/8", text: "text-accent-privat" },
+  snacks: { label: "Snacks & godteri", bg: "bg-source-outlook/8", text: "text-source-outlook" },
+  husholdning: { label: "Husholdning & hygiene", bg: "bg-status-action/8", text: "text-status-action" },
 };
 
 function ItemRow({
@@ -47,7 +47,7 @@ function ItemRow({
   return (
     <li>
       <SwipeableRow onSwipeRight={() => onToggle(item.id)} onSwipeLeft={() => onRemove(item.id)} rightLabel={item.done ? "Ikke kjøpt" : "Kjøpt"} leftLabel="Slett">
-        <div className={`flex items-center gap-3 rounded-xl border-l-2 ${meta.border} ${meta.bg} px-3 py-2`}>
+        <div className={`flex items-center gap-3 rounded-xl ${meta.bg} px-3 py-2`}>
           <button
             type="button"
             onClick={() => onToggle(item.id)}
