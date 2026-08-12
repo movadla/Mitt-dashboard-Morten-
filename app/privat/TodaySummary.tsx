@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
+import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
 import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
@@ -28,6 +29,7 @@ import {
   PartyPopper,
   Newspaper,
   ChevronLeft,
+  ChevronDown,
   Bot,
 } from "lucide-react";
 
@@ -114,6 +116,32 @@ function ReminderLine({
           />
         )}
       </div>
+    </li>
+  );
+}
+
+// Samlelinje for en full liga-runde (Eliteserien/PL/FA Cup/Champions League) —
+// viser kun antall kamper, med drill-down på klikk i stedet for å liste alle
+// enkeltvis og oversvømme "I dag".
+function SportRoundLine({ label, matches }: { label: string; matches: SportEvent[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="text-sm text-ink-1">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-1.5 text-left">
+        <span className="min-w-0 flex-1 truncate">{label}-runde</span>
+        <span className="shrink-0 text-2xs tabular-nums text-ink-4">{matches.length} kamper</span>
+        <ChevronDown className={`h-3 w-3 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <ul className="mt-1 flex flex-col gap-1 border-l border-line pl-2">
+          {matches.map((m) => (
+            <li key={m.id} className="text-xs text-ink-3">
+              {m.time ? <span className="tabular-nums">{m.time} </span> : null}
+              {m.name}
+            </li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
@@ -291,13 +319,18 @@ export default function TodaySummary() {
     : dueOnViewed.map((r) => ({ reminder: r, overdue: false }));
   const eventsOnViewed = events.filter((e) => e.date === viewedDate);
   // Egendefinerte kamper (category "personal") vises i "I dag" kun når de er
-  // markert highlight — ellers ville et fullt turneringsprogram limt inn i
-  // chatboten oversvømme "I dag" med alt som skjer den dagen. De faste,
-  // eksterne kildene (Eliteserien/PL/darts osv.) er allerede begrenset i
-  // volum og vises som før.
+  // markert highlight, og fulle liga-runder (Eliteserien/PL/FA Cup/Champions
+  // League) vises IKKE enkeltvis her — de samles i en klikkbar "X-runde"-linje
+  // (se SportRoundLine) i stedet for å oversvømme "I dag" med alle kampene.
   const sportsOnViewed = sports.filter(
-    (s) => s.date === viewedDate && (s.category !== "personal" || s.highlight),
+    (s) =>
+      s.date === viewedDate &&
+      !LEAGUE_ROUND_CATEGORIES.has(s.category) &&
+      (s.category !== "personal" || s.highlight),
   );
+  const sportRoundsOnViewed = [...LEAGUE_ROUND_CATEGORIES]
+    .map((cat) => ({ cat, matches: sports.filter((s) => s.date === viewedDate && s.category === cat) }))
+    .filter((g) => g.matches.length > 0);
   const fplDeadlineOnViewed =
     fpl?.active && fpl.gw?.deadline && toOsloDateString(new Date(fpl.gw.deadline)) === viewedDate ? fpl.gw.deadline : null;
   const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
@@ -433,7 +466,7 @@ export default function TodaySummary() {
               )}
             </div>
 
-            {sportsOnViewed.length > 0 && (
+            {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0) && (
               <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
                 <CategoryLabel icon={Trophy} colorClass="text-accent" label="Sport" />
                 <ul className="flex flex-col gap-1">
@@ -442,6 +475,9 @@ export default function TodaySummary() {
                       {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
                       {s.name}
                     </li>
+                  ))}
+                  {sportRoundsOnViewed.map((g) => (
+                    <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
                   ))}
                 </ul>
               </div>

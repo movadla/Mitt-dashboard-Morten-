@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
+import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
@@ -27,6 +28,10 @@ const SPORT_COLOR: Record<string, string> = {
   football_eli: "#ef4444",
   football_obos: "#f97316",
   football_pl: "#8b5cf6",
+  football_facup: "#be185d",
+  football_ucl: "#0891b2",
+  football_manu: "#da291c",
+  football_norway: "#1e3a8a",
   worldcup: "#eab308",
   personal: "#0e9e79",
 };
@@ -39,6 +44,10 @@ const SPORT_LABEL: Record<string, string> = {
   football_eli: "Eliteserien",
   football_obos: "Obosligaen",
   football_pl: "Premier League",
+  football_facup: "FA Cup",
+  football_ucl: "Champions League",
+  football_manu: "Manchester United",
+  football_norway: "Norge",
   worldcup: "VM 2026",
   personal: "Egen kamp",
 };
@@ -51,18 +60,22 @@ const SPORT_ICON: Record<string, LucideComp> = {
   golf: Award,
   worldcup: Trophy,
   personal: Star,
+  football_manu: Trophy,
+  football_norway: Trophy,
 };
 
-const LEAGUE_CATS = new Set(["football_eli", "football_obos", "football_pl"]);
+// Fulle liga-/turnerings-runder grupperes bak en drill-down ("X-runde"), i
+// stedet for å liste alle kampene enkeltvis — se LeagueSubsection under.
+const LEAGUE_CATS = LEAGUE_ROUND_CATEGORIES;
 
 function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolean }) {
   const col = SPORT_COLOR[ev.category] ?? "#6b7280";
   const Icon = SPORT_ICON[ev.category];
-  const isViking = ev.category === "football";
+  const isHighlight = HIGHLIGHT_CATEGORIES.has(ev.category);
   return (
     <div
       className={`flex items-center gap-3 px-4 py-2.5 ${border ? "border-t border-line" : ""}`}
-      style={{ background: isViking ? `${col}12` : undefined }}
+      style={{ background: isHighlight ? `${col}12` : undefined }}
     >
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${col}18` }}>
         {Icon && <Icon size={14} style={{ color: col }} />}
@@ -132,16 +145,27 @@ function LeagueSubsection({ cat, matches }: { cat: string; matches: SportEvent[]
   );
 }
 
+// Skiller en dags kamper i tre: fremhevede enkeltkamper (Viking/Man Utd/Norge
+// + andre ikke-liga-sporter), og fulle liga-runder gruppert per turnering
+// (dedupet mot de fremhevede, samme mønster som backend-dedupen i lib/sports.ts).
+function splitDayEvents(dayEvts: SportEvent[]) {
+  const highlightEvts = dayEvts.filter((e) => HIGHLIGHT_CATEGORIES.has(e.category));
+  const highlightNames = new Set(highlightEvts.map((e) => e.name.toLowerCase()));
+  const otherEvts = dayEvts.filter((e) => !HIGHLIGHT_CATEGORIES.has(e.category) && !LEAGUE_CATS.has(e.category));
+  const leagueGroups = [...LEAGUE_CATS]
+    .map((cat) => ({
+      cat,
+      matches: dayEvts.filter((e) => e.category === cat && !highlightNames.has(e.name.toLowerCase())),
+    }))
+    .filter((g) => g.matches.length > 0);
+  return { highlightEvts, otherEvts, leagueGroups };
+}
+
 function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent[] }) {
   const [open, setOpen] = useState(false);
 
   const dayEvts = allEvents.filter((e) => e.date === date);
-  const vikingEvts = dayEvts.filter((e) => e.category === "football");
-  const vikingNames = new Set(vikingEvts.map((e) => e.name.toLowerCase()));
-  const otherEvts = dayEvts.filter((e) => e.category !== "football" && !LEAGUE_CATS.has(e.category));
-  const eliEvts = dayEvts.filter((e) => e.category === "football_eli" && !vikingNames.has(e.name.toLowerCase()));
-  const obosEvts = dayEvts.filter((e) => e.category === "football_obos");
-  const plEvts = dayEvts.filter((e) => e.category === "football_pl");
+  const { highlightEvts, otherEvts, leagueGroups } = splitDayEvents(dayEvts);
 
   const hasEvents = dayEvts.length > 0;
   const d = daysUntil(date);
@@ -153,7 +177,7 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
   const dateNum = dateObj.toLocaleDateString("nb-NO", { day: "numeric", month: "long" });
 
   const dotCats = [...new Set(dayEvts.filter((e) => !LEAGUE_CATS.has(e.category)).map((e) => e.category))];
-  const hasLeague = eliEvts.length > 0 || obosEvts.length > 0 || plEvts.length > 0;
+  const hasLeague = leagueGroups.length > 0;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface-2">
@@ -191,15 +215,12 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
       <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.25s ease" }}>
         <div style={{ overflow: "hidden", minHeight: 0 }}>
           <div className="border-t border-line">
-            {vikingEvts.map((ev, i) => (
+            {[...highlightEvts, ...otherEvts].map((ev, i) => (
               <SportEventRow key={ev.id} ev={ev} border={i > 0} />
             ))}
-            {otherEvts.map((ev, i) => (
-              <SportEventRow key={ev.id} ev={ev} border={i > 0 || vikingEvts.length > 0} />
+            {leagueGroups.map((g) => (
+              <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
             ))}
-            {eliEvts.length > 0 && <LeagueSubsection cat="football_eli" matches={eliEvts} />}
-            {obosEvts.length > 0 && <LeagueSubsection cat="football_obos" matches={obosEvts} />}
-            {plEvts.length > 0 && <LeagueSubsection cat="football_pl" matches={plEvts} />}
           </div>
         </div>
       </div>
@@ -220,6 +241,7 @@ export function SportSection({
   const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
+  const { highlightEvts: todayHighlights, otherEvts: todayOthers, leagueGroups: todayLeagueGroups } = splitDayEvents(todayEvents);
   const restDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
@@ -245,8 +267,11 @@ export function SportSection({
           <div className="flex flex-col gap-2">
             {todayEvents.length > 0 ? (
               <div className="overflow-hidden rounded-xl border border-line bg-surface-2">
-                {todayEvents.map((ev, i) => (
+                {[...todayHighlights, ...todayOthers].map((ev, i) => (
                   <SportEventRow key={ev.id} ev={ev} border={i > 0} />
+                ))}
+                {todayLeagueGroups.map((g) => (
+                  <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
                 ))}
               </div>
             ) : (

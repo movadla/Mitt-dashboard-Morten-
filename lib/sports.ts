@@ -5,6 +5,9 @@ import { getJSON, setJSON } from "./kv";
 import { localDateString } from "./payday";
 import { getCustomSportEvents } from "./customSports";
 import { SPORTS_CACHE_KEY } from "./sportsCache";
+import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "./sportsCategories";
+
+export { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS };
 
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
@@ -166,6 +169,36 @@ async function fetchTsdbLeague(
     }));
 }
 
+// ── TheSportsDB: neste kamper for et enkelt lag, uansett turnering ──────────
+// Brukt for Norges landslag — de bytter mellom Nations League/kvalik/
+// vennskapskamper gjennom sesongen, og et lag-basert oppslag fanger opp neste
+// kamp uansett hvilken turnering den tilhører, i stedet for å måtte holde
+// styr på hvilket ESPN-slug som er aktivt akkurat nå.
+async function fetchTsdbTeam(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
+  const sRes = await fetch(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`, UA);
+  if (!sRes.ok) return [];
+  const sJson = await sRes.json();
+  const team: TsdbTeam | undefined = (sJson.teams ?? []).find((t: TsdbTeam) => t.strSport === "Soccer");
+  if (!team) return [];
+
+  const eRes = await fetch(`${TSDB}/eventsnext.php?id=${team.idTeam}`, UA);
+  if (!eRes.ok) return [];
+  const eJson = await eRes.json();
+  const today = localDateString();
+  return ((eJson.events ?? []) as TsdbEvent[])
+    .filter(e => e.dateEvent >= today)
+    .slice(0, limit)
+    .map(e => ({
+      id:          `${category}-${e.idEvent}`,
+      category,
+      name:        e.strEvent,
+      venue:       e.strVenue || undefined,
+      date:        e.dateEvent,
+      time:        e.strTime ? norwayTime(e.dateEvent, e.strTime) : undefined,
+      competition: e.strLeague ?? teamName,
+    }));
+}
+
 // ── Golf majors (static calendar) ────────────────────────────────────────────
 function getGolfMajors(): SportEvent[] {
   const today  = localDateString();
@@ -251,6 +284,12 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
   () => fetchESPN("nor.1", "football_eli",  "Eliteserien",    null,     60),
   () => fetchESPN("nor.2", "football_obos", "Obosligaen",     null,     40),
   () => fetchESPN("eng.1", "football_pl",   "Premier League", null,     60),
+  () => fetchESPN("eng.1", "football_manu", "Premier League", "Manchester United", 10),
+  () => fetchESPN("eng.fa", "football_facup", "FA Cup",       null,     60),
+  () => fetchESPN("eng.fa", "football_manu",  "FA Cup",       "Manchester United", 10),
+  () => fetchESPN("uefa.champions", "football_ucl",  "Champions League", null,                60),
+  () => fetchESPN("uefa.champions", "football_manu", "Champions League", "Manchester United", 10),
+  () => fetchTsdbTeam("Norway", "football_norway", 5),
   () => fetchTsdbLeague("Darts", "PDC", "darts", 10),
   () => Promise.resolve(getAthleticsCalendar()),
   () => Promise.resolve(getGolfMajors()),
@@ -277,12 +316,14 @@ export async function getSportEvents(): Promise<SportEvent[]> {
     .filter(e => e.date >= localDateString())
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
 
-  // Fjern league-duplikater: hvis et Viking-spill (football) finnes i Eliteserien (football_eli), behold kun football-versjonen
+  // Fjern league-duplikater: hvis en fremhevet kamp (Viking/Man Utd/Norge)
+  // finnes i sin fulle liga-runde (Eliteserien/PL/FA Cup/Champions League),
+  // behold kun den fremhevede versjonen.
   const featuredKeys = new Set(
-    raw.filter(e => e.category === "football").map(e => `${e.date}|${e.name.toLowerCase()}`)
+    raw.filter(e => HIGHLIGHT_CATEGORIES.has(e.category)).map(e => `${e.date}|${e.name.toLowerCase()}`)
   );
   const events = raw.filter(e =>
-    e.category !== "football_eli" || !featuredKeys.has(`${e.date}|${e.name.toLowerCase()}`)
+    !LEAGUE_ROUND_CATEGORIES.has(e.category) || !featuredKeys.has(`${e.date}|${e.name.toLowerCase()}`)
   );
 
   lastFetchedAt = Date.now();
@@ -307,6 +348,7 @@ interface EspnEvent {
   }>;
 }
 interface TsdbLeague { idLeague: string; strLeague: string }
+interface TsdbTeam { idTeam: string; strSport?: string }
 interface TsdbEvent {
   idEvent: string; strEvent: string; dateEvent: string;
   strTime?: string; strVenue?: string; strLeague?: string;

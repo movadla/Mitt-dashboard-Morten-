@@ -1,4 +1,5 @@
 import { getSportEvents } from "./sports";
+import { LEAGUE_ROUND_CATEGORIES } from "./sportsCategories";
 import { getFplData } from "./fpl";
 import { getReminders } from "./reminders";
 import { getPrivatEvents } from "./privatCalendar";
@@ -61,7 +62,11 @@ export async function buildPrivatContext(): Promise<string> {
 
   lines.push("\nSPORT (kommende, hentet live):");
   if (sportsResult.status === "fulfilled" && sportsResult.value.length > 0) {
-    for (const e of sportsResult.value.slice(0, 15)) {
+    // Fulle liga-runder (Eliteserien/PL/FA Cup/Champions League) holdes
+    // utenfor denne lista — ellers oversvømmer de personlig relevante
+    // kampene (Viking/Man Utd/Norge) på samme dato. Se lib/sports.ts.
+    const relevant = sportsResult.value.filter((e) => !LEAGUE_ROUND_CATEGORIES.has(e.category));
+    for (const e of relevant.slice(0, 15)) {
       lines.push(`- ${e.date}${e.time ? ` ${e.time}` : ""} ${e.name} (${e.competition})${e.venue ? ` — ${e.venue}` : ""}`);
     }
   } else {
