@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CommentBadge, CommentThreadBody } from "../CommentsCell";
+import { commentKey, useComments } from "../useComments";
+import type { Comment } from "@/lib/comments";
 import type { Recurrence, Reminder } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -114,11 +117,17 @@ function ReminderRowContent({
   onToggle,
   onRemove,
   onStartEdit,
+  commentCount,
+  notesOpen,
+  onToggleNotes,
 }: {
   reminder: Reminder;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
+  commentCount: number;
+  notesOpen: boolean;
+  onToggleNotes: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
@@ -152,6 +161,7 @@ function ReminderRowContent({
           </p>
         )}
       </button>
+      <CommentBadge count={commentCount} open={notesOpen} onClick={onToggleNotes} />
       <button
         type="button"
         onClick={() => onRemove(reminder.id)}
@@ -164,12 +174,34 @@ function ReminderRowContent({
   );
 }
 
+function ReminderNotes({
+  comments,
+  onAdd,
+  onDelete,
+}: {
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onDelete: (commentId: string, preview: string) => void;
+}) {
+  return (
+    <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+    </div>
+  );
+}
+
 type RowCallbacks = {
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
+};
+
+type RowCommentProps = {
+  comments: Comment[];
+  onAddComment: (tekst: string) => void;
+  onDeleteComment: (commentId: string, preview: string) => void;
 };
 
 function ReminderRow({
@@ -180,7 +212,12 @@ function ReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks) {
+  comments,
+  onAddComment,
+  onDeleteComment,
+}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
+  const [notesOpen, setNotesOpen] = useState(false);
+
   if (editing) {
     return (
       <li>
@@ -197,8 +234,17 @@ function ReminderRow({
         rightLabel={reminder.done ? "Ikke ferdig" : "Fullført"}
         leftLabel="Slett"
       >
-        <ReminderRowContent reminder={reminder} onToggle={onToggle} onRemove={onRemove} onStartEdit={onStartEdit} />
+        <ReminderRowContent
+          reminder={reminder}
+          onToggle={onToggle}
+          onRemove={onRemove}
+          onStartEdit={onStartEdit}
+          commentCount={comments.length}
+          notesOpen={notesOpen}
+          onToggleNotes={() => setNotesOpen((v) => !v)}
+        />
       </SwipeableRow>
+      {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
     </li>
   );
 }
@@ -213,10 +259,14 @@ function SortableReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks) {
+  comments,
+  onAddComment,
+  onDeleteComment,
+}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reminder.id,
   });
+  const [notesOpen, setNotesOpen] = useState(false);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -233,28 +283,43 @@ function SortableReminderRow({
   }
 
   return (
-    <li ref={setNodeRef} style={style} className="flex items-stretch gap-1">
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        aria-label="Endre rekkefølge"
-        className="grid shrink-0 cursor-grab place-items-center px-1 text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
-        style={{ touchAction: "none" }}
-      >
-        <GripVertical className="h-5 w-5" />
-      </button>
-      <div className="min-w-0 flex-1">
-        <SwipeableRow
-          onSwipeRight={() => onToggle(reminder.id)}
-          onSwipeLeft={() => onRemove(reminder.id)}
-          rightLabel={reminder.done ? "Ikke ferdig" : "Fullført"}
-          leftLabel="Slett"
+    <li ref={setNodeRef} style={style} className="flex flex-col">
+      <div className="flex items-stretch gap-1">
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label="Endre rekkefølge"
+          className="grid shrink-0 cursor-grab place-items-center px-1 text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
+          style={{ touchAction: "none" }}
         >
-          <ReminderRowContent reminder={reminder} onToggle={onToggle} onRemove={onRemove} onStartEdit={onStartEdit} />
-        </SwipeableRow>
+          <GripVertical className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <SwipeableRow
+            onSwipeRight={() => onToggle(reminder.id)}
+            onSwipeLeft={() => onRemove(reminder.id)}
+            rightLabel={reminder.done ? "Ikke ferdig" : "Fullført"}
+            leftLabel="Slett"
+          >
+            <ReminderRowContent
+              reminder={reminder}
+              onToggle={onToggle}
+              onRemove={onRemove}
+              onStartEdit={onStartEdit}
+              commentCount={comments.length}
+              notesOpen={notesOpen}
+              onToggleNotes={() => setNotesOpen((v) => !v)}
+            />
+          </SwipeableRow>
+        </div>
       </div>
+      {notesOpen && (
+        <div className="pl-7">
+          <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />
+        </div>
+      )}
     </li>
   );
 }
@@ -271,6 +336,7 @@ export default function RemindersSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
+  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
@@ -473,6 +539,11 @@ export default function RemindersSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      comments={comments[commentKey("reminder", r.id)] ?? []}
+                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                      }
                     />
                   ))}
                 </ul>
@@ -494,6 +565,11 @@ export default function RemindersSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      comments={comments[commentKey("reminder", r.id)] ?? []}
+                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                      }
                     />
                   ))}
                 </ul>
@@ -516,6 +592,16 @@ export default function RemindersSection() {
         onConfirm={() => {
           handleRemove(confirmDelete.pending!);
           confirmDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmCommentDelete.isOpen}
+        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        onCancel={confirmCommentDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmCommentDelete.pending;
+          if (pending) removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmCommentDelete.cancel();
         }}
       />
     </div>

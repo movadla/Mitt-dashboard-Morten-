@@ -42,10 +42,12 @@ export function CommentThreadBody({
   comments,
   onAdd,
   onDelete,
+  accentClassName = "bg-accent hover:bg-accent/85",
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onDelete: (commentId: string, preview: string) => void;
+  accentClassName?: string;
 }) {
   const [draft, setDraft] = useState("");
 
@@ -91,7 +93,7 @@ export function CommentThreadBody({
           type="button"
           onClick={submit}
           disabled={!draft.trim()}
-          className="self-start rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent/85 disabled:opacity-40"
+          className={`self-start rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition disabled:opacity-40 ${accentClassName}`}
         >
           Legg til
         </button>

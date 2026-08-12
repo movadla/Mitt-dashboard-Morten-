@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CommentBadge, CommentThreadBody } from "../CommentsCell";
+import { commentKey, useComments } from "../useComments";
+import type { Comment } from "@/lib/comments";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -78,6 +81,22 @@ function EventEditForm({
   );
 }
 
+function EventNotes({
+  comments,
+  onAdd,
+  onDelete,
+}: {
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onDelete: (commentId: string, preview: string) => void;
+}) {
+  return (
+    <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+    </div>
+  );
+}
+
 function EventRow({
   event,
   editing,
@@ -85,6 +104,9 @@ function EventRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  comments,
+  onAddComment,
+  onDeleteComment,
 }: {
   event: PrivatCalendarEvent;
   editing: boolean;
@@ -92,7 +114,12 @@ function EventRow({
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, updates: { title: string; date: string; startTime?: string; endTime?: string }) => void;
+  comments: Comment[];
+  onAddComment: (tekst: string) => void;
+  onDeleteComment: (commentId: string, preview: string) => void;
 }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+
   if (editing) {
     return (
       <EventEditForm event={event} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(event.id, updates)} />
@@ -117,6 +144,7 @@ function EventRow({
               {event.note ? ` — ${event.note}` : ""}
             </p>
           </button>
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
           <button
             type="button"
             onClick={() => onRemove(event.id)}
@@ -127,6 +155,7 @@ function EventRow({
           </button>
         </div>
       </SwipeableRow>
+      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
     </li>
   );
 }
@@ -144,6 +173,7 @@ export default function CalendarSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
+  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
 
   const load = useCallback(() => {
     fetch("/api/privat-calendar")
@@ -320,6 +350,11 @@ export default function CalendarSection() {
                   onStartEdit={setEditingId}
                   onCancelEdit={() => setEditingId(null)}
                   onSaveEdit={handleSaveEdit}
+                  comments={comments[commentKey("calendar-event", e.id)] ?? []}
+                  onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
+                  onDeleteComment={(commentId, preview) =>
+                    confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
+                  }
                 />
               ))}
             </ul>
@@ -338,6 +373,11 @@ export default function CalendarSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      comments={comments[commentKey("calendar-event", e.id)] ?? []}
+                      onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
+                      }
                     />
                   ))}
                 </ul>
@@ -360,6 +400,16 @@ export default function CalendarSection() {
         onConfirm={() => {
           handleRemove(confirmDelete.pending!);
           confirmDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmCommentDelete.isOpen}
+        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        onCancel={confirmCommentDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmCommentDelete.pending;
+          if (pending) removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmCommentDelete.cancel();
         }}
       />
     </div>

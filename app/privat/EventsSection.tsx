@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CommentBadge, CommentThreadBody } from "../CommentsCell";
+import { commentKey, useComments } from "../useComments";
+import type { Comment } from "@/lib/comments";
 import type { EventCategory, LifeEvent } from "@/lib/payday";
 import { localDateString, nextOccurrence, nextPaydayFrom } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
@@ -102,6 +105,22 @@ function EventEditForm({
   );
 }
 
+function EventNotes({
+  comments,
+  onAdd,
+  onDelete,
+}: {
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onDelete: (commentId: string, preview: string) => void;
+}) {
+  return (
+    <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+    </div>
+  );
+}
+
 function EventRow({
   row,
   editing,
@@ -109,6 +128,9 @@ function EventRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  comments,
+  onAddComment,
+  onDeleteComment,
 }: {
   row: Row;
   editing: boolean;
@@ -116,7 +138,12 @@ function EventRow({
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, updates: { title: string; date: string; category: EventCategory; yearly: boolean }) => void;
+  comments: Comment[];
+  onAddComment: (tekst: string) => void;
+  onDeleteComment: (commentId: string, preview: string) => void;
 }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+
   if (editing && row.event) {
     return <EventEditForm event={row.event} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(row.event!.id, updates)} />;
   }
@@ -137,14 +164,17 @@ function EventRow({
         </p>
       </button>
       {row.event && (
-        <button
-          type="button"
-          onClick={() => onRemove(row.event!.id)}
-          aria-label="Slett hendelse"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          ×
-        </button>
+        <>
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
+          <button
+            type="button"
+            onClick={() => onRemove(row.event!.id)}
+            aria-label="Slett hendelse"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            ×
+          </button>
+        </>
       )}
     </div>
   );
@@ -156,6 +186,7 @@ function EventRow({
       <SwipeableRow onSwipeLeft={() => onRemove(row.event!.id)} leftLabel="Slett">
         {content}
       </SwipeableRow>
+      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
     </li>
   );
 }
@@ -172,6 +203,7 @@ export default function EventsSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
+  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
 
   const load = useCallback(() => {
     fetch("/api/events")
@@ -349,6 +381,12 @@ export default function EventsSection() {
                   onStartEdit={setEditingId}
                   onCancelEdit={() => setEditingId(null)}
                   onSaveEdit={handleSaveEdit}
+                  comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
+                  onAddComment={(tekst) => row.event && addComment("life-event", row.event.id, tekst)}
+                  onDeleteComment={(commentId, preview) =>
+                    row.event &&
+                    confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
+                  }
                 />
               ))}
             </ul>
@@ -362,6 +400,16 @@ export default function EventsSection() {
         onConfirm={() => {
           handleRemove(confirmDelete.pending!);
           confirmDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmCommentDelete.isOpen}
+        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        onCancel={confirmCommentDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmCommentDelete.pending;
+          if (pending) removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmCommentDelete.cancel();
         }}
       />
     </div>

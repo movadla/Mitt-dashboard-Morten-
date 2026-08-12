@@ -1,7 +1,14 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
-export type CommentTargetType = "contract" | "expiry-tenant" | "guarantee" | "receivable";
+export type CommentTargetType =
+  | "contract"
+  | "expiry-tenant"
+  | "guarantee"
+  | "receivable"
+  | "reminder"
+  | "calendar-event"
+  | "life-event";
 
 export interface Comment {
   id: string;
