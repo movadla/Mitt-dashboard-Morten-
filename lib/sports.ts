@@ -23,6 +23,7 @@ export interface SportEvent {
   date: string;        // YYYY-MM-DD, Norway local
   time?: string;       // HH:MM, Norway local
   competition: string;
+  highlight?: boolean; // kun relevant for category "personal" — styrer visning i "I dag"
 }
 
 // ── Time helpers ─────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ async function fetchCustomEvents(): Promise<SportEvent[]> {
     date: e.date,
     time: e.time,
     competition: e.competition ?? "Egen kamp",
+    highlight: e.highlight,
   }));
 }
 

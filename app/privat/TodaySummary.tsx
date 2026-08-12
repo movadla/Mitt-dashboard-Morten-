@@ -209,7 +209,14 @@ export default function TodaySummary() {
   const overdue = isToday ? overdueReal : [];
   const dueOnViewed = reminders.filter((r) => !r.done && (r.dueDate === viewedDate || (!r.dueDate && isToday)));
   const eventsOnViewed = events.filter((e) => e.date === viewedDate);
-  const sportsOnViewed = sports.filter((s) => s.date === viewedDate);
+  // Egendefinerte kamper (category "personal") vises i "I dag" kun når de er
+  // markert highlight — ellers ville et fullt turneringsprogram limt inn i
+  // chatboten oversvømme "I dag" med alt som skjer den dagen. De faste,
+  // eksterne kildene (Eliteserien/PL/darts osv.) er allerede begrenset i
+  // volum og vises som før.
+  const sportsOnViewed = sports.filter(
+    (s) => s.date === viewedDate && (s.category !== "personal" || s.highlight),
+  );
   const upcomingPayments = loans
     .filter((l) => l.nextPaymentDate)
     .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, viewedDate) }))

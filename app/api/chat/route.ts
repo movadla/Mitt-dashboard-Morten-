@@ -5,13 +5,22 @@ import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
-import { addCustomSportEvent, deleteCustomSportEvent, getCustomSportEvents } from "@/lib/customSports";
+import {
+  addCustomSportEvent,
+  addCustomSportEventsBulk,
+  deleteCustomSportEvent,
+  getCustomSportEvents,
+} from "@/lib/customSports";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
 import { recordUsage } from "@/lib/aiUsage";
 
 const MODEL = "claude-haiku-4-5";
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 6;
+// Høyt nok til at bulk-import av et fullt turneringsprogram (100+ hendelser i
+// ett add_sport_events_bulk-kall) faktisk får plass i ett svar, ikke bare
+// enkeltoppgaver — se resonnement ved responsehåndteringen lenger ned.
+const MAX_TOKENS = 8192;
 
 const ADD_REMINDER_TOOL: Anthropic.Tool = {
   name: "add_reminder",
@@ -96,22 +105,51 @@ const TOGGLE_MILESTONE_TOOL: Anthropic.Tool = {
   },
 };
 
+const SPORT_EVENT_PROPERTIES = {
+  name: { type: "string" as const, description: "Kampen/hendelsen, f.eks. 'Liverpool – Manchester City'." },
+  date: { type: "string" as const, description: "Dato, format YYYY-MM-DD." },
+  time: { type: "string" as const, description: "Klokkeslett, format HH:MM. Valgfritt." },
+  competition: { type: "string" as const, description: "Turnering/liga. Valgfritt." },
+  venue: { type: "string" as const, description: "Sted/arena. Valgfritt." },
+  highlight: {
+    type: "boolean" as const,
+    description:
+      "Sett til true kun for hendelser som skal fremheves og dukke opp automatisk på 'I dag' den dagen de " +
+      "skjer. Standard false — false-hendelser vises fortsatt i det fulle programmet i Sport-boksen, bare " +
+      "ikke på 'I dag'. Bruk true sparsomt (brukerens favoritter/finaler), ikke for et helt turneringsprogram.",
+  },
+};
+
 const ADD_SPORT_EVENT_TOOL: Anthropic.Tool = {
   name: "add_sport_event",
   description:
-    "Legg til en kamp/sportshendelse brukeren selv vil følge, som dukker opp i Sport-boksen sammen med de " +
-    "faste kildene (Eliteserien, Premier League, darts osv.). Bruk dette for spesifikke kamper som ikke " +
-    "allerede dekkes automatisk.",
+    "Legg til ÉN kamp/sportshendelse brukeren selv vil følge, som dukker opp i Sport-boksen sammen med de " +
+    "faste kildene (Eliteserien, Premier League, darts osv.). Bruk add_sport_events_bulk i stedet hvis " +
+    "brukeren limer inn flere enn 2-3 hendelser på én gang (f.eks. et helt turneringsprogram).",
+  input_schema: {
+    type: "object",
+    properties: SPORT_EVENT_PROPERTIES,
+    required: ["name", "date"],
+  },
+};
+
+const ADD_SPORT_EVENTS_BULK_TOOL: Anthropic.Tool = {
+  name: "add_sport_events_bulk",
+  description:
+    "Legg til MANGE kamper/sportshendelser samtidig i ett kall — bruk denne når brukeren limer inn et helt " +
+    "program (f.eks. alle kampene i et VM eller et fullt OL-oppsett) i stedet for å kalle add_sport_event " +
+    "gjentatte ganger. Hvis listen er svært lang (over ca. 150 hendelser), del den opp i flere kall til " +
+    "dette verktøyet i samme svar/runde i stedet for å prøve alt i ett kall.",
   input_schema: {
     type: "object",
     properties: {
-      name: { type: "string", description: "Kampen/hendelsen, f.eks. 'Liverpool – Manchester City'." },
-      date: { type: "string", description: "Dato, format YYYY-MM-DD." },
-      time: { type: "string", description: "Klokkeslett, format HH:MM. Valgfritt." },
-      competition: { type: "string", description: "Turnering/liga. Valgfritt." },
-      venue: { type: "string", description: "Sted/arena. Valgfritt." },
+      events: {
+        type: "array",
+        description: "Listen over kamper/hendelser som skal legges til.",
+        items: { type: "object", properties: SPORT_EVENT_PROPERTIES, required: ["name", "date"] },
+      },
     },
-    required: ["name", "date"],
+    required: ["events"],
   },
 };
 
@@ -171,6 +209,11 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
   if (name === "add_sport_event") {
     return addCustomSportEvent(input as Parameters<typeof addCustomSportEvent>[0]);
   }
+  if (name === "add_sport_events_bulk") {
+    const { events } = input as { events: Parameters<typeof addCustomSportEvent>[0][] };
+    const created = await addCustomSportEventsBulk(events);
+    return { ok: true, count: created.length };
+  }
   if (name === "delete_sport_event") {
     const { nameMatch } = input as { nameMatch: string };
     const event = findOneMatch(await getCustomSportEvents(), (e) => e.name, nameMatch, "egendefinerte sportshendelser");
@@ -221,9 +264,12 @@ export async function POST(request: NextRequest) {
     "EKTE og oppdatert live, det samme er lån (Økonomi) og Alfred-data under. Du kan legge til, " +
     "huke av/på og slette påminnelser og kalenderhendelser, huke av/på Alfreds sjekklistepunkter, og " +
     "legge til/slette egendefinerte sportshendelser (dukker opp i Sport-boksen sammen med de faste " +
-    "kildene), med verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde. " +
-    "Hvis et verktøy feiler fordi flere eller ingen elementer matcher, forklar det kort til brukeren i " +
-    "stedet for å gjette.\n\n" +
+    "kildene) — bruk add_sport_events_bulk (ikke gjentatte add_sport_event-kall) når brukeren limer inn " +
+    "et helt program med mange kamper på én gang, og sett highlight=true kun på et fåtall hendelser " +
+    "brukeren faktisk peker ut som viktige (ellers oversvømmer et fullt program 'I dag' med alt som skjer " +
+    "en gitt dag). Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
+    "(for bulk: hvor mange som ble lagt til). Hvis et verktøy feiler fordi flere eller ingen elementer " +
+    "matcher, forklar det kort til brukeren i stedet for å gjette.\n\n" +
     buildDashboardContext() +
     "\n" +
     (await buildPrivatContext());
@@ -246,6 +292,7 @@ export async function POST(request: NextRequest) {
     DELETE_CALENDAR_EVENT_TOOL,
     TOGGLE_MILESTONE_TOOL,
     ADD_SPORT_EVENT_TOOL,
+    ADD_SPORT_EVENTS_BULK_TOOL,
     { ...DELETE_SPORT_EVENT_TOOL, cache_control: { type: "ephemeral" } },
   ];
   const convo: Anthropic.MessageParam[] = [...messages];
@@ -254,27 +301,36 @@ export async function POST(request: NextRequest) {
   for (let i = 0; i < MAX_TOOL_ROUNDS; i++) {
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 500,
+      max_tokens: MAX_TOKENS,
       system: systemBlocks,
       messages: convo,
       tools,
     });
     await recordUsage(response.usage);
 
-    if (response.stop_reason !== "tool_use") {
-      const text = response.content
+    // Kjør eventuelle FULLFØRTE tool_use-blokker uansett stop_reason: hvis svaret ble
+    // kappet av MAX_TOKENS midt i en stor bulk-import, vil Anthropic likevel returnere
+    // de tool_use-blokkene som rakk å bli ferdige før avkuttingen — å kun sjekke
+    // `stop_reason === "tool_use"` ville droppet alt arbeidet i stedet for det som
+    // faktisk gikk gjennom.
+    const toolUseBlocks = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+    );
+
+    if (toolUseBlocks.length === 0) {
+      let text = response.content
         .filter((b): b is Anthropic.TextBlock => b.type === "text")
         .map((b) => b.text)
         .join("\n");
+      if (!text && response.stop_reason === "max_tokens") {
+        text = "Svaret ble for langt og ble kappet av. Prøv å be om en mindre liste om gangen.";
+      }
       await persistExchange(messages, text);
       return NextResponse.json({ text, changed });
     }
 
     convo.push({ role: "assistant", content: response.content });
 
-    const toolUseBlocks = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
       try {
@@ -286,6 +342,16 @@ export async function POST(request: NextRequest) {
       }
     }
     convo.push({ role: "user", content: toolResults });
+
+    if (response.stop_reason === "max_tokens") {
+      convo.push({
+        role: "user",
+        content:
+          "(Systemmerknad: forrige svar ble kappet av fordi det ble for langt. De hendelsene som rakk å " +
+          "bli fullført er lagt til — fortsett med resten av listen hvis noe gjenstår, eller oppsummer " +
+          "kort hva som ble gjort.)",
+      });
+    }
   }
 
   const fallback = "Fikk ikke fullført forespørselen. Prøv igjen.";
