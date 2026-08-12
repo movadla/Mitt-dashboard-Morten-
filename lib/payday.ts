@@ -3,12 +3,16 @@
 // importerer ./kv (ioredis, "server-only") og ville feilet nettleser-bygget
 // hvis disse lå der i stedet, se samme resonnement som lib/privatContext.ts.
 
-// `new Date().toISOString().slice(0, 10)` gir UTC-datoen, som er feil rett etter
+// `date.toISOString().slice(0, 10)` gir UTC-datoen, som er feil rett etter
 // midnatt norsk tid (UTC+1/+2 — kl. 00:00-02:00 lokalt er UTC-datoen fortsatt
 // "i går"). Tidssonen er hardkodet til Europe/Oslo (ikke runtime sin lokale sone)
 // siden dette er en enbrukerapp og Vercel sine servere kjører i UTC uansett.
+export function toOsloDateString(date: Date): string {
+  return date.toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
+}
+
 export function localDateString(): string {
-  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Oslo" });
+  return toOsloDateString(new Date());
 }
 
 export type EventCategory = "bursdag" | "permisjon" | "bolig" | "annet";

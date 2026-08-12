@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
@@ -539,6 +539,7 @@ export default function FinanceSection() {
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  const confirmDelete = useConfirmDelete<{ type: "loan" | "savings" | "salary"; id: string }>();
 
   const load = useCallback(() => {
     Promise.allSettled([
@@ -705,7 +706,7 @@ export default function FinanceSection() {
                         onStartEdit={setEditingLoanId}
                         onCancelEdit={() => setEditingLoanId(null)}
                         onSaveEdit={handleSaveLoanEdit}
-                        onRemove={handleRemoveLoan}
+                        onRemove={(id) => confirmDelete.request({ type: "loan", id })}
                       />
                     ))}
                   </ul>
@@ -737,7 +738,7 @@ export default function FinanceSection() {
                         onStartEdit={setEditingSavingsId}
                         onCancelEdit={() => setEditingSavingsId(null)}
                         onSaveEdit={handleSaveSavingsEdit}
-                        onRemove={handleRemoveSavings}
+                        onRemove={(id) => confirmDelete.request({ type: "savings", id })}
                       />
                     ))}
                   </ul>
@@ -769,7 +770,7 @@ export default function FinanceSection() {
                         onStartEdit={setEditingSalaryId}
                         onCancelEdit={() => setEditingSalaryId(null)}
                         onSaveEdit={handleSaveSalaryEdit}
-                        onRemove={handleRemoveSalary}
+                        onRemove={(id) => confirmDelete.request({ type: "salary", id })}
                       />
                     ))}
                   </ul>
@@ -779,6 +780,26 @@ export default function FinanceSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={(() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return "";
+          if (pending.type === "loan") return `Slette lånet «${loans.find((l) => l.id === pending.id)?.name ?? ""}»?`;
+          if (pending.type === "savings")
+            return `Slette sparekontoen «${savings.find((s) => s.id === pending.id)?.name ?? ""}»?`;
+          return `Slette lønnsoppføringen for «${salary.find((s) => s.id === pending.id)?.person ?? ""}»?`;
+        })()}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          if (pending.type === "loan") handleRemoveLoan(pending.id);
+          else if (pending.type === "savings") handleRemoveSavings(pending.id);
+          else handleRemoveSalary(pending.id);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }

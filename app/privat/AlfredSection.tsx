@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
+import { localDateString } from "@/lib/payday";
 
 const CATEGORY_LABEL: Record<MilestoneCategory, string> = {
   motorikk: "Motorisk utvikling",
@@ -432,6 +433,7 @@ export default function AlfredSection() {
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone"; id: string }>();
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -515,7 +517,7 @@ export default function AlfredSection() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const months = profile ? ageInMonths(profile.born, today) : null;
   const latestGrowth = growth[growth.length - 1];
   const subtitle =
@@ -535,7 +537,7 @@ export default function AlfredSection() {
           ) : (
             <>
               {profile && <GrunninfoBox profile={profile} onSave={saveProfile} />}
-              <GrowthSection entries={growth} onAdd={addGrowth} onRemove={removeGrowth} />
+              <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
               {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
 
               {CATEGORY_ORDER.map((category) => (
@@ -544,7 +546,7 @@ export default function AlfredSection() {
                   category={category}
                   items={milestones.filter((m) => m.category === category)}
                   onToggle={toggleMilestoneItem}
-                  onRemove={removeMilestone}
+                  onRemove={(id) => confirmDelete.request({ type: "milestone", id })}
                   onAdd={addMilestoneItem}
                 />
               ))}
@@ -563,6 +565,26 @@ export default function AlfredSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={(() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return "";
+          if (pending.type === "growth") {
+            const entry = growth.find((g) => g.id === pending.id);
+            return `Slette vekstmålingen fra ${entry ? formatDMY(entry.date) : "denne datoen"}?`;
+          }
+          return `Slette milepælen «${milestones.find((m) => m.id === pending.id)?.label ?? ""}»?`;
+        })()}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          if (pending.type === "growth") removeGrowth(pending.id);
+          else removeMilestone(pending.id);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./SwipeableRow";
@@ -90,6 +90,8 @@ export default function ShoppingListSection() {
   const [section, setSection] = useState<StoreSection>("frukt-gront");
   const [quantity, setQuantity] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const confirmDelete = useConfirmDelete<string>();
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/shopping")
@@ -238,7 +240,7 @@ export default function ShoppingListSection() {
                   </p>
                   <ul className="flex flex-col gap-1.5">
                     {g.items.map((i) => (
-                      <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={handleRemove} />
+                      <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={confirmDelete.request} />
                     ))}
                   </ul>
                 </div>
@@ -251,7 +253,7 @@ export default function ShoppingListSection() {
               {showDone && (
                 <ul className="mt-1 flex flex-col gap-1.5">
                   {done.map((i) => (
-                    <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={handleRemove} />
+                    <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={confirmDelete.request} />
                   ))}
                 </ul>
               )}
@@ -263,7 +265,7 @@ export default function ShoppingListSection() {
                 >
                   {showDone ? "Vis mindre" : `Kjøpt (${done.length})`}
                 </button>
-                <button type="button" onClick={handleClearDone} className="text-left text-xs font-medium text-ink-4 hover:text-ink-2">
+                <button type="button" onClick={() => setConfirmClearOpen(true)} className="text-left text-xs font-medium text-ink-4 hover:text-ink-2">
                   Tøm kjøpte
                 </button>
               </div>
@@ -271,6 +273,25 @@ export default function ShoppingListSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={`Slette «${items.find((i) => i.id === confirmDelete.pending)?.name ?? ""}» fra handlelisten?`}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          handleRemove(confirmDelete.pending!);
+          confirmDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmClearOpen}
+        message={`Tømme ${done.length} kjøpte ${done.length === 1 ? "vare" : "varer"} fra handlelisten?`}
+        confirmLabel="Tøm"
+        onCancel={() => setConfirmClearOpen(false)}
+        onConfirm={() => {
+          handleClearDone();
+          setConfirmClearOpen(false);
+        }}
+      />
     </div>
   );
 }

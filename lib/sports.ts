@@ -2,6 +2,7 @@
 // Add a new sport by appending an entry to SOURCES — nothing else to change.
 
 import { getJSON, setJSON } from "./kv";
+import { localDateString } from "./payday";
 
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
@@ -49,7 +50,7 @@ async function fetchF1(): Promise<SportEvent[]> {
   const res = await fetch(`https://api.jolpi.ca/ergast/f1/${year}/races.json`, UA);
   if (!res.ok) return [];
   const json = await res.json();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   return (json.MRData?.RaceTable?.Races ?? [])
     .filter((r: F1Race) => r.date >= today)
     .slice(0, 6)
@@ -77,7 +78,7 @@ async function fetchESPN(
   const todayBoard = await fetch(`${ESPN}/scoreboard`, UA).then(r => r.ok ? r.json() : null).catch(() => null);
   if (!todayBoard) return [];
 
-  const todayStr     = new Date().toISOString().slice(0, 10);
+  const todayStr     = localDateString();
   const todayCompact = todayStr.replace(/-/g, "");
 
   const upcomingDates: string[] = (todayBoard.leagues?.[0]?.calendar ?? [] as string[])
@@ -147,7 +148,7 @@ async function fetchTsdbLeague(
   const eRes = await fetch(`${TSDB}/eventsnextleague.php?id=${league.idLeague}`, UA);
   if (!eRes.ok) return [];
   const eJson = await eRes.json();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   return ((eJson.events ?? []) as TsdbEvent[])
     .filter(e => e.dateEvent >= today)
     .slice(0, limit)
@@ -164,7 +165,7 @@ async function fetchTsdbLeague(
 
 // ── Golf majors (static calendar) ────────────────────────────────────────────
 function getGolfMajors(): SportEvent[] {
-  const today  = new Date().toISOString().slice(0, 10);
+  const today  = localDateString();
   const rounds = ["Runde 1", "Runde 2", "Runde 3", "Final"];
   const majors: { name: string; venue: string; dates: string[] }[] = [
     { name: "PGA Championship",      venue: "Quail Hollow Club, Charlotte",
@@ -188,7 +189,7 @@ function getGolfMajors(): SportEvent[] {
 // ── Friidrett (manuell kalender — TheSportsDB/ESPN har ikke Diamond League
 //    eller utendørs-EM, så datoene må oppdateres for hånd hver sesong) ────────
 function getAthleticsCalendar(): SportEvent[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const events: SportEvent[] = [];
 
   const diamondLeague: { city: string; date: string }[] = [
@@ -248,7 +249,7 @@ export async function getSportEvents(): Promise<SportEvent[]> {
 
   const raw: SportEvent[] = results
     .flatMap(r => r.status === "fulfilled" ? r.value : [])
-    .filter(e => e.date >= new Date().toISOString().slice(0, 10))
+    .filter(e => e.date >= localDateString())
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
 
   // Fjern league-duplikater: hvis et Viking-spill (football) finnes i Eliteserien (football_eli), behold kun football-versjonen

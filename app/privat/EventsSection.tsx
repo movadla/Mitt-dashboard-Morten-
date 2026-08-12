@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { EventCategory, LifeEvent } from "@/lib/payday";
 import { localDateString, nextOccurrence, nextPaydayFrom } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
@@ -171,6 +171,7 @@ export default function EventsSection() {
   const [yearly, setYearly] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const confirmDelete = useConfirmDelete<string>();
 
   const load = useCallback(() => {
     fetch("/api/events")
@@ -337,7 +338,7 @@ export default function EventsSection() {
                   key={row.key}
                   row={row}
                   editing={editingId === row.key}
-                  onRemove={handleRemove}
+                  onRemove={confirmDelete.request}
                   onStartEdit={setEditingId}
                   onCancelEdit={() => setEditingId(null)}
                   onSaveEdit={handleSaveEdit}
@@ -347,6 +348,15 @@ export default function EventsSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          handleRemove(confirmDelete.pending!);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }

@@ -5,11 +5,12 @@ import { Trophy, Flag, Target, Timer, Award } from "lucide-react";
 import type { SportEvent } from "@/lib/sports";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
+import { localDateString, toOsloDateString } from "@/lib/payday";
 
 export type { SportEvent } from "@/lib/sports";
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateString();
 }
 function daysUntil(d: string) {
   const t = new Date();
@@ -219,7 +220,7 @@ export function SportSection({
   const restDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
+    return toOsloDateString(d);
   }).filter((day) => day !== today && events.some((e) => e.date === day));
 
   return (
@@ -336,7 +337,7 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
     if (e.time && e.time < "11:00") {
       const d = new Date(e.date + "T12:00:00");
       d.setDate(d.getDate() - 1);
-      displayDate = d.toISOString().slice(0, 10);
+      displayDate = toOsloDateString(d);
     }
     const arr = byDay.get(displayDate) ?? [];
     arr.push(e);

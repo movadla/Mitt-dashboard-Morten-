@@ -88,6 +88,71 @@ export function CardHeader({
   );
 }
 
+// Delt bekreftelsesdialog foran destruktive handlinger (sletting) — brukes IKKE
+// foran avhuking/toggle, kun der data faktisk forsvinner permanent.
+export function ConfirmDialog({
+  open,
+  title = "Er du sikker?",
+  message,
+  confirmLabel = "Slett",
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title?: string;
+  message: string;
+  confirmLabel?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl border border-line-strong bg-surface-1 p-4 shadow-xl shadow-black/30"
+        onClick={(e) => e.stopPropagation()}
+        role="alertdialog"
+        aria-modal="true"
+      >
+        <h3 className="text-sm font-semibold text-ink-1">{title}</h3>
+        <p className="mt-1.5 text-sm text-ink-3">{message}</p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-3 transition hover:text-ink-1"
+          >
+            Avbryt
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-status-danger px-3 py-1.5 text-sm font-semibold text-surface-0 transition hover:bg-status-danger/85"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Liten hjelper for "trykk slett -> vis bekreftelse -> slett for ekte": holder
+// hvilket element (id eller annen nøkkel) som venter på bekreftelse.
+export function useConfirmDelete<T = string>() {
+  const [pending, setPending] = useState<T | null>(null);
+  return {
+    pending,
+    isOpen: pending !== null,
+    request: (item: T) => setPending(item),
+    cancel: () => setPending(null),
+  };
+}
+
 export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number; className?: string }) {
   return (
     <div className="flex flex-col gap-2">

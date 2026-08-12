@@ -6,6 +6,7 @@ import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
 import { appendChatMessages } from "@/lib/chatHistory";
+import { localDateString } from "@/lib/payday";
 
 const MODEL = "claude-haiku-4-5";
 const MAX_TOOL_ROUNDS = 3;
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
   }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
 
   const system =
     `Dagens dato er ${today}.\n\n` +

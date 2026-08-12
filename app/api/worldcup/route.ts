@@ -1,5 +1,6 @@
 // VM 2026 (FIFA World Cup) — full kampskjema fra ESPN.
 // Henter hele turneringen via 3 fase-intervaller (ESPN kapper på 100 treff per kall).
+import { localDateString } from "@/lib/payday";
 
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const ESPN = "http://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world";
@@ -63,7 +64,7 @@ export async function GET() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const events = [...byId.values()]
     .filter(e => e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));

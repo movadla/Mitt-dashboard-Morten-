@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { Recurrence, Reminder } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
+import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
 import { GripVertical } from "lucide-react";
 import {
@@ -269,6 +270,7 @@ export default function RemindersSection() {
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const confirmDelete = useConfirmDelete<string>();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
@@ -371,7 +373,7 @@ export default function RemindersSection() {
     vibrate(10);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
   const rest = reminders.filter((r) => !isDueToday(r, today));
 
@@ -458,7 +460,7 @@ export default function RemindersSection() {
                       reminder={r}
                       editing={editingId === r.id}
                       onToggle={handleToggle}
-                      onRemove={handleRemove}
+                      onRemove={confirmDelete.request}
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
@@ -479,7 +481,7 @@ export default function RemindersSection() {
                       reminder={r}
                       editing={editingId === r.id}
                       onToggle={handleToggle}
-                      onRemove={handleRemove}
+                      onRemove={confirmDelete.request}
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
@@ -498,6 +500,15 @@ export default function RemindersSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={`Slette påminnelsen «${reminders.find((r) => r.id === confirmDelete.pending)?.text ?? ""}»?`}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          handleRemove(confirmDelete.pending!);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }

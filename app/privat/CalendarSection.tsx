@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { vibrate } from "@/lib/haptics";
+import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
 
 function formatDMY(iso: string): string {
@@ -142,6 +143,7 @@ export default function CalendarSection() {
   const [endTime, setEndTime] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const confirmDelete = useConfirmDelete<string>();
 
   const load = useCallback(() => {
     fetch("/api/privat-calendar")
@@ -222,7 +224,7 @@ export default function CalendarSection() {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
   const upcoming = events.filter((e) => e.date >= today);
   const todays = upcoming.filter((e) => e.date === today);
   const rest = upcoming.filter((e) => e.date !== today);
@@ -307,7 +309,7 @@ export default function CalendarSection() {
                   key={e.id}
                   event={e}
                   editing={editingId === e.id}
-                  onRemove={handleRemove}
+                  onRemove={confirmDelete.request}
                   onStartEdit={setEditingId}
                   onCancelEdit={() => setEditingId(null)}
                   onSaveEdit={handleSaveEdit}
@@ -325,7 +327,7 @@ export default function CalendarSection() {
                       key={e.id}
                       event={e}
                       editing={editingId === e.id}
-                      onRemove={handleRemove}
+                      onRemove={confirmDelete.request}
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
@@ -344,6 +346,15 @@ export default function CalendarSection() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          handleRemove(confirmDelete.pending!);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }
