@@ -21,9 +21,9 @@ import {
   CloudSnow,
   CloudLightning,
   CloudFog,
-  AlertTriangle,
   Lightbulb,
   Calendar,
+  CalendarClock,
   Trophy,
   Shirt,
   PartyPopper,
@@ -58,6 +58,64 @@ function CategoryLabel({
       <span className="sr-only">{label}</span>
       {count !== undefined && <span className={`text-2xs font-semibold tabular-nums ${colorClass}`}>{count}</span>}
     </div>
+  );
+}
+
+// Én påminnelseslinje i "I dag" — prikk foran teksten skiller radene fra
+// hverandre når det er flere på samme dag, rød tekst for oversittede, og et
+// lite kalenderikon lar deg endre fristen direkte uten å åpne Påminnelser-kortet.
+function ReminderLine({
+  reminder,
+  overdue,
+  editing,
+  onStartEdit,
+  onChangeDueDate,
+  onCancelEdit,
+}: {
+  reminder: Reminder;
+  overdue: boolean;
+  editing: boolean;
+  onStartEdit: () => void;
+  onChangeDueDate: (date: string) => void;
+  onCancelEdit: () => void;
+}) {
+  return (
+    <li className="flex items-start gap-1.5">
+      <span className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${overdue ? "bg-status-danger" : "bg-ink-4"}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className={`min-w-0 text-sm ${overdue ? "text-status-danger" : "text-ink-1"}`}>{reminder.text}</span>
+          <button
+            type="button"
+            onClick={onStartEdit}
+            aria-label="Endre frist"
+            title="Endre frist"
+            className="shrink-0 text-ink-4 transition hover:text-ink-2"
+          >
+            <CalendarClock className="h-3 w-3" />
+          </button>
+        </div>
+        {editing && (
+          <input
+            type="date"
+            autoFocus
+            defaultValue={reminder.dueDate ?? ""}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onCancelEdit();
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            onBlur={(e) => {
+              // Lagre kun når feltet faktisk inneholder en gyldig, komplett dato —
+              // en input som fortsatt er delvis tastet inn gir "" her, og skal
+              // ikke tolkes som "fjern fristen".
+              if (e.target.value) onChangeDueDate(e.target.value);
+              onCancelEdit();
+            }}
+            className="mt-1 rounded-lg border border-line bg-surface-1 px-2 py-1 text-xs text-ink-2 outline-none focus:border-line-strong"
+          />
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -129,6 +187,7 @@ export default function TodaySummary() {
   const [loading, setLoading] = useState(true);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
 
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragAxis = useRef<"x" | "y" | null>(null);
@@ -202,12 +261,33 @@ export default function TodaySummary() {
     dragAxis.current = null;
   }
 
+  async function handleChangeDueDate(id: string, newDate: string) {
+    const res = await fetch(`/api/reminders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dueDate: newDate || null }),
+    });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
+  }
+
   const activeReminders = reminders.filter((r) => !r.done && (!r.dueDate || r.dueDate <= realToday));
   const overdueReal = activeReminders.filter((r) => r.dueDate && r.dueDate < realToday);
   const dueTodayReal = activeReminders.filter((r) => !r.dueDate || r.dueDate === realToday);
 
-  const overdue = isToday ? overdueReal : [];
   const dueOnViewed = reminders.filter((r) => !r.done && (r.dueDate === viewedDate || (!r.dueDate && isToday)));
+  // Slår sammen oversittede (kun relevant på selve i dag-visningen) og de som
+  // forfaller på den viste dagen i én liste, med et overdue-flagg per rad —
+  // vises i samme boks, ikke to separate, jf. tilbakemelding.
+  const reminderRows = isToday
+    ? [
+        ...overdueReal.map((r) => ({ reminder: r, overdue: true })),
+        ...dueOnViewed.map((r) => ({ reminder: r, overdue: false })),
+      ]
+    : dueOnViewed.map((r) => ({ reminder: r, overdue: false }));
   const eventsOnViewed = events.filter((e) => e.date === viewedDate);
   // Egendefinerte kamper (category "personal") vises i "I dag" kun når de er
   // markert highlight — ellers ville et fullt turneringsprogram limt inn i
@@ -304,29 +384,22 @@ export default function TodaySummary() {
               </div>
             )}
 
-            {overdue.length > 0 && (
-              <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-                <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Oversittet" count={overdue.length} />
-                <ul className="flex flex-col gap-1">
-                  {overdue.map((r) => (
-                    <li key={r.id} className="text-sm text-ink-1">
-                      {r.text}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
             {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
                 aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
             <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
               <CategoryLabel icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser" />
-              {dueOnViewed.length > 0 ? (
+              {reminderRows.length > 0 ? (
                 <ul className="flex flex-col gap-1">
-                  {dueOnViewed.map((r) => (
-                    <li key={r.id} className="text-sm text-ink-1">
-                      {r.text}
-                    </li>
+                  {reminderRows.map(({ reminder, overdue }) => (
+                    <ReminderLine
+                      key={reminder.id}
+                      reminder={reminder}
+                      overdue={overdue}
+                      editing={editingReminderId === reminder.id}
+                      onStartEdit={() => setEditingReminderId(reminder.id)}
+                      onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
+                      onCancelEdit={() => setEditingReminderId(null)}
+                    />
                   ))}
                 </ul>
               ) : (
