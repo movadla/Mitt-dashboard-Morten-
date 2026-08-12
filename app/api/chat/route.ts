@@ -7,6 +7,7 @@ import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privat
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
+import { recordUsage } from "@/lib/aiUsage";
 
 const MODEL = "claude-haiku-4-5";
 const MAX_TOOL_ROUNDS = 3;
@@ -214,6 +215,7 @@ export async function POST(request: NextRequest) {
       messages: convo,
       tools,
     });
+    await recordUsage(response.usage);
 
     if (response.stop_reason !== "tool_use") {
       const text = response.content

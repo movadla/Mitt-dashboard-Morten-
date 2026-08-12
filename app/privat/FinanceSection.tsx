@@ -6,7 +6,81 @@ import { formatDateDMY, formatKr } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
 import type { SalaryEntry } from "@/lib/salary";
+import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
+
+function formatUsd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+function AiUsageBox({ usage, onSaveBalance }: { usage: AiUsageSummary; onSaveBalance: (amount: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState("");
+
+  function startEdit() {
+    setInput(usage.balanceUsd != null ? String(usage.balanceUsd) : "");
+    setEditing(true);
+  }
+  function save() {
+    const amount = Number(input.replace(",", "."));
+    if (Number.isFinite(amount) && amount >= 0) {
+      onSaveBalance(amount);
+      setEditing(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={`text-sm font-semibold tabular-nums ${usage.overDaily ? "text-status-danger" : "text-ink-1"}`}>
+            {formatUsd(usage.last24hUsd)} <span className="text-2xs font-normal text-ink-4">siste 24t</span>
+          </p>
+          <p className={`mt-0.5 text-sm font-semibold tabular-nums ${usage.overMonthly ? "text-status-danger" : "text-ink-1"}`}>
+            {formatUsd(usage.last30daysUsd)} <span className="text-2xs font-normal text-ink-4">siste 30 dager</span>
+          </p>
+        </div>
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              step="0.01"
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") save();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              placeholder="USD"
+              className="w-20 rounded-lg border border-line bg-surface-1 px-2 py-1 text-xs text-ink-1 outline-none focus:border-line-strong"
+            />
+            <button type="button" onClick={save} className="text-2xs font-semibold uppercase text-accent-privat">
+              Lagre
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={startEdit} className="text-right">
+            <p className="text-sm font-semibold tabular-nums text-ink-1">
+              {usage.balanceUsd != null ? formatUsd(usage.balanceUsd) : "Sett saldo"}
+            </p>
+            <p className="text-2xs text-ink-4">Saldo igjen</p>
+          </button>
+        )}
+      </div>
+      {(usage.overDaily || usage.overMonthly) && (
+        <p className="mt-2 text-2xs font-medium text-status-danger">
+          {usage.overDaily ? `Over ${formatUsd(usage.dailyAlertUsd)}/dag. ` : ""}
+          {usage.overMonthly ? `Over ${formatUsd(usage.monthlyAlertUsd)} siste 30 dager.` : ""}
+        </p>
+      )}
+      <p className="mt-2 text-2xs text-ink-4">
+        Saldoen er et anslag basert på appens egen bruk, ikke live fra Anthropic — oppdater etter å ha sjekket
+        console.anthropic.com.
+      </p>
+    </div>
+  );
+}
 
 type LoanFormValues = {
   name: string;
@@ -532,6 +606,7 @@ export default function FinanceSection() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [savings, setSavings] = useState<SavingsAccount[]>([]);
   const [salary, setSalary] = useState<SalaryEntry[]>([]);
+  const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [showSavingsForm, setShowSavingsForm] = useState(false);
@@ -546,10 +621,12 @@ export default function FinanceSection() {
       fetch("/api/loans").then((r) => r.json()),
       fetch("/api/savings").then((r) => r.json()),
       fetch("/api/salary").then((r) => r.json()),
-    ]).then(([l, s, p]) => {
+      fetch("/api/ai-usage").then((r) => r.json()),
+    ]).then(([l, s, p, a]) => {
       setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
       setSavings(s.status === "fulfilled" ? ((s.value.savings ?? []) as SavingsAccount[]) : []);
       setSalary(p.status === "fulfilled" ? ((p.value.salary ?? []) as SalaryEntry[]) : []);
+      setAiUsage(a.status === "fulfilled" && !a.value.error ? (a.value as AiUsageSummary) : null);
       setLoading(false);
     });
   }, []);
@@ -665,6 +742,17 @@ export default function FinanceSection() {
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
+  async function handleSaveBalance(amount: number) {
+    const res = await fetch("/api/ai-usage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ balanceUsd: amount }),
+    });
+    if (res.ok) {
+      setAiUsage((await res.json()) as AiUsageSummary);
+    }
+  }
+
   const totalRemaining = loans.reduce((sum, l) => sum + l.remainingAmount, 0);
 
   return (
@@ -774,6 +862,15 @@ export default function FinanceSection() {
                       />
                     ))}
                   </ul>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">AI-bruk (chatbot)</p>
+                {aiUsage ? (
+                  <AiUsageBox usage={aiUsage} onSaveBalance={handleSaveBalance} />
+                ) : (
+                  <p className="text-sm text-ink-3">Fikk ikke hentet AI-bruk akkurat nå.</p>
                 )}
               </div>
             </>

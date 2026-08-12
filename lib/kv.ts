@@ -53,6 +53,13 @@ export async function hdel(key: string, field: string): Promise<void> {
   await getClient().hdel(key, field);
 }
 
+// Atomisk flyttall-inkrement på et hash-felt — brukes for løpende kostnadstellere
+// (AI-bruk) der flere samtidige requests ellers kunne overskrevet hverandre.
+export async function hincrByFloat(key: string, field: string, amount: number): Promise<number> {
+  const result = await getClient().hincrbyfloat(key, field, amount);
+  return parseFloat(result);
+}
+
 // Enkel verdi med TTL — brukes til korttidscache (sport/FPL) som må overleve
 // serverless cold starts på Vercel, i motsetning til et modul-nivå JS-objekt.
 export async function setJSON<T>(key: string, value: T, ttlSeconds: number): Promise<void> {

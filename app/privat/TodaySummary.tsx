@@ -10,6 +10,7 @@ import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
+import type { AiUsageSummary } from "@/lib/aiUsage";
 import { formatKr } from "@/lib/widgets";
 import {
   Sun,
@@ -28,7 +29,12 @@ import {
   PartyPopper,
   Banknote,
   ChevronLeft,
+  Bot,
 } from "lucide-react";
+
+function formatUsd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
 
 const MAX_OFFSET = 365;
 const SWIPE_THRESHOLD = 60;
@@ -118,6 +124,7 @@ export default function TodaySummary() {
   const [fpl, setFpl] = useState<FplData | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
+  const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewedOffset, setViewedOffset] = useState(0);
@@ -135,7 +142,8 @@ export default function TodaySummary() {
       fetch("/api/fpl").then((r) => r.json()),
       fetch("/api/weather").then((r) => r.json()),
       fetch("/api/events").then((r) => r.json()),
-    ]).then(([r, e, s, l, f, w, ev]) => {
+      fetch("/api/ai-usage").then((r) => r.json()),
+    ]).then(([r, e, s, l, f, w, ev, au]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
@@ -143,6 +151,7 @@ export default function TodaySummary() {
       setFpl(f.status === "fulfilled" && !f.value.error ? (f.value as FplData) : null);
       setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
       setLifeEvents(ev.status === "fulfilled" ? ((ev.value.events ?? []) as LifeEvent[]) : []);
+      setAiUsage(au.status === "fulfilled" && !au.value.error ? (au.value as AiUsageSummary) : null);
       setLoading(false);
     });
   }, []);
@@ -276,6 +285,18 @@ export default function TodaySummary() {
           style={{ touchAction: "pan-y" }}
         >
           <div key={viewedOffset} className={`flex flex-col gap-2 ${slideClass}`}>
+            {isToday && aiUsage && (aiUsage.overDaily || aiUsage.overMonthly) && (
+              <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
+                <CategoryLabel icon={Bot} colorClass="text-status-danger" label="AI-bruk" />
+                <p className="text-sm text-ink-1">
+                  {aiUsage.overDaily && `${formatUsd(aiUsage.last24hUsd)} siste 24t (over ${formatUsd(aiUsage.dailyAlertUsd)}/dag)`}
+                  {aiUsage.overDaily && aiUsage.overMonthly && " · "}
+                  {aiUsage.overMonthly &&
+                    `${formatUsd(aiUsage.last30daysUsd)} siste 30 dager (over ${formatUsd(aiUsage.monthlyAlertUsd)})`}
+                </p>
+              </div>
+            )}
+
             {overdue.length > 0 && (
               <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
                 <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Oversittet" count={overdue.length} />
