@@ -13,6 +13,7 @@ import ShoppingListSection from "./ShoppingListSection";
 import NewsSection from "./NewsSection";
 import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
+import TreningSection from "./TreningSection";
 import { CARD_SHELL, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { GripVertical } from "lucide-react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -28,6 +29,7 @@ const DEFAULT_SECTION_ORDER = [
   "finance",
   "sport",
   "worldcup",
+  "trening",
   "alfred",
   "shopping",
   "news",
@@ -111,6 +113,7 @@ export default function PrivatPanel() {
     finance: <FinanceSection />,
     sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />,
     worldcup: worldCup.length > 0 ? <WorldCupSection events={worldCup} /> : null,
+    trening: <TreningSection />,
     alfred: <AlfredSection />,
     shopping: <ShoppingListSection />,
     news: <NewsSection />,
