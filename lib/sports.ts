@@ -247,8 +247,14 @@ export async function getSportEvents(): Promise<SportEvent[]> {
 
   const results = await Promise.allSettled(SOURCES.map(fn => fn()));
 
-  const raw: SportEvent[] = results
-    .flatMap(r => r.status === "fulfilled" ? r.value : [])
+  const fetched = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
+  // ESPN sine dato-inndelte scoreboard-kall overlapper av og til (samme kamp
+  // dukker opp i både "i dag"-tavlen og en senere spesifikk-dato-tavle) — dedupe
+  // på id før videre filtrering, ellers får React duplikate list-keys når man
+  // blar frem i "I dag"-boksen og treffer den datoen.
+  const deduped = [...new Map(fetched.map(e => [e.id, e])).values()];
+
+  const raw: SportEvent[] = deduped
     .filter(e => e.date >= localDateString())
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
 

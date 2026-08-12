@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -9,7 +9,7 @@ import type { Loan } from "@/lib/loans";
 import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
-import { isPaydayToday, localDateString, nextOccurrence } from "@/lib/payday";
+import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
 import { formatKr } from "@/lib/widgets";
 import {
   Sun,
@@ -27,7 +27,11 @@ import {
   Shirt,
   PartyPopper,
   Banknote,
+  ChevronLeft,
 } from "lucide-react";
+
+const MAX_OFFSET = 365;
+const SWIPE_THRESHOLD = 60;
 
 // Kategori-header i "I dag" vises som ikon i stedet for tekst (kompakt, rask å
 // skanne) — men beholder en skjult tekst for skjermlesere og en title-tooltip.
@@ -51,9 +55,9 @@ function CategoryLabel({
   );
 }
 
-function daysUntil(dateIso: string, todayIso: string): number {
+function daysUntil(dateIso: string, fromIso: string): number {
   const target = new Date(dateIso + "T00:00:00Z").getTime();
-  const from = new Date(todayIso + "T00:00:00Z").getTime();
+  const from = new Date(fromIso + "T00:00:00Z").getTime();
   return Math.round((target - from) / (1000 * 60 * 60 * 24));
 }
 
@@ -61,6 +65,19 @@ function relativeDayLabel(days: number): string {
   if (days === 0) return "i dag";
   if (days === 1) return "i morgen";
   return `om ${days} dager`;
+}
+
+// Overskrift for den viste dagen: "I dag"/"I morgen" med dato+ukedag i parentes,
+// og for dager lenger frem ukedagsnavnet selv (med kun dato i parentes, for å
+// ikke gjenta ukedagen to ganger).
+function dayHeaderLabel(dateIso: string, offset: number): string {
+  const d = new Date(dateIso + "T12:00:00");
+  const weekday = d.toLocaleDateString("nb-NO", { weekday: "long" });
+  const [, m, day] = dateIso.split("-");
+  const dateStr = `${day}.${m}`;
+  if (offset === 0) return `I dag (${dateStr} · ${weekday})`;
+  if (offset === 1) return `I morgen (${dateStr} · ${weekday})`;
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} (${dateStr})`;
 }
 
 function setBadgeCount(count: number) {
@@ -103,6 +120,11 @@ export default function TodaySummary() {
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewedOffset, setViewedOffset] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
+
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const dragAxis = useRef<"x" | "y" | null>(null);
 
   const load = useCallback(() => {
     Promise.allSettled([
@@ -131,40 +153,94 @@ export default function TodaySummary() {
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
   }, [load]);
 
-  const today = localDateString();
-  const activeReminders = reminders.filter((r) => !r.done && (!r.dueDate || r.dueDate <= today));
-  const overdue = activeReminders.filter((r) => r.dueDate && r.dueDate < today);
-  const dueToday = activeReminders.filter((r) => !r.dueDate || r.dueDate === today);
-  const todaysEvents = events.filter((e) => e.date === today);
-  const todaysSports = sports.filter((s) => s.date === today);
+  const realToday = localDateString();
+  const viewedDate = addDaysIso(realToday, viewedOffset);
+  const isToday = viewedOffset === 0;
+
+  function goForward() {
+    setViewedOffset((v) => Math.min(MAX_OFFSET, v + 1));
+    setSlideDirection("forward");
+  }
+  function goBackward() {
+    setViewedOffset((v) => Math.max(0, v - 1));
+    setSlideDirection("backward");
+  }
+  function goToToday() {
+    setViewedOffset(0);
+    setSlideDirection("backward");
+  }
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    dragAxis.current = null;
+  }
+  function handlePointerMove(e: React.PointerEvent) {
+    if (!dragStart.current) return;
+    const deltaX = e.clientX - dragStart.current.x;
+    const deltaY = e.clientY - dragStart.current.y;
+    if (!dragAxis.current && (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8)) {
+      dragAxis.current = Math.abs(deltaX) > Math.abs(deltaY) ? "x" : "y";
+    }
+  }
+  function handlePointerUp(e: React.PointerEvent) {
+    if (dragAxis.current === "x" && dragStart.current) {
+      const deltaX = e.clientX - dragStart.current.x;
+      if (deltaX < -SWIPE_THRESHOLD) goForward();
+      else if (deltaX > SWIPE_THRESHOLD) goBackward();
+    }
+    dragStart.current = null;
+    dragAxis.current = null;
+  }
+
+  const activeReminders = reminders.filter((r) => !r.done && (!r.dueDate || r.dueDate <= realToday));
+  const overdueReal = activeReminders.filter((r) => r.dueDate && r.dueDate < realToday);
+  const dueTodayReal = activeReminders.filter((r) => !r.dueDate || r.dueDate === realToday);
+
+  const overdue = isToday ? overdueReal : [];
+  const dueOnViewed = reminders.filter((r) => !r.done && (r.dueDate === viewedDate || (!r.dueDate && isToday)));
+  const eventsOnViewed = events.filter((e) => e.date === viewedDate);
+  const sportsOnViewed = sports.filter((s) => s.date === viewedDate);
   const upcomingPayments = loans
     .filter((l) => l.nextPaymentDate)
-    .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, today) }))
+    .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, viewedDate) }))
     .filter(({ days }) => days >= 0 && days <= 7)
     .sort((a, b) => a.days - b.days);
-  const fplDeadlineToday =
-    fpl?.active && fpl.gw?.deadline && new Date(fpl.gw.deadline).toDateString() === new Date().toDateString()
-      ? fpl.gw.deadline
-      : null;
-  const todaysLifeEvents = lifeEvents.filter((e) => nextOccurrence(e, today) === today);
-  const paydayToday = isPaydayToday(today);
+  const fplDeadlineOnViewed =
+    fpl?.active && fpl.gw?.deadline && toOsloDateString(new Date(fpl.gw.deadline)) === viewedDate ? fpl.gw.deadline : null;
+  const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
+  const paydayOnViewed = isPaydayToday(viewedDate);
 
   useEffect(() => {
     if (loading) return;
-    setBadgeCount(overdue.length + dueToday.length);
-  }, [loading, overdue.length, dueToday.length]);
+    setBadgeCount(overdueReal.length + dueTodayReal.length);
+  }, [loading, overdueReal.length, dueTodayReal.length]);
+
+  const slideClass = slideDirection === "forward" ? "day-slide-in-right" : slideDirection === "backward" ? "day-slide-in-left" : "";
 
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-ink-1">I dag</h2>
-        {weather && (
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="truncate text-sm font-semibold text-ink-1">{dayHeaderLabel(viewedDate, viewedOffset)}</h2>
+          {!isToday && (
+            <button
+              type="button"
+              onClick={goToToday}
+              className="flex shrink-0 items-center gap-0.5 rounded-lg bg-surface-2 px-2 py-1 text-2xs font-medium text-accent-privat transition hover:bg-surface-3"
+            >
+              <ChevronLeft className="h-3 w-3" />
+              Tilbake til i dag
+            </button>
+          )}
+        </div>
+        {weather && isToday && (
           <button
             type="button"
             onClick={() => setWeatherExpanded((v) => !v)}
             aria-expanded={weatherExpanded}
             aria-label="Vis vær time for time"
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
           >
             <WeatherIcon symbol={weather.symbol} className="h-4 w-4 text-accent" />
             <span className="tabular-nums">{weather.temp}°</span>
@@ -172,7 +248,7 @@ export default function TodaySummary() {
         )}
       </div>
 
-      {weather && weatherExpanded && (
+      {weather && weatherExpanded && isToday && (
         <div className="mb-3 overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
           <div className="flex w-max gap-4">
             {weather.hourly.map((h) => (
@@ -189,106 +265,117 @@ export default function TodaySummary() {
       {loading ? (
         <SkeletonRows count={3} className="h-6" />
       ) : (
-        <div className="flex flex-col gap-2">
-          {overdue.length > 0 && (
-            <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-              <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Oversittet" count={overdue.length} />
-              <ul className="flex flex-col gap-1">
-                {overdue.map((r) => (
-                  <li key={r.id} className="text-sm text-ink-1">
-                    {r.text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+        <div
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => {
+            dragStart.current = null;
+            dragAxis.current = null;
+          }}
+          style={{ touchAction: "pan-y" }}
+        >
+          <div key={viewedOffset} className={`flex flex-col gap-2 ${slideClass}`}>
+            {overdue.length > 0 && (
+              <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
+                <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Oversittet" count={overdue.length} />
+                <ul className="flex flex-col gap-1">
+                  {overdue.map((r) => (
+                    <li key={r.id} className="text-sm text-ink-1">
+                      {r.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
-              aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
-          <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
-            <CategoryLabel icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser" />
-            {dueToday.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {dueToday.map((r) => (
-                  <li key={r.id} className="text-sm text-ink-1">
-                    {r.text}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
+            {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
+                aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
+            <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
+              <CategoryLabel icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser" />
+              {dueOnViewed.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {dueOnViewed.map((r) => (
+                    <li key={r.id} className="text-sm text-ink-1">
+                      {r.text}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
+              <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
+              {eventsOnViewed.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {eventsOnViewed.map((e) => (
+                    <li key={e.id} className="text-sm text-ink-1">
+                      {e.startTime ? <span className="tabular-nums text-ink-3">{e.startTime} </span> : null}
+                      {e.title}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">{isToday ? "Ingen hendelser i dag." : "Ingen hendelser denne dagen."}</p>
+              )}
+            </div>
+
+            {sportsOnViewed.length > 0 && (
+              <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
+                <CategoryLabel icon={Trophy} colorClass="text-accent" label="Sport" />
+                <ul className="flex flex-col gap-1">
+                  {sportsOnViewed.map((s) => (
+                    <li key={s.id} className="text-sm text-ink-1">
+                      {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
+                      {s.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {fplDeadlineOnViewed && (
+              <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
+                <CategoryLabel icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League" />
+                <p className="text-sm text-ink-1">
+                  Deadline kl.{" "}
+                  <span className="tabular-nums">
+                    {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {(paydayOnViewed || lifeEventsOnViewed.length > 0) && (
+              <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
+                <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
+                <ul className="flex flex-col gap-1">
+                  {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
+                  {lifeEventsOnViewed.map((e) => (
+                    <li key={e.id} className="text-sm text-ink-1">
+                      {e.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {upcomingPayments.length > 0 && (
+              <div className="rounded-lg border border-source-outlook/40 bg-source-outlook/8 px-3 py-1.5">
+                <CategoryLabel icon={Banknote} colorClass="text-source-outlook" label="Låneavdrag" />
+                <ul className="flex flex-col gap-1">
+                  {upcomingPayments.map(({ loan, days }) => (
+                    <li key={loan.id} className="text-sm text-ink-1">
+                      {loan.name} — {formatKr(loan.remainingAmount)}{" "}
+                      <span className="text-ink-3">({relativeDayLabel(days)})</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
-
-          <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
-            <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
-            {todaysEvents.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {todaysEvents.map((e) => (
-                  <li key={e.id} className="text-sm text-ink-1">
-                    {e.startTime ? <span className="tabular-nums text-ink-3">{e.startTime} </span> : null}
-                    {e.title}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-3">Ingen hendelser i dag.</p>
-            )}
-          </div>
-
-          {todaysSports.length > 0 && (
-            <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
-              <CategoryLabel icon={Trophy} colorClass="text-accent" label="Sport" />
-              <ul className="flex flex-col gap-1">
-                {todaysSports.map((s) => (
-                  <li key={s.id} className="text-sm text-ink-1">
-                    {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
-                    {s.name}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {fplDeadlineToday && (
-            <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
-              <CategoryLabel icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League" />
-              <p className="text-sm text-ink-1">
-                Deadline i dag kl.{" "}
-                <span className="tabular-nums">
-                  {new Date(fplDeadlineToday).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </p>
-            </div>
-          )}
-
-          {(paydayToday || todaysLifeEvents.length > 0) && (
-            <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
-              <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
-              <ul className="flex flex-col gap-1">
-                {paydayToday && <li className="text-sm text-ink-1">Lønningsdag</li>}
-                {todaysLifeEvents.map((e) => (
-                  <li key={e.id} className="text-sm text-ink-1">
-                    {e.title}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {upcomingPayments.length > 0 && (
-            <div className="rounded-lg border border-source-outlook/40 bg-source-outlook/8 px-3 py-1.5">
-              <CategoryLabel icon={Banknote} colorClass="text-source-outlook" label="Låneavdrag" />
-              <ul className="flex flex-col gap-1">
-                {upcomingPayments.map(({ loan, days }) => (
-                  <li key={loan.id} className="text-sm text-ink-1">
-                    {loan.name} — {formatKr(loan.remainingAmount)}{" "}
-                    <span className="text-ink-3">({relativeDayLabel(days)})</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
     </div>
