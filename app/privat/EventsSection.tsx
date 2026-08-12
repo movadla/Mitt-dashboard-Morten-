@@ -265,7 +265,7 @@ export default function EventsSection() {
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
         title="Hendelser"
-        subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}
+        subtitle={collapsed ? undefined : rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
