@@ -5,6 +5,7 @@ import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
+import { addCustomSportEvent, deleteCustomSportEvent, getCustomSportEvents } from "@/lib/customSports";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
 import { recordUsage } from "@/lib/aiUsage";
@@ -95,6 +96,37 @@ const TOGGLE_MILESTONE_TOOL: Anthropic.Tool = {
   },
 };
 
+const ADD_SPORT_EVENT_TOOL: Anthropic.Tool = {
+  name: "add_sport_event",
+  description:
+    "Legg til en kamp/sportshendelse brukeren selv vil følge, som dukker opp i Sport-boksen sammen med de " +
+    "faste kildene (Eliteserien, Premier League, darts osv.). Bruk dette for spesifikke kamper som ikke " +
+    "allerede dekkes automatisk.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Kampen/hendelsen, f.eks. 'Liverpool – Manchester City'." },
+      date: { type: "string", description: "Dato, format YYYY-MM-DD." },
+      time: { type: "string", description: "Klokkeslett, format HH:MM. Valgfritt." },
+      competition: { type: "string", description: "Turnering/liga. Valgfritt." },
+      venue: { type: "string", description: "Sted/arena. Valgfritt." },
+    },
+    required: ["name", "date"],
+  },
+};
+
+const DELETE_SPORT_EVENT_TOOL: Anthropic.Tool = {
+  name: "delete_sport_event",
+  description: "Slett en egendefinert sportshendelse brukeren har lagt til. Identifiser med et utdrag av navnet.",
+  input_schema: {
+    type: "object",
+    properties: {
+      nameMatch: { type: "string", description: "Del av navnet på kampen/hendelsen som skal slettes." },
+    },
+    required: ["nameMatch"],
+  },
+};
+
 function findOneMatch<T>(items: T[], getText: (item: T) => string, query: string, kind: string): T {
   const q = query.toLowerCase();
   const matches = items.filter((item) => getText(item).toLowerCase().includes(q));
@@ -135,6 +167,15 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     const { labelMatch } = input as { labelMatch: string };
     const milestone = findOneMatch(await getMilestones(), (m) => m.label, labelMatch, "sjekklistepunkter");
     return toggleMilestone(milestone.id);
+  }
+  if (name === "add_sport_event") {
+    return addCustomSportEvent(input as Parameters<typeof addCustomSportEvent>[0]);
+  }
+  if (name === "delete_sport_event") {
+    const { nameMatch } = input as { nameMatch: string };
+    const event = findOneMatch(await getCustomSportEvents(), (e) => e.name, nameMatch, "egendefinerte sportshendelser");
+    await deleteCustomSportEvent(event.id);
+    return { ok: true, deleted: event.name };
   }
   throw new Error(`Ukjent verktøy: ${name}`);
 }
@@ -178,10 +219,11 @@ export async function POST(request: NextRequest) {
     "(Fazile sitt fakturaverktøy er nedafor akkurat nå) — gjør det klart hvis du bruker de tallene, " +
     "f.eks. 'ifølge testdataene i dashboardet'. Sport, FPL, påminnelser og privat kalender under er " +
     "EKTE og oppdatert live, det samme er lån (Økonomi) og Alfred-data under. Du kan legge til, " +
-    "huke av/på og slette påminnelser og kalenderhendelser, og huke av/på Alfreds sjekklistepunkter, " +
-    "med verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde. Hvis et " +
-    "verktøy feiler fordi flere eller ingen elementer matcher, forklar det kort til brukeren i stedet " +
-    "for å gjette.\n\n" +
+    "huke av/på og slette påminnelser og kalenderhendelser, huke av/på Alfreds sjekklistepunkter, og " +
+    "legge til/slette egendefinerte sportshendelser (dukker opp i Sport-boksen sammen med de faste " +
+    "kildene), med verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde. " +
+    "Hvis et verktøy feiler fordi flere eller ingen elementer matcher, forklar det kort til brukeren i " +
+    "stedet for å gjette.\n\n" +
     buildDashboardContext() +
     "\n" +
     (await buildPrivatContext());
@@ -202,7 +244,9 @@ export async function POST(request: NextRequest) {
     TOGGLE_REMINDER_TOOL,
     DELETE_REMINDER_TOOL,
     DELETE_CALENDAR_EVENT_TOOL,
-    { ...TOGGLE_MILESTONE_TOOL, cache_control: { type: "ephemeral" } },
+    TOGGLE_MILESTONE_TOOL,
+    ADD_SPORT_EVENT_TOOL,
+    { ...DELETE_SPORT_EVENT_TOOL, cache_control: { type: "ephemeral" } },
   ];
   const convo: Anthropic.MessageParam[] = [...messages];
   let changed = false;

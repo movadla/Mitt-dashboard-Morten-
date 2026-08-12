@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trophy, Flag, Target, Timer, Award } from "lucide-react";
+import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
 import type { SportEvent } from "@/lib/sports";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
@@ -28,6 +28,7 @@ const SPORT_COLOR: Record<string, string> = {
   football_obos: "#f97316",
   football_pl: "#8b5cf6",
   worldcup: "#eab308",
+  personal: "#0e9e79",
 };
 const SPORT_LABEL: Record<string, string> = {
   football: "Fotball",
@@ -39,6 +40,7 @@ const SPORT_LABEL: Record<string, string> = {
   football_obos: "Obosligaen",
   football_pl: "Premier League",
   worldcup: "VM 2026",
+  personal: "Egen kamp",
 };
 type LucideComp = React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 const SPORT_ICON: Record<string, LucideComp> = {
@@ -48,6 +50,7 @@ const SPORT_ICON: Record<string, LucideComp> = {
   athletics: Timer,
   golf: Award,
   worldcup: Trophy,
+  personal: Star,
 };
 
 const LEAGUE_CATS = new Set(["football_eli", "football_obos", "football_pl"]);

@@ -3,13 +3,15 @@
 
 import { getJSON, setJSON } from "./kv";
 import { localDateString } from "./payday";
+import { getCustomSportEvents } from "./customSports";
+import { SPORTS_CACHE_KEY } from "./sportsCache";
 
 const UA   = { headers: { "User-Agent": "mitt-private-dashboard/1.0" } };
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3";
 
 // Lagres i Redis (ikke modul-minne) slik at cachen overlever serverless
 // cold starts på Vercel — et rent JS-objekt nullstilles ved hver kalde start.
-const CACHE_KEY = "cache:sports";
+const CACHE_KEY = SPORTS_CACHE_KEY;
 const CACHE_TTL_SECONDS = 3 * 60 * 60;
 let lastFetchedAt: number | null = null;
 
@@ -226,6 +228,20 @@ function getAthleticsCalendar(): SportEvent[] {
   return events;
 }
 
+// ── Egne kamper (brukeren legger selv til, typisk via chatboten) ────────────
+async function fetchCustomEvents(): Promise<SportEvent[]> {
+  const custom = await getCustomSportEvents();
+  return custom.map((e) => ({
+    id: `personal-${e.id}`,
+    category: "personal",
+    name: e.name,
+    venue: e.venue,
+    date: e.date,
+    time: e.time,
+    competition: e.competition ?? "Egen kamp",
+  }));
+}
+
 // ── Source list — add new sports here ───────────────────────────────────────
 const SOURCES: Array<() => Promise<SportEvent[]>> = [
   fetchF1,
@@ -236,6 +252,7 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
   () => fetchTsdbLeague("Darts", "PDC", "darts", 10),
   () => Promise.resolve(getAthleticsCalendar()),
   () => Promise.resolve(getGolfMajors()),
+  fetchCustomEvents,
 ];
 
 export async function getSportEvents(): Promise<SportEvent[]> {
