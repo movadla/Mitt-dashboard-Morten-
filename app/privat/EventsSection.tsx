@@ -294,7 +294,7 @@ export default function EventsSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}

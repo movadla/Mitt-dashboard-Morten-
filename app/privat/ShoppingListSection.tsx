@@ -163,7 +163,7 @@ export default function ShoppingListSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
         title="Handleliste"
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}

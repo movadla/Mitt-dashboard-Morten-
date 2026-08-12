@@ -44,10 +44,10 @@ export default function PrivatPanel() {
   return (
     <div className="flex flex-col gap-3">
       <TodaySummary />
-      {/* Kollapsede bokser sitter halv bredde, to og to på rad (col-span-1, satt av
-          hver seksjon selv basert på egen collapsed-state); en utvidet boks tar full
-          bredde (col-span-2) og CSS Grid flyter automatisk resten rundt den. */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Én seksjon per linje, full bredde — en kollapset seksjon er én rad, en
+          utvidet seksjon vokser nedover på samme plass. Ingen grid-reflow av
+          naboseksjoner (samme mønster som Jobb-fanen bruker). */}
+      <div className="flex flex-col gap-3">
         <RemindersSection />
         <CalendarSection />
         <EventsSection />
@@ -57,7 +57,7 @@ export default function PrivatPanel() {
         <ShoppingListSection />
         <NewsSection />
         {fplLoading ? (
-          <div className={`${CARD_SHELL} col-span-1 p-4`}>
+          <div className={`${CARD_SHELL} p-4`}>
             <SkeletonRows count={1} className="h-5" />
           </div>
         ) : (

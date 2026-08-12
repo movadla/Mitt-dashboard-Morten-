@@ -74,7 +74,7 @@ export default function NewsSection() {
   }, [load]);
 
   return (
-    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}

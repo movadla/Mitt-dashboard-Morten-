@@ -125,7 +125,7 @@ export default function NotesSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
         title="#Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}

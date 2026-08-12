@@ -454,7 +454,7 @@ export default function RemindersSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-accent-privat p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} !border-2 !border-accent-privat p-4`}>
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

@@ -89,6 +89,45 @@ function EditableNote({
   );
 }
 
+// Drill-down-underseksjon inni Alfred-kortet — egen kollapset/åpen-tilstand
+// (lagret separat per underseksjon) slik at man kan la Vekst stå åpen og
+// Notater lukket, i stedet for at alt dumpes i én lang liste når kortet åpnes.
+function AlfredSubSection({
+  title,
+  storageKey,
+  children,
+}: {
+  title: string;
+  storageKey: string;
+  children: React.ReactNode;
+}) {
+  const [collapsed, toggle] = usePersistedCollapse(storageKey, true);
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        className="flex w-full items-center justify-between px-3 py-2 text-left"
+      >
+        <span className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{title}</span>
+        <svg
+          viewBox="0 0 16 16"
+          className={`h-3 w-3 shrink-0 text-ink-4 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {!collapsed && <div className="flex flex-col gap-1.5 px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
 function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (updates: Partial<AlfredProfile>) => void }) {
   const [editing, setEditing] = useState(false);
   const [born, setBorn] = useState(profile.born);
@@ -528,7 +567,7 @@ export default function AlfredSection() {
       : "Ukentlig";
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-status-action p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} !border-2 !border-status-action p-4`}>
       <CardHeader title="Alfred" subtitle={subtitle} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       {!collapsed && (
         <div className="flex flex-col gap-3">
@@ -537,29 +576,34 @@ export default function AlfredSection() {
           ) : (
             <>
               {profile && <GrunninfoBox profile={profile} onSave={saveProfile} />}
-              <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
-              {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
 
-              {CATEGORY_ORDER.map((category) => (
-                <MilestoneGroup
-                  key={category}
-                  category={category}
-                  items={milestones.filter((m) => m.category === category)}
-                  onToggle={toggleMilestoneItem}
-                  onRemove={(id) => confirmDelete.request({ type: "milestone", id })}
-                  onAdd={addMilestoneItem}
-                />
-              ))}
+              <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst">
+                <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
+                {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
+              </AlfredSubSection>
+
+              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler">
+                {CATEGORY_ORDER.map((category) => (
+                  <MilestoneGroup
+                    key={category}
+                    category={category}
+                    items={milestones.filter((m) => m.category === category)}
+                    onToggle={toggleMilestoneItem}
+                    onRemove={(id) => confirmDelete.request({ type: "milestone", id })}
+                    onAdd={addMilestoneItem}
+                  />
+                ))}
+              </AlfredSubSection>
 
               {profile && (
-                <>
+                <AlfredSubSection title="Notater" storageKey="Alfred - Notater">
                   <EditableNote label="Motorisk (notat)" value={profile.motorikkNotat} onSave={(v) => saveProfile({ motorikkNotat: v })} />
                   <EditableNote label="Helse" value={profile.helseNotat} onSave={(v) => saveProfile({ helseNotat: v })} />
                   <EditableNote label="Mat og søvn" value={profile.matOgSovnNotat} onSave={(v) => saveProfile({ matOgSovnNotat: v })} />
                   <EditableNote label="Permisjon" value={profile.permisjonNotat} onSave={(v) => saveProfile({ permisjonNotat: v })} />
                   <EditableNote label="Barnehage" value={profile.barnehageNotat} onSave={(v) => saveProfile({ barnehageNotat: v })} />
                   <EditableNote label="Barnesikring" value={profile.barnesikringNotat} onSave={(v) => saveProfile({ barnesikringNotat: v })} />
-                </>
+                </AlfredSubSection>
               )}
             </>
           )}

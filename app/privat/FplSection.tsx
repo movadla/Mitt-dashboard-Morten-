@@ -534,7 +534,7 @@ export function FplBox({ fpl }: { fpl: FplData }) {
   if (!fpl.active || !fpl.gw?.deadline) return null;
 
   return (
-    <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
         title="Fantasy Premier League"
         subtitle={fplCountdownText(fpl.gw.deadline)}
