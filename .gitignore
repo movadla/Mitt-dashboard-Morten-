@@ -53,9 +53,14 @@ cloudflared.log
 cloudflared-err.log
 cf_err.log
 dev-server.log
+dev-server-restart.log
+*.pid
 start-dev.ps1
 
 # ekte Mustad-data – aldri push til GitHub
 lib/tasks.local.ts
+lib/widgets.local.ts
+lib/incomeForecast.local.ts
+lib/tenants.local.ts
 
 .vercel

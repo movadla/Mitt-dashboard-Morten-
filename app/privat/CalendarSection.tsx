@@ -229,6 +229,11 @@ export default function CalendarSection() {
   const todays = upcoming.filter((e) => e.date === today);
   const rest = upcoming.filter((e) => e.date !== today);
 
+  function handleAddClick() {
+    if (collapsed) toggleCollapsed();
+    setShowForm(true);
+  }
+
   return (
     <div className={`${CARD_SHELL} !border-2 !border-source-teams p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
@@ -236,6 +241,8 @@ export default function CalendarSection() {
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={handleAddClick}
+        addLabel="Ny kalenderhendelse"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

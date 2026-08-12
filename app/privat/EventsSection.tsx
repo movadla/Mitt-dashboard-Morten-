@@ -256,6 +256,11 @@ export default function EventsSection() {
       })),
   ].sort((a, b) => a.occurrence.localeCompare(b.occurrence));
 
+  function handleAddClick() {
+    if (collapsed) toggleCollapsed();
+    setShowForm(true);
+  }
+
   return (
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
@@ -263,6 +268,8 @@ export default function EventsSection() {
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={handleAddClick}
+        addLabel="Ny hendelse"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

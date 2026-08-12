@@ -8,13 +8,19 @@ import { getShoppingItems } from "./shoppingList";
 import { getLifeEvents } from "./events";
 import { getCustomSportEvents } from "./customSports";
 import { getChatHistory } from "./chatHistory";
+import { getManualIncomeLines } from "./incomeForecastManual";
+import { getAllComments } from "./comments";
+import { getJobbReminders } from "./jobbReminders";
+import { getJobbEvents } from "./jobbEvents";
+import { getLeasingManagers } from "./leasingManagers";
+import { getProcedureNotes } from "./procedureNotes";
 
 /**
- * Full dump av alt ekte Privat-data i Redis. Redis Cloud-gratisplanen som
- * brukes her er RAM-only (ingen persistens/HA) — dette er et manuelt/
- * planlagt sikkerhetsnett, ikke en erstatning for ekte databasepersistens.
- * Cache-nøkler (sport/FPL) er bevisst utelatt — de er regenererbare fra
- * eksterne API-er og ikke verdt å ta vare på.
+ * Full dump av alt ekte data i Redis (Privat- og Jobb-fanen). Redis Cloud-
+ * gratisplanen som brukes her er RAM-only (ingen persistens/HA) — dette er
+ * et manuelt/planlagt sikkerhetsnett, ikke en erstatning for ekte
+ * databasepersistens. Cache-nøkler (sport/FPL) er bevisst utelatt — de er
+ * regenererbare fra eksterne API-er og ikke verdt å ta vare på.
  */
 export async function buildBackup() {
   const [
@@ -30,6 +36,12 @@ export async function buildBackup() {
     lifeEvents,
     customSports,
     chatHistory,
+    manualIncomeLines,
+    comments,
+    jobbReminders,
+    jobbEvents,
+    leasingManagers,
+    procedureNotes,
   ] = await Promise.all([
     getReminders(),
     getPrivatEvents(),
@@ -43,6 +55,12 @@ export async function buildBackup() {
     getLifeEvents(),
     getCustomSportEvents(),
     getChatHistory(),
+    getManualIncomeLines(),
+    getAllComments(),
+    getJobbReminders(),
+    getJobbEvents(),
+    getLeasingManagers(),
+    getProcedureNotes(),
   ]);
 
   return {
@@ -57,5 +75,11 @@ export async function buildBackup() {
     lifeEvents,
     customSports,
     chatHistory,
+    manualIncomeLines,
+    comments,
+    jobbReminders,
+    jobbEvents,
+    leasingManagers,
+    procedureNotes,
   };
 }

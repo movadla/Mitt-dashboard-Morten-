@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
-import type { Recurrence, Reminder } from "@/lib/reminders";
+import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
-import SwipeableRow from "./SwipeableRow";
+import SwipeableRow from "./privat/SwipeableRow";
 import { GripVertical, Plus } from "lucide-react";
 import {
   DndContext,
@@ -30,13 +30,13 @@ function formatDMY(iso: string): string {
   return `${d}.${m}.${y}`;
 }
 
-function isDueToday(r: Reminder, today: string): boolean {
+function isDueToday(r: JobbReminder, today: string): boolean {
   if (r.done) return false;
   if (!r.dueDate) return true; // ingen frist -> alltid aktuell
   return r.dueDate <= today; // forfaller i dag eller er oversittet
 }
 
-function sortReminders(a: Reminder, b: Reminder): number {
+function sortReminders(a: JobbReminder, b: JobbReminder): number {
   if (a.done !== b.done) return a.done ? 1 : -1;
   if (!a.dueDate && !b.dueDate) return 0;
   if (!a.dueDate) return 1;
@@ -49,7 +49,7 @@ function ReminderEditForm({
   onCancel,
   onSave,
 }: {
-  reminder: Reminder;
+  reminder: JobbReminder;
   onCancel: () => void;
   onSave: (updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
 }) {
@@ -100,7 +100,7 @@ function ReminderEditForm({
           type="button"
           onClick={save}
           disabled={!text.trim()}
-          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent/85 disabled:opacity-40"
         >
           Lagre
         </button>
@@ -115,7 +115,7 @@ function ReminderRowContent({
   onRemove,
   onStartEdit,
 }: {
-  reminder: Reminder;
+  reminder: JobbReminder;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
@@ -180,7 +180,7 @@ function ReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks) {
+}: { reminder: JobbReminder; editing: boolean } & RowCallbacks) {
   if (editing) {
     return (
       <li>
@@ -203,7 +203,7 @@ function ReminderRow({
   );
 }
 
-// Samme rad som ReminderRow, men drabar via et eget håndtak (dnd-kit) — brukes
+// Samme rad som ReminderRow, men dras via et eget håndtak (dnd-kit) — brukes
 // kun i "i dag"-lista, der manuell prioritering gir mening.
 function SortableReminderRow({
   reminder,
@@ -213,7 +213,7 @@ function SortableReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks) {
+}: { reminder: JobbReminder; editing: boolean } & RowCallbacks) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reminder.id,
   });
@@ -259,9 +259,9 @@ function SortableReminderRow({
   );
 }
 
-export default function RemindersSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser", true);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
+export default function JobbRemindersSection() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser (Jobb)", true);
+  const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -274,35 +274,35 @@ export default function RemindersSection() {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
-    fetch("/api/reminders")
+    fetch("/api/jobb-reminders")
       .then((r) => r.json())
-      .then((d) => setReminders((d.reminders ?? []) as Reminder[]))
+      .then((d) => setReminders((d.reminders ?? []) as JobbReminder[]))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
+    window.addEventListener("mitt-dashboard:jobb-refresh", load);
+    return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
 
   async function handleAdd() {
     if (!text.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/reminders", {
+      const res = await fetch("/api/jobb-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, dueDate: dueDate || undefined, recurrence }),
       });
       if (res.ok) {
-        const created: Reminder = await res.json();
+        const created: JobbReminder = await res.json();
         setReminders((prev) => [...prev, created].sort(sortReminders));
         setText("");
         setDueDate("");
         setRecurrence("none");
         setShowForm(false);
-        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+        window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
       }
     } finally {
       setSubmitting(false);
@@ -310,11 +310,11 @@ export default function RemindersSection() {
   }
 
   async function handleToggle(id: string) {
-    const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
+    const res = await fetch(`/api/jobb-reminders/${id}`, { method: "PATCH" });
     if (res.ok) {
-      const updated: Reminder = await res.json();
+      const updated: JobbReminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
-      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
       vibrate(updated.done ? 15 : 8);
     }
   }
@@ -322,24 +322,24 @@ export default function RemindersSection() {
   async function handleRemove(id: string) {
     setReminders((prev) => prev.filter((r) => r.id !== id));
     vibrate([10, 30, 10]);
-    await fetch(`/api/reminders/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    await fetch(`/api/jobb-reminders/${id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
   }
 
   async function handleSaveEdit(
     id: string,
     updates: { text: string; dueDate?: string; recurrence: Recurrence },
   ) {
-    const res = await fetch(`/api/reminders/${id}`, {
+    const res = await fetch(`/api/jobb-reminders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: updates.text, dueDate: updates.dueDate ?? null, recurrence: updates.recurrence }),
     });
     if (res.ok) {
-      const updated: Reminder = await res.json();
+      const updated: JobbReminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       setEditingId(null);
-      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
     }
   }
 
@@ -362,11 +362,11 @@ export default function RemindersSection() {
       const orderOf = new Map(reordered.map((id, i) => [id, i]));
       const next = prev.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r));
 
-      fetch("/api/reminders/reorder", {
+      fetch("/api/jobb-reminders/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: reordered }),
-      }).then(() => window.dispatchEvent(new Event("mitt-dashboard:privat-refresh")));
+      }).then(() => window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh")));
 
       return next;
     });
@@ -377,20 +377,13 @@ export default function RemindersSection() {
   const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
   const rest = reminders.filter((r) => !isDueToday(r, today));
 
-  function handleAddClick() {
-    if (collapsed) toggleCollapsed();
-    setShowForm(true);
-  }
-
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-accent-privat p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
+    <div className={`${CARD_SHELL} !border-2 !border-accent p-4`}>
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
-        onAdd={handleAddClick}
-        addLabel="Ny påminnelse"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
@@ -437,7 +430,7 @@ export default function RemindersSection() {
                   type="button"
                   onClick={handleAdd}
                   disabled={!text.trim() || submitting}
-                  className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                  className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent/85 disabled:opacity-40"
                 >
                   Legg til
                 </button>
@@ -501,7 +494,7 @@ export default function RemindersSection() {
               <button
                 type="button"
                 onClick={() => setShowAll((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
               </button>

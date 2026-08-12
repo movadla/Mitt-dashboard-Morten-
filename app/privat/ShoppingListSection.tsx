@@ -157,6 +157,11 @@ export default function ShoppingListSection() {
     (g) => g.items.length > 0,
   );
 
+  function handleAddClick() {
+    if (collapsed) toggleCollapsed();
+    setShowForm(true);
+  }
+
   return (
     <div className={`${CARD_SHELL} p-4 ${collapsed ? "col-span-1" : "col-span-2"}`}>
       <CardHeader
@@ -164,6 +169,8 @@ export default function ShoppingListSection() {
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={handleAddClick}
+        addLabel="Ny vare"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

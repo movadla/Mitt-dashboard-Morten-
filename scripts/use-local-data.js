@@ -1,6 +1,14 @@
 const fs = require("fs");
-const hasLocal = fs.existsSync("lib/tasks.local.ts");
-const line = hasLocal
-  ? 'export * from "./tasks.local";\n'
-  : 'export * from "./tasks.anon";\n';
-fs.writeFileSync("lib/tasks.ts", line);
+
+function swap(baseName) {
+  const hasLocal = fs.existsSync(`lib/${baseName}.local.ts`);
+  const line = hasLocal
+    ? `export * from "./${baseName}.local";\n`
+    : `export * from "./${baseName}.anon";\n`;
+  fs.writeFileSync(`lib/${baseName}.ts`, line);
+}
+
+swap("tasks");
+swap("widgets");
+swap("incomeForecast");
+swap("tenants");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 
 export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15";
 
@@ -43,11 +44,15 @@ export function CardHeader({
   subtitle,
   collapsed,
   onToggleCollapse,
+  onAdd,
+  addLabel,
 }: {
   title: string;
   subtitle?: React.ReactNode;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onAdd?: () => void;
+  addLabel?: string;
 }) {
   const inner = (
     <>
@@ -71,20 +76,59 @@ export function CardHeader({
     </>
   );
 
+  // Egen knapp ved siden av (ikke inni) collapse-toggle-knappen — en <button>
+  // inni en <button> er ugyldig HTML og ville uansett trigget begge handlingene.
+  const addButton = onAdd && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onAdd();
+      }}
+      aria-label={addLabel ?? `Legg til i ${title}`}
+      title={addLabel ?? `Legg til i ${title}`}
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-3 transition hover:bg-surface-2 hover:text-ink-1"
+    >
+      <Plus className="h-4 w-4" />
+    </button>
+  );
+
   if (!onToggleCollapse) {
-    return <div className="mb-3 flex items-baseline justify-between gap-2">{inner}</div>;
+    return (
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        {inner}
+        {addButton}
+      </div>
+    );
+  }
+
+  if (!onAdd) {
+    return (
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
+        aria-expanded={!collapsed}
+        className="-mx-1 mb-3 flex w-full items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+      >
+        {inner}
+      </button>
+    );
   }
 
   return (
-    <button
-      type="button"
-      onClick={onToggleCollapse}
-      aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
-      aria-expanded={!collapsed}
-      className="-mx-1 mb-3 flex w-full items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
-    >
-      {inner}
-    </button>
+    <div className="-mx-1 mb-3 flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onToggleCollapse}
+        aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
+        aria-expanded={!collapsed}
+        className="flex min-w-0 flex-1 items-baseline justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+      >
+        {inner}
+      </button>
+      {addButton}
+    </div>
   );
 }
 

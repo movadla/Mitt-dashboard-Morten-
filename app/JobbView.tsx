@@ -14,18 +14,36 @@ import {
   type Task,
 } from "@/lib/tasks";
 import {
-  BUILDINGS,
   CALENDAR_EVENTS,
   CONTRACTS,
+  type Contract,
+  EXPIRIES,
+  EXPIRIES_REELL_EKSPONERING,
+  EXPIRIES_TOTAL_ARSLEIE,
+  EXPIRIES_WINDOW,
+  type ExpiringTenant,
+  type ExpiryStatus,
   GUARANTEES,
   GUARANTEE_TOTAL,
+  type Guarantee,
   type GuaranteeStatus,
   RECEIVABLES,
   RECEIVABLES_TREND,
+  type Receivable,
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "./CardShell";
+import type { Comment } from "@/lib/comments";
+import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
+import { CommentBadge, CommentThreadBody } from "./CommentsCell";
+import { commentKey, useComments } from "./useComments";
+import IncomeForecastSection from "./IncomeForecastSection";
+import JobbTodaySummary from "./JobbTodaySummary";
+import JobbRemindersSection from "./JobbRemindersSection";
+import JobbEventsSection from "./JobbEventsSection";
+import JobbLeasingManagersCard from "./JobbLeasingManagersCard";
+import JobbTenantDirectoryCard from "./JobbTenantDirectoryCard";
+import JobbProcedureNotesCard from "./JobbProcedureNotesCard";
 
 type Filter = Source | "all";
 type SfBucket = "alle" | "faktura" | "kreditnota" | "garanti" | "annet";
@@ -104,6 +122,14 @@ const GUARANTEE_STATUS_STYLE: Record<GuaranteeStatus, string> = {
   Mangler: "bg-status-danger/12 text-status-danger",
   Forespurt: "bg-status-warning/12 text-status-warning",
   Kommer: "bg-status-positive/12 text-status-positive",
+};
+
+const EXPIRY_STATUS_STYLE: Record<ExpiryStatus, string> = {
+  Reforhandlet: "bg-status-positive/12 text-status-positive",
+  Terminert: "bg-status-danger/12 text-status-danger",
+  "Mulig endring": "bg-status-warning/12 text-status-warning",
+  "Reforhandling pågår": "bg-accent/15 text-accent",
+  "Ingen varsel": "text-ink-4",
 };
 
 const SF_BUCKET_LABEL: Record<SfBucket, string> = {
@@ -1525,10 +1551,62 @@ function CalendarCard({ today }: { today: string }) {
   );
 }
 
+function ContractRow({
+  contract: c,
+  comments,
+  onAdd,
+  onRequestDelete,
+}: {
+  contract: Contract;
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onRequestDelete: (commentId: string, preview: string) => void;
+}) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.kunde}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.bygg}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{c.kvm}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.leietype}</td>
+        <td className="whitespace-nowrap px-2 py-2">
+          {c.sfUrl ? (
+            <a
+              href={c.sfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              Link
+            </a>
+          ) : (
+            <span className="text-ink-4">—</span>
+          )}
+        </td>
+        <td className="whitespace-nowrap px-2 py-2">
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
+        </td>
+      </tr>
+      {notesOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={9} className="px-2 py-2 pl-9">
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function ContractsCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter");
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? CONTRACTS : CONTRACTS.slice(0, 5);
+  const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
@@ -1540,44 +1618,29 @@ function ContractsCard() {
       {!collapsed && (
         <>
           <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[620px] text-sm">
               <thead>
                 <tr className="text-left text-ink-4">
-                  <th className="px-3 py-2 text-2xs font-medium">Kunde</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Signeringsdato</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Startdato</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Årsbeløp</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Kvm</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Leietype</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Kontrakt</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Kunde</th>
+                  <th className="px-2 py-2 text-2xs font-medium text-right">Signert</th>
+                  <th className="px-2 py-2 text-2xs font-medium text-right">Start</th>
+                  <th className="px-2 py-2 text-2xs font-medium text-right">Beløp</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
+                  <th className="px-2 py-2 text-2xs font-medium text-right">Kvm</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Type</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Kontrakt</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
               <tbody>
                 {visible.map((c) => (
-                  <tr key={c.kunde} className="border-t border-line transition-colors hover:bg-surface-2/50">
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.kunde}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.bygg}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{c.kvm}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.leietype}</td>
-                    <td className="whitespace-nowrap px-3 py-2">
-                      {c.sfUrl ? (
-                        <a
-                          href={c.sfUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-accent hover:underline"
-                        >
-                          Åpne i SF
-                        </a>
-                      ) : (
-                        <span className="text-ink-4">—</span>
-                      )}
-                    </td>
-                  </tr>
+                  <ContractRow
+                    key={c.id}
+                    contract={c}
+                    comments={comments[commentKey("contract", c.id)] ?? []}
+                    onAdd={(tekst) => addComment("contract", c.id, tekst)}
+                    onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "contract", targetId: c.id, commentId, preview })}
+                  />
                 ))}
               </tbody>
             </table>
@@ -1593,12 +1656,225 @@ function ContractsCard() {
           )}
         </>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
+  );
+}
+
+function ExpiryTenantRow({
+  tenant,
+  comments,
+  onAdd,
+  onRequestDelete,
+}: {
+  tenant: ExpiringTenant;
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onRequestDelete: (commentId: string, preview: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const nearestLine = tenant.lines.reduce((a, b) => (a.dagerTilUtlop <= b.dagerTilUtlop ? a : b));
+  const utlopUrgent = nearestLine.dagerTilUtlop < 10;
+
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td className="p-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="flex w-full min-w-0 items-center gap-2 px-2 py-2 text-left"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+            <span className="truncate text-ink-2">{tenant.leietaker}</span>
+          </button>
+        </td>
+        <td className="whitespace-nowrap px-2 py-2 text-2xs text-ink-4">{tenant.bygg}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-ink-3">{tenant.lines.length}</td>
+        <td className="whitespace-nowrap px-2 py-2 tabular-nums font-medium text-ink-1">{formatKr(tenant.totalArsleie)}</td>
+        <td className={`whitespace-nowrap px-2 py-2 tabular-nums ${utlopUrgent ? "font-medium text-status-danger" : "text-ink-3"}`}>
+          {formatDateDMY(nearestLine.slutt)}
+        </td>
+        <td className="whitespace-nowrap px-2 py-2">
+          <span
+            title={tenant.statusKilde}
+            className={`inline-flex items-center rounded-full px-2 py-1 text-2xs font-medium ${EXPIRY_STATUS_STYLE[tenant.status]}`}
+          >
+            {tenant.status}
+          </span>
+        </td>
+        <td className="whitespace-nowrap px-2 py-2">
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
+        </td>
+      </tr>
+      {notesOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={7} className="px-2 py-2 pl-9">
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+          </td>
+        </tr>
+      )}
+      {open &&
+        tenant.lines.map((l) => (
+          <tr key={l.linjeId} className="border-t border-line border-l-2 border-l-line-strong bg-surface-3/50">
+            <td colSpan={7} className="px-2 py-2 pl-8">
+              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-baseline gap-x-4 gap-y-1 text-sm">
+                <span className="min-w-0 truncate text-ink-2">
+                  {l.beskrivelse}
+                  {l.bygg !== "(ukjent bygg)" && l.bygg !== tenant.bygg && (
+                    <span className="ml-1.5 text-2xs text-ink-4">· {l.bygg}</span>
+                  )}
+                </span>
+                <span className="whitespace-nowrap text-2xs text-ink-4">{l.arealtype}</span>
+                <span className="whitespace-nowrap text-2xs text-ink-4">{l.leietype}</span>
+                <span className="whitespace-nowrap tabular-nums font-medium text-ink-2">{formatKr(l.totalArsleie)}</span>
+                <span
+                  className={`whitespace-nowrap tabular-nums text-2xs ${l.dagerTilUtlop < 10 ? "font-medium text-status-danger" : "text-ink-4"}`}
+                >
+                  {formatDateDMY(l.slutt)}
+                </span>
+              </div>
+              {l.reforhandlet && l.nyKontraktsnokkel && (
+                <p className="mt-1 text-2xs text-status-positive">
+                  → Reforhandlet: {l.nyKontraktsnokkel}, ny start {formatDateDMY(l.nyKontraktStart!)}
+                  {l.gapDager !== undefined && l.gapDager > 0 ? ` (${l.gapDager}d opphold)` : ""}
+                </p>
+              )}
+            </td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
+function ExpiryListCard() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste");
+  const { comments, addComment, removeComment, confirmDelete } = useComments();
+  return (
+    <div className={`${CARD_SHELL} p-4`}>
+      <CardHeader
+        title="Utløpsliste"
+        subtitle={<><span className="font-medium tabular-nums text-ink-2">{EXPIRIES.length}</span> leietakere, neste 30 dager</>}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <>
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[600px] text-sm">
+              <thead>
+                <tr className="text-left text-ink-4">
+                  <th className="px-2 py-2 text-2xs font-medium">Leietaker</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Lin.</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Årsleie</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Utløp</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Status</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Notat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {EXPIRIES.map((t) => {
+                  const targetId = String(t.customerId);
+                  return (
+                    <ExpiryTenantRow
+                      key={t.customerId}
+                      tenant={t}
+                      comments={comments[commentKey("expiry-tenant", targetId)] ?? []}
+                      onAdd={(tekst) => addComment("expiry-tenant", targetId, tekst)}
+                      onRequestDelete={(commentId, preview) =>
+                        confirmDelete.request({ targetType: "expiry-tenant", targetId, commentId, preview })
+                      }
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-2xs text-ink-4">
+            {formatDateDMY(EXPIRIES_WINDOW.fraDato)}–{formatDateDMY(EXPIRIES_WINDOW.tilDato)} · Total eksponering{" "}
+            {formatKr(EXPIRIES_TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet) {formatKr(EXPIRIES_REELL_EKSPONERING)}
+          </p>
+        </>
+      )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmDelete.cancel();
+        }}
+      />
+    </div>
+  );
+}
+
+function GuaranteeRow({
+  guarantee: g,
+  comments,
+  onAdd,
+  onRequestDelete,
+}: {
+  guarantee: Guarantee;
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onRequestDelete: (commentId: string, preview: string) => void;
+}) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td className="whitespace-nowrap px-3 py-2">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium ${GUARANTEE_STATUS_STYLE[g.status]}`}>
+            {g.status}
+          </span>
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{g.leietaker}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{g.belop === null ? "—" : formatKr(g.belop)}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{formatDateDMY(g.frist)}</td>
+        <td className="whitespace-nowrap px-3 py-2">
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
+        </td>
+      </tr>
+      {notesOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={5} className="px-3 py-2 pl-9">
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
 function GuaranteesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt");
+  const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
@@ -1609,32 +1885,41 @@ function GuaranteesCard() {
       />
       {!collapsed && (
         <div className="-mx-1 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[600px] text-sm">
             <thead>
               <tr className="text-left text-ink-4">
                 <th className="px-3 py-2 text-2xs font-medium">Status</th>
                 <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
                 <th className="px-3 py-2 text-2xs font-medium text-right">Beløp</th>
                 <th className="px-3 py-2 text-2xs font-medium text-right">Frist</th>
+                <th className="px-3 py-2 text-2xs font-medium">Notat</th>
               </tr>
             </thead>
             <tbody>
               {GUARANTEES.map((g) => (
-                <tr key={g.leietaker} className="border-t border-line transition-colors hover:bg-surface-2/50">
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium ${GUARANTEE_STATUS_STYLE[g.status]}`}>
-                      {g.status}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-ink-2">{g.leietaker}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{g.belop === null ? "—" : formatKr(g.belop)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{formatDateDMY(g.frist)}</td>
-                </tr>
+                <GuaranteeRow
+                  key={g.id}
+                  guarantee={g}
+                  comments={comments[commentKey("guarantee", g.id)] ?? []}
+                  onAdd={(tekst) => addComment("guarantee", g.id, tekst)}
+                  onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
+                />
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmDelete.cancel();
+        }}
+      />
     </div>
   );
 }
@@ -1697,10 +1982,47 @@ function WeeklyTrendChart({ data }: { data: number[] }) {
   );
 }
 
+function ReceivableRow({
+  receivable: r,
+  comments,
+  onAdd,
+  onRequestDelete,
+}: {
+  receivable: Receivable;
+  comments: Comment[];
+  onAdd: (tekst: string) => void;
+  onRequestDelete: (commentId: string, preview: string) => void;
+}) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{r.leietaker}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
+        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-3"}`}>
+          {formatKr(r.utestaende60)}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{r.dagerSidenBetaling}</td>
+        <td className="whitespace-nowrap px-3 py-2">
+          <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
+        </td>
+      </tr>
+      {notesOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={5} className="px-3 py-2 pl-9">
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function ReceivablesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer");
   const [showTrend, setShowTrend] = useState(false);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
+  const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <CardHeader
@@ -1712,25 +2034,25 @@ function ReceivablesCard() {
       {!collapsed && (
         <>
           <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="text-left text-ink-4">
                   <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
                   <th className="px-3 py-2 text-2xs font-medium text-right">Utestående</th>
                   <th className="px-3 py-2 text-2xs font-medium text-right">Utestående 60+ dager</th>
                   <th className="px-3 py-2 text-2xs font-medium text-right">Dager siden betaling</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
               <tbody>
                 {RECEIVABLES.map((r) => (
-                  <tr key={r.leietaker} className="border-t border-line transition-colors hover:bg-surface-2/50">
-                    <td className="whitespace-nowrap px-3 py-2 text-ink-2">{r.leietaker}</td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-                    <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-3"}`}>
-                      {formatKr(r.utestaende60)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{r.dagerSidenBetaling}</td>
-                  </tr>
+                  <ReceivableRow
+                    key={r.id}
+                    receivable={r}
+                    comments={comments[commentKey("receivable", r.id)] ?? []}
+                    onAdd={(tekst) => addComment("receivable", r.id, tekst)}
+                    onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "receivable", targetId: r.id, commentId, preview })}
+                  />
                 ))}
               </tbody>
             </table>
@@ -1749,43 +2071,17 @@ function ReceivablesCard() {
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function ForecastCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose");
-  const totalLeieinntekt = BUILDINGS.reduce((s, b) => s + b.leieinntekt2026, 0);
-  return (
-    <div className={`${CARD_SHELL} p-4`}>
-      <CardHeader
-        title="Leieinntekt 2026 — topp 5 bygg"
-        subtitle={<span className="font-medium tabular-nums text-ink-2">{formatKr(totalLeieinntekt)}</span>}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmDelete.pending;
+          if (!pending) return;
+          removeComment(pending.targetType, pending.targetId, pending.commentId);
+          confirmDelete.cancel();
+        }}
       />
-      {!collapsed && (
-        <div className="-mx-1 overflow-x-auto">
-          <table className="w-full min-w-[380px] text-sm">
-            <thead>
-              <tr className="text-left text-ink-4">
-                <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
-                <th className="px-3 py-2 text-2xs font-medium text-right">Leieinntekt 2026</th>
-                <th className="px-3 py-2 text-2xs font-medium text-right">Kontraktslinjer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {BUILDINGS.map((b) => (
-                <tr key={b.navn} className="border-t border-line transition-colors hover:bg-surface-2/50">
-                  <td className="whitespace-nowrap px-3 py-2 text-ink-2">{b.navn}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(b.leieinntekt2026)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{b.antallLinjer}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }
@@ -1991,6 +2287,13 @@ export default function JobbView({
     });
   }
 
+  function jumpToOppgaver(sourceFilter?: Filter) {
+    if (sourceFilter) setFilter(sourceFilter);
+    requestAnimationFrame(() => {
+      document.getElementById("oppgaver")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   const sfBucketCounts = useMemo(() => {
     const c: Record<SfBucket, number> = {
       alle: 0,
@@ -2108,18 +2411,50 @@ export default function JobbView({
         </div>
       </header>
 
+      <div className="mb-6">
+        <JobbTodaySummary
+          tasks={tasks}
+          onJumpToAsana={() => jumpToOppgaver("asana")}
+          onJumpToTask={(id) => jumpToCase(id)}
+        />
+      </div>
+
       <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Nøkkeltall · Ekte data: kontrakter, leieinntekt, kalender, garantier og kundefordringer · Testdata: ukesgraf
+        Nøkkeltall · Ekte data: kontrakter, kalender, garantier og kundefordringer · Testdata: ukesgraf
       </p>
       <div className="mb-6 flex flex-col gap-3">
         <CalendarCard today={today} />
         <ContractsCard />
+        <ExpiryListCard />
         <GuaranteesCard />
         <ReceivablesCard />
-        <ForecastCard />
       </div>
 
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">Oppgaver</p>
+      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
+        Påminnelser og hendelser · Egne notater, ikke fra Outlook/Asana
+      </p>
+      <div className="mb-6 flex flex-col gap-3">
+        <JobbRemindersSection />
+        <JobbEventsSection />
+      </div>
+
+      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
+        Info · Utleieansvarlige, leietakersøk og driftsnotater
+      </p>
+      <div className="mb-6 flex flex-col gap-3">
+        <JobbLeasingManagersCard />
+        <JobbTenantDirectoryCard />
+        <JobbProcedureNotesCard />
+      </div>
+
+      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
+        Inntektsprognose · Snapshot — oppdateres manuelt ved forespørsel, ikke live
+      </p>
+      <div className="mb-6">
+        <IncomeForecastSection />
+      </div>
+
+      <p id="oppgaver" className="mb-2 scroll-mt-4 text-2xs uppercase tracking-wider text-ink-3">Oppgaver</p>
       <div
         className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 leading-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
