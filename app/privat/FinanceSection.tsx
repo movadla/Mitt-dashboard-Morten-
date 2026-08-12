@@ -8,6 +8,7 @@ import type { SavingsAccount } from "@/lib/savings";
 import type { SalaryEntry } from "@/lib/salary";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
+import { localDateString } from "@/lib/payday";
 
 function formatUsd(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -260,6 +261,22 @@ function LoanForm({
   );
 }
 
+// Gjenværende tid TIL FASTRENTEN UTLØPER (ikke til lånet er nedbetalt —
+// bekreftet med Morten). Brukes kun for lån med rateFixedUntil satt.
+function remainingFixedTermLabel(rateFixedUntil: string, todayIso: string): string {
+  const until = new Date(rateFixedUntil + "T00:00:00Z");
+  const today = new Date(todayIso + "T00:00:00Z");
+  let months = (until.getUTCFullYear() - today.getUTCFullYear()) * 12 + (until.getUTCMonth() - today.getUTCMonth());
+  if (until.getUTCDate() < today.getUTCDate()) months--;
+  if (months <= 0) return "Fastrenten er utløpt";
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} år`);
+  if (rest > 0) parts.push(`${rest} mnd`);
+  return `${parts.join(" ")} igjen på fastrenten`;
+}
+
 function LoanRow({
   loan,
   editing,
@@ -297,17 +314,21 @@ function LoanRow({
             {loan.nominalRate !== undefined ? ` · ${loan.nominalRate.toLocaleString("nb-NO")}% rente` : ""}
             {loan.nextPaymentDate ? ` · neste betaling ${formatDateDMY(loan.nextPaymentDate)}` : ""}
           </p>
-          {loan.originalAmount && loan.originalAmount > 0 && (() => {
-            const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount!));
-            return (
-              <div className="mt-1.5 flex items-center gap-2">
-                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
-                  <div className="h-full rounded-full bg-accent-privat" style={{ width: `${(paidDown * 100).toFixed(1)}%` }} />
+          {loan.rateFixedUntil ? (
+            <p className="mt-1.5 text-2xs text-ink-4">{remainingFixedTermLabel(loan.rateFixedUntil, localDateString())}</p>
+          ) : (
+            loan.originalAmount && loan.originalAmount > 0 && (() => {
+              const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount!));
+              return (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
+                    <div className="h-full rounded-full bg-accent-privat" style={{ width: `${(paidDown * 100).toFixed(1)}%` }} />
+                  </div>
+                  <span className="shrink-0 text-2xs tabular-nums text-ink-4">{Math.round(paidDown * 100)}% nedbetalt</span>
                 </div>
-                <span className="shrink-0 text-2xs tabular-nums text-ink-4">{Math.round(paidDown * 100)}% nedbetalt</span>
-              </div>
-            );
-          })()}
+              );
+            })()
+          )}
         </button>
         <button
           type="button"

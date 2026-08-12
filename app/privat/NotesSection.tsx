@@ -53,11 +53,33 @@ function NoteForm({ onCancel, onSave }: { onCancel: () => void; onSave: (text: s
   );
 }
 
-function NoteRow({ note, onRemove }: { note: Note; onRemove: (note: Note) => void }) {
+function firstLine(text: string): string {
+  const idx = text.indexOf("\n");
+  return idx === -1 ? text : text.slice(0, idx);
+}
+
+// Bare første linje vises som "header" i lista — man drilling ned (trykk raden)
+// for å se hele notatet, i stedet for at alt limes rett i lista.
+function NoteRow({
+  note,
+  expanded,
+  onToggle,
+  onRemove,
+}: {
+  note: Note;
+  expanded: boolean;
+  onToggle: () => void;
+  onRemove: (note: Note) => void;
+}) {
   return (
     <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <div className="flex items-start justify-between gap-2">
-        <p className="whitespace-pre-wrap text-sm text-ink-1">{note.text}</p>
+      <div className="flex items-start gap-2">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
+          <p className={`text-sm text-ink-1 ${expanded ? "whitespace-pre-wrap" : "truncate"}`}>
+            {expanded ? note.text : firstLine(note.text)}
+          </p>
+          {!expanded && <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>}
+        </button>
         <button
           type="button"
           onClick={() => onRemove(note)}
@@ -67,7 +89,7 @@ function NoteRow({ note, onRemove }: { note: Note; onRemove: (note: Note) => voi
           ×
         </button>
       </div>
-      <p className="mt-1.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>
+      {expanded && <p className="mt-1.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>}
     </div>
   );
 }
@@ -78,6 +100,7 @@ export default function NotesSection() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<Note>();
 
   const load = useCallback(() => {
@@ -125,9 +148,9 @@ export default function NotesSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-status-warning p-4`}>
       <CardHeader
-        title="#Notater"
+        title="Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
@@ -165,7 +188,13 @@ export default function NotesSection() {
           ) : (
             <div className="flex flex-col gap-1.5">
               {filtered.map((n) => (
-                <NoteRow key={n.id} note={n} onRemove={confirmDelete.request} />
+                <NoteRow
+                  key={n.id}
+                  note={n}
+                  expanded={expandedId === n.id}
+                  onToggle={() => setExpandedId((v) => (v === n.id ? null : n.id))}
+                  onRemove={confirmDelete.request}
+                />
               ))}
             </div>
           )}

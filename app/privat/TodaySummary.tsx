@@ -5,13 +5,12 @@ import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import type { SportEvent } from "@/lib/sports";
-import type { Loan } from "@/lib/loans";
 import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
-import { formatKr } from "@/lib/widgets";
+import type { NewsItem } from "@/lib/news";
 import {
   Sun,
   Cloud,
@@ -27,7 +26,7 @@ import {
   Trophy,
   Shirt,
   PartyPopper,
-  Banknote,
+  Newspaper,
   ChevronLeft,
   Bot,
 } from "lucide-react";
@@ -119,29 +118,15 @@ function ReminderLine({
   );
 }
 
-function daysUntil(dateIso: string, fromIso: string): number {
-  const target = new Date(dateIso + "T00:00:00Z").getTime();
-  const from = new Date(fromIso + "T00:00:00Z").getTime();
-  return Math.round((target - from) / (1000 * 60 * 60 * 24));
-}
-
-function relativeDayLabel(days: number): string {
-  if (days === 0) return "i dag";
-  if (days === 1) return "i morgen";
-  return `om ${days} dager`;
-}
-
-// Overskrift for den viste dagen: "I dag"/"I morgen" med dato+ukedag i parentes,
-// og for dager lenger frem ukedagsnavnet selv (med kun dato i parentes, for å
-// ikke gjenta ukedagen to ganger).
-function dayHeaderLabel(dateIso: string, offset: number): string {
+// Overskrift for den viste dagen — alltid samme format og rekkefølge
+// (ukedag, så dato), uansett hvilken dag som vises, slik at teksten ikke
+// bytter form/plassering når man blar mellom dager med pil-navigeringen.
+// "Tilbake til i dag"-knappen dekker signalet om at man ser en annen dag.
+function dayHeaderLabel(dateIso: string): string {
   const d = new Date(dateIso + "T12:00:00");
   const weekday = d.toLocaleDateString("nb-NO", { weekday: "long" });
   const [, m, day] = dateIso.split("-");
-  const dateStr = `${day}.${m}`;
-  if (offset === 0) return `I dag (${dateStr} · ${weekday})`;
-  if (offset === 1) return `I morgen (${dateStr} · ${weekday})`;
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} (${dateStr})`;
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day}.${m}`;
 }
 
 function setBadgeCount(count: number) {
@@ -194,11 +179,11 @@ export default function TodaySummary() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
   const [sports, setSports] = useState<SportEvent[]>([]);
-  const [loans, setLoans] = useState<Loan[]>([]);
   const [fpl, setFpl] = useState<FplData | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
   const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
+  const [news, setNews] = useState<NewsItem[]>([]);
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewedOffset, setViewedOffset] = useState(0);
@@ -213,20 +198,20 @@ export default function TodaySummary() {
       fetch("/api/reminders").then((r) => r.json()),
       fetch("/api/privat-calendar").then((r) => r.json()),
       fetch("/api/sports").then((r) => r.json()),
-      fetch("/api/loans").then((r) => r.json()),
       fetch("/api/fpl").then((r) => r.json()),
       fetch("/api/weather").then((r) => r.json()),
       fetch("/api/events").then((r) => r.json()),
       fetch("/api/ai-usage").then((r) => r.json()),
-    ]).then(([r, e, s, l, f, w, ev, au]) => {
+      fetch("/api/news").then((r) => r.json()),
+    ]).then(([r, e, s, f, w, ev, au, n]) => {
       setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
       setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
       setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
-      setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
       setFpl(f.status === "fulfilled" && !f.value.error ? (f.value as FplData) : null);
       setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
       setLifeEvents(ev.status === "fulfilled" ? ((ev.value.events ?? []) as LifeEvent[]) : []);
       setAiUsage(au.status === "fulfilled" && !au.value.error ? (au.value as AiUsageSummary) : null);
+      setNews(n.status === "fulfilled" ? ((n.value.items ?? []) as NewsItem[]) : []);
       setLoading(false);
     });
   }, []);
@@ -313,11 +298,6 @@ export default function TodaySummary() {
   const sportsOnViewed = sports.filter(
     (s) => s.date === viewedDate && (s.category !== "personal" || s.highlight),
   );
-  const upcomingPayments = loans
-    .filter((l) => l.nextPaymentDate)
-    .map((l) => ({ loan: l, days: daysUntil(l.nextPaymentDate!, viewedDate) }))
-    .filter(({ days }) => days >= 0 && days <= 7)
-    .sort((a, b) => a.days - b.days);
   const fplDeadlineOnViewed =
     fpl?.active && fpl.gw?.deadline && toOsloDateString(new Date(fpl.gw.deadline)) === viewedDate ? fpl.gw.deadline : null;
   const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
@@ -334,7 +314,7 @@ export default function TodaySummary() {
     <div className={`${CARD_SHELL} p-4`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-sm font-semibold text-ink-1">{dayHeaderLabel(viewedDate, viewedOffset)}</h2>
+          <h2 className="truncate text-sm font-semibold text-ink-1">{dayHeaderLabel(viewedDate)}</h2>
           {!isToday && (
             <button
               type="button"
@@ -400,6 +380,20 @@ export default function TodaySummary() {
               </div>
             )}
 
+            {isToday && news.length > 0 && (
+              <div className="rounded-lg border border-status-positive/40 bg-status-positive/8 px-3 py-1.5">
+                <CategoryLabel icon={Newspaper} colorClass="text-status-positive" label="Toppnyhet" />
+                <a
+                  href={news[0].link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-ink-1 hover:underline"
+                >
+                  {news[0].title}
+                </a>
+              </div>
+            )}
+
             {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
                 aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
             <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
@@ -428,9 +422,9 @@ export default function TodaySummary() {
               {eventsOnViewed.length > 0 ? (
                 <ul className="flex flex-col gap-1">
                   {eventsOnViewed.map((e) => (
-                    <li key={e.id} className="text-sm text-ink-1">
-                      {e.startTime ? <span className="tabular-nums text-ink-3">{e.startTime} </span> : null}
-                      {e.title}
+                    <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
+                      <span className="min-w-0 truncate">{e.title}</span>
+                      {e.startTime && <span className="shrink-0 tabular-nums text-ink-3">{e.startTime}</span>}
                     </li>
                   ))}
                 </ul>
@@ -473,20 +467,6 @@ export default function TodaySummary() {
                   {lifeEventsOnViewed.map((e) => (
                     <li key={e.id} className="text-sm text-ink-1">
                       {e.title}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {upcomingPayments.length > 0 && (
-              <div className="rounded-lg border border-source-outlook/40 bg-source-outlook/8 px-3 py-1.5">
-                <CategoryLabel icon={Banknote} colorClass="text-source-outlook" label="Låneavdrag" />
-                <ul className="flex flex-col gap-1">
-                  {upcomingPayments.map(({ loan, days }) => (
-                    <li key={loan.id} className="text-sm text-ink-1">
-                      {loan.name} — {formatKr(loan.remainingAmount)}{" "}
-                      <span className="text-ink-3">({relativeDayLabel(days)})</span>
                     </li>
                   ))}
                 </ul>
