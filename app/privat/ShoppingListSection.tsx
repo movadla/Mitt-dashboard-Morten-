@@ -3,36 +3,42 @@
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
+import type { QuickPick } from "@/lib/shoppingQuickPicks";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./SwipeableRow";
-import { ShoppingCart } from "lucide-react";
+import { Pencil, ShoppingCart } from "lucide-react";
 
-// Rekkefølge = typisk gangrute i en dagligvarebutikk (inngang -> kasse).
 // Hver seksjon får en egen fast farge, gjenbrukt fra de eksisterende fargetokenene
 // i app/globals.css, slik at varelisten er rask å skanne på vei gjennom butikken.
 const SECTION_ORDER: StoreSection[] = [
   "frukt-gront",
-  "bakervarer",
-  "kjott-fisk",
-  "meieri",
-  "torrvarer",
-  "frys",
+  "frysevarer",
+  "palegg",
+  "meieriprodukter",
   "drikke",
   "snacks",
-  "husholdning",
+  "torrvarer",
+  "baby",
+  "elektro",
+  "snop",
+  "annet",
 ];
 
 const SECTION_META: Record<StoreSection, { label: string; bg: string; text: string }> = {
   "frukt-gront": { label: "Frukt & grønt", bg: "bg-status-positive/8", text: "text-status-positive" },
-  bakervarer: { label: "Bakervarer", bg: "bg-status-warning/8", text: "text-status-warning" },
-  "kjott-fisk": { label: "Kjøtt & fisk", bg: "bg-status-danger/8", text: "text-status-danger" },
-  meieri: { label: "Meieri & egg", bg: "bg-accent/8", text: "text-accent" },
-  torrvarer: { label: "Tørrvarer", bg: "bg-source-asana/8", text: "text-source-asana" },
-  frys: { label: "Frys", bg: "bg-source-teams/8", text: "text-source-teams" },
+  frysevarer: { label: "Frysevarer", bg: "bg-source-teams/8", text: "text-source-teams" },
+  palegg: { label: "Pålegg", bg: "bg-status-warning/8", text: "text-status-warning" },
+  meieriprodukter: { label: "Meieriprodukter", bg: "bg-accent/8", text: "text-accent" },
   drikke: { label: "Drikke", bg: "bg-accent-privat/8", text: "text-accent-privat" },
-  snacks: { label: "Snacks & godteri", bg: "bg-source-outlook/8", text: "text-source-outlook" },
-  husholdning: { label: "Husholdning & hygiene", bg: "bg-status-action/8", text: "text-status-action" },
+  snacks: { label: "Snacks", bg: "bg-source-outlook/8", text: "text-source-outlook" },
+  torrvarer: { label: "Tørrvarer", bg: "bg-source-asana/8", text: "text-source-asana" },
+  baby: { label: "Baby", bg: "bg-status-action/8", text: "text-status-action" },
+  elektro: { label: "Elektro", bg: "bg-cyan-500/8", text: "text-cyan-400" },
+  snop: { label: "Snop", bg: "bg-status-danger/8", text: "text-status-danger" },
+  annet: { label: "Annet", bg: "bg-slate-500/8", text: "text-slate-300" },
 };
+
+const VISIBLE_QUICK_PICKS = 10;
 
 function ItemRow({
   item,
@@ -81,6 +87,106 @@ function ItemRow({
   );
 }
 
+function QuickPickEditForm({
+  quickPick,
+  onCancel,
+  onSave,
+}: {
+  quickPick: QuickPick;
+  onCancel: () => void;
+  onSave: (updates: { name: string; section: StoreSection }) => void;
+}) {
+  const [name, setName] = useState(quickPick.name);
+  const [section, setSection] = useState<StoreSection>(quickPick.section);
+
+  function save() {
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), section });
+  }
+
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") onCancel();
+        }}
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={section}
+          onChange={(e) => setSection(e.target.value as StoreSection)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {SECTION_ORDER.map((s) => (
+            <option key={s} value={s}>
+              {SECTION_META[s].label}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!name.trim()}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function QuickPickManageRow({
+  quickPick,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+}: {
+  quickPick: QuickPick;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (updates: { name: string; section: StoreSection }) => void;
+  onDelete: () => void;
+}) {
+  if (editing) {
+    return <QuickPickEditForm quickPick={quickPick} onCancel={onCancelEdit} onSave={onSave} />;
+  }
+  return (
+    <li className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <p className="min-w-0 flex-1 truncate text-sm text-ink-1">{quickPick.name}</p>
+      <span className={`shrink-0 text-2xs ${SECTION_META[quickPick.section].text}`}>{SECTION_META[quickPick.section].label}</span>
+      <button
+        type="button"
+        onClick={onStartEdit}
+        aria-label="Rediger hurtigvalg"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-1"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Slett hurtigvalg"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
 export default function ShoppingListSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Handleliste", true);
   const [items, setItems] = useState<ShoppingItem[]>([]);
@@ -94,6 +200,12 @@ export default function ShoppingListSection() {
   const confirmDelete = useConfirmDelete<string>();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
+  const [quickPicks, setQuickPicks] = useState<QuickPick[]>([]);
+  const [showAllQuickPicks, setShowAllQuickPicks] = useState(false);
+  const [managingQuickPicks, setManagingQuickPicks] = useState(false);
+  const [editingQuickPickId, setEditingQuickPickId] = useState<string | null>(null);
+  const confirmQuickPickDelete = useConfirmDelete<QuickPick>();
+
   const load = useCallback(() => {
     fetch("/api/shopping")
       .then((r) => r.json())
@@ -101,32 +213,89 @@ export default function ShoppingListSection() {
       .finally(() => setLoading(false));
   }, []);
 
+  const loadQuickPicks = useCallback(() => {
+    fetch("/api/shopping/quick-picks")
+      .then((r) => r.json())
+      .then((d) => setQuickPicks((d.quickPicks ?? []) as QuickPick[]))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
+    loadQuickPicks();
     window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
+    window.addEventListener("mitt-dashboard:privat-refresh", loadQuickPicks);
+    return () => {
+      window.removeEventListener("mitt-dashboard:privat-refresh", load);
+      window.removeEventListener("mitt-dashboard:privat-refresh", loadQuickPicks);
+    };
+  }, [load, loadQuickPicks]);
+
+  // Legger varen til selve handlelisten, og bygger samtidig opp/oppdaterer
+  // hurtigvalg-katalogen — uansett om varen ble skrevet inn i skjemaet eller
+  // valgt direkte fra et hurtigvalg, slik at katalogen vokser organisk av bruk.
+  async function addItemToList(itemName: string, itemSection: StoreSection, itemQuantity?: string) {
+    const res = await fetch("/api/shopping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: itemName, section: itemSection, quantity: itemQuantity }),
+    });
+    if (!res.ok) return;
+    const created: ShoppingItem = await res.json();
+    setItems((prev) => [...prev, created]);
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+
+    const qpRes = await fetch("/api/shopping/quick-picks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: itemName, section: itemSection }),
+    });
+    if (qpRes.ok) {
+      const updated: QuickPick = await qpRes.json();
+      setQuickPicks((prev) => {
+        const exists = prev.some((p) => p.id === updated.id);
+        const next = exists ? prev.map((p) => (p.id === updated.id ? updated : p)) : [...prev, updated];
+        return [...next].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "nb"));
+      });
+    }
+  }
 
   async function handleAdd() {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/shopping", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, section, quantity: quantity || undefined }),
-      });
-      if (res.ok) {
-        const created: ShoppingItem = await res.json();
-        setItems((prev) => [...prev, created]);
-        setName("");
-        setQuantity("");
-        setShowForm(false);
-        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-      }
+      await addItemToList(name.trim(), section, quantity.trim() || undefined);
+      setName("");
+      setQuantity("");
+      setShowForm(false);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleQuickAdd(qp: QuickPick) {
+    vibrate(8);
+    await addItemToList(qp.name, qp.section);
+  }
+
+  async function handleSaveQuickPick(id: string, updates: { name: string; section: StoreSection }) {
+    const res = await fetch(`/api/shopping/quick-picks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      const updated: QuickPick = await res.json();
+      setQuickPicks((prev) =>
+        prev.map((p) => (p.id === id ? updated : p)).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "nb")),
+      );
+      setEditingQuickPickId(null);
+    }
+  }
+
+  async function handleDeleteQuickPick(qp: QuickPick) {
+    setQuickPicks((prev) => prev.filter((p) => p.id !== qp.id));
+    await fetch(`/api/shopping/quick-picks/${qp.id}`, { method: "DELETE" });
   }
 
   async function handleToggle(id: string) {
@@ -157,6 +326,7 @@ export default function ShoppingListSection() {
   const grouped = SECTION_ORDER.map((s) => ({ section: s, items: notDone.filter((i) => i.section === s) })).filter(
     (g) => g.items.length > 0,
   );
+  const visibleQuickPicks = showAllQuickPicks ? quickPicks : quickPicks.slice(0, VISIBLE_QUICK_PICKS);
 
   function handleAddClick() {
     if (collapsed) toggleCollapsed();
@@ -176,6 +346,61 @@ export default function ShoppingListSection() {
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
+          {quickPicks.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Hurtigvalg</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManagingQuickPicks((v) => !v);
+                    setEditingQuickPickId(null);
+                  }}
+                  className="text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
+                >
+                  {managingQuickPicks ? "Ferdig" : "Rediger"}
+                </button>
+              </div>
+              {managingQuickPicks ? (
+                <ul className="flex flex-col gap-1.5">
+                  {visibleQuickPicks.map((qp) => (
+                    <QuickPickManageRow
+                      key={qp.id}
+                      quickPick={qp}
+                      editing={editingQuickPickId === qp.id}
+                      onStartEdit={() => setEditingQuickPickId(qp.id)}
+                      onCancelEdit={() => setEditingQuickPickId(null)}
+                      onSave={(updates) => handleSaveQuickPick(qp.id, updates)}
+                      onDelete={() => confirmQuickPickDelete.request(qp)}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {visibleQuickPicks.map((qp) => (
+                    <button
+                      key={qp.id}
+                      type="button"
+                      onClick={() => handleQuickAdd(qp)}
+                      className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-1 transition hover:border-line-strong hover:bg-surface-3 active:opacity-70"
+                    >
+                      {qp.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {quickPicks.length > VISIBLE_QUICK_PICKS && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllQuickPicks((v) => !v)}
+                  className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                >
+                  {showAllQuickPicks ? "Vis mindre" : `Mer (${quickPicks.length - VISIBLE_QUICK_PICKS})`}
+                </button>
+              )}
+            </div>
+          )}
+
           {showForm ? (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
@@ -299,6 +524,15 @@ export default function ShoppingListSection() {
         onConfirm={() => {
           handleClearDone();
           setConfirmClearOpen(false);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmQuickPickDelete.isOpen}
+        message={confirmQuickPickDelete.pending ? `Slette hurtigvalget «${confirmQuickPickDelete.pending.name}»?` : ""}
+        onCancel={confirmQuickPickDelete.cancel}
+        onConfirm={() => {
+          if (confirmQuickPickDelete.pending) handleDeleteQuickPick(confirmQuickPickDelete.pending);
+          confirmQuickPickDelete.cancel();
         }}
       />
     </div>

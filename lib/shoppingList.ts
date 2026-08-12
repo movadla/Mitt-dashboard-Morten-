@@ -1,17 +1,18 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
-// Rekkefølge = typisk gangrute i en dagligvarebutikk (inngang -> kasse).
 export type StoreSection =
   | "frukt-gront"
-  | "bakervarer"
-  | "kjott-fisk"
-  | "meieri"
-  | "torrvarer"
-  | "frys"
+  | "frysevarer"
+  | "palegg"
+  | "meieriprodukter"
   | "drikke"
   | "snacks"
-  | "husholdning";
+  | "torrvarer"
+  | "baby"
+  | "elektro"
+  | "snop"
+  | "annet";
 
 export interface ShoppingItem {
   id: string;
