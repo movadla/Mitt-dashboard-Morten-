@@ -158,16 +158,32 @@ function baseSymbol(s: string): string {
   return s.replace(/_day|_night|_polartwilight/, "");
 }
 
+// Fargekoding for raskere skanning av timeoversikten — sol gul, regn/snø
+// blåtoner, skyer/tåke gråtoner, torden lilla. Fargen kommer fra symbolet
+// selv (ikke fra kalleren sin className), så alle bruksstedene får den
+// samme fargelogikken uten å måtte gjenta den.
+function weatherColorClass(s: string): string {
+  if (s.includes("thunder")) return "text-violet-400";
+  if (s === "heavyrain" || s === "rain") return "text-blue-400";
+  if (s.includes("rain") || s.includes("shower") || s.includes("sleet")) return "text-blue-300";
+  if (s.includes("snow")) return "text-sky-100";
+  if (s === "fog") return "text-slate-400";
+  if (s === "clearsky") return "text-yellow-400";
+  if (s === "fair" || s.includes("partly")) return "text-amber-300";
+  return "text-slate-300";
+}
+
 function WeatherIcon({ symbol, className }: { symbol: string; className?: string }) {
   const s = baseSymbol(symbol);
-  if (s.includes("thunder")) return <CloudLightning className={className} />;
-  if (s === "heavyrain" || s === "rain") return <CloudRain className={className} />;
-  if (s.includes("rain") || s.includes("shower") || s.includes("sleet")) return <CloudDrizzle className={className} />;
-  if (s.includes("snow")) return <CloudSnow className={className} />;
-  if (s === "fog") return <CloudFog className={className} />;
-  if (s === "clearsky") return <Sun className={className} />;
-  if (s === "fair" || s.includes("partly")) return <CloudSun className={className} />;
-  return <Cloud className={className} />;
+  const cls = `${weatherColorClass(s)} ${className ?? ""}`.trim();
+  if (s.includes("thunder")) return <CloudLightning className={cls} />;
+  if (s === "heavyrain" || s === "rain") return <CloudRain className={cls} />;
+  if (s.includes("rain") || s.includes("shower") || s.includes("sleet")) return <CloudDrizzle className={cls} />;
+  if (s.includes("snow")) return <CloudSnow className={cls} />;
+  if (s === "fog") return <CloudFog className={cls} />;
+  if (s === "clearsky") return <Sun className={cls} />;
+  if (s === "fair" || s.includes("partly")) return <CloudSun className={cls} />;
+  return <Cloud className={cls} />;
 }
 
 function hourLabel(iso: string): string {
@@ -338,7 +354,7 @@ export default function TodaySummary() {
             aria-label="Vis vær time for time"
             className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
           >
-            <WeatherIcon symbol={weather.symbol} className="h-4 w-4 text-accent" />
+            <WeatherIcon symbol={weather.symbol} className="h-4 w-4" />
             <span className="tabular-nums">{weather.temp}°</span>
           </button>
         )}
@@ -350,7 +366,7 @@ export default function TodaySummary() {
             {weather.hourly.map((h) => (
               <div key={h.time} className="flex flex-col items-center gap-1 text-center">
                 <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
-                <WeatherIcon symbol={h.symbol} className="h-4 w-4 text-accent" />
+                <WeatherIcon symbol={h.symbol} className="h-4 w-4" />
                 <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
               </div>
             ))}
