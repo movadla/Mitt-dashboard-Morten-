@@ -331,7 +331,7 @@ export default function RemindersSection() {
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(localDateString());
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -365,7 +365,7 @@ export default function RemindersSection() {
         const created: Reminder = await res.json();
         setReminders((prev) => [...prev, created].sort(sortReminders));
         setText("");
-        setDueDate("");
+        setDueDate(localDateString());
         setRecurrence("none");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -443,9 +443,14 @@ export default function RemindersSection() {
   const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
   const rest = reminders.filter((r) => !isDueToday(r, today));
 
+  function openAddForm() {
+    setDueDate(localDateString());
+    setShowForm(true);
+  }
+
   function handleAddClick() {
     if (collapsed) toggleCollapsed();
-    setShowForm(true);
+    openAddForm();
   }
 
   return (
@@ -512,7 +517,7 @@ export default function RemindersSection() {
           ) : (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
+              onClick={openAddForm}
               aria-label="Ny påminnelse"
               title="Ny påminnelse"
               className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"

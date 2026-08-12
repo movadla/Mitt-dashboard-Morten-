@@ -266,7 +266,7 @@ export default function JobbRemindersSection() {
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(localDateString());
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -299,7 +299,7 @@ export default function JobbRemindersSection() {
         const created: JobbReminder = await res.json();
         setReminders((prev) => [...prev, created].sort(sortReminders));
         setText("");
-        setDueDate("");
+        setDueDate(localDateString());
         setRecurrence("none");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
@@ -439,7 +439,10 @@ export default function JobbRemindersSection() {
           ) : (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
+              onClick={() => {
+                setDueDate(localDateString());
+                setShowForm(true);
+              }}
               aria-label="Ny påminnelse"
               title="Ny påminnelse"
               className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
