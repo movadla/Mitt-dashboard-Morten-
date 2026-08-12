@@ -14,6 +14,7 @@ import { getJobbReminders } from "./jobbReminders";
 import { getJobbEvents } from "./jobbEvents";
 import { getLeasingManagers } from "./leasingManagers";
 import { getProcedureNotes } from "./procedureNotes";
+import { getNotes } from "./notes";
 
 /**
  * Full dump av alt ekte data i Redis (Privat- og Jobb-fanen). Redis Cloud-
@@ -42,6 +43,7 @@ export async function buildBackup() {
     jobbEvents,
     leasingManagers,
     procedureNotes,
+    notes,
   ] = await Promise.all([
     getReminders(),
     getPrivatEvents(),
@@ -61,6 +63,7 @@ export async function buildBackup() {
     getJobbEvents(),
     getLeasingManagers(),
     getProcedureNotes(),
+    getNotes(),
   ]);
 
   return {
@@ -81,5 +84,6 @@ export async function buildBackup() {
     jobbEvents,
     leasingManagers,
     procedureNotes,
+    notes,
   };
 }

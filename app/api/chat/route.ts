@@ -4,6 +4,7 @@ import { buildDashboardContext } from "@/lib/widgets";
 import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
+import { addNote, deleteNote, getNotes } from "@/lib/notes";
 import { getMilestones, toggleMilestone } from "@/lib/alfred";
 import {
   addCustomSportEvent,
@@ -89,6 +90,32 @@ const DELETE_CALENDAR_EVENT_TOOL: Anthropic.Tool = {
       titleMatch: { type: "string", description: "Del av tittelen på hendelsen som skal slettes." },
     },
     required: ["titleMatch"],
+  },
+};
+
+const ADD_NOTE_TOOL: Anthropic.Tool = {
+  name: "add_note",
+  description:
+    "Legg til et fritekstnotat/idé i #Notater-seksjonen i Privat-fanen — for ting brukeren vil huske eller " +
+    "lagre til senere som ikke passer naturlig som en påminnelse (med frist) eller kalenderhendelse (med dato).",
+  input_schema: {
+    type: "object",
+    properties: {
+      text: { type: "string", description: "Innholdet i notatet/ideen." },
+    },
+    required: ["text"],
+  },
+};
+
+const DELETE_NOTE_TOOL: Anthropic.Tool = {
+  name: "delete_note",
+  description: "Slett et notat fra #Notater-seksjonen. Identifiser det med et utdrag av teksten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      textMatch: { type: "string", description: "Del av teksten i notatet som skal slettes." },
+    },
+    required: ["textMatch"],
   },
 };
 
@@ -201,6 +228,15 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     await deletePrivatEvent(event.id);
     return { ok: true, deleted: event.title };
   }
+  if (name === "add_note") {
+    return addNote(input as Parameters<typeof addNote>[0]);
+  }
+  if (name === "delete_note") {
+    const { textMatch } = input as { textMatch: string };
+    const note = findOneMatch(await getNotes(), (n) => n.text, textMatch, "notater");
+    await deleteNote(note.id);
+    return { ok: true, deleted: note.text };
+  }
   if (name === "toggle_milestone") {
     const { labelMatch } = input as { labelMatch: string };
     const milestone = findOneMatch(await getMilestones(), (m) => m.label, labelMatch, "sjekklistepunkter");
@@ -262,7 +298,10 @@ export async function POST(request: NextRequest) {
     "(Fazile sitt fakturaverktøy er nedafor akkurat nå) — gjør det klart hvis du bruker de tallene, " +
     "f.eks. 'ifølge testdataene i dashboardet'. Sport, FPL, påminnelser og privat kalender under er " +
     "EKTE og oppdatert live, det samme er lån (Økonomi) og Alfred-data under. Du kan legge til, " +
-    "huke av/på og slette påminnelser og kalenderhendelser, huke av/på Alfreds sjekklistepunkter, og " +
+    "huke av/på og slette påminnelser og kalenderhendelser, legge til/slette notater i #Notater-seksjonen " +
+    "(fritekst-idéer/ting å huske som ikke har en naturlig frist eller dato — bruk add_note for disse i " +
+    "stedet for add_reminder/add_calendar_event når brukeren ikke nevner noen dato), huke av/på Alfreds " +
+    "sjekklistepunkter, og " +
     "legge til/slette egendefinerte sportshendelser (dukker opp i Sport-boksen sammen med de faste " +
     "kildene) — bruk add_sport_events_bulk (ikke gjentatte add_sport_event-kall) når brukeren limer inn " +
     "et helt program med mange kamper på én gang, og sett highlight=true kun på et fåtall hendelser " +
@@ -290,6 +329,8 @@ export async function POST(request: NextRequest) {
     TOGGLE_REMINDER_TOOL,
     DELETE_REMINDER_TOOL,
     DELETE_CALENDAR_EVENT_TOOL,
+    ADD_NOTE_TOOL,
+    DELETE_NOTE_TOOL,
     TOGGLE_MILESTONE_TOOL,
     ADD_SPORT_EVENT_TOOL,
     ADD_SPORT_EVENTS_BULK_TOOL,

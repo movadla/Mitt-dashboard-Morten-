@@ -2,6 +2,7 @@ import { getSportEvents } from "./sports";
 import { getFplData } from "./fpl";
 import { getReminders } from "./reminders";
 import { getPrivatEvents } from "./privatCalendar";
+import { getNotes } from "./notes";
 import { getLoans } from "./loans";
 import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
@@ -31,6 +32,7 @@ export async function buildPrivatContext(): Promise<string> {
     fplResult,
     remindersResult,
     eventsResult,
+    notesResult,
     loansResult,
     savingsResult,
     salaryResult,
@@ -44,6 +46,7 @@ export async function buildPrivatContext(): Promise<string> {
     getFplData(),
     getReminders(),
     getPrivatEvents(),
+    getNotes(),
     getLoans(),
     getSavings(),
     getSalaryEntries(),
@@ -98,6 +101,15 @@ export async function buildPrivatContext(): Promise<string> {
     }
   } else {
     lines.push("- Ingen hendelser lagt inn ennå.");
+  }
+
+  lines.push("\n#NOTATER (ekte, fritekst-idéer uten frist/dato — redigerbart via #Notater-boksen):");
+  if (notesResult.status === "fulfilled" && notesResult.value.length > 0) {
+    for (const n of notesResult.value) {
+      lines.push(`- ${n.text}`);
+    }
+  } else {
+    lines.push("- Ingen notater lagt inn ennå.");
   }
 
   lines.push("\nØKONOMI — LÅN (ekte, redigerbart via Økonomi-boksen):");
