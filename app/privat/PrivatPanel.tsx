@@ -42,7 +42,11 @@ const DEFAULT_SECTION_ORDER = [
 // lagres lokalt (usePersistedOrder), ikke i skyen. Håndtaket sitter til
 // venstre for kortet (samme mønster som rad-nivå-reordering i
 // RemindersSection/TreningSection), ikke som en egen stripe mellom kortene.
-function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+// Vises kun i reorderMode (styrt av en egen "Endre rekkefølge"/"Lagre"-knapp
+// over lista) — ellers rendres kortet uten håndtak, siden useSortable sin
+// setNodeRef/drag-lytting uansett må festes til noe for at reordering skal
+// virke DEN dagen man faktisk går inn i reorderMode.
+function SortableSection({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -50,6 +54,15 @@ function SortableSection({ id, children }: { id: string; children: React.ReactNo
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : undefined,
   };
+
+  if (!reorderMode) {
+    return (
+      <div ref={setNodeRef} style={style}>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div ref={setNodeRef} style={style} className="flex items-stretch gap-1">
       <button
@@ -76,6 +89,7 @@ export default function PrivatPanel() {
   const [sportsFetchedAt, setSportsFetchedAt] = useState<number | null>(null);
   const [worldCup, setWorldCup] = useState<SportEvent[]>([]);
   const [order, setOrder] = usePersistedOrder(SECTION_ORDER_KEY, DEFAULT_SECTION_ORDER);
+  const [reorderMode, setReorderMode] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
@@ -132,10 +146,23 @@ export default function PrivatPanel() {
   return (
     <div className="flex flex-col gap-3">
       <TodaySummary />
+      {/* Dra-håndtakene er skjult som standard — "Endre rekkefølge"-knappen
+          slår på reorderMode, som viser grip-håndtak på alle kort til man
+          trykker "Lagre" (samme knapp, samme plass) igjen. Holder normalvisningen
+          ryddig uten en alltid-synlig dra-affordance. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setReorderMode((v) => !v)}
+          className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+        >
+          {reorderMode ? "Lagre" : "Endre rekkefølge"}
+        </button>
+      </div>
       {/* Én seksjon per linje, full bredde — en kollapset seksjon er én rad, en
           utvidet seksjon vokser nedover på samme plass. Ingen grid-reflow av
           naboseksjoner (samme mønster som Jobb-fanen bruker). Rekkefølgen kan
-          dras om via grip-håndtaket over hvert kort. */}
+          dras om via grip-håndtaket over hvert kort, kun i reorderMode. */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={order} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-3">
@@ -143,7 +170,7 @@ export default function PrivatPanel() {
               const node = sectionNodes[id];
               if (!node) return null;
               return (
-                <SortableSection key={id} id={id}>
+                <SortableSection key={id} id={id} reorderMode={reorderMode}>
                   {node}
                 </SortableSection>
               );
