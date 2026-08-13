@@ -1,6 +1,14 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
+// Ett enkelt sett innenfor en øvelse — vekt logges her (ikke aggregert per
+// øvelse) siden vekt ofte varierer mellom sett (oppvarming, pyramide).
+export interface SetLog {
+  id: string;
+  reps?: number;
+  kg?: number;
+}
+
 // Én øvelse logget innenfor en treningsøkt. exerciseName er en øyeblikksbilde-
 // kopi av navnet på loggetidspunktet — overlever selv om øvelsen i katalogen
 // (lib/exercises.ts) senere omdøpes eller slettes.
@@ -8,9 +16,8 @@ export interface WorkoutEntry {
   id: string;
   exerciseId: string;
   exerciseName: string;
-  sets?: number;
-  reps?: number;
-  minutes?: number;
+  sets: SetLog[];
+  minutes?: number; // dekker cardio-aktig logging uten "sett" (f.eks. løping)
   notes?: string;
 }
 
@@ -25,17 +32,21 @@ export interface WorkoutSession {
 export interface NewWorkoutEntryInput {
   exerciseId: string;
   exerciseName: string;
-  sets?: number;
-  reps?: number;
-  minutes?: number;
-  notes?: string;
 }
 
 export interface WorkoutEntryUpdateInput {
-  sets?: number | null;
-  reps?: number | null;
   minutes?: number | null;
   notes?: string | null;
+}
+
+export interface NewSetInput {
+  reps?: number;
+  kg?: number;
+}
+
+export interface SetUpdateInput {
+  reps?: number | null;
+  kg?: number | null;
 }
 
 const HASH_KEY = "privat:workouts";
@@ -94,10 +105,7 @@ export async function addWorkoutEntry(sessionId: string, input: NewWorkoutEntryI
     id: randomUUID(),
     exerciseId: input.exerciseId,
     exerciseName: input.exerciseName.trim(),
-    sets: input.sets,
-    reps: input.reps,
-    minutes: input.minutes,
-    notes: input.notes?.trim() || undefined,
+    sets: [],
   };
   const next: WorkoutSession = { ...current, entries: [...current.entries, entry] };
   await hsetJSON(HASH_KEY, sessionId, next);
@@ -116,8 +124,6 @@ export async function updateWorkoutEntry(
     if (e.id !== entryId) return e;
     return {
       ...e,
-      sets: updates.sets !== undefined ? (updates.sets ?? undefined) : e.sets,
-      reps: updates.reps !== undefined ? (updates.reps ?? undefined) : e.reps,
       minutes: updates.minutes !== undefined ? (updates.minutes ?? undefined) : e.minutes,
       notes: updates.notes !== undefined ? (updates.notes?.trim() || undefined) : e.notes,
     };
@@ -131,6 +137,52 @@ export async function deleteWorkoutEntry(sessionId: string, entryId: string): Pr
   const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
   if (!current) return null;
   const next: WorkoutSession = { ...current, entries: current.entries.filter((e) => e.id !== entryId) };
+  await hsetJSON(HASH_KEY, sessionId, next);
+  return next;
+}
+
+export async function addSetToEntry(sessionId: string, entryId: string, input: NewSetInput): Promise<WorkoutSession | null> {
+  const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
+  if (!current) return null;
+
+  const set: SetLog = { id: randomUUID(), reps: input.reps, kg: input.kg };
+  const entries = current.entries.map((e) => (e.id === entryId ? { ...e, sets: [...e.sets, set] } : e));
+  const next: WorkoutSession = { ...current, entries };
+  await hsetJSON(HASH_KEY, sessionId, next);
+  return next;
+}
+
+export async function updateSet(
+  sessionId: string,
+  entryId: string,
+  setId: string,
+  updates: SetUpdateInput,
+): Promise<WorkoutSession | null> {
+  const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
+  if (!current) return null;
+
+  const entries = current.entries.map((e) => {
+    if (e.id !== entryId) return e;
+    const sets = e.sets.map((s) => {
+      if (s.id !== setId) return s;
+      return {
+        ...s,
+        reps: updates.reps !== undefined ? (updates.reps ?? undefined) : s.reps,
+        kg: updates.kg !== undefined ? (updates.kg ?? undefined) : s.kg,
+      };
+    });
+    return { ...e, sets };
+  });
+  const next: WorkoutSession = { ...current, entries };
+  await hsetJSON(HASH_KEY, sessionId, next);
+  return next;
+}
+
+export async function deleteSet(sessionId: string, entryId: string, setId: string): Promise<WorkoutSession | null> {
+  const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
+  if (!current) return null;
+  const entries = current.entries.map((e) => (e.id === entryId ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e));
+  const next: WorkoutSession = { ...current, entries };
   await hsetJSON(HASH_KEY, sessionId, next);
   return next;
 }

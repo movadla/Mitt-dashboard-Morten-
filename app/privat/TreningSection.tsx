@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { Exercise } from "@/lib/exercises";
-import type { WorkoutEntry, WorkoutSession } from "@/lib/workouts";
+import type { SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
+import type { Routine } from "@/lib/routines";
 import { Dumbbell, Pencil } from "lucide-react";
 
 const VISIBLE_HISTORY = 5;
@@ -39,36 +40,125 @@ function formatSessionDate(iso: string): string {
   return new Date(iso).toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function entrySummary(e: WorkoutEntry): string {
-  return [e.sets ? `${e.sets} sett` : null, e.reps ? `${e.reps} reps` : null, e.minutes ? `${e.minutes} min` : null]
-    .filter(Boolean)
-    .join(" · ");
+function formatKg(kg: number): string {
+  return Number.isInteger(kg) ? `${kg}` : kg.toFixed(1).replace(/\.0$/, "");
 }
 
-// Sett/reps/minutter/notat lagres lokalt til feltet mister fokus (samme
-// mønster som andre inline-redigerbare felt i appen) — unngår at hver
-// tastetrykk sender en egen nettverksforespørsel.
-function EntryRow({
-  entry,
+function setSummary(entry: WorkoutEntry): string {
+  return entry.sets
+    .map((s) => {
+      if (s.kg != null && s.reps != null) return `${formatKg(s.kg)}kg×${s.reps}`;
+      if (s.kg != null) return `${formatKg(s.kg)}kg`;
+      if (s.reps != null) return `${s.reps} reps`;
+      return null;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+// Finner siste avsluttede økt som inneholder samme øvelse — "sessions" er
+// allerede sortert nyest-først (server-side i lib/workouts.ts), så første
+// treff er det vi vil vise som "Sist: ...".
+function findLastEntry(exerciseId: string, sessions: WorkoutSession[], excludeSessionId?: string): WorkoutEntry | null {
+  for (const s of sessions) {
+    if (s.id === excludeSessionId || !s.endedAt) continue;
+    const entry = s.entries.find((e) => e.exerciseId === exerciseId);
+    if (entry) return entry;
+  }
+  return null;
+}
+
+// Kg/reps lagres lokalt til feltet mister fokus (samme mønster som andre
+// inline-redigerbare felt i appen) — unngår at hver tastetrykk sender en
+// egen nettverksforespørsel.
+function SetRow({
+  set,
+  index,
   onUpdate,
   onRemove,
 }: {
-  entry: WorkoutEntry;
-  onUpdate: (updates: { sets: number | null; reps: number | null; minutes: number | null; notes: string | null }) => void;
+  set: SetLog;
+  index: number;
+  onUpdate: (updates: { kg: number | null; reps: number | null }) => void;
   onRemove: () => void;
 }) {
-  const [sets, setSets] = useState(entry.sets?.toString() ?? "");
-  const [reps, setReps] = useState(entry.reps?.toString() ?? "");
-  const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
-  const [notes, setNotes] = useState(entry.notes ?? "");
+  const [kg, setKg] = useState(set.kg?.toString() ?? "");
+  const [reps, setReps] = useState(set.reps?.toString() ?? "");
 
   function commit() {
     onUpdate({
-      sets: sets.trim() ? Number(sets) : null,
+      kg: kg.trim() ? Number(kg) : null,
       reps: reps.trim() ? Number(reps) : null,
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 shrink-0 text-2xs text-ink-4">Sett {index + 1}</span>
+      <input
+        type="number"
+        step="0.5"
+        inputMode="decimal"
+        value={kg}
+        onChange={(e) => setKg(e.target.value)}
+        onBlur={commit}
+        placeholder="Kg"
+        className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <input
+        type="number"
+        inputMode="numeric"
+        value={reps}
+        onChange={(e) => setReps(e.target.value)}
+        onBlur={commit}
+        placeholder="Reps"
+        className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Slett sett"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function EntryRow({
+  entry,
+  lastEntry,
+  onAddSet,
+  onUpdateSet,
+  onRemoveSet,
+  onUpdateEntry,
+  onRemoveEntry,
+}: {
+  entry: WorkoutEntry;
+  lastEntry: WorkoutEntry | null;
+  onAddSet: (prefill: { kg?: number; reps?: number }) => void;
+  onUpdateSet: (setId: string, updates: { kg: number | null; reps: number | null }) => void;
+  onRemoveSet: (setId: string) => void;
+  onUpdateEntry: (updates: { minutes: number | null; notes: string | null }) => void;
+  onRemoveEntry: () => void;
+}) {
+  const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
+  const [notes, setNotes] = useState(entry.notes ?? "");
+
+  function commitEntry() {
+    onUpdateEntry({
       minutes: minutes.trim() ? Number(minutes) : null,
       notes: notes.trim() || null,
     });
+  }
+
+  // Foreslår vekt/reps for et nytt sett fra forrige sett i samme øvelse denne
+  // økten, ellers fra "sist"-referansen — matcher hvordan Strong/Hevy foreslår
+  // neste vekt i stedet for å starte tomt hver gang.
+  function handleAddSetClick() {
+    const prevSet = entry.sets[entry.sets.length - 1] ?? lastEntry?.sets[0];
+    onAddSet({ kg: prevSet?.kg, reps: prevSet?.reps });
   }
 
   return (
@@ -77,50 +167,55 @@ function EntryRow({
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
         <button
           type="button"
-          onClick={onRemove}
+          onClick={onRemoveEntry}
           aria-label="Fjern øvelse fra økten"
           className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
           ×
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <input
-          type="number"
-          inputMode="numeric"
-          value={sets}
-          onChange={(e) => setSets(e.target.value)}
-          onBlur={commit}
-          placeholder="Sett"
-          className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="number"
-          inputMode="numeric"
-          value={reps}
-          onChange={(e) => setReps(e.target.value)}
-          onBlur={commit}
-          placeholder="Reps"
-          className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
+      {lastEntry && lastEntry.sets.length > 0 && (
+        <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry)}</p>
+      )}
+      {entry.sets.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {entry.sets.map((s, i) => (
+            <SetRow
+              key={s.id}
+              set={s}
+              index={i}
+              onUpdate={(updates) => onUpdateSet(s.id, updates)}
+              onRemove={() => onRemoveSet(s.id)}
+            />
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={handleAddSetClick}
+        className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+      >
+        + Nytt sett
+      </button>
+      <div className="grid grid-cols-2 gap-2">
         <input
           type="number"
           inputMode="numeric"
           value={minutes}
           onChange={(e) => setMinutes(e.target.value)}
-          onBlur={commit}
-          placeholder="Minutter"
+          onBlur={commitEntry}
+          placeholder="Minutter (cardio)"
           className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={commitEntry}
+          placeholder="Notat (valgfritt)"
+          className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
       </div>
-      <input
-        type="text"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        onBlur={commit}
-        placeholder="Notat (valgfritt)"
-        className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
     </li>
   );
 }
@@ -306,6 +401,88 @@ function ExercisePicker({
   );
 }
 
+function RoutineRow({
+  routine,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onStart,
+  onDelete,
+}: {
+  routine: Routine;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (name: string) => void;
+  onStart: () => void;
+  onDelete: () => void;
+}) {
+  const [name, setName] = useState(routine.name);
+
+  if (editing) {
+    return (
+      <li className="flex flex-col gap-2 rounded-lg border border-line-strong bg-surface-1 p-2.5">
+        <input
+          type="text"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onCancelEdit();
+          }}
+          className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onCancelEdit} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+            Avbryt
+          </button>
+          <button
+            type="button"
+            onClick={() => name.trim() && onSave(name.trim())}
+            disabled={!name.trim()}
+            className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          >
+            Lagre
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm text-ink-1">{routine.name}</p>
+        <p className="truncate text-2xs text-ink-4">{routine.exercises.map((e) => e.exerciseName).join(", ")}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onStart}
+        className="shrink-0 rounded-lg bg-status-positive px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-positive/85"
+      >
+        Start
+      </button>
+      <button
+        type="button"
+        onClick={onStartEdit}
+        aria-label="Omdøp rutine"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-1"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Slett rutine"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
 function HistoryRow({
   session,
   expanded,
@@ -344,7 +521,8 @@ function HistoryRow({
             session.entries.map((e) => (
               <li key={e.id} className="text-sm text-ink-2">
                 <span className="font-medium text-ink-1">{e.exerciseName}</span>
-                {entrySummary(e) && <span className="text-ink-3"> · {entrySummary(e)}</span>}
+                {e.sets.length > 0 && <span className="text-ink-3"> · {setSummary(e)}</span>}
+                {e.minutes ? <span className="text-ink-3"> · {e.minutes} min</span> : null}
                 {e.notes && <p className="text-2xs text-ink-4">{e.notes}</p>}
               </li>
             ))
@@ -355,16 +533,38 @@ function HistoryRow({
   );
 }
 
+// Legger til øvelsene fra en rutine i rekkefølge (sekvensielt, ikke parallelt
+// — read-modify-write mot samme økt i Redis ville racet ved parallelle kall).
+// Egen frittstående funksjon (ikke inne i komponenten) slik at den kan bruke
+// en vanlig `let`-akkumulator uten å trigge React Compiler sin immutability-regel.
+async function seedRoutineEntries(sessionId: string, exercises: Routine["exercises"]): Promise<WorkoutSession | null> {
+  let session: WorkoutSession | null = null;
+  for (const ex of exercises) {
+    const res = await fetch(`/api/workouts/${sessionId}/entries`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ exerciseId: ex.exerciseId, exerciseName: ex.exerciseName }),
+    });
+    if (res.ok) session = await res.json();
+  }
+  return session;
+}
+
 export default function TreningSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Trening", true);
   const [sessions, setSessions] = useState<WorkoutSession[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);
+  const [newRoutineName, setNewRoutineName] = useState("");
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const confirmDeleteSession = useConfirmDelete<WorkoutSession>();
   const confirmDeleteExercise = useConfirmDelete<Exercise>();
+  const confirmDeleteRoutine = useConfirmDelete<Routine>();
 
   const load = useCallback(() => {
     fetch("/api/workouts")
@@ -380,16 +580,26 @@ export default function TreningSection() {
       .catch(() => {});
   }, []);
 
+  const loadRoutines = useCallback(() => {
+    fetch("/api/routines")
+      .then((r) => r.json())
+      .then((d) => setRoutines((d.routines ?? []) as Routine[]))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     load();
     loadExercises();
+    loadRoutines();
     window.addEventListener("mitt-dashboard:privat-refresh", load);
     window.addEventListener("mitt-dashboard:privat-refresh", loadExercises);
+    window.addEventListener("mitt-dashboard:privat-refresh", loadRoutines);
     return () => {
       window.removeEventListener("mitt-dashboard:privat-refresh", load);
       window.removeEventListener("mitt-dashboard:privat-refresh", loadExercises);
+      window.removeEventListener("mitt-dashboard:privat-refresh", loadRoutines);
     };
-  }, [load, loadExercises]);
+  }, [load, loadExercises, loadRoutines]);
 
   const activeSession = sessions.find((s) => !s.endedAt) ?? null;
   const pastSessions = sessions.filter((s) => s.endedAt);
@@ -409,6 +619,22 @@ export default function TreningSection() {
     }
   }
 
+  async function handleStartFromRoutine(routine: Routine) {
+    if (collapsed) toggleCollapsed();
+    const res = await fetch("/api/workouts", { method: "POST" });
+    if (!res.ok) return;
+    const started: WorkoutSession = await res.json();
+    setSessions((prev) => {
+      const exists = prev.some((s) => s.id === started.id);
+      return exists ? prev.map((s) => (s.id === started.id ? started : s)) : [started, ...prev];
+    });
+    const seeded = await seedRoutineEntries(started.id, routine.exercises);
+    if (seeded) {
+      setSessions((prev) => prev.map((s) => (s.id === seeded.id ? seeded : s)));
+    }
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+  }
+
   async function handleEndSession() {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}`, {
@@ -420,6 +646,7 @@ export default function TreningSection() {
       const updated: WorkoutSession = await res.json();
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       setShowPicker(false);
+      setShowSaveRoutineForm(false);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
   }
@@ -451,10 +678,7 @@ export default function TreningSection() {
     }
   }
 
-  async function handleUpdateEntry(
-    entryId: string,
-    updates: { sets: number | null; reps: number | null; minutes: number | null; notes: string | null },
-  ) {
+  async function handleUpdateEntry(entryId: string, updates: { minutes: number | null; notes: string | null }) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
       method: "PATCH",
@@ -470,6 +694,41 @@ export default function TreningSection() {
   async function handleRemoveEntry(entryId: string) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, { method: "DELETE" });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    }
+  }
+
+  async function handleAddSet(entryId: string, prefill: { kg?: number; reps?: number }) {
+    if (!activeSession) return;
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prefill),
+    });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    }
+  }
+
+  async function handleUpdateSet(entryId: string, setId: string, updates: { kg: number | null; reps: number | null }) {
+    if (!activeSession) return;
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    }
+  }
+
+  async function handleRemoveSet(entryId: string, setId: string) {
+    if (!activeSession) return;
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, { method: "DELETE" });
     if (res.ok) {
       const updated: WorkoutSession = await res.json();
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
@@ -498,6 +757,49 @@ export default function TreningSection() {
     await fetch(`/api/exercises/${exercise.id}`, { method: "DELETE" });
   }
 
+  async function handleSaveRoutine(name: string) {
+    if (!activeSession || !name.trim()) return;
+    const seen = new Set<string>();
+    const routineExercises = activeSession.entries
+      .filter((e) => {
+        if (seen.has(e.exerciseId)) return false;
+        seen.add(e.exerciseId);
+        return true;
+      })
+      .map((e) => ({ exerciseId: e.exerciseId, exerciseName: e.exerciseName }));
+    if (routineExercises.length === 0) return;
+
+    const res = await fetch("/api/routines", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), exercises: routineExercises }),
+    });
+    if (res.ok) {
+      const created: Routine = await res.json();
+      setRoutines((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      setShowSaveRoutineForm(false);
+      setNewRoutineName("");
+    }
+  }
+
+  async function handleRenameRoutine(id: string, name: string) {
+    const res = await fetch(`/api/routines/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      const updated: Routine = await res.json();
+      setRoutines((prev) => prev.map((r) => (r.id === id ? updated : r)).sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      setEditingRoutineId(null);
+    }
+  }
+
+  async function handleDeleteRoutine(routine: Routine) {
+    setRoutines((prev) => prev.filter((r) => r.id !== routine.id));
+    await fetch(`/api/routines/${routine.id}`, { method: "DELETE" });
+  }
+
   return (
     <div className={`${CARD_SHELL} !border-2 !border-status-positive p-4`}>
       <CardHeader
@@ -517,24 +819,70 @@ export default function TreningSection() {
             <>
               {activeSession ? (
                 <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-lg font-semibold tabular-nums text-ink-1">{formatElapsed(elapsed)}</span>
-                    <button
-                      type="button"
-                      onClick={handleEndSession}
-                      className="rounded-lg bg-status-danger px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-danger/85"
-                    >
-                      Avslutt økt
-                    </button>
+                    <div className="flex items-center gap-3">
+                      {activeSession.entries.length > 0 && !showSaveRoutineForm && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSaveRoutineForm(true)}
+                          className="text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
+                        >
+                          Lagre som rutine
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleEndSession}
+                        className="rounded-lg bg-status-danger px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-danger/85"
+                      >
+                        Avslutt økt
+                      </button>
+                    </div>
                   </div>
+                  {showSaveRoutineForm && (
+                    <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 p-2">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newRoutineName}
+                        onChange={(e) => setNewRoutineName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveRoutine(newRoutineName);
+                          if (e.key === "Escape") setShowSaveRoutineForm(false);
+                        }}
+                        placeholder="Navn på rutine"
+                        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSaveRoutineForm(false)}
+                        className="shrink-0 text-xs font-medium text-ink-4 hover:text-ink-2"
+                      >
+                        Avbryt
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveRoutine(newRoutineName)}
+                        disabled={!newRoutineName.trim()}
+                        className="shrink-0 rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                      >
+                        Lagre
+                      </button>
+                    </div>
+                  )}
                   {activeSession.entries.length > 0 && (
                     <ul className="flex flex-col gap-2">
                       {activeSession.entries.map((entry) => (
                         <EntryRow
                           key={entry.id}
                           entry={entry}
-                          onUpdate={(updates) => handleUpdateEntry(entry.id, updates)}
-                          onRemove={() => handleRemoveEntry(entry.id)}
+                          lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
+                          onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
+                          onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
+                          onRemoveSet={(setId) => handleRemoveSet(entry.id, setId)}
+                          onUpdateEntry={(updates) => handleUpdateEntry(entry.id, updates)}
+                          onRemoveEntry={() => handleRemoveEntry(entry.id)}
                         />
                       ))}
                     </ul>
@@ -559,13 +907,34 @@ export default function TreningSection() {
                   )}
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  className="rounded-xl bg-status-positive px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
-                >
-                  Start treningsøkt
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={handleStartSession}
+                    className="rounded-xl bg-status-positive px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
+                  >
+                    Start treningsøkt
+                  </button>
+                  {routines.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Rutiner</p>
+                      <ul className="flex flex-col gap-1.5">
+                        {routines.map((r) => (
+                          <RoutineRow
+                            key={r.id}
+                            routine={r}
+                            editing={editingRoutineId === r.id}
+                            onStartEdit={() => setEditingRoutineId(r.id)}
+                            onCancelEdit={() => setEditingRoutineId(null)}
+                            onSave={(name) => handleRenameRoutine(r.id, name)}
+                            onStart={() => handleStartFromRoutine(r)}
+                            onDelete={() => confirmDeleteRoutine.request(r)}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               )}
 
               {pastSessions.length > 0 && (
@@ -626,6 +995,15 @@ export default function TreningSection() {
         onConfirm={() => {
           if (confirmDeleteExercise.pending) handleDeleteExercise(confirmDeleteExercise.pending);
           confirmDeleteExercise.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmDeleteRoutine.isOpen}
+        message={confirmDeleteRoutine.pending ? `Slette rutinen «${confirmDeleteRoutine.pending.name}»?` : ""}
+        onCancel={confirmDeleteRoutine.cancel}
+        onConfirm={() => {
+          if (confirmDeleteRoutine.pending) handleDeleteRoutine(confirmDeleteRoutine.pending);
+          confirmDeleteRoutine.cancel();
         }}
       />
     </div>

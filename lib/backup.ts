@@ -18,6 +18,7 @@ import { getNotes } from "./notes";
 import { getQuickPicks } from "./shoppingQuickPicks";
 import { getExercises } from "./exercises";
 import { getWorkoutSessions } from "./workouts";
+import { getRoutines } from "./routines";
 
 /**
  * Full dump av alt ekte data i Redis (Privat- og Jobb-fanen). Redis Cloud-
@@ -50,6 +51,7 @@ export async function buildBackup() {
     shoppingQuickPicks,
     exercises,
     workoutSessions,
+    routines,
   ] = await Promise.all([
     getReminders(),
     getPrivatEvents(),
@@ -73,6 +75,7 @@ export async function buildBackup() {
     getQuickPicks(),
     getExercises(),
     getWorkoutSessions(),
+    getRoutines(),
   ]);
 
   return {
@@ -97,5 +100,6 @@ export async function buildBackup() {
     shoppingQuickPicks,
     exercises,
     workoutSessions,
+    routines,
   };
 }
