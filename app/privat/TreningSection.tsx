@@ -5,6 +5,7 @@ import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, 
 import type { Exercise } from "@/lib/exercises";
 import type { SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
+import { vibrate } from "@/lib/haptics";
 import { Dumbbell, GripVertical, Pencil } from "lucide-react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -80,6 +81,25 @@ function findLastEntry(exerciseId: string, sessions: WorkoutSession[], excludeSe
 interface ExerciseHistoryPoint {
   date: string;
   maxKg: number;
+}
+
+// De sist brukte øvelsene (nyeste økt først, uansett pågående/avsluttet) —
+// vist som hurtigvalg over søkefeltet i øvelsesvelgeren, samme mønster som
+// hurtigvalg på handlelisten, slik at man slipper å søke opp de samme faste
+// øvelsene hver økt.
+function recentlyUsedExercises(exercises: Exercise[], sessions: WorkoutSession[], limit = 6): Exercise[] {
+  const seen = new Set<string>();
+  const result: Exercise[] = [];
+  for (const s of sessions) {
+    for (const e of s.entries) {
+      if (seen.has(e.exerciseId)) continue;
+      seen.add(e.exerciseId);
+      const exercise = exercises.find((ex) => ex.id === e.exerciseId);
+      if (exercise) result.push(exercise);
+      if (result.length >= limit) return result;
+    }
+  }
+  return result;
 }
 
 // Høyeste vekt logget per avsluttet økt for en øvelse, kronologisk (eldst
@@ -182,6 +202,7 @@ function SetRow({
   // motsetning til fritekst-inntasting i feltene, som fortsatt committer på
   // blur (unngår ett nettverkskall per tastetrykk der).
   function adjustKg(delta: number) {
+    vibrate(6);
     const current = kg.trim() ? Number(kg) : 0;
     const next = roundKg(Math.max(0, current + delta));
     const nextStr = formatKg(next);
@@ -190,6 +211,7 @@ function SetRow({
   }
 
   function adjustReps(delta: number) {
+    vibrate(6);
     const current = reps.trim() ? Number(reps) : 0;
     const next = Math.max(0, current + delta);
     const nextStr = String(next);
@@ -265,6 +287,11 @@ function EntryRow({
   const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
   const [notes, setNotes] = useState(entry.notes ?? "");
   const [showGraph, setShowGraph] = useState(false);
+  const [showMore, setShowMore] = useState(!!entry.minutes || !!entry.notes);
+  // Lukket (sammenslått) rad viser bare navn + sett-oppsummering — man drilles
+  // ned igjen ved å trykke raden. Rent visnings-toggle, ikke lagret noe sted,
+  // så en øvelse starter alltid åpen igjen ved neste sideinnlasting.
+  const [collapsed, setCollapsed] = useState(false);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
   });
@@ -286,25 +313,52 @@ function EntryRow({
   // økten, ellers fra "sist"-referansen — matcher hvordan Strong/Hevy foreslår
   // neste vekt i stedet for å starte tomt hver gang.
   function handleAddSetClick() {
+    vibrate(8);
     const prevSet = entry.sets[entry.sets.length - 1] ?? lastEntry?.sets[0];
     onAddSet({ kg: prevSet?.kg, reps: prevSet?.reps });
+  }
+
+  const gripHandle = (
+    <button
+      type="button"
+      ref={setActivatorNodeRef}
+      {...attributes}
+      {...listeners}
+      aria-label="Endre rekkefølge"
+      className="grid shrink-0 cursor-grab place-items-center text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
+      style={{ touchAction: "none" }}
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  );
+
+  if (collapsed) {
+    return (
+      <li ref={setNodeRef} style={style} className="rounded-xl border border-line bg-surface-2 p-2.5">
+        <div className="flex items-center gap-2">
+          {gripHandle}
+          <button type="button" onClick={() => setCollapsed(false)} className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+            {entry.sets.length > 0 && <p className="mt-0.5 truncate text-2xs text-ink-4">{setSummary(entry)}</p>}
+          </button>
+          <button
+            type="button"
+            onClick={onRemoveEntry}
+            aria-label="Fjern øvelse fra økten"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            ×
+          </button>
+        </div>
+      </li>
+    );
   }
 
   return (
     <li ref={setNodeRef} style={style} className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-1">
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-label="Endre rekkefølge"
-            className="grid shrink-0 cursor-grab place-items-center text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
-            style={{ touchAction: "none" }}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          {gripHandle}
           <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
         </div>
         <button
@@ -316,7 +370,7 @@ function EntryRow({
           ×
         </button>
       </div>
-      {lastEntry && lastEntry.sets.length > 0 && (
+      {lastEntry && setSummary(lastEntry) && (
         <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry)}</p>
       )}
       {history.length > 0 && (
@@ -344,32 +398,53 @@ function EntryRow({
           ))}
         </div>
       )}
-      <button
-        type="button"
-        onClick={handleAddSetClick}
-        className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-      >
-        + Nytt sett
-      </button>
-      <div className="grid grid-cols-2 gap-2">
-        <input
-          type="number"
-          inputMode="numeric"
-          value={minutes}
-          onChange={(e) => setMinutes(e.target.value)}
-          onBlur={commitEntry}
-          placeholder="Minutter (cardio)"
-          className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={commitEntry}
-          placeholder="Notat (valgfritt)"
-          className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleAddSetClick}
+          className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+        >
+          + Nytt sett
+        </button>
+        {entry.sets.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="text-xs font-medium text-status-positive hover:text-status-positive/80"
+          >
+            Lagre og lukk
+          </button>
+        )}
       </div>
+      {showMore ? (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            onBlur={commitEntry}
+            placeholder="Minutter (cardio)"
+            className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <input
+            type="text"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            onBlur={commitEntry}
+            placeholder="Notat (valgfritt)"
+            className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowMore(true)}
+          className="self-start text-2xs font-medium text-ink-4 hover:text-ink-2"
+        >
+          + Minutter/notat
+        </button>
+      )}
     </li>
   );
 }
@@ -429,6 +504,7 @@ function ExerciseEditForm({
 
 function ExercisePicker({
   exercises,
+  recentExercises,
   onPick,
   onCreateAndPick,
   onSaveExercise,
@@ -436,6 +512,7 @@ function ExercisePicker({
   onClose,
 }: {
   exercises: Exercise[];
+  recentExercises: Exercise[];
   onPick: (exercise: Exercise) => void;
   onCreateAndPick: (name: string, description: string) => void;
   onSaveExercise: (id: string, updates: { name: string; description?: string }) => void;
@@ -465,6 +542,23 @@ function ExercisePicker({
           Lukk
         </button>
       </div>
+      {!query.trim() && recentExercises.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Nylig brukt</p>
+          <div className="flex flex-wrap gap-1.5">
+            {recentExercises.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => onPick(ex)}
+                className="rounded-full border border-line bg-surface-1 px-3 py-1.5 text-xs font-medium text-ink-1 transition hover:border-line-strong hover:bg-surface-3 active:opacity-70"
+              >
+                {ex.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {filtered.length > 0 && (
         <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
           {filtered.map((ex) =>
@@ -810,6 +904,10 @@ export default function TreningSection() {
   const pastSessions = sessions.filter((s) => s.endedAt);
   const visibleHistory = showAllHistory ? pastSessions : pastSessions.slice(0, VISIBLE_HISTORY);
   const elapsed = useElapsed(activeSession?.startedAt);
+  const recentExercises = recentlyUsedExercises(exercises, sessions);
+  // Sannsynligvis glemt å avslutte økten hvis den har vart urimelig lenge —
+  // vi har sett dette skje i praksis under testing av denne seksjonen.
+  const isLongSession = !!activeSession && elapsed > 3 * 60 * 60 * 1000;
 
   async function handleStartSession() {
     if (collapsed) toggleCollapsed();
@@ -848,6 +946,7 @@ export default function TreningSection() {
       body: JSON.stringify({}),
     });
     if (res.ok) {
+      vibrate([10, 30, 10]);
       const updated: WorkoutSession = await res.json();
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       setShowPicker(false);
@@ -899,6 +998,7 @@ export default function TreningSection() {
       body: JSON.stringify({ exerciseId: exercise.id, exerciseName: exercise.name }),
     });
     if (res.ok) {
+      vibrate(8);
       const updated: WorkoutSession = await res.json();
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     }
@@ -1080,6 +1180,11 @@ export default function TreningSection() {
                       </button>
                     </div>
                   </div>
+                  {isLongSession && (
+                    <p className="text-2xs text-status-warning">
+                      Denne økten har vart lenge — glemte du å avslutte den?
+                    </p>
+                  )}
                   {showSaveRoutineForm && (
                     <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 p-2">
                       <input
@@ -1135,6 +1240,7 @@ export default function TreningSection() {
                   {showPicker ? (
                     <ExercisePicker
                       exercises={exercises}
+                      recentExercises={recentExercises}
                       onPick={(ex) => handleAddEntry(ex)}
                       onCreateAndPick={handleCreateExerciseAndAdd}
                       onSaveExercise={handleSaveExercise}
@@ -1148,6 +1254,15 @@ export default function TreningSection() {
                       className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
                     >
                       <span className="text-base leading-none">+</span> Legg til øvelse
+                    </button>
+                  )}
+                  {activeSession.entries.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={handleEndSession}
+                      className="rounded-lg bg-status-danger px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-danger/85"
+                    >
+                      Avslutt økt
                     </button>
                   )}
                 </div>
