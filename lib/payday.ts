@@ -25,35 +25,95 @@ export function addDaysIso(iso: string, n: number): string {
 }
 
 export type EventCategory = "bursdag" | "permisjon" | "bolig" | "annet";
+export type LifeEventRecurrence = "none" | "weekly" | "monthly" | "yearly";
 
 export interface LifeEvent {
   id: string;
   title: string;
   date: string; // "YYYY-MM-DD"
   category: EventCategory;
-  yearly: boolean;
+  recurrence: LifeEventRecurrence;
   note?: string;
 }
 
-// Neste forekomst av hendelsen sett fra `todayIso`: for årlige hendelser er det
-// dag/måned i inneværende år (eller neste år, hvis den allerede er passert).
-export function nextOccurrence(event: Pick<LifeEvent, "date" | "yearly">, todayIso: string): string {
-  if (!event.yearly) return event.date;
-  const [, m, d] = event.date.split("-");
-  const [ty] = todayIso.split("-");
-  const thisYear = `${ty}-${m}-${d}`;
-  if (thisYear >= todayIso) return thisYear;
-  return `${Number(ty) + 1}-${m}-${d}`;
+function daysBetween(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split("-").map(Number);
+  const [ty, tm, td] = toIso.split("-").map(Number);
+  const fromMs = Date.UTC(fy, fm - 1, fd);
+  const toMs = Date.UTC(ty, tm - 1, td);
+  return Math.round((toMs - fromMs) / 86400000);
+}
+
+function addWeeks(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n * 7);
+  return dt.toISOString().slice(0, 10);
+}
+
+// Klemmer dagen til siste dag i målmåneden i stedet for å rulle over
+// (samme prinsipp som advanceDate i lib/reminders.ts).
+function addMonthsClamped(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const totalMonthIdx0 = m - 1 + n;
+  const targetYear = y + Math.floor(totalMonthIdx0 / 12);
+  const targetMonthIdx0 = ((totalMonthIdx0 % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonthIdx0 + 1, 0)).getUTCDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(targetMonthIdx0 + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addYears(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${y + n}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// Neste forekomst av hendelsen sett fra `todayIso`. For "none" er det bare
+// hendelsens egen dato; for gjentakende hendelser regnes fremover fra
+// opprinnelig dato i den valgte enheten til resultatet er >= todayIso.
+export function nextOccurrence(event: Pick<LifeEvent, "date" | "recurrence">, todayIso: string): string {
+  const { date, recurrence } = event;
+  if (recurrence === "none" || date >= todayIso) return date;
+
+  if (recurrence === "weekly") {
+    const steps = Math.ceil(daysBetween(date, todayIso) / 7);
+    return addWeeks(date, steps);
+  }
+  if (recurrence === "monthly") {
+    let candidate = date;
+    for (let n = 1; candidate < todayIso && n < 1200; n++) candidate = addMonthsClamped(date, n);
+    return candidate;
+  }
+  // yearly
+  let candidate = date;
+  for (let n = 1; candidate < todayIso && n < 200; n++) candidate = addYears(date, n);
+  return candidate;
 }
 
 // Skjer hendelsen nøyaktig på `dateIso`? (i motsetning til nextOccurrence, som
 // finner NESTE forekomst sett fra en referansedato — denne sjekker et eksakt
-// dag/måned-treff, nødvendig når man blar fremover i "I dag"-boksen dag for dag.)
-export function occursOnDate(event: Pick<LifeEvent, "date" | "yearly">, dateIso: string): boolean {
-  if (!event.yearly) return event.date === dateIso;
-  const [, em, ed] = event.date.split("-");
-  const [, dm, dd] = dateIso.split("-");
-  return em === dm && ed === dd;
+// treff, nødvendig når man blar fremover i "I dag"-boksen dag for dag.)
+export function occursOnDate(event: Pick<LifeEvent, "date" | "recurrence">, dateIso: string): boolean {
+  const { date, recurrence } = event;
+  if (recurrence === "none") return date === dateIso;
+  if (dateIso < date) return false; // gjentakelsen starter først ved opprinnelig dato
+
+  if (recurrence === "yearly") {
+    const [, em, ed] = date.split("-");
+    const [, dm, dd] = dateIso.split("-");
+    return em === dm && ed === dd;
+  }
+  if (recurrence === "weekly") {
+    return daysBetween(date, dateIso) % 7 === 0;
+  }
+  // monthly — treffer samme kalenderdag hver måned, klemt til månedens siste
+  // dag for korte måneder (samme som addMonthsClamped over).
+  const [, , dStr] = date.split("-");
+  const [dy, dm] = dateIso.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(dy, dm, 0)).getUTCDate();
+  const expectedDay = Math.min(Number(dStr), lastDay);
+  const actualDay = Number(dateIso.split("-")[2]);
+  return actualDay === expectedDay;
 }
 
 // Lønningsdag: 20. hver måned, desember den 15. — flyttet til fredagen før

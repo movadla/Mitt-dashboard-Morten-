@@ -204,7 +204,7 @@ export async function buildPrivatContext(): Promise<string> {
   lines.push(`- Neste lønningsdag: ${nextPaydayFrom(today)}${isPaydayToday(today) ? " (i dag)" : ""}.`);
   if (lifeEventsResult.status === "fulfilled" && lifeEventsResult.value.length > 0) {
     for (const e of lifeEventsResult.value) {
-      lines.push(`- ${e.title} (${e.category}) — ${nextOccurrence(e, today)}${e.yearly ? " (årlig)" : ""}`);
+      lines.push(`- ${e.title} (${e.category}) — ${nextOccurrence(e, today)}${e.recurrence !== "none" ? ` (${e.recurrence})` : ""}`);
     }
   } else {
     lines.push("- Ingen andre hendelser lagt inn ennå.");

@@ -1,15 +1,15 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
-import type { EventCategory, LifeEvent } from "./payday";
+import type { EventCategory, LifeEvent, LifeEventRecurrence } from "./payday";
 
-export type { EventCategory, LifeEvent } from "./payday";
+export type { EventCategory, LifeEvent, LifeEventRecurrence } from "./payday";
 export { isPaydayToday, nextOccurrence, nextPaydayFrom } from "./payday";
 
 export interface NewLifeEventInput {
   title: string;
   date: string;
   category: EventCategory;
-  yearly?: boolean;
+  recurrence?: LifeEventRecurrence;
   note?: string;
 }
 
@@ -17,15 +17,33 @@ export interface LifeEventUpdateInput {
   title?: string;
   date?: string;
   category?: EventCategory;
-  yearly?: boolean;
+  recurrence?: LifeEventRecurrence;
   note?: string | null;
 }
 
 const HASH_KEY = "privat:hendelser";
 
+// Eldre hendelser er lagret med et booleansk `yearly`-felt i stedet for
+// `recurrence` — selv-helbredende migrering (samme mønster som `order` i
+// lib/reminders.ts) ved lesing, ikke en engangs-batch-jobb.
+type StoredLifeEvent = LifeEvent & { yearly?: boolean };
+
 export async function getLifeEvents(): Promise<LifeEvent[]> {
-  const map = await hgetallJSON<LifeEvent>(HASH_KEY);
-  return Object.values(map);
+  const map = await hgetallJSON<StoredLifeEvent>(HASH_KEY);
+  const events = Object.values(map);
+
+  const needsMigration = events.filter((e) => e.recurrence === undefined);
+  if (needsMigration.length > 0) {
+    await Promise.all(
+      needsMigration.map((e) => {
+        e.recurrence = e.yearly ? "yearly" : "none";
+        delete e.yearly;
+        return hsetJSON(HASH_KEY, e.id, e);
+      }),
+    );
+  }
+
+  return events;
 }
 
 export async function addLifeEvent(input: NewLifeEventInput): Promise<LifeEvent> {
@@ -37,7 +55,7 @@ export async function addLifeEvent(input: NewLifeEventInput): Promise<LifeEvent>
     title: input.title.trim(),
     date: input.date,
     category: input.category,
-    yearly: input.yearly ?? false,
+    recurrence: input.recurrence ?? "none",
     note: input.note?.trim() || undefined,
   };
   await hsetJSON(HASH_KEY, event.id, event);
@@ -58,7 +76,7 @@ export async function updateLifeEvent(id: string, updates: LifeEventUpdateInput)
     title,
     date,
     category: updates.category !== undefined ? updates.category : current.category,
-    yearly: updates.yearly !== undefined ? updates.yearly : current.yearly,
+    recurrence: updates.recurrence !== undefined ? updates.recurrence : current.recurrence,
     note: updates.note !== undefined ? (updates.note ?? undefined) : current.note,
   };
   await hsetJSON(HASH_KEY, id, next);

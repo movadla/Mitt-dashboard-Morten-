@@ -6,7 +6,7 @@ import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { PartyPopper } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
-import type { EventCategory, LifeEvent } from "@/lib/payday";
+import type { EventCategory, LifeEvent, LifeEventRecurrence } from "@/lib/payday";
 import { localDateString, nextOccurrence, nextPaydayFrom } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./SwipeableRow";
@@ -23,6 +23,14 @@ const CATEGORY_META: Record<DisplayCategory, { label: string; bg: string; text: 
 
 const CATEGORY_OPTIONS: EventCategory[] = ["bursdag", "permisjon", "bolig", "annet"];
 
+const RECURRENCE_OPTIONS: LifeEventRecurrence[] = ["none", "weekly", "monthly", "yearly"];
+const RECURRENCE_LABEL: Record<LifeEventRecurrence, string> = {
+  none: "Ingen gjentakelse",
+  weekly: "Ukentlig",
+  monthly: "Månedlig",
+  yearly: "Årlig",
+};
+
 function formatDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y}`;
@@ -33,7 +41,7 @@ interface Row {
   title: string;
   occurrence: string;
   category: DisplayCategory;
-  yearly: boolean;
+  recurrence: LifeEventRecurrence;
   event?: LifeEvent;
 }
 
@@ -44,16 +52,16 @@ function EventEditForm({
 }: {
   event: LifeEvent;
   onCancel: () => void;
-  onSave: (updates: { title: string; date: string; category: EventCategory; yearly: boolean }) => void;
+  onSave: (updates: { title: string; date: string; category: EventCategory; recurrence: LifeEventRecurrence }) => void;
 }) {
   const [title, setTitle] = useState(event.title);
   const [date, setDate] = useState(event.date);
   const [category, setCategory] = useState<EventCategory>(event.category);
-  const [yearly, setYearly] = useState(event.yearly);
+  const [recurrence, setRecurrence] = useState<LifeEventRecurrence>(event.recurrence);
 
   function save() {
     if (!title.trim() || !date) return;
-    onSave({ title: title.trim(), date, category, yearly });
+    onSave({ title: title.trim(), date, category, recurrence });
   }
 
   return (
@@ -86,10 +94,17 @@ function EventEditForm({
             </option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-xs text-ink-3">
-          <input type="checkbox" checked={yearly} onChange={(e) => setYearly(e.target.checked)} />
-          Årlig
-        </label>
+        <select
+          value={recurrence}
+          onChange={(e) => setRecurrence(e.target.value as LifeEventRecurrence)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {RECURRENCE_OPTIONS.map((r) => (
+            <option key={r} value={r}>
+              {RECURRENCE_LABEL[r]}
+            </option>
+          ))}
+        </select>
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
           Avbryt
         </button>
@@ -138,7 +153,10 @@ function EventRow({
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, updates: { title: string; date: string; category: EventCategory; yearly: boolean }) => void;
+  onSaveEdit: (
+    id: string,
+    updates: { title: string; date: string; category: EventCategory; recurrence: LifeEventRecurrence },
+  ) => void;
   comments: Comment[];
   onAddComment: (tekst: string) => void;
   onDeleteComment: (commentId: string, preview: string) => void;
@@ -161,7 +179,7 @@ function EventRow({
         <p className="text-sm text-ink-1">{row.title}</p>
         <p className="mt-0.5 text-2xs text-ink-4">
           {formatDMY(row.occurrence)}
-          {row.yearly ? " · årlig" : ""} · {meta.label}
+          {row.recurrence !== "none" ? ` · ${RECURRENCE_LABEL[row.recurrence].toLowerCase()}` : ""} · {meta.label}
         </p>
       </button>
       {row.event && (
@@ -200,7 +218,7 @@ export default function EventsSection() {
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
   const [category, setCategory] = useState<EventCategory>("annet");
-  const [yearly, setYearly] = useState(false);
+  const [recurrence, setRecurrence] = useState<LifeEventRecurrence>("none");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -234,7 +252,7 @@ export default function EventsSection() {
       const res = await fetch("/api/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, date, category, yearly }),
+        body: JSON.stringify({ title, date, category, recurrence }),
       });
       if (res.ok) {
         const created: LifeEvent = await res.json();
@@ -243,7 +261,7 @@ export default function EventsSection() {
         setTitle("");
         setDate("");
         setCategory("annet");
-        setYearly(false);
+        setRecurrence("none");
         setNote("");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -262,7 +280,7 @@ export default function EventsSection() {
 
   async function handleSaveEdit(
     id: string,
-    updates: { title: string; date: string; category: EventCategory; yearly: boolean },
+    updates: { title: string; date: string; category: EventCategory; recurrence: LifeEventRecurrence },
   ) {
     const res = await fetch(`/api/events/${id}`, {
       method: "PATCH",
@@ -285,16 +303,16 @@ export default function EventsSection() {
       title: "Lønningsdag",
       occurrence: nextPaydayFrom(today),
       category: "lonn" as const,
-      yearly: false,
+      recurrence: "none" as const,
     },
     ...events
-      .filter((e) => e.yearly || e.date >= today)
+      .filter((e) => e.recurrence !== "none" || e.date >= today)
       .map((e) => ({
         key: e.id,
         title: e.title,
         occurrence: nextOccurrence(e, today),
         category: e.category as DisplayCategory,
-        yearly: e.yearly,
+        recurrence: e.recurrence,
         event: e,
       })),
   ].sort((a, b) => a.occurrence.localeCompare(b.occurrence));
@@ -360,10 +378,17 @@ export default function EventsSection() {
                     </option>
                   ))}
                 </select>
-                <label className="flex items-center gap-1.5 text-xs text-ink-3">
-                  <input type="checkbox" checked={yearly} onChange={(e) => setYearly(e.target.checked)} />
-                  Årlig
-                </label>
+                <select
+                  value={recurrence}
+                  onChange={(e) => setRecurrence(e.target.value as LifeEventRecurrence)}
+                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                >
+                  {RECURRENCE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {RECURRENCE_LABEL[r]}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
