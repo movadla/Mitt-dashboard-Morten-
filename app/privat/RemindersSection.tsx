@@ -54,15 +54,16 @@ function ReminderEditForm({
 }: {
   reminder: Reminder;
   onCancel: () => void;
-  onSave: (updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
+  onSave: (updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
 }) {
   const [text, setText] = useState(reminder.text);
   const [dueDate, setDueDate] = useState(reminder.dueDate ?? "");
+  const [dueTime, setDueTime] = useState(reminder.dueTime ?? "");
   const [recurrence, setRecurrence] = useState<Recurrence>(reminder.recurrence);
 
   function save() {
     if (!text.trim()) return;
-    onSave({ text: text.trim(), dueDate: dueDate || undefined, recurrence });
+    onSave({ text: text.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence });
   }
 
   return (
@@ -83,6 +84,12 @@ function ReminderEditForm({
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <input
+          type="time"
+          value={dueTime}
+          onChange={(e) => setDueTime(e.target.value)}
           className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <select
@@ -156,6 +163,7 @@ function ReminderRowContent({
         {(reminder.dueDate || reminder.recurrence !== "none") && (
           <p className="mt-0.5 text-2xs text-ink-4">
             {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+            {reminder.dueTime ? ` ${reminder.dueTime}` : ""}
             {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
             {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
           </p>
@@ -195,7 +203,7 @@ type RowCallbacks = {
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, updates: { text: string; dueDate?: string; recurrence: Recurrence }) => void;
+  onSaveEdit: (id: string, updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
 };
 
 type RowCommentProps = {
@@ -332,7 +340,9 @@ export default function RemindersSection() {
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState(localDateString());
+  const [dueTime, setDueTime] = useState("");
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
+  const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
@@ -359,14 +369,17 @@ export default function RemindersSection() {
       const res = await fetch("/api/reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, dueDate: dueDate || undefined, recurrence }),
+        body: JSON.stringify({ text, dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence }),
       });
       if (res.ok) {
         const created: Reminder = await res.json();
+        if (notes.trim()) await addComment("reminder", created.id, notes.trim());
         setReminders((prev) => [...prev, created].sort(sortReminders));
         setText("");
         setDueDate(localDateString());
+        setDueTime("");
         setRecurrence("none");
+        setNotes("");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
@@ -394,12 +407,17 @@ export default function RemindersSection() {
 
   async function handleSaveEdit(
     id: string,
-    updates: { text: string; dueDate?: string; recurrence: Recurrence },
+    updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence },
   ) {
     const res = await fetch(`/api/reminders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: updates.text, dueDate: updates.dueDate ?? null, recurrence: updates.recurrence }),
+      body: JSON.stringify({
+        text: updates.text,
+        dueDate: updates.dueDate ?? null,
+        dueTime: updates.dueTime ?? null,
+        recurrence: updates.recurrence,
+      }),
     });
     if (res.ok) {
       const updated: Reminder = await res.json();
@@ -445,6 +463,8 @@ export default function RemindersSection() {
 
   function openAddForm() {
     setDueDate(localDateString());
+    setDueTime("");
+    setNotes("");
     setShowForm(true);
   }
 
@@ -488,6 +508,12 @@ export default function RemindersSection() {
                   onChange={(e) => setDueDate(e.target.value)}
                   className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
+                <input
+                  type="time"
+                  value={dueTime}
+                  onChange={(e) => setDueTime(e.target.value)}
+                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                />
                 <select
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value as Recurrence)}
@@ -499,6 +525,15 @@ export default function RemindersSection() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Notat (valgfritt)..."
+                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              />
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}

@@ -7,6 +7,7 @@ export interface Reminder {
   id: string;
   text: string;
   dueDate?: string; // "YYYY-MM-DD"
+  dueTime?: string; // "HH:MM"
   recurrence: Recurrence;
   done: boolean;
   order: number; // manuell prioritet i "i dag"-lista, lavest først
@@ -15,12 +16,14 @@ export interface Reminder {
 export interface NewReminderInput {
   text: string;
   dueDate?: string;
+  dueTime?: string;
   recurrence?: Recurrence;
 }
 
 export interface ReminderUpdateInput {
   text?: string;
   dueDate?: string | null; // null fjerner fristen, undefined lar den stå urørt
+  dueTime?: string | null;
   recurrence?: Recurrence;
 }
 
@@ -82,6 +85,7 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     id: randomUUID(),
     text: input.text.trim(),
     dueDate: input.dueDate,
+    dueTime: input.dueTime,
     recurrence: input.recurrence ?? "none",
     done: false,
     order: Date.now(),
@@ -114,6 +118,7 @@ export async function updateReminder(id: string, updates: ReminderUpdateInput): 
     ...current,
     text,
     dueDate: updates.dueDate !== undefined ? (updates.dueDate ?? undefined) : current.dueDate,
+    dueTime: updates.dueTime !== undefined ? (updates.dueTime ?? undefined) : current.dueTime,
     recurrence: updates.recurrence !== undefined ? updates.recurrence : current.recurrence,
   };
   await hsetJSON(HASH_KEY, id, next);

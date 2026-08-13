@@ -32,6 +32,7 @@ const ADD_REMINDER_TOOL: Anthropic.Tool = {
     properties: {
       text: { type: "string", description: "Hva påminnelsen gjelder." },
       dueDate: { type: "string", description: "Forfallsdato, format YYYY-MM-DD. Utelates hvis ingen frist nevnes." },
+      dueTime: { type: "string", description: "Klokkeslett, format HH:MM. Valgfritt." },
       recurrence: {
         type: "string",
         enum: ["none", "daily", "weekly", "monthly"],
