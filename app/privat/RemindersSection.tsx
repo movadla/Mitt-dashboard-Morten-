@@ -21,6 +21,10 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+// Hvor lenge en avhuket påminnelse fortsatt vises i "Nylig fullført" og kan
+// angres — minst 24 timer, jf. tilbakemelding.
+const RECENTLY_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const RECURRENCE_LABEL: Record<Recurrence, string> = {
   none: "Ingen",
   daily: "Daglig",
@@ -336,6 +340,11 @@ export default function RemindersSection() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false);
+  // "now" leses fra state (ikke Date.now() direkte i render, som React
+  // Compiler flagger som uren) — oppdateres sjelden, siden 24-timers-vinduet
+  // for "Nylig fullført" ikke trenger sekund-presisjon.
+  const [now, setNow] = useState(() => Date.now());
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState(localDateString());
@@ -360,6 +369,11 @@ export default function RemindersSection() {
     window.addEventListener("mitt-dashboard:privat-refresh", load);
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
   }, [load]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function handleAdd() {
     if (!text.trim() || submitting) return;
@@ -458,7 +472,13 @@ export default function RemindersSection() {
 
   const today = localDateString();
   const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
-  const rest = reminders.filter((r) => !isDueToday(r, today));
+  const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done);
+  // Avhukede påminnelser havner ikke lenger i "rest" — de får sin egen
+  // seksjon her, slik at man kan angre (huke av igjen) i minst 24 timer
+  // etter man trykket dem bort, jf. tilbakemelding.
+  const recentlyCompleted = reminders
+    .filter((r) => r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS)
+    .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
   function openAddForm() {
     setDueDate(localDateString());
@@ -620,6 +640,39 @@ export default function RemindersSection() {
                 className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
+              </button>
+            </>
+          )}
+
+          {recentlyCompleted.length > 0 && (
+            <>
+              {showRecentlyCompleted && (
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {recentlyCompleted.map((r) => (
+                    <ReminderRow
+                      key={r.id}
+                      reminder={r}
+                      editing={editingId === r.id}
+                      onToggle={handleToggle}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                      comments={comments[commentKey("reminder", r.id)] ?? []}
+                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                      }
+                    />
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowRecentlyCompleted((v) => !v)}
+                className="mt-1 text-left text-xs font-medium text-ink-4 hover:text-ink-2"
+              >
+                {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
               </button>
             </>
           )}

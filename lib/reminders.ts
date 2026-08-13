@@ -10,6 +10,7 @@ export interface Reminder {
   dueTime?: string; // "HH:MM"
   recurrence: Recurrence;
   done: boolean;
+  completedAt?: string; // ISO datetime — satt når done settes til true, brukes for "angre"-vinduet
   order: number; // manuell prioritet i "i dag"-lista, lavest først
 }
 
@@ -98,10 +99,15 @@ export async function toggleReminder(id: string): Promise<Reminder | null> {
   const current = await hgetJSON<Reminder>(HASH_KEY, id);
   if (!current) return null;
 
-  const next: Reminder =
-    current.recurrence !== "none" && !current.done && current.dueDate
-      ? { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false }
-      : { ...current, done: !current.done };
+  let next: Reminder;
+  if (current.recurrence !== "none" && !current.done && current.dueDate) {
+    // Gjentakende påminnelse som hukes av: rykker fristen frem i stedet for å
+    // markere som fullført permanent — ingen completedAt, den er fortsatt aktiv.
+    next = { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false };
+  } else {
+    const willBeDone = !current.done;
+    next = { ...current, done: willBeDone, completedAt: willBeDone ? new Date().toISOString() : undefined };
+  }
 
   await hsetJSON(HASH_KEY, id, next);
   return next;
