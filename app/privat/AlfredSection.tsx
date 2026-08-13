@@ -568,7 +568,7 @@ export default function AlfredSection() {
       : "Ukentlig";
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-status-action p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-status-action !bg-status-action/8 p-4`}>
       <CardHeader
         title="Alfred"
         subtitle={subtitle}

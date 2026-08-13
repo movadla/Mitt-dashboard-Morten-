@@ -1502,7 +1502,7 @@ export default function TreningSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-status-positive p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-status-positive !bg-status-positive/8 p-4`}>
       <CardHeader
         title="Trening"
         subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}

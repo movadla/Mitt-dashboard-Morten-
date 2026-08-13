@@ -775,7 +775,7 @@ export default function FinanceSection() {
   const totalRemaining = loans.reduce((sum, l) => sum + l.remainingAmount, 0);
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-source-outlook p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-source-outlook !bg-source-outlook/8 p-4`}>
       <CardHeader
         title="Økonomi"
         subtitle={loans.length > 0 ? formatKr(totalRemaining) : "Ukentlig"}

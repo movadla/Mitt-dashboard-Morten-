@@ -75,7 +75,7 @@ export default function NewsSection() {
   }, [load]);
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-white p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-white !bg-white/8 p-4`}>
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}

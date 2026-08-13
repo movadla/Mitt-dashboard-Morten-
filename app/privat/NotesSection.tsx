@@ -318,7 +318,7 @@ export default function NotesSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-status-warning p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-status-warning !bg-status-warning/8 p-4`}>
       <CardHeader
         title="Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}
