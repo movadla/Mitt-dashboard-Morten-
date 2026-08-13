@@ -40,15 +40,93 @@ const SECTION_META: Record<StoreSection, { label: string; bg: string; text: stri
 
 const VISIBLE_QUICK_PICKS = 10;
 
-function ItemRow({
+function ItemEditForm({
   item,
-  onToggle,
-  onRemove,
+  onCancel,
+  onSave,
 }: {
   item: ShoppingItem;
+  onCancel: () => void;
+  onSave: (updates: { name: string; section: StoreSection; quantity?: string }) => void;
+}) {
+  const [name, setName] = useState(item.name);
+  const [section, setSection] = useState<StoreSection>(item.section);
+  const [quantity, setQuantity] = useState(item.quantity ?? "");
+
+  function save() {
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), section, quantity: quantity.trim() || undefined });
+  }
+
+  return (
+    <li className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") onCancel();
+        }}
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={section}
+          onChange={(e) => setSection(e.target.value as StoreSection)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {SECTION_ORDER.map((s) => (
+            <option key={s} value={s}>
+              {SECTION_META[s].label}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          placeholder="Mengde (valgfritt)"
+          className="w-32 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!name.trim()}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function ItemRow({
+  item,
+  editing,
+  onToggle,
+  onRemove,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+}: {
+  item: ShoppingItem;
+  editing: boolean;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string, updates: { name: string; section: StoreSection; quantity?: string }) => void;
 }) {
+  if (editing) {
+    return <ItemEditForm item={item} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(item.id, updates)} />;
+  }
+
   const meta = SECTION_META[item.section];
   return (
     <li>
@@ -69,10 +147,12 @@ function ItemRow({
               </svg>
             )}
           </button>
-          <p className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
-            {item.name}
-            {item.quantity ? ` · ${item.quantity}` : ""}
-          </p>
+          <button type="button" onClick={() => onStartEdit(item.id)} aria-label="Rediger vare" className="min-w-0 flex-1 text-left">
+            <p className={`truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+              {item.name}
+              {item.quantity ? ` · ${item.quantity}` : ""}
+            </p>
+          </button>
           <button
             type="button"
             onClick={() => onRemove(item.id)}
@@ -199,6 +279,7 @@ export default function ShoppingListSection() {
   const [submitting, setSubmitting] = useState(false);
   const confirmDelete = useConfirmDelete<string>();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
 
   const [quickPicks, setQuickPicks] = useState<QuickPick[]>([]);
   const [showAllQuickPicks, setShowAllQuickPicks] = useState(false);
@@ -305,6 +386,20 @@ export default function ShoppingListSection() {
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       vibrate(updated.done ? 15 : 8);
+    }
+  }
+
+  async function handleSaveEditItem(id: string, updates: { name: string; section: StoreSection; quantity?: string }) {
+    const res = await fetch(`/api/shopping/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...updates, quantity: updates.quantity ?? null }),
+    });
+    if (res.ok) {
+      const updated: ShoppingItem = await res.json();
+      setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      setEditingItemId(null);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
   }
 
@@ -474,7 +569,16 @@ export default function ShoppingListSection() {
                   </p>
                   <ul className="flex flex-col gap-1.5">
                     {g.items.map((i) => (
-                      <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={confirmDelete.request} />
+                      <ItemRow
+                        key={i.id}
+                        item={i}
+                        editing={editingItemId === i.id}
+                        onToggle={handleToggle}
+                        onRemove={confirmDelete.request}
+                        onStartEdit={setEditingItemId}
+                        onCancelEdit={() => setEditingItemId(null)}
+                        onSaveEdit={handleSaveEditItem}
+                      />
                     ))}
                   </ul>
                 </div>
@@ -487,7 +591,16 @@ export default function ShoppingListSection() {
               {showDone && (
                 <ul className="mt-1 flex flex-col gap-1.5">
                   {done.map((i) => (
-                    <ItemRow key={i.id} item={i} onToggle={handleToggle} onRemove={confirmDelete.request} />
+                    <ItemRow
+                      key={i.id}
+                      item={i}
+                      editing={editingItemId === i.id}
+                      onToggle={handleToggle}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingItemId}
+                      onCancelEdit={() => setEditingItemId(null)}
+                      onSaveEdit={handleSaveEditItem}
+                    />
                   ))}
                 </ul>
               )}
