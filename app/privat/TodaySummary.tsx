@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -221,6 +221,18 @@ export default function TodaySummary() {
 
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragAxis = useRef<"x" | "y" | null>(null);
+  // Jevn høyde-overgang ved dagbytte — ulike dager har ulikt antall
+  // påminnelser/hendelser, så innholdet hopper brått til ny høyde med det
+  // samme uten dette. heightWrapRef omslutter det sveipende innholdet;
+  // pendingOldHeightRef fanger høyden RETT FØR bytte (i klikk-/sveip-
+  // handleren, ikke i effekten — da har DOM-en allerede det nye innholdet).
+  const heightWrapRef = useRef<HTMLDivElement>(null);
+  const pendingOldHeightRef = useRef<number | null>(null);
+
+  function captureHeightBeforeChange() {
+    const el = heightWrapRef.current;
+    if (el) pendingOldHeightRef.current = el.getBoundingClientRect().height;
+  }
 
   const load = useCallback(() => {
     Promise.allSettled([
@@ -254,17 +266,50 @@ export default function TodaySummary() {
   const isToday = viewedOffset === 0;
 
   function goForward() {
+    captureHeightBeforeChange();
     setViewedOffset((v) => Math.min(MAX_OFFSET, v + 1));
     setSlideDirection("forward");
   }
   function goBackward() {
+    captureHeightBeforeChange();
     setViewedOffset((v) => Math.max(0, v - 1));
     setSlideDirection("backward");
   }
   function goToToday() {
+    captureHeightBeforeChange();
     setViewedOffset(0);
     setSlideDirection("backward");
   }
+
+  // Animerer heightWrap fra den fangede gamle høyden til det nye innholdets
+  // naturlige høyde, samtidig som slideClass sin horisontale sveip spiller —
+  // nullstilles til auto etterpå slik at senere innholdsendringer (utvidet
+  // vær, ny påminnelse) ikke blir låst til en gammel fast høyde.
+  useLayoutEffect(() => {
+    const el = heightWrapRef.current;
+    const oldHeight = pendingOldHeightRef.current;
+    pendingOldHeightRef.current = null;
+    if (!el || oldHeight === null) return;
+
+    const newHeight = el.scrollHeight;
+    if (Math.abs(oldHeight - newHeight) < 1) return;
+
+    el.style.height = `${oldHeight}px`;
+    el.style.overflow = "hidden";
+    void el.offsetHeight; // tving reflow slik at starthøyden faktisk registreres før overgangen
+    el.style.transition = "height 220ms ease";
+    el.style.height = `${newHeight}px`;
+
+    // setTimeout i stedet for transitionend — sistnevnte viste seg upålitelig
+    // her (fyrte ikke konsekvent i test), en tidsstyrt reset er enklere og mer
+    // forutsigbar siden overgangens varighet uansett er fast (220ms).
+    const resetId = setTimeout(() => {
+      el.style.transition = "";
+      el.style.height = "auto";
+      el.style.overflow = "";
+    }, 250);
+    return () => clearTimeout(resetId);
+  }, [viewedOffset]);
 
   function handlePointerDown(e: React.PointerEvent) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -390,6 +435,7 @@ export default function TodaySummary() {
         <SkeletonRows count={3} className="h-6" />
       ) : (
         <div
+          ref={heightWrapRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
