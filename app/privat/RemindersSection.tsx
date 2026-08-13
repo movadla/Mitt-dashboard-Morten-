@@ -162,11 +162,13 @@ function ReminderRowContent({
         aria-label="Rediger påminnelse"
         className="min-w-0 flex-1 text-left"
       >
-        <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+        <div className="flex items-baseline justify-between gap-2">
+          <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+          {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
+        </div>
         {(reminder.dueDate || reminder.recurrence !== "none") && (
           <p className="mt-0.5 text-2xs text-ink-4">
             {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
-            {reminder.dueTime ? ` ${reminder.dueTime}` : ""}
             {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
             {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
           </p>
