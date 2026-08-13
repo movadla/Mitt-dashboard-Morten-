@@ -37,9 +37,11 @@ const DEFAULT_SECTION_ORDER = [
   "darts",
 ];
 
-// Grip-håndtak over hvert kort — trykk-og-dra for å flytte kortet i lista,
-// f.eks. midlertidig flytte Sport høyere opp i en periode. Rekkefølgen lagres
-// lokalt (usePersistedOrder), ikke i skyen.
+// Grip-håndtak ved siden av hvert kort — trykk-og-dra for å flytte kortet i
+// lista, f.eks. midlertidig flytte Sport høyere opp i en periode. Rekkefølgen
+// lagres lokalt (usePersistedOrder), ikke i skyen. Håndtaket sitter til
+// venstre for kortet (samme mønster som rad-nivå-reordering i
+// RemindersSection/TreningSection), ikke som en egen stripe mellom kortene.
 function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -49,19 +51,19 @@ function SortableSection({ id, children }: { id: string; children: React.ReactNo
     zIndex: isDragging ? 10 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} className="flex flex-col gap-1">
+    <div ref={setNodeRef} style={style} className="flex items-stretch gap-1">
       <button
         type="button"
         ref={setActivatorNodeRef}
         {...attributes}
         {...listeners}
         aria-label="Endre rekkefølge på kortet"
-        className="mx-auto flex h-4 w-12 items-center justify-center rounded-full text-ink-4/60 transition hover:text-ink-2 active:cursor-grabbing"
+        className="grid w-5 shrink-0 place-items-center rounded-xl text-ink-4/60 transition hover:text-ink-2 active:cursor-grabbing"
         style={{ touchAction: "none", cursor: "grab" }}
       >
-        <GripVertical className="h-3.5 w-3.5" />
+        <GripVertical className="h-4 w-4" />
       </button>
-      {children}
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
