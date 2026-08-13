@@ -5,6 +5,7 @@ export interface Note {
   id: string;
   text: string;
   createdAt: string; // ISO datetime
+  pinned?: boolean;
 }
 
 export interface NewNoteInput {
@@ -13,12 +14,17 @@ export interface NewNoteInput {
 
 export interface NoteUpdateInput {
   text?: string;
+  pinned?: boolean;
 }
 
 const HASH_KEY = "privat:notes";
 
+// Pinnede notater først (nyeste blant dem øverst), så resten nyest først.
 function sortNotes(notes: Note[]): Note[] {
-  return [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return [...notes].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
 }
 
 export async function getNotes(): Promise<Note[]> {
@@ -44,7 +50,11 @@ export async function updateNote(id: string, updates: NoteUpdateInput): Promise<
   const text = updates.text !== undefined ? updates.text.trim() : current.text;
   if (!text) throw new Error("Notat mangler tekst");
 
-  const next: Note = { ...current, text };
+  const next: Note = {
+    ...current,
+    text,
+    pinned: updates.pinned !== undefined ? updates.pinned : current.pinned,
+  };
   await hsetJSON(HASH_KEY, id, next);
   return next;
 }
