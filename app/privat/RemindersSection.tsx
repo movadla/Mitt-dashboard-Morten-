@@ -353,6 +353,11 @@ export default function RemindersSection() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Holder en nettopp avhuket (eller angret) påminnelse synlig i "i dag"-lista
+  // en kort stund etter trykk — uten denne filtreres raden ut med det samme
+  // state oppdateres, og man rekker aldri se haken bli fylt inn før den er
+  // borte. Se samme mønster i ShoppingListSection/JobbRemindersSection.
+  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<string>();
   const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -408,6 +413,14 @@ export default function RemindersSection() {
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       vibrate(updated.done ? 15 : 8);
+      setJustToggledIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setJustToggledIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 700);
     }
   }
 
@@ -471,13 +484,19 @@ export default function RemindersSection() {
   }
 
   const today = localDateString();
-  const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
+  const todays = reminders
+    .filter((r) => isDueToday(r, today) || justToggledIds.has(r.id))
+    .sort((a, b) => a.order - b.order);
   const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done);
   // Avhukede påminnelser havner ikke lenger i "rest" — de får sin egen
   // seksjon her, slik at man kan angre (huke av igjen) i minst 24 timer
   // etter man trykket dem bort, jf. tilbakemelding.
   const recentlyCompleted = reminders
-    .filter((r) => r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS)
+    .filter(
+      (r) =>
+        (r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS) ||
+        justToggledIds.has(r.id),
+    )
     .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
   function openAddForm() {

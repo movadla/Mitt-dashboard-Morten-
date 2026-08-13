@@ -279,6 +279,10 @@ export default function ShoppingListSection() {
   const confirmDelete = useConfirmDelete<string>();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // Holder en nettopp av/på-huket vare synlig i sin nåværende liste en kort
+  // stund — uten denne hopper varen rett over i "Kjøpt"/tilbake med det samme,
+  // og man rekker aldri se avkrysningen bli fylt inn. Se RemindersSection.tsx.
+  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
 
   const [quickPicks, setQuickPicks] = useState<QuickPick[]>([]);
   const [showAllQuickPicks, setShowAllQuickPicks] = useState(false);
@@ -385,6 +389,14 @@ export default function ShoppingListSection() {
       setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       vibrate(updated.done ? 15 : 8);
+      setJustToggledIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setJustToggledIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 700);
     }
   }
 
@@ -415,8 +427,8 @@ export default function ShoppingListSection() {
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
-  const notDone = items.filter((i) => !i.done);
-  const done = items.filter((i) => i.done);
+  const notDone = items.filter((i) => !i.done || justToggledIds.has(i.id));
+  const done = items.filter((i) => i.done || justToggledIds.has(i.id));
   const grouped = SECTION_ORDER.map((s) => ({ section: s, items: notDone.filter((i) => i.section === s) })).filter(
     (g) => g.items.length > 0,
   );

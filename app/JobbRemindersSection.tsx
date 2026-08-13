@@ -269,6 +269,9 @@ export default function JobbRemindersSection() {
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Holder en nettopp avhuket påminnelse synlig i "i dag"-lista en kort stund
+  // etter trykk, slik at man rekker se haken fylles inn før raden forsvinner.
+  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<string>();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -315,6 +318,14 @@ export default function JobbRemindersSection() {
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
       vibrate(updated.done ? 15 : 8);
+      setJustToggledIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setJustToggledIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 700);
     }
   }
 
@@ -373,8 +384,10 @@ export default function JobbRemindersSection() {
   }
 
   const today = localDateString();
-  const todays = reminders.filter((r) => isDueToday(r, today)).sort((a, b) => a.order - b.order);
-  const rest = reminders.filter((r) => !isDueToday(r, today));
+  const todays = reminders
+    .filter((r) => isDueToday(r, today) || justToggledIds.has(r.id))
+    .sort((a, b) => a.order - b.order);
+  const rest = reminders.filter((r) => !isDueToday(r, today) && !justToggledIds.has(r.id));
 
   return (
     <div className={`${CARD_SHELL} !border-2 !border-accent p-4`}>
