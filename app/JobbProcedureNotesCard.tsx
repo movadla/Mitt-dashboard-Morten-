@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import type { ProcedureNote } from "@/lib/procedureNotes";
-import { Plus } from "lucide-react";
+import { FileText } from "lucide-react";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("nb-NO", {
@@ -128,8 +128,17 @@ export default function JobbProcedureNotesCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
-      <CardHeader title="Prosedyrenotater" subtitle={`${notes.length} notater`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+    <div className={`${CARD_SHELL} !border-2 !border-amber-400 !bg-amber-400/8 p-4`}>
+      <CardHeader
+        title="Prosedyrenotater"
+        subtitle={`${notes.length} notater`}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        onAdd={() => setShowForm(true)}
+        addLabel="Nytt notat"
+        icon={FileText}
+        iconColorClass="text-amber-400"
+      />
       {!collapsed && (
         <div className="flex flex-col gap-2">
           <input
@@ -140,19 +149,7 @@ export default function JobbProcedureNotesCard() {
             className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
 
-          {showForm ? (
-            <NoteForm onCancel={() => setShowForm(false)} onSave={handleAdd} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              aria-label="Nytt notat"
-              title="Nytt notat"
-              className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          )}
+          {showForm && <NoteForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
 
           {loading ? (
             <SkeletonRows count={2} />

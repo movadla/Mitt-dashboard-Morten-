@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, TrendingUp, XCircle } from "lucide-react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
@@ -563,7 +563,7 @@ function ManualLineRow({
 }
 
 export default function IncomeForecastSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose", true);
   const [manualLines, setManualLines] = useState<ManualIncomeLine[]>([]);
   const [loadingManual, setLoadingManual] = useState(true);
   const [includeLowConfidence, setIncludeLowConfidence] = useState(true);
@@ -636,7 +636,7 @@ export default function IncomeForecastSection() {
   const lastUpdated = oldestSnapshotDate();
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-yellow-400 !bg-yellow-400/8 p-4`}>
       <CardHeader
         title="Inntektsprognose 2026"
         subtitle={
@@ -647,6 +647,8 @@ export default function IncomeForecastSection() {
         }
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={TrendingUp}
+        iconColorClass="text-yellow-400"
       />
       {!collapsed && (
         <div className="flex flex-col gap-5">

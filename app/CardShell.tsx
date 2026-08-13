@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15";
@@ -176,6 +176,30 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    cancelRef.current?.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onCancel();
+        return;
+      }
+      if (e.key === "Tab") {
+        // Enkel fokusfelle mellom de to knappene i dialogen.
+        e.preventDefault();
+        const focusOnCancel = document.activeElement !== cancelRef.current;
+        (focusOnCancel ? cancelRef.current : confirmRef.current)?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   if (!open) return null;
   return (
     <div
@@ -193,6 +217,7 @@ export function ConfirmDialog({
         <p className="mt-1.5 text-sm text-ink-3">{message}</p>
         <div className="mt-4 flex justify-end gap-2">
           <button
+            ref={cancelRef}
             type="button"
             onClick={onCancel}
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-3 transition hover:text-ink-1"
@@ -200,6 +225,7 @@ export function ConfirmDialog({
             Avbryt
           </button>
           <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             className="rounded-lg bg-status-danger px-3 py-1.5 text-sm font-semibold text-surface-0 transition hover:bg-status-danger/85"

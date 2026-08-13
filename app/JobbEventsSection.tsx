@@ -6,6 +6,7 @@ import type { JobbEvent } from "@/lib/jobbEvents";
 import { localDateString } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./privat/SwipeableRow";
+import { CalendarPlus } from "lucide-react";
 
 function formatDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -192,16 +193,20 @@ export default function JobbEventsSection() {
   const rows = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-emerald-400 !bg-emerald-400/8 p-4`}>
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].date)}` : "Ingen"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={() => setShowForm(true)}
+        addLabel="Ny hendelse"
+        icon={CalendarPlus}
+        iconColorClass="text-emerald-400"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
-          {showForm ? (
+          {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
                 type="text"
@@ -245,14 +250,6 @@ export default function JobbEventsSection() {
                 className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
               />
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-            >
-              <span className="text-base leading-none">+</span> Ny hendelse
-            </button>
           )}
 
           {loading ? (

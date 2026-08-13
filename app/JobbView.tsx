@@ -34,6 +34,7 @@ import {
   formatKr,
 } from "@/lib/widgets";
 import type { Comment } from "@/lib/comments";
+import { CalendarClock, CalendarDays, FileSignature, Receipt, ShieldCheck } from "lucide-react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
@@ -743,6 +744,7 @@ function TaskCard({
             onPointerLeave={cancelLongPress}
             onPointerCancel={cancelLongPress}
             aria-expanded={isExpanded}
+            title="Hold inne for å utsette"
             className="-m-1 flex min-w-0 flex-1 items-start gap-2 rounded-xl p-1 text-left active:bg-surface-2"
           >
             <div className="min-w-0 flex-1">{body}</div>
@@ -872,12 +874,12 @@ function TaskCard({
               </div>
             )}
             <div className="mt-3 flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-wrap gap-2">
                 <a
                   href={task.externalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-2 ring-1 ring-line-strong transition hover:bg-surface-3"
+                  className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-2 ring-1 ring-line-strong transition hover:bg-surface-3"
                 >
                   Åpne i Outlook
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -888,7 +890,7 @@ function TaskCard({
                   href={buildOutlookAskClaudeUrl(task)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                  className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
                 >
                   Spør Claude
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -898,7 +900,7 @@ function TaskCard({
                 <button
                   type="button"
                   onClick={handleShareClaude}
-                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
+                  className={`inline-flex flex-1 min-w-[45%] items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
                     copied
                       ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
                       : "bg-surface-2 text-ink-2 ring-line-strong hover:bg-surface-3"
@@ -915,16 +917,6 @@ function TaskCard({
                         <path d="M11 5V3a1 1 0 00-1-1H3a1 1 0 00-1 1v7a1 1 0 001 1h2" />
                       </>
                     )}
-                  </svg>
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-3 ring-1 ring-line-strong"
-                >
-                  Detaljer
-                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 6l4 4 4-4" />
                   </svg>
                 </button>
               </div>
@@ -1034,12 +1026,12 @@ function TaskCard({
             )}
 
             <div className="mt-3 flex flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-wrap gap-2">
                 <a
                   href={task.externalUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                  className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
                 >
                   Åpne i Teams
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1050,7 +1042,7 @@ function TaskCard({
                   href={buildTeamsAskClaudeUrl(task)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                  className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
                 >
                   Spør Claude
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1060,14 +1052,14 @@ function TaskCard({
                 <button
                   type="button"
                   onClick={handleShareClaude}
-                  className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
+                  className={`inline-flex flex-1 min-w-[45%] items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
                     copied
                       ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
                       : "bg-surface-2 text-ink-2 ring-line-strong hover:bg-surface-3"
                   }`}
                   aria-live="polite"
                 >
-                  {copied ? "Kopiert" : "Kopier til Claude"}
+                  {copied ? "✓ Kopiert" : "Kopier til Claude"}
                   <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     {copied ? (
                       <path d="M3 8.5L6.5 12 13 5" />
@@ -1079,7 +1071,6 @@ function TaskCard({
                     )}
                   </svg>
                 </button>
-                <div className="inline-flex items-center justify-center rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-4 ring-1 ring-line-strong" />
               </div>
             </div>
           </div>
@@ -1101,12 +1092,12 @@ function TaskCard({
               Frist: {due}
             </p>
           )}
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <a
               href={task.externalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-source-asana/15 px-3 py-1.5 text-xs font-medium text-source-asana ring-1 ring-source-asana/30 transition hover:bg-source-asana/25"
+              className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-source-asana/15 px-3 py-1.5 text-xs font-medium text-source-asana ring-1 ring-source-asana/30 transition hover:bg-source-asana/25"
             >
               Åpne i Asana
               <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1116,14 +1107,14 @@ function TaskCard({
             <button
               type="button"
               onClick={handleShareClaude}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition ${
+              className={`inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition ${
                 copied
                   ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
                   : "bg-surface-2 text-ink-2 ring-line-strong hover:bg-surface-3"
               }`}
               aria-live="polite"
             >
-              {copied ? "Kopiert" : "Kopier til Claude"}
+              {copied ? "✓ Kopiert" : "Kopier til Claude"}
               <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 {copied ? (
                   <path d="M3 8.5L6.5 12 13 5" />
@@ -1224,12 +1215,12 @@ function TaskCard({
           )}
 
           <div className="mt-3 flex flex-col gap-2">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-wrap gap-2">
               <a
                 href={task.externalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-accent/30 transition hover:bg-accent/25"
+                className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent ring-1 ring-accent/30 transition hover:bg-accent/25"
               >
                 Åpne i SF
                 <svg
@@ -1248,7 +1239,7 @@ function TaskCard({
                 href={buildAskClaudeUrl(task)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
+                className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-violet-500/15 px-3 py-1.5 text-xs font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25"
               >
                 Spør Claude
                 <svg
@@ -1266,7 +1257,7 @@ function TaskCard({
               <button
                 type="button"
                 onClick={handleShareClaude}
-                className={`inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
+                className={`inline-flex flex-1 min-w-[45%] items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-2xs font-medium ring-1 transition ${
                   copied
                     ? "bg-emerald-500/15 text-emerald-200 ring-emerald-500/30"
                     : "bg-surface-2 text-ink-2 ring-line-strong hover:bg-surface-3"
@@ -1298,7 +1289,7 @@ function TaskCard({
                   type="button"
                   onClick={onToggleDetails}
                   aria-expanded={detailsOpen}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-2 ring-1 ring-line-strong transition hover:bg-surface-3"
+                  className="inline-flex flex-1 min-w-[45%] items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-2 ring-1 ring-line-strong transition hover:bg-surface-3"
                 >
                   Detaljer
                   <svg
@@ -1410,19 +1401,21 @@ function calendarDateBadge(dato: string, today: string): string {
 }
 
 function CalendarCard({ today }: { today: string }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kalender");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kalender", true);
   const [showAll, setShowAll] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, addNote, removeNote] = useCalendarNotes();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const visible = showAll ? CALENDAR_EVENTS : CALENDAR_EVENTS.slice(0, 6);
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-indigo-400 !bg-indigo-400/8 p-4`}>
       <CardHeader
         title="Kalender"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{CALENDAR_EVENTS.length}</span> kommende</>}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={CalendarDays}
+        iconColorClass="text-indigo-400"
       />
       {!collapsed && (
         CALENDAR_EVENTS.length === 0 ? (
@@ -1457,7 +1450,7 @@ function CalendarCard({ today }: { today: string }) {
                           role="button"
                           tabIndex={0}
                           aria-expanded={isOpen}
-                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
                         >
                           <td className="whitespace-nowrap px-3 py-2">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 tabular-nums text-2xs font-medium ${calendarDateBadge(m.dato, today)}`}>
@@ -1603,17 +1596,19 @@ function ContractRow({
 }
 
 function ContractsCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter", true);
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? CONTRACTS : CONTRACTS.slice(0, 5);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-rose-400 !bg-rose-400/8 p-4`}>
       <CardHeader
         title="Nye kontrakter"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{CONTRACTS.length}</span> signert siste 30 dager</>}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={FileSignature}
+        iconColorClass="text-rose-400"
       />
       {!collapsed && (
         <>
@@ -1770,15 +1765,17 @@ function ExpiryTenantRow({
 }
 
 function ExpiryListCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste", true);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-orange-400 !bg-orange-400/8 p-4`}>
       <CardHeader
         title="Utløpsliste"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{EXPIRIES.length}</span> leietakere, neste 30 dager</>}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={CalendarClock}
+        iconColorClass="text-orange-400"
       />
       {!collapsed && (
         <>
@@ -1873,15 +1870,17 @@ function GuaranteeRow({
 }
 
 function GuaranteesCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt", true);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-teal-400 !bg-teal-400/8 p-4`}>
       <CardHeader
         title="Garantioversikt"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{GUARANTEE_TOTAL}</span> mangler garanti/depositum</>}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={ShieldCheck}
+        iconColorClass="text-teal-400"
       />
       {!collapsed && (
         <div className="-mx-1 overflow-x-auto">
@@ -1945,7 +1944,7 @@ function WeeklyTrendChart({ data }: { data: number[] }) {
           return (
             <g
               key={i}
-              className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              className="cursor-pointer"
               onClick={() => setActive(i)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -2019,17 +2018,19 @@ function ReceivableRow({
 }
 
 function ReceivablesCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
   const [showTrend, setShowTrend] = useState(false);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-fuchsia-400 !bg-fuchsia-400/8 p-4`}>
       <CardHeader
         title="Kundefordringer"
         subtitle={<span className="font-medium tabular-nums text-ink-2">{formatKr(total)}</span>}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Receipt}
+        iconColorClass="text-fuchsia-400"
       />
       {!collapsed && (
         <>
@@ -2380,6 +2381,7 @@ export default function JobbView({
             <input
               type="search"
               placeholder="Søk..."
+              aria-label="Søk i oppgaver"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-32 rounded-full border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong focus:w-44 transition-all duration-200"

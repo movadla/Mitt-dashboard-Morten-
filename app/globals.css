@@ -60,6 +60,18 @@ select {
   font-size: 16px !important;
 }
 
+/* Én felles fokus-synlighet-stil for hele appen (WCAG 2.4.7) — tidligere fantes
+   det kun enkelte ad-hoc focus-visible-klasser noen få steder i Jobb-fanen. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 body {
   min-height: 100vh;
   background-color: var(--color-surface-0);

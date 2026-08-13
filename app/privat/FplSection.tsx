@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
@@ -319,10 +320,12 @@ function TeamPanel({
       <div className="flex-1 relative px-4 py-4" style={{ background: th.panelBg }}>
         {teamKey === "boko" && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <img
+            <Image
               src="/haramsdale.jpg.png"
               alt=""
-              className="absolute w-full h-full object-cover object-center"
+              fill
+              sizes="(max-width: 768px) 100vw, 400px"
+              className="object-cover object-center"
               style={{ opacity: 0.22 }}
             />
             <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.2) 100%)" }} />
@@ -330,10 +333,12 @@ function TeamPanel({
         )}
         {teamKey === "fisak" && (
           <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <img
+            <Image
               src="/Isakfpl.jpg"
               alt=""
-              className="absolute w-full h-full object-cover object-center"
+              fill
+              sizes="(max-width: 768px) 100vw, 400px"
+              className="object-cover object-center"
               style={{ opacity: 0.22 }}
             />
             <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.2) 100%)" }} />
@@ -452,8 +457,8 @@ export function FplHero({ fpl }: { fpl: FplData }) {
     <div className="rounded-2xl overflow-hidden relative"
       style={{ background: "#0c3d22", boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.08), 0 0 0 1px color-mix(in srgb, var(--ds-fpl) 18%, transparent), 0 10px 26px -14px rgba(0,0,0,0.65)" }}>
 
-      <img src="/Topplogofpl.webp" alt=""
-        className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+      <Image src="/Topplogofpl.webp" alt="" fill sizes="(max-width: 768px) 100vw, 640px"
+        className="object-cover pointer-events-none select-none"
         style={{ objectPosition: "left top", opacity: 0.35, zIndex: 0 }} />
       <div className="absolute inset-0 pointer-events-none"
         style={{ background: "linear-gradient(to right, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.80) 100%)", zIndex: 0 }} />

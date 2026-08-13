@@ -4,17 +4,18 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Task } from "@/lib/tasks";
 import ChatWidget from "./ChatWidget";
-import PrivatPanel from "./privat/PrivatPanel";
+import JobbView from "./JobbView";
 import { SkeletonRows } from "./CardShell";
 
 type Mode = "jobb" | "privat";
 
 const MODE_STORAGE_KEY = "mitt-dashboard:mode:v1";
 
-// Jobb-visningen (SF/Asana/Outlook/Teams-verktøyet) er stor og lastes kun når den
-// faktisk trengs, slik at Privat-fanen ikke må laste ned all den koden først.
-const JobbView = dynamic(() => import("./JobbView"), {
-  loading: () => <div className="mt-6"><SkeletonRows count={4} /></div>,
+// Privat-visningen (13 seksjonskomponenter + @dnd-kit for kort-reordering) er
+// den tyngste bunten, og lastes derfor kun når den faktisk trengs, slik at
+// Jobb-fanen ikke må laste ned all den koden først.
+const PrivatPanel = dynamic(() => import("./privat/PrivatPanel"), {
+  loading: () => <div className="mt-7 mb-6"><SkeletonRows count={4} /></div>,
 });
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -64,9 +65,9 @@ export default function Dashboard({
   now: string;
 }) {
   // Starter som "ukjent" (ikke default "jobb") slik at vi aldri rekker å montere
-  // JobbView før vi har lest den lagrede fanen fra localStorage — ellers ville
-  // lazy-loadingen over ikke gitt noen reell gevinst for Privat-brukere, siden
-  // JobbView uansett ville blitt lastet på aller første rendering.
+  // PrivatPanel før vi har lest den lagrede fanen fra localStorage — ellers ville
+  // lazy-loadingen over ikke gitt noen reell gevinst for Jobb-brukere, siden
+  // PrivatPanel uansett ville blitt lastet på aller første rendering.
   const [mode, setMode] = useState<Mode | null>(null);
 
   useEffect(() => {
@@ -104,9 +105,11 @@ export default function Dashboard({
         {mode === null ? (
           <div className="mt-6"><SkeletonRows count={4} /></div>
         ) : mode === "jobb" ? (
-          <JobbView tasks={tasks} today={today} now={now} />
+          <div key="jobb" className="tab-fade">
+            <JobbView tasks={tasks} today={today} now={now} />
+          </div>
         ) : (
-          <div className="mt-7 mb-6 flex flex-col gap-3">
+          <div key="privat" className="tab-fade mt-7 mb-6 flex flex-col gap-3">
             <PrivatPanel />
           </div>
         )}

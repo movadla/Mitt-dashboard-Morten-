@@ -353,7 +353,7 @@ export async function POST(request: NextRequest) {
     `Dagens dato er ${today}.\n\n` +
     "Du er Mortens personlige assistent i mitt-dashboard. Svar kort og konkret på norsk.\n" +
     "Nye kontrakter, leieinntekt per bygg, dagens møter og garantioversikt under er EKTE data " +
-    "(Fazile, Outlook og Asana — hentet 2026-08-10). Kundefordringer er fortsatt TESTDATA " +
+    `(Fazile, Outlook og Asana — hentet ${today}). Kundefordringer er fortsatt TESTDATA ` +
     "(Fazile sitt fakturaverktøy er nedafor akkurat nå) — gjør det klart hvis du bruker de tallene, " +
     "f.eks. 'ifølge testdataene i dashboardet'. Sport, FPL, påminnelser og privat kalender under er " +
     "EKTE og oppdatert live, det samme er lån (Økonomi) og Alfred-data under. Du kan legge til, " +

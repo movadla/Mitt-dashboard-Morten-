@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CARD_SHELL, CardHeader, usePersistedCollapse } from "./CardShell";
 import { TENANTS, type Tenant } from "@/lib/tenants";
+import { Search } from "lucide-react";
 
 function formatDateDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -133,12 +134,14 @@ export default function JobbTenantDirectoryCard() {
   }, [query]);
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-sky-400 !bg-sky-400/8 p-4`}>
       <CardHeader
         title="Leietakersøk"
         subtitle={`${TENANTS.length} leietakere lagt inn`}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={Search}
+        iconColorClass="text-sky-400"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">

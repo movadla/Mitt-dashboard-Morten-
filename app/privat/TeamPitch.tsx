@@ -38,6 +38,10 @@ function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
       {/* Jersey + badges */}
       <div className="relative flex items-center justify-center" style={{ width: 40, height: 44 }}>
         {!shirtFailed ? (
+          // next/image krever remotePatterns for eksterne domener, og disse er
+          // små (40x44), per-spiller dynamiske og har en onError-fallback under
+          // — ikke verdt kompleksiteten for denne bruken.
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={shirtUrl}
             alt=""

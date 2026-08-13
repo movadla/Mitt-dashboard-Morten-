@@ -6,7 +6,7 @@ import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./privat/SwipeableRow";
-import { GripVertical, Plus } from "lucide-react";
+import { Bell, GripVertical } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -396,10 +396,17 @@ export default function JobbRemindersSection() {
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={() => {
+          setDueDate(localDateString());
+          setShowForm(true);
+        }}
+        addLabel="Ny påminnelse"
+        icon={Bell}
+        iconColorClass="text-accent"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
-          {showForm ? (
+          {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
                 type="text"
@@ -447,19 +454,6 @@ export default function JobbRemindersSection() {
                 </button>
               </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setDueDate(localDateString());
-                setShowForm(true);
-              }}
-              aria-label="Ny påminnelse"
-              title="Ny påminnelse"
-              className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
           )}
 
           {loading ? (

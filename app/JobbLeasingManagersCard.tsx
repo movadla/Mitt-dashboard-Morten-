@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import type { LeasingManager } from "@/lib/leasingManagers";
-import { Plus } from "lucide-react";
+import { Users } from "lucide-react";
 
 function ManagerForm({
   initial,
@@ -131,7 +131,7 @@ function ManagerRow({
 }
 
 export default function JobbLeasingManagersCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utleieansvarlige");
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utleieansvarlige", true);
   const [managers, setManagers] = useState<LeasingManager[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -186,12 +186,16 @@ export default function JobbLeasingManagersCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-violet-400 !bg-violet-400/8 p-4`}>
       <CardHeader
         title="Utleieansvarlige"
         subtitle={`${managers.length} personer`}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={() => setShowForm(true)}
+        addLabel="Ny utleieansvarlig"
+        icon={Users}
+        iconColorClass="text-violet-400"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
@@ -213,19 +217,7 @@ export default function JobbLeasingManagersCard() {
             </div>
           )}
 
-          {showForm ? (
-            <ManagerForm onCancel={() => setShowForm(false)} onSave={handleAdd} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              aria-label="Ny utleieansvarlig"
-              title="Ny utleieansvarlig"
-              className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          )}
+          {showForm && <ManagerForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
         </div>
       )}
       <ConfirmDialog
