@@ -134,9 +134,9 @@ function SportRoundLine({ label, matches }: { label: string; matches: SportEvent
       {open && (
         <ul className="mt-1 flex flex-col gap-1 border-l border-line pl-2">
           {matches.map((m) => (
-            <li key={m.id} className="text-xs text-ink-3">
-              {m.time ? <span className="tabular-nums">{m.time} </span> : null}
-              {m.name}
+            <li key={m.id} className="flex items-baseline justify-between gap-2 text-xs text-ink-3">
+              <span className="min-w-0 truncate">{m.name}</span>
+              {m.time && <span className="shrink-0 tabular-nums">{m.time}</span>}
             </li>
           ))}
         </ul>
@@ -459,9 +459,9 @@ export default function TodaySummary() {
                 <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
                   <ul className="flex flex-col gap-1">
                     {sportsOnViewed.map((s) => (
-                      <li key={s.id} className="text-sm text-ink-1">
-                        {s.time ? <span className="tabular-nums text-ink-3">{s.time} </span> : null}
-                        {s.name}
+                      <li key={s.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
+                        <span className="min-w-0 truncate">{s.name}</span>
+                        {s.time && <span className="shrink-0 tabular-nums text-ink-3">{s.time}</span>}
                       </li>
                     ))}
                     {sportRoundsOnViewed.map((g) => (
