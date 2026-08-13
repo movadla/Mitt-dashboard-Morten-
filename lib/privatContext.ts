@@ -164,6 +164,7 @@ export async function buildPrivatContext(): Promise<string> {
     if (p.permisjonNotat) lines.push(`Permisjon: ${p.permisjonNotat}`);
     if (p.barnehageNotat) lines.push(`Barnehage: ${p.barnehageNotat}`);
     if (p.barnesikringNotat) lines.push(`Barnesikring: ${p.barnesikringNotat}`);
+    if (p.vekstNotat) lines.push(`Vekstnotat: ${p.vekstNotat}`);
   }
   if (growthResult.status === "fulfilled" && growthResult.value.length > 0) {
     const latest = growthResult.value[growthResult.value.length - 1];

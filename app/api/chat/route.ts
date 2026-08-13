@@ -5,7 +5,8 @@ import { buildPrivatContext } from "@/lib/privatContext";
 import { addReminder, deleteReminder, getReminders, toggleReminder } from "@/lib/reminders";
 import { addPrivatEvent, deletePrivatEvent, getPrivatEvents } from "@/lib/privatCalendar";
 import { addNote, deleteNote, getNotes } from "@/lib/notes";
-import { getMilestones, toggleMilestone } from "@/lib/alfred";
+import { addGrowthEntry, getMilestones, toggleMilestone, updateAlfredProfile } from "@/lib/alfred";
+import type { AlfredProfile } from "@/lib/alfred";
 import {
   addCustomSportEvent,
   addCustomSportEventsBulk,
@@ -132,6 +133,54 @@ const TOGGLE_MILESTONE_TOOL: Anthropic.Tool = {
   },
 };
 
+const ALFRED_NOTE_FIELDS = [
+  "motorikkNotat",
+  "helseNotat",
+  "matOgSovnNotat",
+  "permisjonNotat",
+  "barnehageNotat",
+  "barnesikringNotat",
+  "vekstNotat",
+] as const;
+
+const UPDATE_ALFRED_NOTE_TOOL: Anthropic.Tool = {
+  name: "update_alfred_note",
+  description:
+    "Oppdater ett av Alfreds notatfelt med det brukeren forteller om ham. Feltets nåværende innhold vises i " +
+    "konteksten under ALFRED-seksjonen — skriv den FULLSTENDIGE nye teksten for feltet (slå sammen eksisterende " +
+    "innhold med det nye du fikk fortalt, ikke bare det nye alene, med mindre brukeren tydelig ber om å erstatte).",
+  input_schema: {
+    type: "object",
+    properties: {
+      field: {
+        type: "string",
+        enum: [...ALFRED_NOTE_FIELDS],
+        description:
+          "motorikkNotat=motorisk utvikling, helseNotat=helse, matOgSovnNotat=mat og søvn, " +
+          "permisjonNotat=permisjon, barnehageNotat=barnehage, barnesikringNotat=barnesikring, " +
+          "vekstNotat=notat til vekstkurven.",
+      },
+      text: { type: "string", description: "Den fullstendige, oppdaterte teksten for feltet." },
+    },
+    required: ["field", "text"],
+  },
+};
+
+const ADD_ALFRED_GROWTH_ENTRY_TOOL: Anthropic.Tool = {
+  name: "add_alfred_growth_entry",
+  description: "Legg til en ny vekstmåling (vekt/lengde) for Alfred.",
+  input_schema: {
+    type: "object",
+    properties: {
+      date: { type: "string", description: "Måledato, format YYYY-MM-DD." },
+      weightKg: { type: "number", description: "Vekt i kg." },
+      lengthCm: { type: "number", description: "Lengde i cm. Valgfritt." },
+      approxDate: { type: "boolean", description: "Sett til true hvis datoen er anslått, ikke eksakt. Valgfritt." },
+    },
+    required: ["date", "weightKg"],
+  },
+};
+
 const SPORT_EVENT_PROPERTIES = {
   name: { type: "string" as const, description: "Kampen/hendelsen, f.eks. 'Liverpool – Manchester City'." },
   date: { type: "string" as const, description: "Dato, format YYYY-MM-DD." },
@@ -242,6 +291,14 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     const milestone = findOneMatch(await getMilestones(), (m) => m.label, labelMatch, "sjekklistepunkter");
     return toggleMilestone(milestone.id);
   }
+  if (name === "update_alfred_note") {
+    const { field, text } = input as { field: (typeof ALFRED_NOTE_FIELDS)[number]; text: string };
+    if (!ALFRED_NOTE_FIELDS.includes(field)) throw new Error(`Ukjent Alfred-notatfelt: ${field}`);
+    return updateAlfredProfile({ [field]: text } as Partial<AlfredProfile>);
+  }
+  if (name === "add_alfred_growth_entry") {
+    return addGrowthEntry(input as Parameters<typeof addGrowthEntry>[0]);
+  }
   if (name === "add_sport_event") {
     return addCustomSportEvent(input as Parameters<typeof addCustomSportEvent>[0]);
   }
@@ -301,7 +358,9 @@ export async function POST(request: NextRequest) {
     "huke av/på og slette påminnelser og kalenderhendelser, legge til/slette notater i #Notater-seksjonen " +
     "(fritekst-idéer/ting å huske som ikke har en naturlig frist eller dato — bruk add_note for disse i " +
     "stedet for add_reminder/add_calendar_event når brukeren ikke nevner noen dato), huke av/på Alfreds " +
-    "sjekklistepunkter, og " +
+    "sjekklistepunkter, oppdatere Alfreds notatfelt (update_alfred_note — se gjeldende innhold i ALFRED-" +
+    "seksjonen under og skriv en sammenslått, fullstendig tekst, ikke bare det nye alene) og legge til " +
+    "vekstmålinger for Alfred (add_alfred_growth_entry), og " +
     "legge til/slette egendefinerte sportshendelser (dukker opp i Sport-boksen sammen med de faste " +
     "kildene) — bruk add_sport_events_bulk (ikke gjentatte add_sport_event-kall) når brukeren limer inn " +
     "et helt program med mange kamper på én gang, og sett highlight=true kun på et fåtall hendelser " +
@@ -332,6 +391,8 @@ export async function POST(request: NextRequest) {
     ADD_NOTE_TOOL,
     DELETE_NOTE_TOOL,
     TOGGLE_MILESTONE_TOOL,
+    UPDATE_ALFRED_NOTE_TOOL,
+    ADD_ALFRED_GROWTH_ENTRY_TOOL,
     ADD_SPORT_EVENT_TOOL,
     ADD_SPORT_EVENTS_BULK_TOOL,
     { ...DELETE_SPORT_EVENT_TOOL, cache_control: { type: "ephemeral" } },
