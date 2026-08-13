@@ -49,6 +49,17 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
 }
 
+/* iOS Safari zoomer automatisk inn på et input/textarea/select ved fokus
+   hvis skriftstørrelsen er under 16px, og zoomer ikke alltid pent ut igjen
+   ved blur — siden appen bruker text-xs/text-sm på de fleste skjemafelt
+   (for kompakt design), tvinges 16px her uavhengig av Tailwind-klassen satt
+   på elementet, slik at zoom-oppførselen aldri trigges i utgangspunktet. */
+input,
+textarea,
+select {
+  font-size: 16px !important;
+}
+
 body {
   min-height: 100vh;
   background-color: var(--color-surface-0);
