@@ -7,6 +7,7 @@ export interface PrivatCalendarEvent {
   date: string; // "YYYY-MM-DD"
   startTime?: string; // "HH:MM"
   endTime?: string;
+  location?: string;
   note?: string;
 }
 
@@ -15,6 +16,7 @@ export interface NewPrivatEventInput {
   date: string;
   startTime?: string;
   endTime?: string;
+  location?: string;
   note?: string;
 }
 
@@ -23,6 +25,7 @@ export interface PrivatEventUpdateInput {
   date?: string;
   startTime?: string | null;
   endTime?: string | null;
+  location?: string | null;
   note?: string | null;
 }
 
@@ -50,6 +53,7 @@ export async function addPrivatEvent(input: NewPrivatEventInput): Promise<Privat
     date: input.date,
     startTime: input.startTime,
     endTime: input.endTime,
+    location: input.location,
     note: input.note,
   };
   await hsetJSON(HASH_KEY, event.id, event);
@@ -74,6 +78,7 @@ export async function updatePrivatEvent(
     date,
     startTime: updates.startTime !== undefined ? (updates.startTime ?? undefined) : current.startTime,
     endTime: updates.endTime !== undefined ? (updates.endTime ?? undefined) : current.endTime,
+    location: updates.location !== undefined ? (updates.location ?? undefined) : current.location,
     note: updates.note !== undefined ? (updates.note ?? undefined) : current.note,
   };
   await hsetJSON(HASH_KEY, id, next);

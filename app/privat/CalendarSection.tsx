@@ -23,16 +23,23 @@ function EventEditForm({
 }: {
   event: PrivatCalendarEvent;
   onCancel: () => void;
-  onSave: (updates: { title: string; date: string; startTime?: string; endTime?: string }) => void;
+  onSave: (updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string }) => void;
 }) {
   const [title, setTitle] = useState(event.title);
   const [date, setDate] = useState(event.date);
   const [startTime, setStartTime] = useState(event.startTime ?? "");
   const [endTime, setEndTime] = useState(event.endTime ?? "");
+  const [location, setLocation] = useState(event.location ?? "");
 
   function save() {
     if (!title.trim() || !date) return;
-    onSave({ title: title.trim(), date, startTime: startTime || undefined, endTime: endTime || undefined });
+    onSave({
+      title: title.trim(),
+      date,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+      location: location.trim() || undefined,
+    });
   }
 
   return (
@@ -66,6 +73,15 @@ function EventEditForm({
           onChange={(e) => setEndTime(e.target.value)}
           className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
+      </div>
+      <input
+        type="text"
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Sted..."
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
           Avbryt
         </button>
@@ -114,7 +130,10 @@ function EventRow({
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, updates: { title: string; date: string; startTime?: string; endTime?: string }) => void;
+  onSaveEdit: (
+    id: string,
+    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string },
+  ) => void;
   comments: Comment[];
   onAddComment: (tekst: string) => void;
   onDeleteComment: (commentId: string, preview: string) => void;
@@ -142,6 +161,7 @@ function EventRow({
               {formatDMY(event.date)}
               {event.startTime ? ` ${event.startTime}` : ""}
               {event.endTime ? `–${event.endTime}` : ""}
+              {event.location ? ` · ${event.location}` : ""}
               {event.note ? ` — ${event.note}` : ""}
             </p>
           </button>
@@ -171,6 +191,7 @@ export default function CalendarSection() {
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [location, setLocation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
@@ -201,6 +222,7 @@ export default function CalendarSection() {
           date,
           startTime: startTime || undefined,
           endTime: endTime || undefined,
+          location: location.trim() || undefined,
         }),
       });
       if (res.ok) {
@@ -214,6 +236,7 @@ export default function CalendarSection() {
         setDate("");
         setStartTime("");
         setEndTime("");
+        setLocation("");
         setShowForm(false);
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       }
@@ -231,7 +254,7 @@ export default function CalendarSection() {
 
   async function handleSaveEdit(
     id: string,
-    updates: { title: string; date: string; startTime?: string; endTime?: string },
+    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string },
   ) {
     const res = await fetch(`/api/privat-calendar/${id}`, {
       method: "PATCH",
@@ -241,6 +264,7 @@ export default function CalendarSection() {
         date: updates.date,
         startTime: updates.startTime ?? null,
         endTime: updates.endTime ?? null,
+        location: updates.location ?? null,
       }),
     });
     if (res.ok) {
@@ -311,6 +335,15 @@ export default function CalendarSection() {
                   onChange={(e) => setEndTime(e.target.value)}
                   className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
+              </div>
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Sted..."
+                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              />
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}

@@ -52,6 +52,7 @@ const ADD_CALENDAR_EVENT_TOOL: Anthropic.Tool = {
       date: { type: "string", description: "Dato, format YYYY-MM-DD." },
       startTime: { type: "string", description: "Starttidspunkt, format HH:MM. Valgfritt." },
       endTime: { type: "string", description: "Sluttidspunkt, format HH:MM. Valgfritt." },
+      location: { type: "string", description: "Sted for hendelsen. Valgfritt." },
       note: { type: "string", description: "Valgfri merknad." },
     },
     required: ["title", "date"],
