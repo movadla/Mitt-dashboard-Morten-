@@ -70,7 +70,6 @@ function ReminderEditForm({
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
-        autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -491,7 +490,6 @@ export default function RemindersSection() {
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
                 type="text"
-                autoFocus
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {

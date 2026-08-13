@@ -160,7 +160,6 @@ function LoanForm({
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
-        autoFocus
         value={form.name}
         onChange={(e) => set("name", e.target.value)}
         placeholder="Navn (f.eks. Fastrente 5 år annuitet)"
@@ -380,7 +379,6 @@ function SavingsForm({
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
-        autoFocus
         value={form.name}
         onChange={(e) => set("name", e.target.value)}
         placeholder="Navn (f.eks. Fondskonto)"
@@ -519,7 +517,6 @@ function SalaryForm({
       <div className="flex flex-wrap gap-2">
         <input
           type="text"
-          autoFocus
           value={form.person}
           onChange={(e) => set("person", e.target.value)}
           placeholder="Person"

@@ -407,7 +407,6 @@ function ManualLineForm({
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
-        autoFocus
         value={form.beskrivelse}
         onChange={(e) => set("beskrivelse", e.target.value)}
         placeholder="Beskrivelse (f.eks. Antatt omsetningsleie Q4)"

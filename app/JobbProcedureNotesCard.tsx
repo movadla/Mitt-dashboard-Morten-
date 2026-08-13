@@ -28,7 +28,6 @@ function NoteForm({ onCancel, onSave }: { onCancel: () => void; onSave: (input: 
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
-        autoFocus
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Tittel"
