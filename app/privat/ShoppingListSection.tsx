@@ -146,11 +146,12 @@ function ItemRow({
               </svg>
             )}
           </button>
-          <button type="button" onClick={() => onStartEdit(item.id)} aria-label="Rediger vare" className="min-w-0 flex-1 text-left">
-            <p className={`truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+          <button type="button" onClick={() => onStartEdit(item.id)} aria-label="Rediger vare" className="flex min-w-0 flex-1 items-baseline justify-between gap-2 text-left">
+            <p className={`min-w-0 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
               {item.name}
               {item.quantity ? ` · ${item.quantity}` : ""}
             </p>
+            <span className={`shrink-0 text-2xs ${meta.text}`}>{meta.label}</span>
           </button>
           <button
             type="button"
@@ -558,29 +559,24 @@ export default function ShoppingListSection() {
           ) : notDone.length === 0 ? (
             <p className="text-sm text-ink-3">Handlelisten er tom.</p>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {grouped.map((g) => (
-                <div key={g.section} className="flex flex-col gap-1.5">
-                  <p className={`text-2xs font-semibold uppercase tracking-wide ${SECTION_META[g.section].text}`}>
-                    {SECTION_META[g.section].label}
-                  </p>
-                  <ul className="flex flex-col gap-1.5">
-                    {g.items.map((i) => (
-                      <ItemRow
-                        key={i.id}
-                        item={i}
-                        editing={editingItemId === i.id}
-                        onToggle={handleToggle}
-                        onRemove={confirmDelete.request}
-                        onStartEdit={setEditingItemId}
-                        onCancelEdit={() => setEditingItemId(null)}
-                        onSaveEdit={handleSaveEditItem}
-                      />
-                    ))}
-                  </ul>
-                </div>
+            // Kategorien vises inline til høyre på hver rad (se ItemRow) i
+            // stedet for en egen seksjonsoverskrift-linje per gruppe — færre
+            // linjer/mindre rot, men rekkefølgen fra `grouped` (SECTION_ORDER)
+            // beholdes så varer i samme kategori fortsatt ligger samlet.
+            <ul className="flex flex-col gap-1.5">
+              {grouped.flatMap((g) => g.items).map((i) => (
+                <ItemRow
+                  key={i.id}
+                  item={i}
+                  editing={editingItemId === i.id}
+                  onToggle={handleToggle}
+                  onRemove={confirmDelete.request}
+                  onStartEdit={setEditingItemId}
+                  onCancelEdit={() => setEditingItemId(null)}
+                  onSaveEdit={handleSaveEditItem}
+                />
               ))}
-            </div>
+            </ul>
           )}
 
           {done.length > 0 && (
