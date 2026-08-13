@@ -5,37 +5,11 @@ import { Plus } from "lucide-react";
 
 export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15";
 
-const KPI_COLLAPSED_KEY = "mitt-dashboard:kpi-collapsed:v1";
-
+// Navnet er historisk — tilstanden persisteres bevisst IKKE lenger på tvers av
+// sideoppdateringer (jf. tilbakemelding: alle kort skal starte kollapset ved
+// hver refresh), kun vanlig useState som toggles innenfor økten.
 export function usePersistedCollapse(key: string, defaultCollapsed = false): [boolean, () => void] {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(KPI_COLLAPSED_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, boolean>;
-        if (key in parsed) setCollapsed(parsed[key]);
-      }
-    } catch {
-      /* ignore corrupt storage */
-    }
-    setHydrated(true);
-  }, [key]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      const stored = window.localStorage.getItem(KPI_COLLAPSED_KEY);
-      const parsed: Record<string, boolean> = stored ? JSON.parse(stored) : {};
-      parsed[key] = collapsed;
-      window.localStorage.setItem(KPI_COLLAPSED_KEY, JSON.stringify(parsed));
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [collapsed, hydrated, key]);
-
   return [collapsed, () => setCollapsed((v) => !v)];
 }
 
