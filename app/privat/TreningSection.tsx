@@ -5,7 +5,10 @@ import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, 
 import type { Exercise } from "@/lib/exercises";
 import type { SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
-import { Dumbbell, Pencil } from "lucide-react";
+import { Dumbbell, GripVertical, Pencil } from "lucide-react";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const VISIBLE_HISTORY = 5;
 
@@ -44,6 +47,12 @@ function formatKg(kg: number): string {
   return Number.isInteger(kg) ? `${kg}` : kg.toFixed(1).replace(/\.0$/, "");
 }
 
+// Runder til nærmeste 0,5 kg (vanligste plate-inkrement) for å unngå
+// flyttall-artefakter når +/- stepperne justerer vekten.
+function roundKg(kg: number): number {
+  return Math.round(kg * 2) / 2;
+}
+
 function setSummary(entry: WorkoutEntry): string {
   return entry.sets
     .map((s) => {
@@ -68,9 +77,86 @@ function findLastEntry(exerciseId: string, sessions: WorkoutSession[], excludeSe
   return null;
 }
 
+interface ExerciseHistoryPoint {
+  date: string;
+  maxKg: number;
+}
+
+// Høyeste vekt logget per avsluttet økt for en øvelse, kronologisk (eldst
+// først) — "sessions" er nyest-først server-side, så vi snur rekkefølgen.
+function exerciseHistory(exerciseId: string, sessions: WorkoutSession[], excludeSessionId?: string): ExerciseHistoryPoint[] {
+  const points: ExerciseHistoryPoint[] = [];
+  for (const s of sessions) {
+    if (s.id === excludeSessionId || !s.endedAt) continue;
+    const entry = s.entries.find((e) => e.exerciseId === exerciseId);
+    if (!entry || entry.sets.length === 0) continue;
+    const kgValues = entry.sets.map((set) => set.kg).filter((kg): kg is number => kg != null);
+    if (kgValues.length === 0) continue;
+    points.push({ date: s.startedAt, maxKg: Math.max(...kgValues) });
+  }
+  return points.reverse();
+}
+
+// Enkel innebygd SVG-linjegraf — ingen chart-bibliotek i prosjektet, og en
+// håndfull punkter (typisk et titalls økter) trenger ikke noe tyngre enn dette.
+function ProgressChart({ points }: { points: ExerciseHistoryPoint[] }) {
+  if (points.length < 2) {
+    return <p className="text-2xs text-ink-4">Ikke nok data ennå for graf.</p>;
+  }
+
+  const width = 260;
+  const height = 60;
+  const pad = 6;
+  const kgValues = points.map((p) => p.maxKg);
+  const min = Math.min(...kgValues);
+  const max = Math.max(...kgValues);
+  const range = max - min || 1;
+  const stepX = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
+  const coords = points.map((p, i) => {
+    const x = pad + i * stepX;
+    const y = height - pad - ((p.maxKg - min) / range) * (height - pad * 2);
+    return { x, y };
+  });
+
+  return (
+    <div className="flex flex-col gap-1">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-status-positive">
+        <polyline
+          points={coords.map((c) => `${c.x},${c.y}`).join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {coords.map((c, i) => (
+          <circle key={i} cx={c.x} cy={c.y} r="2.5" fill="currentColor" />
+        ))}
+      </svg>
+      <p className="text-2xs text-ink-4">
+        {formatKg(min)}–{formatKg(max)} kg siste {points.length} {points.length === 1 ? "økt" : "økter"}
+      </p>
+    </div>
+  );
+}
+
 // Kg/reps lagres lokalt til feltet mister fokus (samme mønster som andre
 // inline-redigerbare felt i appen) — unngår at hver tastetrykk sender en
 // egen nettverksforespørsel.
+// Liten +/- knapp brukt av kg/reps-stepperne under.
+function StepperButton({ symbol, label, onClick }: { symbol: "+" | "−"; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-surface-2 text-sm text-ink-2 transition hover:border-line-strong hover:text-ink-1 active:scale-95"
+    >
+      {symbol}
+    </button>
+  );
+}
+
 function SetRow({
   set,
   index,
@@ -85,43 +171,74 @@ function SetRow({
   const [kg, setKg] = useState(set.kg?.toString() ?? "");
   const [reps, setReps] = useState(set.reps?.toString() ?? "");
 
-  function commit() {
+  function commit(nextKg: string, nextReps: string) {
     onUpdate({
-      kg: kg.trim() ? Number(kg) : null,
-      reps: reps.trim() ? Number(reps) : null,
+      kg: nextKg.trim() ? Number(nextKg) : null,
+      reps: nextReps.trim() ? Number(nextReps) : null,
     });
   }
 
+  // Knappe-trykk er en diskret handling og committer umiddelbart — i
+  // motsetning til fritekst-inntasting i feltene, som fortsatt committer på
+  // blur (unngår ett nettverkskall per tastetrykk der).
+  function adjustKg(delta: number) {
+    const current = kg.trim() ? Number(kg) : 0;
+    const next = roundKg(Math.max(0, current + delta));
+    const nextStr = formatKg(next);
+    setKg(nextStr);
+    commit(nextStr, reps);
+  }
+
+  function adjustReps(delta: number) {
+    const current = reps.trim() ? Number(reps) : 0;
+    const next = Math.max(0, current + delta);
+    const nextStr = String(next);
+    setReps(nextStr);
+    commit(kg, nextStr);
+  }
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-12 shrink-0 text-2xs text-ink-4">Sett {index + 1}</span>
-      <input
-        type="number"
-        step="0.5"
-        inputMode="decimal"
-        value={kg}
-        onChange={(e) => setKg(e.target.value)}
-        onBlur={commit}
-        placeholder="Kg"
-        className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <input
-        type="number"
-        inputMode="numeric"
-        value={reps}
-        onChange={(e) => setReps(e.target.value)}
-        onBlur={commit}
-        placeholder="Reps"
-        className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Slett sett"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-      >
-        ×
-      </button>
+    <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-1 p-2">
+      <div className="flex items-center justify-between">
+        <span className="text-2xs text-ink-4">Sett {index + 1}</span>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Slett sett"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        >
+          ×
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-1">
+          <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
+          <input
+            type="number"
+            step="0.5"
+            inputMode="decimal"
+            value={kg}
+            onChange={(e) => setKg(e.target.value)}
+            onBlur={() => commit(kg, reps)}
+            placeholder="Kg"
+            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
+        </div>
+        <div className="flex items-center gap-1">
+          <StepperButton symbol="−" label="Reduser reps" onClick={() => adjustReps(-1)} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={reps}
+            onChange={(e) => setReps(e.target.value)}
+            onBlur={() => commit(kg, reps)}
+            placeholder="Reps"
+            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -129,6 +246,7 @@ function SetRow({
 function EntryRow({
   entry,
   lastEntry,
+  history,
   onAddSet,
   onUpdateSet,
   onRemoveSet,
@@ -137,6 +255,7 @@ function EntryRow({
 }: {
   entry: WorkoutEntry;
   lastEntry: WorkoutEntry | null;
+  history: ExerciseHistoryPoint[];
   onAddSet: (prefill: { kg?: number; reps?: number }) => void;
   onUpdateSet: (setId: string, updates: { kg: number | null; reps: number | null }) => void;
   onRemoveSet: (setId: string) => void;
@@ -145,6 +264,16 @@ function EntryRow({
 }) {
   const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
   const [notes, setNotes] = useState(entry.notes ?? "");
+  const [showGraph, setShowGraph] = useState(false);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: entry.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
 
   function commitEntry() {
     onUpdateEntry({
@@ -162,9 +291,22 @@ function EntryRow({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
+    <li ref={setNodeRef} style={style} className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label="Endre rekkefølge"
+            className="grid shrink-0 cursor-grab place-items-center text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
+            style={{ touchAction: "none" }}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+          <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+        </div>
         <button
           type="button"
           onClick={onRemoveEntry}
@@ -176,6 +318,18 @@ function EntryRow({
       </div>
       {lastEntry && lastEntry.sets.length > 0 && (
         <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry)}</p>
+      )}
+      {history.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowGraph((v) => !v)}
+            className="self-start text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
+          >
+            {showGraph ? "Skjul graf" : "Vis graf"}
+          </button>
+          {showGraph && <ProgressChart points={history} />}
+        </div>
       )}
       {entry.sets.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -533,6 +687,55 @@ function HistoryRow({
   );
 }
 
+interface SessionSummary {
+  durationMs: number;
+  exerciseCount: number;
+  setCount: number;
+  totalVolumeKg: number;
+}
+
+// Vises rett etter "Avslutt økt" — samme overlay-mønster som ConfirmDialog i
+// app/CardShell.tsx, men ikke-destruktiv (kun én "Lukk"-knapp).
+function SessionSummaryDialog({ summary, onClose }: { summary: SessionSummary; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose} role="presentation">
+      <div
+        className="w-full max-w-sm rounded-2xl border border-line-strong bg-surface-1 p-4 shadow-xl shadow-black/30"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <h3 className="text-sm font-semibold text-ink-1">Økt fullført</h3>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-2xs text-ink-4">Varighet</p>
+            <p className="text-lg font-semibold tabular-nums text-ink-1">{formatElapsed(summary.durationMs)}</p>
+          </div>
+          <div>
+            <p className="text-2xs text-ink-4">Øvelser</p>
+            <p className="text-lg font-semibold tabular-nums text-ink-1">{summary.exerciseCount}</p>
+          </div>
+          <div>
+            <p className="text-2xs text-ink-4">Sett</p>
+            <p className="text-lg font-semibold tabular-nums text-ink-1">{summary.setCount}</p>
+          </div>
+          <div>
+            <p className="text-2xs text-ink-4">Totalt volum</p>
+            <p className="text-lg font-semibold tabular-nums text-ink-1">{formatKg(summary.totalVolumeKg)} kg</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 w-full rounded-lg bg-status-positive px-3 py-2 text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
+        >
+          Lukk
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Legger til øvelsene fra en rutine i rekkefølge (sekvensielt, ikke parallelt
 // — read-modify-write mot samme økt i Redis ville racet ved parallelle kall).
 // Egen frittstående funksjon (ikke inne i komponenten) slik at den kan bruke
@@ -562,9 +765,11 @@ export default function TreningSection() {
   const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
   const confirmDeleteSession = useConfirmDelete<WorkoutSession>();
   const confirmDeleteExercise = useConfirmDelete<Exercise>();
   const confirmDeleteRoutine = useConfirmDelete<Routine>();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
     fetch("/api/workouts")
@@ -647,7 +852,42 @@ export default function TreningSection() {
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       setShowPicker(false);
       setShowSaveRoutineForm(false);
+      const sets = updated.entries.flatMap((e) => e.sets);
+      const totalVolumeKg = sets.reduce((sum, s) => (s.kg != null && s.reps != null ? sum + s.kg * s.reps : sum), 0);
+      setSessionSummary({
+        durationMs: new Date(updated.endedAt!).getTime() - new Date(updated.startedAt).getTime(),
+        exerciseCount: updated.entries.length,
+        setCount: sets.length,
+        totalVolumeKg,
+      });
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
+  }
+
+  async function handleReorderEntries(event: DragEndEvent) {
+    if (!activeSession) return;
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const ids = activeSession.entries.map((e) => e.id);
+    const oldIndex = ids.indexOf(active.id as string);
+    const newIndex = ids.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(ids, oldIndex, newIndex);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSession.id
+          ? { ...s, entries: reordered.map((id) => s.entries.find((e) => e.id === id)!) }
+          : s,
+      ),
+    );
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/reorder`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered }),
+    });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     }
   }
 
@@ -872,20 +1112,25 @@ export default function TreningSection() {
                     </div>
                   )}
                   {activeSession.entries.length > 0 && (
-                    <ul className="flex flex-col gap-2">
-                      {activeSession.entries.map((entry) => (
-                        <EntryRow
-                          key={entry.id}
-                          entry={entry}
-                          lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
-                          onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
-                          onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
-                          onRemoveSet={(setId) => handleRemoveSet(entry.id, setId)}
-                          onUpdateEntry={(updates) => handleUpdateEntry(entry.id, updates)}
-                          onRemoveEntry={() => handleRemoveEntry(entry.id)}
-                        />
-                      ))}
-                    </ul>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleReorderEntries}>
+                      <SortableContext items={activeSession.entries.map((e) => e.id)} strategy={verticalListSortingStrategy}>
+                        <ul className="flex flex-col gap-2">
+                          {activeSession.entries.map((entry) => (
+                            <EntryRow
+                              key={entry.id}
+                              entry={entry}
+                              lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
+                              history={exerciseHistory(entry.exerciseId, sessions, activeSession.id)}
+                              onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
+                              onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
+                              onRemoveSet={(setId) => handleRemoveSet(entry.id, setId)}
+                              onUpdateEntry={(updates) => handleUpdateEntry(entry.id, updates)}
+                              onRemoveEntry={() => handleRemoveEntry(entry.id)}
+                            />
+                          ))}
+                        </ul>
+                      </SortableContext>
+                    </DndContext>
                   )}
                   {showPicker ? (
                     <ExercisePicker
@@ -1006,6 +1251,7 @@ export default function TreningSection() {
           confirmDeleteRoutine.cancel();
         }}
       />
+      {sessionSummary && <SessionSummaryDialog summary={sessionSummary} onClose={() => setSessionSummary(null)} />}
     </div>
   );
 }

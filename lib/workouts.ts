@@ -186,3 +186,19 @@ export async function deleteSet(sessionId: string, entryId: string, setId: strin
   await hsetJSON(HASH_KEY, sessionId, next);
   return next;
 }
+
+// entries er allerede et ordnet array i én JSON-blob (i motsetning til
+// reorderReminders i lib/reminders.ts, som må bruke et eget order-felt siden
+// påminnelser er individuelt nøkkel-lagret) — reordering er derfor bare å
+// bygge om selve arrayet i den rekkefølgen klienten sender inn.
+export async function reorderEntries(sessionId: string, orderedEntryIds: string[]): Promise<WorkoutSession | null> {
+  const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
+  if (!current) return null;
+
+  const byId = new Map(current.entries.map((e) => [e.id, e]));
+  const reordered = orderedEntryIds.map((id) => byId.get(id)).filter((e): e is WorkoutEntry => !!e);
+  const missing = current.entries.filter((e) => !orderedEntryIds.includes(e.id));
+  const next: WorkoutSession = { ...current, entries: [...reordered, ...missing] };
+  await hsetJSON(HASH_KEY, sessionId, next);
+  return next;
+}
