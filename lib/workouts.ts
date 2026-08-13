@@ -15,6 +15,7 @@ export interface SetLog {
   kg?: number;
   minutes?: number;
   kmt?: number;
+  distanceKm?: number;
   intensity?: SetIntensity;
   done?: boolean;
 }
@@ -57,6 +58,7 @@ export interface NewSetInput {
   kg?: number;
   minutes?: number;
   kmt?: number;
+  distanceKm?: number;
   intensity?: SetIntensity;
 }
 
@@ -65,6 +67,7 @@ export interface SetUpdateInput {
   kg?: number | null;
   minutes?: number | null;
   kmt?: number | null;
+  distanceKm?: number | null;
   intensity?: SetIntensity | null;
   done?: boolean;
 }
@@ -178,6 +181,7 @@ export async function addSetToEntry(sessionId: string, entryId: string, input: N
     kg: input.kg,
     minutes: input.minutes,
     kmt: input.kmt,
+    distanceKm: input.distanceKm,
     intensity: input.intensity,
   };
   const entries = current.entries.map((e) => (e.id === entryId ? { ...e, sets: [...e.sets, set] } : e));
@@ -205,6 +209,7 @@ export async function updateSet(
         kg: updates.kg !== undefined ? (updates.kg ?? undefined) : s.kg,
         minutes: updates.minutes !== undefined ? (updates.minutes ?? undefined) : s.minutes,
         kmt: updates.kmt !== undefined ? (updates.kmt ?? undefined) : s.kmt,
+        distanceKm: updates.distanceKm !== undefined ? (updates.distanceKm ?? undefined) : s.distanceKm,
         intensity: updates.intensity !== undefined ? (updates.intensity ?? undefined) : s.intensity,
         done: updates.done !== undefined ? updates.done : s.done,
       };

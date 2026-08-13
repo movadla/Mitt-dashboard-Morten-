@@ -100,6 +100,7 @@ function setSummary(entry: WorkoutEntry): string {
       else if (s.kg != null) parts.push(`${formatKg(s.kg)}kg`);
       else if (s.reps != null) parts.push(`${s.reps} reps`);
       if (s.minutes != null) parts.push(`${s.minutes} min`);
+      if (s.distanceKm != null) parts.push(`${formatKg(s.distanceKm)} km`);
       if (s.kmt != null) parts.push(`${s.kmt} km/t`);
       if (s.intensity) parts.push(INTENSITY_LABEL[s.intensity]);
       return parts.join(" · ") || null;
@@ -345,20 +346,29 @@ function CardioSetRow({
 }: {
   set: SetLog;
   index: number;
-  onUpdate: (updates: { minutes: number | null; kmt: number | null; intensity: SetIntensity | null }) => void;
+  onUpdate: (updates: { minutes: number | null; kmt: number | null; distanceKm: number | null; intensity: SetIntensity | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
 }) {
   const [minutes, setMinutes] = useState(set.minutes?.toString() ?? "");
   const [kmt, setKmt] = useState(set.kmt?.toString() ?? "");
+  const [distanceKm, setDistanceKm] = useState(set.distanceKm?.toString() ?? "");
   const [intensity, setIntensity] = useState<SetIntensity | "">(set.intensity ?? "");
+  // Fritekst-feltene committer på blur som ellers i appen, men cardio-settet
+  // har i tillegg en egen "Lagre"-knapp — man fyller ofte ut flere felt (min,
+  // km/t, distanse, intensitet) før man er ferdig, og en eksplisitt
+  // lagre-handling gir en tydelig bekreftelse i stedet for å stole på at
+  // blur alene fanget opp alt som ble tastet inn.
+  const [dirty, setDirty] = useState(false);
 
-  function commit(nextMinutes: string, nextKmt: string, nextIntensity: SetIntensity | "") {
+  function commit(nextMinutes: string, nextKmt: string, nextDistanceKm: string, nextIntensity: SetIntensity | "") {
     onUpdate({
       minutes: nextMinutes.trim() ? Number(nextMinutes) : null,
       kmt: nextKmt.trim() ? Number(nextKmt) : null,
+      distanceKm: nextDistanceKm.trim() ? Number(nextDistanceKm) : null,
       intensity: nextIntensity || null,
     });
+    setDirty(false);
   }
 
   function adjustMinutes(delta: number) {
@@ -367,7 +377,7 @@ function CardioSetRow({
     const next = Math.max(0, current + delta);
     const nextStr = String(next);
     setMinutes(nextStr);
-    commit(nextStr, kmt, intensity);
+    commit(nextStr, kmt, distanceKm, intensity);
   }
 
   function adjustKmt(delta: number) {
@@ -376,7 +386,16 @@ function CardioSetRow({
     const next = roundKg(Math.max(0, current + delta));
     const nextStr = formatKg(next);
     setKmt(nextStr);
-    commit(minutes, nextStr, intensity);
+    commit(minutes, nextStr, distanceKm, intensity);
+  }
+
+  function adjustDistanceKm(delta: number) {
+    vibrate(6);
+    const current = distanceKm.trim() ? Number(distanceKm) : 0;
+    const next = roundKg(Math.max(0, current + delta));
+    const nextStr = formatKg(next);
+    setDistanceKm(nextStr);
+    commit(minutes, kmt, nextStr, intensity);
   }
 
   return (
@@ -384,48 +403,95 @@ function CardioSetRow({
       <div className="grid grid-cols-2 gap-2">
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser minutter" onClick={() => adjustMinutes(-1)} />
-          <input
-            type="number"
-            inputMode="numeric"
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-            onBlur={() => commit(minutes, kmt, intensity)}
-            placeholder="Min"
-            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
+          <div className="relative min-w-0 flex-1">
+            <input
+              type="number"
+              inputMode="numeric"
+              value={minutes}
+              onChange={(e) => {
+                setMinutes(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
+              placeholder="Min"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-8 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+            {minutes.trim() && (
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">min</span>
+            )}
+          </div>
           <StepperButton symbol="+" label="Øk minutter" onClick={() => adjustMinutes(1)} />
         </div>
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser km/t" onClick={() => adjustKmt(-0.5)} />
-          <input
-            type="number"
-            step="0.5"
-            inputMode="decimal"
-            value={kmt}
-            onChange={(e) => setKmt(e.target.value)}
-            onBlur={() => commit(minutes, kmt, intensity)}
-            placeholder="Km/t"
-            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
+          <div className="relative min-w-0 flex-1">
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={kmt}
+              onChange={(e) => {
+                setKmt(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
+              placeholder="Km/t"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-10 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+            {kmt.trim() && (
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km/t</span>
+            )}
+          </div>
           <StepperButton symbol="+" label="Øk km/t" onClick={() => adjustKmt(0.5)} />
         </div>
+        <div className="flex items-center gap-1">
+          <StepperButton symbol="−" label="Reduser distanse" onClick={() => adjustDistanceKm(-0.5)} />
+          <div className="relative min-w-0 flex-1">
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={distanceKm}
+              onChange={(e) => {
+                setDistanceKm(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
+              placeholder="Distanse"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-8 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+            {distanceKm.trim() && (
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km</span>
+            )}
+          </div>
+          <StepperButton symbol="+" label="Øk distanse" onClick={() => adjustDistanceKm(0.5)} />
+        </div>
+        <select
+          value={intensity}
+          onChange={(e) => {
+            const next = e.target.value as SetIntensity | "";
+            setIntensity(next);
+            commit(minutes, kmt, distanceKm, next);
+          }}
+          className="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          <option value="">Intensitet...</option>
+          {INTENSITY_OPTIONS.map((i) => (
+            <option key={i} value={i}>
+              {INTENSITY_LABEL[i]}
+            </option>
+          ))}
+        </select>
       </div>
-      <select
-        value={intensity}
-        onChange={(e) => {
-          const next = e.target.value as SetIntensity | "";
-          setIntensity(next);
-          commit(minutes, kmt, next);
-        }}
-        className="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-      >
-        <option value="">Intensitet...</option>
-        {INTENSITY_OPTIONS.map((i) => (
-          <option key={i} value={i}>
-            {INTENSITY_LABEL[i]}
-          </option>
-        ))}
-      </select>
+      {dirty && (
+        <button
+          type="button"
+          onClick={() => commit(minutes, kmt, distanceKm, intensity)}
+          className="self-end rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
+        >
+          Lagre
+        </button>
+      )}
     </SetRowShell>
   );
 }
@@ -445,10 +511,17 @@ function EntryRow({
   entry: WorkoutEntry;
   lastEntry: WorkoutEntry | null;
   history: ExerciseHistoryPoint[];
-  onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; intensity?: SetIntensity }) => void;
+  onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity }) => void;
   onUpdateSet: (
     setId: string,
-    updates: { kg?: number | null; reps?: number | null; minutes?: number | null; kmt?: number | null; intensity?: SetIntensity | null },
+    updates: {
+      kg?: number | null;
+      reps?: number | null;
+      minutes?: number | null;
+      kmt?: number | null;
+      distanceKm?: number | null;
+      intensity?: SetIntensity | null;
+    },
   ) => void;
   onToggleSetDone: (setId: string, done: boolean) => void;
   onRemoveSet: (setId: string) => void;
@@ -489,7 +562,14 @@ function EntryRow({
   function handleAddSetClick() {
     vibrate(8);
     const prevSet = entry.sets[entry.sets.length - 1] ?? lastEntry?.sets[0];
-    onAddSet({ kg: prevSet?.kg, reps: prevSet?.reps, minutes: prevSet?.minutes, kmt: prevSet?.kmt, intensity: prevSet?.intensity });
+    onAddSet({
+      kg: prevSet?.kg,
+      reps: prevSet?.reps,
+      minutes: prevSet?.minutes,
+      kmt: prevSet?.kmt,
+      distanceKm: prevSet?.distanceKm,
+      intensity: prevSet?.intensity,
+    });
   }
 
   const gripHandle = (
@@ -687,7 +767,6 @@ function ExerciseEditForm({
     <li className="flex flex-col gap-2 rounded-lg border border-line-strong bg-surface-1 p-2.5">
       <input
         type="text"
-        autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
@@ -753,7 +832,6 @@ function ExercisePicker({
       <div className="flex items-center gap-2">
         <input
           type="text"
-          autoFocus
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Søk øvelse..."
@@ -776,7 +854,6 @@ function ExercisePicker({
         <div className="flex flex-col gap-2 rounded-lg border border-line-strong bg-surface-1 p-2.5">
           <input
             type="text"
-            autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Navn på øvelse"
@@ -1273,7 +1350,7 @@ export default function TreningSection() {
 
   async function handleAddSet(
     entryId: string,
-    prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; intensity?: SetIntensity },
+    prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity },
   ) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets`, {
@@ -1290,7 +1367,14 @@ export default function TreningSection() {
   async function handleUpdateSet(
     entryId: string,
     setId: string,
-    updates: { kg?: number | null; reps?: number | null; minutes?: number | null; kmt?: number | null; intensity?: SetIntensity | null },
+    updates: {
+      kg?: number | null;
+      reps?: number | null;
+      minutes?: number | null;
+      kmt?: number | null;
+      distanceKm?: number | null;
+      intensity?: SetIntensity | null;
+    },
   ) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
