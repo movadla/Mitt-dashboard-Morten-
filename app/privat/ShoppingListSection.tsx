@@ -286,6 +286,7 @@ export default function ShoppingListSection() {
 
   const [quickPicks, setQuickPicks] = useState<QuickPick[]>([]);
   const [showAllQuickPicks, setShowAllQuickPicks] = useState(false);
+  const [quickPickQuery, setQuickPickQuery] = useState("");
   const [managingQuickPicks, setManagingQuickPicks] = useState(false);
   const [editingQuickPickId, setEditingQuickPickId] = useState<string | null>(null);
   const confirmQuickPickDelete = useConfirmDelete<QuickPick>();
@@ -432,7 +433,12 @@ export default function ShoppingListSection() {
   const grouped = SECTION_ORDER.map((s) => ({ section: s, items: notDone.filter((i) => i.section === s) })).filter(
     (g) => g.items.length > 0,
   );
-  const visibleQuickPicks = showAllQuickPicks ? quickPicks : quickPicks.slice(0, VISIBLE_QUICK_PICKS);
+  const isSearchingQuickPicks = quickPickQuery.trim().length > 0;
+  const visibleQuickPicks = isSearchingQuickPicks
+    ? quickPicks.filter((qp) => qp.name.toLowerCase().includes(quickPickQuery.trim().toLowerCase()))
+    : showAllQuickPicks
+      ? quickPicks
+      : quickPicks.slice(0, VISIBLE_QUICK_PICKS);
 
   function handleAddClick() {
     if (collapsed) toggleCollapsed();
@@ -440,7 +446,7 @@ export default function ShoppingListSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-2 !border-cyan-400 p-4`}>
       <CardHeader
         title="Handleliste"
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
@@ -449,6 +455,7 @@ export default function ShoppingListSection() {
         onAdd={handleAddClick}
         addLabel="Ny vare"
         icon={ShoppingCart}
+        iconColorClass="text-cyan-400"
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
@@ -467,6 +474,15 @@ export default function ShoppingListSection() {
                   {managingQuickPicks ? "Ferdig" : "Rediger"}
                 </button>
               </div>
+              {quickPicks.length > VISIBLE_QUICK_PICKS && !managingQuickPicks && (
+                <input
+                  type="text"
+                  value={quickPickQuery}
+                  onChange={(e) => setQuickPickQuery(e.target.value)}
+                  placeholder="Søk i hurtigvalg..."
+                  className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                />
+              )}
               {managingQuickPicks ? (
                 <ul className="flex flex-col gap-1.5">
                   {visibleQuickPicks.map((qp) => (
@@ -481,6 +497,8 @@ export default function ShoppingListSection() {
                     />
                   ))}
                 </ul>
+              ) : visibleQuickPicks.length === 0 ? (
+                <p className="text-xs text-ink-4">Ingen treff.</p>
               ) : (
                 <div className="flex flex-wrap gap-1.5">
                   {visibleQuickPicks.map((qp) => (
@@ -495,7 +513,7 @@ export default function ShoppingListSection() {
                   ))}
                 </div>
               )}
-              {quickPicks.length > VISIBLE_QUICK_PICKS && (
+              {quickPicks.length > VISIBLE_QUICK_PICKS && !isSearchingQuickPicks && (
                 <button
                   type="button"
                   onClick={() => setShowAllQuickPicks((v) => !v)}
