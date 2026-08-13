@@ -82,6 +82,10 @@ function formatSessionDate(iso: string): string {
   return new Date(iso).toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+function formatSessionTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatKg(kg: number): string {
   return Number.isInteger(kg) ? `${kg}` : kg.toFixed(1).replace(/\.0$/, "");
 }
@@ -414,7 +418,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Min"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-8 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {minutes.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">min</span>
@@ -436,7 +440,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Km/t"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-10 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-10 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {kmt.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km/t</span>
@@ -458,7 +462,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Distanse"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-1 pr-8 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {distanceKm.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km</span>
@@ -1054,7 +1058,9 @@ function HistoryRow({
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <div className="flex items-center gap-2">
         <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-left">
-          <p className="text-sm text-ink-1">{formatSessionDate(session.startedAt)}</p>
+          <p className="text-sm text-ink-1">
+            {formatSessionDate(session.startedAt)} · {formatSessionTime(session.startedAt)}
+          </p>
           <p className="mt-0.5 text-2xs text-ink-4">
             {formatElapsed(duration)} · {session.entries.length} {session.entries.length === 1 ? "øvelse" : "øvelser"}
           </p>
@@ -1309,6 +1315,11 @@ export default function TreningSection() {
       vibrate(8);
       const updated: WorkoutSession = await res.json();
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      // Lukk øvelsesvelgeren igjen etter valg/opprettelse — skjermen går
+      // tilbake til kun "+ Legg til øvelse", i stedet for at søk/opprett-
+      // panelet blir stående åpent (samme for begge kall-veiene, siden
+      // handleCreateExerciseAndAdd selv kaller denne funksjonen under).
+      setShowPicker(false);
     }
   }
 
