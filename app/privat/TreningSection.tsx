@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
-import type { Exercise } from "@/lib/exercises";
-import type { SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
+import type { Exercise, ExerciseCategory } from "@/lib/exercises";
+import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
 import { vibrate } from "@/lib/haptics";
 import { Dumbbell, GripVertical, Pencil } from "lucide-react";
@@ -12,6 +12,44 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 
 const VISIBLE_HISTORY = 5;
+const HISTORY_PAGE_SIZE = 5;
+
+const CATEGORY_LABEL: Record<ExerciseCategory, string> = { styrke: "Styrke", cardio: "Cardio" };
+const INTENSITY_LABEL: Record<SetIntensity, string> = { lav: "Lav", middels: "Middels", hoy: "Høy" };
+const INTENSITY_OPTIONS: SetIntensity[] = ["lav", "middels", "hoy"];
+
+// Gjenbrukt "done"-avkrysning — samme visuelle mønster (fylt grønn sirkel med
+// hake) som MilestoneRow i AlfredSection.tsx og ItemRow i ShoppingListSection.tsx.
+function DoneToggle({
+  done,
+  onToggle,
+  size = "md",
+  label,
+}: {
+  done: boolean;
+  onToggle: () => void;
+  size?: "sm" | "md";
+  label: string;
+}) {
+  const dim = size === "sm" ? "h-5 w-5" : "h-6 w-6";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={done}
+      aria-label={label}
+      className={`grid ${dim} shrink-0 place-items-center rounded-full ring-1 transition ${
+        done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+      }`}
+    >
+      {done && (
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5L6.5 12 13 5" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -57,10 +95,14 @@ function roundKg(kg: number): number {
 function setSummary(entry: WorkoutEntry): string {
   return entry.sets
     .map((s) => {
-      if (s.kg != null && s.reps != null) return `${formatKg(s.kg)}kg×${s.reps}`;
-      if (s.kg != null) return `${formatKg(s.kg)}kg`;
-      if (s.reps != null) return `${s.reps} reps`;
-      return null;
+      const parts: string[] = [];
+      if (s.kg != null && s.reps != null) parts.push(`${formatKg(s.kg)}kg×${s.reps}`);
+      else if (s.kg != null) parts.push(`${formatKg(s.kg)}kg`);
+      else if (s.reps != null) parts.push(`${s.reps} reps`);
+      if (s.minutes != null) parts.push(`${s.minutes} min`);
+      if (s.kmt != null) parts.push(`${s.kmt} km/t`);
+      if (s.intensity) parts.push(INTENSITY_LABEL[s.intensity]);
+      return parts.join(" · ") || null;
     })
     .filter(Boolean)
     .join(", ");
@@ -177,15 +219,55 @@ function StepperButton({ symbol, label, onClick }: { symbol: "+" | "−"; label:
   );
 }
 
-function SetRow({
+function SetRowShell({
+  index,
+  done,
+  onToggleDone,
+  onRemove,
+  children,
+}: {
+  index: number;
+  done: boolean;
+  onToggleDone: () => void;
+  onRemove: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`flex flex-col gap-1.5 rounded-lg border p-2 transition ${
+        done ? "border-status-positive/50 bg-status-positive/8" : "border-line bg-surface-1"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <DoneToggle done={done} onToggle={onToggleDone} size="sm" label={done ? "Merk sett som ikke fullført" : "Merk sett som fullført"} />
+          <span className="text-2xs text-ink-4">Sett {index + 1}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Slett sett"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        >
+          ×
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StrengthSetRow({
   set,
   index,
   onUpdate,
+  onToggleDone,
   onRemove,
 }: {
   set: SetLog;
   index: number;
   onUpdate: (updates: { kg: number | null; reps: number | null }) => void;
+  onToggleDone: () => void;
   onRemove: () => void;
 }) {
   const [kg, setKg] = useState(set.kg?.toString() ?? "");
@@ -220,18 +302,7 @@ function SetRow({
   }
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-1 p-2">
-      <div className="flex items-center justify-between">
-        <span className="text-2xs text-ink-4">Sett {index + 1}</span>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Slett sett"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          ×
-        </button>
-      </div>
+    <SetRowShell index={index} done={!!set.done} onToggleDone={onToggleDone} onRemove={onRemove}>
       <div className="grid grid-cols-2 gap-2">
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
@@ -261,7 +332,101 @@ function SetRow({
           <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
         </div>
       </div>
-    </div>
+    </SetRowShell>
+  );
+}
+
+function CardioSetRow({
+  set,
+  index,
+  onUpdate,
+  onToggleDone,
+  onRemove,
+}: {
+  set: SetLog;
+  index: number;
+  onUpdate: (updates: { minutes: number | null; kmt: number | null; intensity: SetIntensity | null }) => void;
+  onToggleDone: () => void;
+  onRemove: () => void;
+}) {
+  const [minutes, setMinutes] = useState(set.minutes?.toString() ?? "");
+  const [kmt, setKmt] = useState(set.kmt?.toString() ?? "");
+  const [intensity, setIntensity] = useState<SetIntensity | "">(set.intensity ?? "");
+
+  function commit(nextMinutes: string, nextKmt: string, nextIntensity: SetIntensity | "") {
+    onUpdate({
+      minutes: nextMinutes.trim() ? Number(nextMinutes) : null,
+      kmt: nextKmt.trim() ? Number(nextKmt) : null,
+      intensity: nextIntensity || null,
+    });
+  }
+
+  function adjustMinutes(delta: number) {
+    vibrate(6);
+    const current = minutes.trim() ? Number(minutes) : 0;
+    const next = Math.max(0, current + delta);
+    const nextStr = String(next);
+    setMinutes(nextStr);
+    commit(nextStr, kmt, intensity);
+  }
+
+  function adjustKmt(delta: number) {
+    vibrate(6);
+    const current = kmt.trim() ? Number(kmt) : 0;
+    const next = roundKg(Math.max(0, current + delta));
+    const nextStr = formatKg(next);
+    setKmt(nextStr);
+    commit(minutes, nextStr, intensity);
+  }
+
+  return (
+    <SetRowShell index={index} done={!!set.done} onToggleDone={onToggleDone} onRemove={onRemove}>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-1">
+          <StepperButton symbol="−" label="Reduser minutter" onClick={() => adjustMinutes(-1)} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            onBlur={() => commit(minutes, kmt, intensity)}
+            placeholder="Min"
+            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <StepperButton symbol="+" label="Øk minutter" onClick={() => adjustMinutes(1)} />
+        </div>
+        <div className="flex items-center gap-1">
+          <StepperButton symbol="−" label="Reduser km/t" onClick={() => adjustKmt(-0.5)} />
+          <input
+            type="number"
+            step="0.5"
+            inputMode="decimal"
+            value={kmt}
+            onChange={(e) => setKmt(e.target.value)}
+            onBlur={() => commit(minutes, kmt, intensity)}
+            placeholder="Km/t"
+            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <StepperButton symbol="+" label="Øk km/t" onClick={() => adjustKmt(0.5)} />
+        </div>
+      </div>
+      <select
+        value={intensity}
+        onChange={(e) => {
+          const next = e.target.value as SetIntensity | "";
+          setIntensity(next);
+          commit(minutes, kmt, next);
+        }}
+        className="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+      >
+        <option value="">Intensitet...</option>
+        {INTENSITY_OPTIONS.map((i) => (
+          <option key={i} value={i}>
+            {INTENSITY_LABEL[i]}
+          </option>
+        ))}
+      </select>
+    </SetRowShell>
   );
 }
 
@@ -271,27 +436,35 @@ function EntryRow({
   history,
   onAddSet,
   onUpdateSet,
+  onToggleSetDone,
   onRemoveSet,
   onUpdateEntry,
+  onToggleEntryDone,
   onRemoveEntry,
 }: {
   entry: WorkoutEntry;
   lastEntry: WorkoutEntry | null;
   history: ExerciseHistoryPoint[];
-  onAddSet: (prefill: { kg?: number; reps?: number }) => void;
-  onUpdateSet: (setId: string, updates: { kg: number | null; reps: number | null }) => void;
+  onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; intensity?: SetIntensity }) => void;
+  onUpdateSet: (
+    setId: string,
+    updates: { kg?: number | null; reps?: number | null; minutes?: number | null; kmt?: number | null; intensity?: SetIntensity | null },
+  ) => void;
+  onToggleSetDone: (setId: string, done: boolean) => void;
   onRemoveSet: (setId: string) => void;
   onUpdateEntry: (updates: { minutes: number | null; notes: string | null }) => void;
+  onToggleEntryDone: () => void;
   onRemoveEntry: () => void;
 }) {
   const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
   const [notes, setNotes] = useState(entry.notes ?? "");
   const [showGraph, setShowGraph] = useState(false);
   const [showMore, setShowMore] = useState(!!entry.minutes || !!entry.notes);
-  // Lukket (sammenslått) rad viser bare navn + sett-oppsummering — man drilles
-  // ned igjen ved å trykke raden. Rent visnings-toggle, ikke lagret noe sted,
-  // så en øvelse starter alltid åpen igjen ved neste sideinnlasting.
-  const [collapsed, setCollapsed] = useState(false);
+  // Lukket (sammenslått) rad viser KUN øvelsesnavnet — man drilles ned igjen
+  // ved å trykke raden. Starter kollapset (i motsetning til før) slik at en
+  // økt med mange øvelser forblir oversiktlig med det samme man legger dem
+  // til, i stedet for at man må lukke hver og én manuelt.
+  const [collapsed, setCollapsed] = useState(true);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
   });
@@ -309,13 +482,14 @@ function EntryRow({
     });
   }
 
-  // Foreslår vekt/reps for et nytt sett fra forrige sett i samme øvelse denne
-  // økten, ellers fra "sist"-referansen — matcher hvordan Strong/Hevy foreslår
-  // neste vekt i stedet for å starte tomt hver gang.
+  // Foreslår vekt/reps (eller minutter/km-t/intensitet for cardio) for et nytt
+  // sett fra forrige sett i samme øvelse denne økten, ellers fra "sist"-
+  // referansen — matcher hvordan Strong/Hevy foreslår neste vekt i stedet for
+  // å starte tomt hver gang.
   function handleAddSetClick() {
     vibrate(8);
     const prevSet = entry.sets[entry.sets.length - 1] ?? lastEntry?.sets[0];
-    onAddSet({ kg: prevSet?.kg, reps: prevSet?.reps });
+    onAddSet({ kg: prevSet?.kg, reps: prevSet?.reps, minutes: prevSet?.minutes, kmt: prevSet?.kmt, intensity: prevSet?.intensity });
   }
 
   const gripHandle = (
@@ -332,14 +506,26 @@ function EntryRow({
     </button>
   );
 
+  const doneToggle = (
+    <DoneToggle
+      done={!!entry.done}
+      onToggle={onToggleEntryDone}
+      label={entry.done ? "Merk øvelsen som ikke fullført" : "Merk øvelsen som fullført"}
+    />
+  );
+
+  const containerClass = `rounded-xl border transition ${
+    entry.done ? "border-status-positive/50 bg-status-positive/8" : "border-line bg-surface-2"
+  }`;
+
   if (collapsed) {
     return (
-      <li ref={setNodeRef} style={style} className="rounded-xl border border-line bg-surface-2 p-2.5">
+      <li ref={setNodeRef} style={style} className={`${containerClass} p-2.5`}>
         <div className="flex items-center gap-2">
           {gripHandle}
+          {doneToggle}
           <button type="button" onClick={() => setCollapsed(false)} className="min-w-0 flex-1 text-left">
             <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
-            {entry.sets.length > 0 && <p className="mt-0.5 truncate text-2xs text-ink-4">{setSummary(entry)}</p>}
           </button>
           <button
             type="button"
@@ -355,11 +541,14 @@ function EntryRow({
   }
 
   return (
-    <li ref={setNodeRef} style={style} className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
+    <li ref={setNodeRef} style={style} className={`${containerClass} flex flex-col gap-2 p-2.5`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {gripHandle}
-          <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+          {doneToggle}
+          <button type="button" onClick={() => setCollapsed(true)} className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+          </button>
         </div>
         <button
           type="button"
@@ -387,53 +576,58 @@ function EntryRow({
       )}
       {entry.sets.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          {entry.sets.map((s, i) => (
-            <SetRow
-              key={s.id}
-              set={s}
-              index={i}
-              onUpdate={(updates) => onUpdateSet(s.id, updates)}
-              onRemove={() => onRemoveSet(s.id)}
-            />
-          ))}
+          {entry.sets.map((s, i) =>
+            entry.category === "cardio" ? (
+              <CardioSetRow
+                key={s.id}
+                set={s}
+                index={i}
+                onUpdate={(updates) => onUpdateSet(s.id, updates)}
+                onToggleDone={() => onToggleSetDone(s.id, !s.done)}
+                onRemove={() => onRemoveSet(s.id)}
+              />
+            ) : (
+              <StrengthSetRow
+                key={s.id}
+                set={s}
+                index={i}
+                onUpdate={(updates) => onUpdateSet(s.id, updates)}
+                onToggleDone={() => onToggleSetDone(s.id, !s.done)}
+                onRemove={() => onRemoveSet(s.id)}
+              />
+            ),
+          )}
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleAddSetClick}
-          className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-        >
-          + Nytt sett
-        </button>
-        {entry.sets.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setCollapsed(true)}
-            className="text-xs font-medium text-status-positive hover:text-status-positive/80"
-          >
-            Lagre og lukk
-          </button>
-        )}
-      </div>
+      <button
+        type="button"
+        onClick={handleAddSetClick}
+        className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+      >
+        + Nytt sett
+      </button>
       {showMore ? (
         <div className="grid grid-cols-2 gap-2">
-          <input
-            type="number"
-            inputMode="numeric"
-            value={minutes}
-            onChange={(e) => setMinutes(e.target.value)}
-            onBlur={commitEntry}
-            placeholder="Minutter (cardio)"
-            className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
+          {entry.category !== "cardio" && (
+            <input
+              type="number"
+              inputMode="numeric"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              onBlur={commitEntry}
+              placeholder="Minutter"
+              className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+          )}
           <input
             type="text"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             onBlur={commitEntry}
             placeholder="Notat (valgfritt)"
-            className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+            className={`w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong ${
+              entry.category === "cardio" ? "col-span-2" : ""
+            }`}
           />
         </div>
       ) : (
@@ -442,10 +636,32 @@ function EntryRow({
           onClick={() => setShowMore(true)}
           className="self-start text-2xs font-medium text-ink-4 hover:text-ink-2"
         >
-          + Minutter/notat
+          {entry.category === "cardio" ? "+ Notat" : "+ Minutter/notat"}
         </button>
       )}
     </li>
+  );
+}
+
+function CategoryToggle({ value, onChange }: { value: ExerciseCategory; onChange: (c: ExerciseCategory) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {(Object.keys(CATEGORY_LABEL) as ExerciseCategory[]).map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          aria-pressed={value === c}
+          className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+            value === c
+              ? "border-accent-privat bg-accent-privat/15 text-accent-privat"
+              : "border-line bg-surface-2 text-ink-3 hover:border-line-strong hover:text-ink-1"
+          }`}
+        >
+          {CATEGORY_LABEL[c]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -456,14 +672,15 @@ function ExerciseEditForm({
 }: {
   exercise: Exercise;
   onCancel: () => void;
-  onSave: (updates: { name: string; description?: string }) => void;
+  onSave: (updates: { name: string; description?: string; category: ExerciseCategory }) => void;
 }) {
   const [name, setName] = useState(exercise.name);
   const [description, setDescription] = useState(exercise.description ?? "");
+  const [category, setCategory] = useState<ExerciseCategory>(exercise.category);
 
   function save() {
     if (!name.trim()) return;
-    onSave({ name: name.trim(), description: description.trim() || undefined });
+    onSave({ name: name.trim(), description: description.trim() || undefined, category });
   }
 
   return (
@@ -478,6 +695,7 @@ function ExerciseEditForm({
         }}
         className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
+      <CategoryToggle value={category} onChange={setCategory} />
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
@@ -514,8 +732,8 @@ function ExercisePicker({
   exercises: Exercise[];
   recentExercises: Exercise[];
   onPick: (exercise: Exercise) => void;
-  onCreateAndPick: (name: string, description: string) => void;
-  onSaveExercise: (id: string, updates: { name: string; description?: string }) => void;
+  onCreateAndPick: (name: string, description: string, category: ExerciseCategory) => void;
+  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory }) => void;
   onDeleteExercise: (exercise: Exercise) => void;
   onClose: () => void;
 }) {
@@ -523,12 +741,15 @@ function ExercisePicker({
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [newCategory, setNewCategory] = useState<ExerciseCategory>("styrke");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const filtered = exercises.filter((e) => e.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      {/* Søk og opprett ligger side ved side helt øverst — begge er
+          like tilgjengelige med det samme, ikke gjemt bak "ingen treff". */}
       <div className="flex items-center gap-2">
         <input
           type="text"
@@ -538,10 +759,58 @@ function ExercisePicker({
           placeholder="Søk øvelse..."
           className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
-        <button type="button" onClick={onClose} className="shrink-0 text-xs font-medium text-ink-4 hover:text-ink-2">
-          Lukk
+        <button
+          type="button"
+          onClick={() => setShowNewForm((v) => !v)}
+          aria-pressed={showNewForm}
+          className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold uppercase transition ${
+            showNewForm
+              ? "border-accent-privat bg-accent-privat/15 text-accent-privat"
+              : "border-line bg-surface-1 text-ink-2 hover:border-line-strong hover:text-ink-1"
+          }`}
+        >
+          + Opprett
         </button>
       </div>
+      {showNewForm && (
+        <div className="flex flex-col gap-2 rounded-lg border border-line-strong bg-surface-1 p-2.5">
+          <input
+            type="text"
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Navn på øvelse"
+            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <CategoryToggle value={newCategory} onChange={setNewCategory} />
+          <textarea
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            placeholder="Beskrivelse (valgfritt)"
+            rows={2}
+            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setShowNewForm(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+              Avbryt
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onCreateAndPick(newName.trim(), newDescription.trim(), newCategory);
+                setNewName("");
+                setNewDescription("");
+                setNewCategory("styrke");
+                setShowNewForm(false);
+              }}
+              disabled={!newName.trim()}
+              className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+            >
+              Legg til
+            </button>
+          </div>
+        </div>
+      )}
       {!query.trim() && recentExercises.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Nylig brukt</p>
@@ -575,7 +844,10 @@ function ExercisePicker({
             ) : (
               <li key={ex.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-2">
                 <button type="button" onClick={() => onPick(ex)} className="min-w-0 flex-1 text-left">
-                  <p className="truncate text-sm text-ink-1">{ex.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="truncate text-sm text-ink-1">{ex.name}</p>
+                    <span className="shrink-0 text-2xs text-ink-4">{CATEGORY_LABEL[ex.category]}</span>
+                  </div>
                   {ex.description && <p className="truncate text-2xs text-ink-4">{ex.description}</p>}
                 </button>
                 <button
@@ -599,52 +871,10 @@ function ExercisePicker({
           )}
         </ul>
       )}
-      {filtered.length === 0 && !showNewForm && <p className="text-sm text-ink-3">Ingen treff.</p>}
-      {showNewForm ? (
-        <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-1 p-2.5">
-          <input
-            type="text"
-            autoFocus
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Navn på øvelse"
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          <textarea
-            value={newDescription}
-            onChange={(e) => setNewDescription(e.target.value)}
-            placeholder="Beskrivelse (valgfritt)"
-            rows={2}
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setShowNewForm(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-              Avbryt
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onCreateAndPick(newName.trim(), newDescription.trim());
-                setNewName("");
-                setNewDescription("");
-                setShowNewForm(false);
-              }}
-              disabled={!newName.trim()}
-              className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-            >
-              Legg til
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowNewForm(true)}
-          className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-        >
-          <span className="text-base leading-none">+</span> Ny øvelse
-        </button>
-      )}
+      {filtered.length === 0 && <p className="text-sm text-ink-3">Ingen treff.</p>}
+      <button type="button" onClick={onClose} className="self-end text-xs font-medium text-ink-4 hover:text-ink-2">
+        Lukk
+      </button>
     </div>
   );
 }
@@ -855,7 +1085,8 @@ export default function TreningSection() {
   const [loading, setLoading] = useState(true);
   const [showPicker, setShowPicker] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
-  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
   const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
@@ -902,7 +1133,7 @@ export default function TreningSection() {
 
   const activeSession = sessions.find((s) => !s.endedAt) ?? null;
   const pastSessions = sessions.filter((s) => s.endedAt);
-  const visibleHistory = showAllHistory ? pastSessions : pastSessions.slice(0, VISIBLE_HISTORY);
+  const visibleHistory = pastSessions.slice(0, visibleHistoryCount);
   const elapsed = useElapsed(activeSession?.startedAt);
   const recentExercises = recentlyUsedExercises(exercises, sessions);
   // Sannsynligvis glemt å avslutte økten hvis den har vart urimelig lenge —
@@ -1004,12 +1235,12 @@ export default function TreningSection() {
     }
   }
 
-  async function handleCreateExerciseAndAdd(name: string, description: string) {
+  async function handleCreateExerciseAndAdd(name: string, description: string, category: ExerciseCategory) {
     if (!name.trim()) return;
     const res = await fetch("/api/exercises", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: description || undefined }),
+      body: JSON.stringify({ name, description: description || undefined, category }),
     });
     if (res.ok) {
       const created: Exercise = await res.json();
@@ -1040,7 +1271,10 @@ export default function TreningSection() {
     }
   }
 
-  async function handleAddSet(entryId: string, prefill: { kg?: number; reps?: number }) {
+  async function handleAddSet(
+    entryId: string,
+    prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; intensity?: SetIntensity },
+  ) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets`, {
       method: "POST",
@@ -1053,12 +1287,44 @@ export default function TreningSection() {
     }
   }
 
-  async function handleUpdateSet(entryId: string, setId: string, updates: { kg: number | null; reps: number | null }) {
+  async function handleUpdateSet(
+    entryId: string,
+    setId: string,
+    updates: { kg?: number | null; reps?: number | null; minutes?: number | null; kmt?: number | null; intensity?: SetIntensity | null },
+  ) {
     if (!activeSession) return;
     const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    }
+  }
+
+  async function handleToggleSetDone(entryId: string, setId: string, done: boolean) {
+    if (!activeSession) return;
+    vibrate(done ? 10 : 6);
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done }),
+    });
+    if (res.ok) {
+      const updated: WorkoutSession = await res.json();
+      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    }
+  }
+
+  async function handleToggleEntryDone(entryId: string, done: boolean) {
+    if (!activeSession) return;
+    vibrate(done ? [10, 20] : 6);
+    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done }),
     });
     if (res.ok) {
       const updated: WorkoutSession = await res.json();
@@ -1080,7 +1346,7 @@ export default function TreningSection() {
     await fetch(`/api/workouts/${session.id}`, { method: "DELETE" });
   }
 
-  async function handleSaveExercise(id: string, updates: { name: string; description?: string }) {
+  async function handleSaveExercise(id: string, updates: { name: string; description?: string; category: ExerciseCategory }) {
     const res = await fetch(`/api/exercises/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1228,8 +1494,10 @@ export default function TreningSection() {
                               history={exerciseHistory(entry.exerciseId, sessions, activeSession.id)}
                               onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
                               onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
+                              onToggleSetDone={(setId, done) => handleToggleSetDone(entry.id, setId, done)}
                               onRemoveSet={(setId) => handleRemoveSet(entry.id, setId)}
                               onUpdateEntry={(updates) => handleUpdateEntry(entry.id, updates)}
+                              onToggleEntryDone={() => handleToggleEntryDone(entry.id, !entry.done)}
                               onRemoveEntry={() => handleRemoveEntry(entry.id)}
                             />
                           ))}
@@ -1300,7 +1568,16 @@ export default function TreningSection() {
               {pastSessions.length > 0 && (
                 <div className="mt-1 flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Historikk</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHistory((v) => !v);
+                        setVisibleHistoryCount(VISIBLE_HISTORY);
+                      }}
+                      className="text-2xs font-semibold uppercase tracking-wide text-ink-3 hover:text-ink-1"
+                    >
+                      {showHistory ? "Skjul tidligere økter" : `Tidligere økter (${pastSessions.length})`}
+                    </button>
                     <a
                       href="/api/workouts/export"
                       download
@@ -1309,25 +1586,29 @@ export default function TreningSection() {
                       Eksporter
                     </a>
                   </div>
-                  <ul className="flex flex-col gap-1.5">
-                    {visibleHistory.map((s) => (
-                      <HistoryRow
-                        key={s.id}
-                        session={s}
-                        expanded={expandedHistoryId === s.id}
-                        onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
-                        onDelete={() => confirmDeleteSession.request(s)}
-                      />
-                    ))}
-                  </ul>
-                  {pastSessions.length > VISIBLE_HISTORY && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllHistory((v) => !v)}
-                      className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                    >
-                      {showAllHistory ? "Vis mindre" : `Mer (${pastSessions.length - VISIBLE_HISTORY})`}
-                    </button>
+                  {showHistory && (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleHistory.map((s) => (
+                          <HistoryRow
+                            key={s.id}
+                            session={s}
+                            expanded={expandedHistoryId === s.id}
+                            onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
+                            onDelete={() => confirmDeleteSession.request(s)}
+                          />
+                        ))}
+                      </ul>
+                      {pastSessions.length > visibleHistoryCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleHistoryCount((v) => v + HISTORY_PAGE_SIZE)}
+                          className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                        >
+                          +{Math.min(HISTORY_PAGE_SIZE, pastSessions.length - visibleHistoryCount)} flere
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}

@@ -1,24 +1,36 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
+import { getExercises, type ExerciseCategory } from "./exercises";
 
-// Ett enkelt sett innenfor en øvelse — vekt logges her (ikke aggregert per
-// øvelse) siden vekt ofte varierer mellom sett (oppvarming, pyramide).
+export type SetIntensity = "lav" | "middels" | "hoy";
+
+// Ett enkelt sett innenfor en øvelse. Styrke bruker kg/reps (vekt logges her,
+// ikke aggregert per øvelse, siden vekt ofte varierer mellom sett — oppvarming,
+// pyramide). Cardio bruker minutes/kmt/intensity i stedet — samme "+ nytt
+// sett"-liste dekker begge, siden man kan trenge flere cardio-drag også
+// (intervaller), ikke bare én sammenhengende økt.
 export interface SetLog {
   id: string;
   reps?: number;
   kg?: number;
+  minutes?: number;
+  kmt?: number;
+  intensity?: SetIntensity;
+  done?: boolean;
 }
 
-// Én øvelse logget innenfor en treningsøkt. exerciseName er en øyeblikksbilde-
-// kopi av navnet på loggetidspunktet — overlever selv om øvelsen i katalogen
-// (lib/exercises.ts) senere omdøpes eller slettes.
+// Én øvelse logget innenfor en treningsøkt. exerciseName og category er
+// øyeblikksbilde-kopier fra katalogen (lib/exercises.ts) på loggetidspunktet —
+// overlever selv om øvelsen senere omdøpes, kategoriseres om eller slettes.
 export interface WorkoutEntry {
   id: string;
   exerciseId: string;
   exerciseName: string;
+  category: ExerciseCategory;
   sets: SetLog[];
-  minutes?: number; // dekker cardio-aktig logging uten "sett" (f.eks. løping)
+  minutes?: number; // fritt cardio-notat på selve øvelsen (i tillegg til sett)
   notes?: string;
+  done?: boolean; // hele øvelsen markert fullført
 }
 
 export interface WorkoutSession {
@@ -37,16 +49,24 @@ export interface NewWorkoutEntryInput {
 export interface WorkoutEntryUpdateInput {
   minutes?: number | null;
   notes?: string | null;
+  done?: boolean;
 }
 
 export interface NewSetInput {
   reps?: number;
   kg?: number;
+  minutes?: number;
+  kmt?: number;
+  intensity?: SetIntensity;
 }
 
 export interface SetUpdateInput {
   reps?: number | null;
   kg?: number | null;
+  minutes?: number | null;
+  kmt?: number | null;
+  intensity?: SetIntensity | null;
+  done?: boolean;
 }
 
 const HASH_KEY = "privat:workouts";
@@ -101,10 +121,16 @@ export async function addWorkoutEntry(sessionId: string, input: NewWorkoutEntryI
   if (!current) return null;
   if (!input.exerciseId || !input.exerciseName?.trim()) throw new Error("Mangler øvelse");
 
+  // category slås opp server-side (ikke sendt fra klienten) slik at rutiner
+  // og andre kall som kun har exerciseId/exerciseName også får riktig snapshot.
+  const exercises = await getExercises();
+  const category = exercises.find((e) => e.id === input.exerciseId)?.category ?? "styrke";
+
   const entry: WorkoutEntry = {
     id: randomUUID(),
     exerciseId: input.exerciseId,
     exerciseName: input.exerciseName.trim(),
+    category,
     sets: [],
   };
   const next: WorkoutSession = { ...current, entries: [...current.entries, entry] };
@@ -126,6 +152,7 @@ export async function updateWorkoutEntry(
       ...e,
       minutes: updates.minutes !== undefined ? (updates.minutes ?? undefined) : e.minutes,
       notes: updates.notes !== undefined ? (updates.notes?.trim() || undefined) : e.notes,
+      done: updates.done !== undefined ? updates.done : e.done,
     };
   });
   const next: WorkoutSession = { ...current, entries };
@@ -145,7 +172,14 @@ export async function addSetToEntry(sessionId: string, entryId: string, input: N
   const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
   if (!current) return null;
 
-  const set: SetLog = { id: randomUUID(), reps: input.reps, kg: input.kg };
+  const set: SetLog = {
+    id: randomUUID(),
+    reps: input.reps,
+    kg: input.kg,
+    minutes: input.minutes,
+    kmt: input.kmt,
+    intensity: input.intensity,
+  };
   const entries = current.entries.map((e) => (e.id === entryId ? { ...e, sets: [...e.sets, set] } : e));
   const next: WorkoutSession = { ...current, entries };
   await hsetJSON(HASH_KEY, sessionId, next);
@@ -169,6 +203,10 @@ export async function updateSet(
         ...s,
         reps: updates.reps !== undefined ? (updates.reps ?? undefined) : s.reps,
         kg: updates.kg !== undefined ? (updates.kg ?? undefined) : s.kg,
+        minutes: updates.minutes !== undefined ? (updates.minutes ?? undefined) : s.minutes,
+        kmt: updates.kmt !== undefined ? (updates.kmt ?? undefined) : s.kmt,
+        intensity: updates.intensity !== undefined ? (updates.intensity ?? undefined) : s.intensity,
+        done: updates.done !== undefined ? updates.done : s.done,
       };
     });
     return { ...e, sets };
