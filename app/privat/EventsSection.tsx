@@ -124,14 +124,16 @@ function EventNotes({
   comments,
   onAdd,
   onDelete,
+  onToggleRelevance,
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   return (
     <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
-      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
     </div>
   );
 }
@@ -146,6 +148,7 @@ function EventRow({
   comments,
   onAddComment,
   onDeleteComment,
+  onToggleCommentRelevance,
 }: {
   row: Row;
   editing: boolean;
@@ -159,6 +162,7 @@ function EventRow({
   comments: Comment[];
   onAddComment: (tekst: string) => void;
   onDeleteComment: (commentId: string, preview: string) => void;
+  onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -204,7 +208,7 @@ function EventRow({
       <SwipeableRow onSwipeLeft={() => onRemove(row.event!.id)} leftLabel="Slett">
         {content}
       </SwipeableRow>
-      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
+      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
     </li>
   );
 }
@@ -223,7 +227,7 @@ export default function EventsSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(5);
   const confirmDelete = useConfirmDelete<string>();
-  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
 
   const load = useCallback(() => {
     fetch("/api/events")
@@ -433,6 +437,9 @@ export default function EventsSection() {
                     onDeleteComment={(commentId, preview) =>
                       row.event &&
                       confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
+                    }
+                    onToggleCommentRelevance={(commentId, ikkeRelevant) =>
+                      row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
                     }
                   />
                 ))}

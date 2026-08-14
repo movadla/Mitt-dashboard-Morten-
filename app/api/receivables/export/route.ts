@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { RECEIVABLES } from "@/lib/widgets";
-import { computeAging } from "@/lib/receivablesAging";
+import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import { getReceivableRisks, type ReceivableRiskLevel } from "@/lib/receivableRisk";
 import { getAllComments } from "@/lib/comments";
@@ -54,7 +54,7 @@ function addKundefordringerSheet(
 
   for (const r of RECEIVABLES) {
     const aging = computeAging(r, asOfDateISO);
-    const risk = risks[r.id] ?? null;
+    const risk = risks[r.id] ?? computeAutoRisk(r, asOfDateISO);
     const row = sheet.addRow([
       r.leietaker,
       r.utestaende,

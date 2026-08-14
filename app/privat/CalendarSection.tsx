@@ -101,14 +101,16 @@ function EventNotes({
   comments,
   onAdd,
   onDelete,
+  onToggleRelevance,
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   return (
     <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
-      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
     </div>
   );
 }
@@ -123,6 +125,7 @@ function EventRow({
   comments,
   onAddComment,
   onDeleteComment,
+  onToggleCommentRelevance,
 }: {
   event: PrivatCalendarEvent;
   editing: boolean;
@@ -136,6 +139,7 @@ function EventRow({
   comments: Comment[];
   onAddComment: (tekst: string) => void;
   onDeleteComment: (commentId: string, preview: string) => void;
+  onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -175,7 +179,7 @@ function EventRow({
           </button>
         </div>
       </SwipeableRow>
-      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
+      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
     </li>
   );
 }
@@ -194,7 +198,7 @@ export default function CalendarSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
-  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
 
   const load = useCallback(() => {
     fetch("/api/privat-calendar")
@@ -389,6 +393,7 @@ export default function CalendarSection() {
                   onDeleteComment={(commentId, preview) =>
                     confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
                   }
+                  onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
                 />
               ))}
             </ul>
@@ -412,6 +417,7 @@ export default function CalendarSection() {
                       onDeleteComment={(commentId, preview) =>
                         confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
                       }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
                     />
                   ))}
                 </ul>

@@ -1,5 +1,8 @@
 import { hgetallJSON, hsetJSON } from "./kv";
-import type { ReceivableRiskLevel } from "./receivableRisk";
+import { getReceivableRisks, type ReceivableRiskLevel } from "./receivableRisk";
+import { computeAging, computeAutoRisk } from "./receivablesAging";
+import { RECEIVABLES } from "./widgets";
+import { localDateString } from "./payday";
 
 export interface ReceivableSnapshotRow {
   id: string;
@@ -39,4 +42,33 @@ export async function getLatestTwoSnapshots(): Promise<{
 
 export async function saveSnapshot(snapshot: ReceivableSnapshot): Promise<void> {
   await hsetJSON(HASH_KEY, snapshot.dato, snapshot);
+}
+
+// Delt av både den manuelle "Start ny periode"-knappen og den automatiske
+// ukentlige cron-jobben (app/api/cron/receivables-snapshot) — begge skal
+// bygge og lagre et snapshot på nøyaktig samme måte.
+export async function buildTodaysSnapshot(): Promise<ReceivableSnapshot> {
+  const risks = await getReceivableRisks();
+  const today = localDateString();
+  return {
+    dato: today,
+    rader: RECEIVABLES.map((r) => {
+      const aging = computeAging(r, today);
+      return {
+        id: r.id,
+        leietaker: r.leietaker,
+        utestaende: r.utestaende,
+        ikkeForfalt: Math.round(aging.ikkeForfalt * 100) / 100,
+        forfalt: Math.round(aging.forfalt * 100) / 100,
+        forfalt91: Math.round(aging.d91Plus * 100) / 100,
+        risiko: risks[r.id] ?? computeAutoRisk(r, today),
+      };
+    }),
+  };
+}
+
+export async function createAndSaveTodaysSnapshot(): Promise<ReceivableSnapshot> {
+  const snapshot = await buildTodaysSnapshot();
+  await saveSnapshot(snapshot);
+  return snapshot;
 }

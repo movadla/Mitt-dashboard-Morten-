@@ -42,11 +42,13 @@ export function CommentThreadBody({
   comments,
   onAdd,
   onDelete,
+  onToggleRelevance,
   accentClassName = "bg-accent hover:bg-accent/85",
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
   accentClassName?: string;
 }) {
   const [draft, setDraft] = useState("");
@@ -64,10 +66,24 @@ export function CommentThreadBody({
           {[...comments]
             .sort((a, b) => a.opprettet.localeCompare(b.opprettet))
             .map((c) => (
-              <li key={c.id} className="flex items-start justify-between gap-2 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5">
+              <li
+                key={c.id}
+                className={`flex items-start justify-between gap-2 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5 ${c.ikkeRelevant ? "opacity-50" : ""}`}
+              >
                 <div className="min-w-0">
-                  <p className="whitespace-pre-wrap text-sm text-ink-2">{c.tekst}</p>
-                  <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(c.opprettet)}</p>
+                  <p className={`whitespace-pre-wrap text-sm text-ink-2 ${c.ikkeRelevant ? "line-through" : ""}`}>{c.tekst}</p>
+                  <div className="mt-0.5 flex items-center gap-2 text-2xs text-ink-4">
+                    <span>{formatDateTime(c.opprettet)}</span>
+                    <label className="flex items-center gap-1 cursor-pointer hover:text-ink-2">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(c.ikkeRelevant)}
+                        onChange={(e) => onToggleRelevance(c.id, e.target.checked)}
+                        className="h-3 w-3 rounded border-line accent-ink-4"
+                      />
+                      Ikke lenger relevant
+                    </label>
+                  </div>
                 </div>
                 <button
                   type="button"

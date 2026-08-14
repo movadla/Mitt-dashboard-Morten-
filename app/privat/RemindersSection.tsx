@@ -191,14 +191,16 @@ function ReminderNotes({
   comments,
   onAdd,
   onDelete,
+  onToggleRelevance,
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   return (
     <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
-      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
     </div>
   );
 }
@@ -215,6 +217,7 @@ type RowCommentProps = {
   comments: Comment[];
   onAddComment: (tekst: string) => void;
   onDeleteComment: (commentId: string, preview: string) => void;
+  onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 };
 
 function ReminderRow({
@@ -228,6 +231,7 @@ function ReminderRow({
   comments,
   onAddComment,
   onDeleteComment,
+  onToggleCommentRelevance,
 }: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -257,7 +261,7 @@ function ReminderRow({
           onToggleNotes={() => setNotesOpen((v) => !v)}
         />
       </SwipeableRow>
-      {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />}
+      {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
     </li>
   );
 }
@@ -275,6 +279,7 @@ function SortableReminderRow({
   comments,
   onAddComment,
   onDeleteComment,
+  onToggleCommentRelevance,
 }: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reminder.id,
@@ -330,7 +335,7 @@ function SortableReminderRow({
       </div>
       {notesOpen && (
         <div className="pl-7">
-          <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} />
+          <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />
         </div>
       )}
     </li>
@@ -361,7 +366,7 @@ export default function RemindersSection() {
   // borte. Se samme mønster i ShoppingListSection/JobbRemindersSection.
   const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<string>();
-  const { comments, addComment, removeComment, confirmDelete: confirmCommentDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
@@ -625,6 +630,7 @@ export default function RemindersSection() {
                       onDeleteComment={(commentId, preview) =>
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                     />
                   ))}
                 </ul>
@@ -651,6 +657,7 @@ export default function RemindersSection() {
                       onDeleteComment={(commentId, preview) =>
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                     />
                   ))}
                 </ul>
@@ -684,6 +691,7 @@ export default function RemindersSection() {
                       onDeleteComment={(commentId, preview) =>
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                     />
                   ))}
                 </ul>

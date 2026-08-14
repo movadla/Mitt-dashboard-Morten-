@@ -28,7 +28,6 @@ import {
   type Guarantee,
   type GuaranteeStatus,
   RECEIVABLES,
-  RECEIVABLES_TREND,
   type Receivable,
   type ReceivableInvoice,
   formatDateDMY,
@@ -36,9 +35,10 @@ import {
 } from "@/lib/widgets";
 import type { Comment } from "@/lib/comments";
 import type { ReceivableRiskLevel } from "@/lib/receivableRisk";
-import { sumOverdueDays } from "@/lib/receivablesAging";
+import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
-import { CalendarClock, CalendarDays, FileSignature, Receipt, ShieldCheck } from "lucide-react";
+import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
+import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck } from "lucide-react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
@@ -1553,11 +1553,13 @@ function ContractRow({
   comments,
   onAdd,
   onRequestDelete,
+  onToggleRelevance,
 }: {
   contract: Contract;
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onRequestDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   return (
@@ -1591,7 +1593,7 @@ function ContractRow({
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={9} className="px-2 py-2 pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
       )}
@@ -1603,7 +1605,7 @@ function ContractsCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter", true);
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? CONTRACTS : CONTRACTS.slice(0, 5);
-  const { comments, addComment, removeComment, confirmDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} !border-2 !border-rose-400 !bg-rose-400/8 p-4`}>
       <CardHeader
@@ -1639,6 +1641,7 @@ function ContractsCard() {
                     comments={comments[commentKey("contract", c.id)] ?? []}
                     onAdd={(tekst) => addComment("contract", c.id, tekst)}
                     onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "contract", targetId: c.id, commentId, preview })}
+                    onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("contract", c.id, commentId, ikkeRelevant)}
                   />
                 ))}
               </tbody>
@@ -1675,11 +1678,13 @@ function ExpiryTenantRow({
   comments,
   onAdd,
   onRequestDelete,
+  onToggleRelevance,
 }: {
   tenant: ExpiringTenant;
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onRequestDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -1731,7 +1736,7 @@ function ExpiryTenantRow({
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={7} className="px-2 py-2 pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
       )}
@@ -1770,7 +1775,7 @@ function ExpiryTenantRow({
 
 function ExpiryListCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste", true);
-  const { comments, addComment, removeComment, confirmDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} !border-2 !border-orange-400 !bg-orange-400/8 p-4`}>
       <CardHeader
@@ -1808,6 +1813,7 @@ function ExpiryListCard() {
                       onRequestDelete={(commentId, preview) =>
                         confirmDelete.request({ targetType: "expiry-tenant", targetId, commentId, preview })
                       }
+                      onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("expiry-tenant", targetId, commentId, ikkeRelevant)}
                     />
                   );
                 })}
@@ -1840,11 +1846,13 @@ function GuaranteeRow({
   comments,
   onAdd,
   onRequestDelete,
+  onToggleRelevance,
 }: {
   guarantee: Guarantee;
   comments: Comment[];
   onAdd: (tekst: string) => void;
   onRequestDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   return (
@@ -1865,7 +1873,7 @@ function GuaranteeRow({
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={5} className="px-3 py-2 pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
       )}
@@ -1875,7 +1883,7 @@ function GuaranteeRow({
 
 function GuaranteesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt", true);
-  const { comments, addComment, removeComment, confirmDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} !border-2 !border-teal-400 !bg-teal-400/8 p-4`}>
       <CardHeader
@@ -1906,6 +1914,7 @@ function GuaranteesCard() {
                   comments={comments[commentKey("guarantee", g.id)] ?? []}
                   onAdd={(tekst) => addComment("guarantee", g.id, tekst)}
                   onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
+                  onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("guarantee", g.id, commentId, ikkeRelevant)}
                 />
               ))}
             </tbody>
@@ -1923,64 +1932,6 @@ function GuaranteesCard() {
           confirmDelete.cancel();
         }}
       />
-    </div>
-  );
-}
-
-function WeeklyTrendChart({ data }: { data: number[] }) {
-  const [active, setActive] = useState(data.length - 1);
-  const width = 300;
-  const height = 84;
-  const gap = 4;
-  const barW = (width - gap * (data.length - 1)) / data.length;
-  const max = Math.max(...data);
-  const min = Math.min(...data) * 0.9;
-  const scale = (v: number) => ((v - min) / (max - min)) * (height - 4);
-
-  return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Kundefordringer per uke, siste 12 uker">
-        <line x1={0} y1={height} x2={width} y2={height} className="stroke-line" strokeWidth={1} />
-        {data.map((v, i) => {
-          const h = scale(v);
-          const x = i * (barW + gap);
-          const isActive = i === active;
-          return (
-            <g
-              key={i}
-              className="cursor-pointer"
-              onClick={() => setActive(i)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  setActive(i);
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              aria-label={`Uke ${i + 1}: ${formatKr(v)}`}
-            >
-              <rect x={x} y={0} width={barW} height={height} fill="transparent" />
-              <rect
-                x={x}
-                y={height - h}
-                width={barW}
-                height={h}
-                rx={2}
-                className="fill-accent"
-                opacity={isActive ? 1 : 0.45}
-              />
-            </g>
-          );
-        })}
-      </svg>
-      <div className="mt-1.5 flex items-center justify-between text-xs">
-        <span className="text-ink-3">12 uker siden</span>
-        <span className="font-medium tabular-nums text-ink-1">
-          Uke {active + 1}: {formatKr(data[active])}
-        </span>
-        <span className="text-ink-3">Denne uken</span>
-      </div>
     </div>
   );
 }
@@ -2012,6 +1963,7 @@ function ReceivableRow({
   onSetRisk,
   onAdd,
   onRequestDelete,
+  onToggleRelevance,
 }: {
   receivable: Receivable;
   today: string;
@@ -2020,12 +1972,17 @@ function ReceivableRow({
   onSetRisk: (risk: ReceivableRiskLevel) => void;
   onAdd: (tekst: string) => void;
   onRequestDelete: (commentId: string, preview: string) => void;
+  onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const multiCompany = r.selskaper.length > 1;
   const underInkasso = r.selskaper.some((s) => s.underInkasso);
-  const overdue91 = sumOverdueDays(r, today, 91);
+  const aging = computeAging(r, today);
+  const band6190 = aging.d61_90;
+  const overdue91 = aging.d91Plus;
+  const isOverride = risk !== null;
+  const effectiveRisk = risk ?? computeAutoRisk(r, today);
   const bygg = getMainBuilding(r.leietaker);
   return (
     <>
@@ -2045,24 +2002,22 @@ function ReceivableRow({
           {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
         </td>
         <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-4"}`}>
-          {r.utestaende60 > 0 ? formatKr(r.utestaende60) : "–"}
+        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
+          {band6190 > 0 ? formatKr(band6190) : "–"}
         </td>
         <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
           {overdue91 > 0 ? formatKr(overdue91) : "–"}
         </td>
         <td className="whitespace-nowrap px-1 py-1.5">
           <select
-            value={risk ?? ""}
+            value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
-            className={`w-full max-w-full rounded-lg border border-line bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${risk ? RISK_META[risk].textClass : "text-ink-4"}`}
+            title={isOverride ? "Manuelt satt" : "Automatisk satt basert på forfalt beløp"}
+            className={`w-full max-w-full rounded-lg border bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${RISK_META[effectiveRisk].textClass} ${isOverride ? "border-line" : "border-dashed border-line"}`}
           >
-            <option value="" disabled>
-              —
-            </option>
-            <option value="lav">Lav</option>
-            <option value="medium">Medium</option>
-            <option value="hoy">Høy</option>
+            <option value="lav">Lav{effectiveRisk === "lav" && !isOverride ? " (auto)" : ""}</option>
+            <option value="medium">Medium{effectiveRisk === "medium" && !isOverride ? " (auto)" : ""}</option>
+            <option value="hoy">Høy{effectiveRisk === "hoy" && !isOverride ? " (auto)" : ""}</option>
           </select>
         </td>
         <td className="whitespace-nowrap px-2 py-1.5">
@@ -2101,7 +2056,7 @@ function ReceivableRow({
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={7} className="px-3 py-2 pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
+            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
       )}
@@ -2109,17 +2064,168 @@ function ReceivableRow({
   );
 }
 
+interface ReceivablesHistoryPoint {
+  dato: string;
+  total: number;
+  forfalt: number;
+  forfalt91: number;
+}
+
+const RECEIVABLES_HISTORY_SERIES = [
+  { key: "total" as const, label: "Totalt utestående", stroke: "stroke-fuchsia-400", fill: "fill-fuchsia-400", dot: "bg-fuchsia-400" },
+  { key: "forfalt" as const, label: "Forfalt", stroke: "stroke-status-warning", fill: "fill-status-warning", dot: "bg-status-warning" },
+  { key: "forfalt91" as const, label: "91+ dager", stroke: "stroke-status-danger", fill: "fill-status-danger", dot: "bg-status-danger" },
+];
+
+function ReceivablesHistoryChart({ points }: { points: ReceivablesHistoryPoint[] }) {
+  const [active, setActive] = useState(points.length - 1);
+  const width = 300;
+  const height = 100;
+  const padX = 4;
+  const padY = 6;
+  const maxVal = Math.max(...points.flatMap((p) => [p.total, p.forfalt, p.forfalt91]), 1);
+  const stepX = points.length > 1 ? (width - padX * 2) / (points.length - 1) : 0;
+  const xAt = (i: number) => padX + i * stepX;
+  const yAt = (v: number) => padY + (1 - v / maxVal) * (height - padY * 2);
+  const pathFor = (key: "total" | "forfalt" | "forfalt91") =>
+    points.map((p, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(2)} ${yAt(p[key]).toFixed(2)}`).join(" ");
+  const activePoint = points[active];
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Kundefordringer over tid, per periode">
+        <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} className="stroke-line" strokeWidth={1} />
+        {RECEIVABLES_HISTORY_SERIES.map((s) => (
+          <path key={s.key} d={pathFor(s.key)} fill="none" className={s.stroke} strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+        {points.map((p, i) => (
+          <g
+            key={p.dato}
+            className="cursor-pointer"
+            onClick={() => setActive(i)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setActive(i);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label={`Periode ${formatDateDMY(p.dato)}`}
+          >
+            <rect x={xAt(i) - (stepX || width) / 2} y={0} width={stepX || width} height={height} fill="transparent" />
+            {RECEIVABLES_HISTORY_SERIES.map((s) => (
+              <circle key={s.key} cx={xAt(i)} cy={yAt(p[s.key])} r={i === active ? 3 : 1.75} className={s.fill} opacity={i === active ? 1 : 0.55} />
+            ))}
+          </g>
+        ))}
+      </svg>
+      <div className="mt-1 flex items-center justify-between text-2xs text-ink-4">
+        <span>{formatDateDMY(points[0].dato)}</span>
+        <span>{formatDateDMY(points[points.length - 1].dato)}</span>
+      </div>
+      <div className="mt-2 flex flex-col gap-1">
+        {RECEIVABLES_HISTORY_SERIES.map((s) => (
+          <div key={s.key} className="flex items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-1.5 text-ink-3">
+              <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+              {s.label}
+            </span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(activePoint[s.key])}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1.5 text-center text-2xs text-ink-4">Periode: {formatDateDMY(activePoint.dato)}</div>
+    </div>
+  );
+}
+
+interface ReceivableChange {
+  id: string;
+  leietaker: string;
+  prevUtestaende: number;
+  nyUtestaende: number;
+  delta: number;
+}
+
+function computeReceivableChanges(previous: ReceivableSnapshot, latest: ReceivableSnapshot): ReceivableChange[] {
+  const prevById = new Map(previous.rader.map((r) => [r.id, r]));
+  const changes: ReceivableChange[] = [];
+  for (const row of latest.rader) {
+    const prev = prevById.get(row.id);
+    if (!prev) continue;
+    const delta = Math.round((row.utestaende - prev.utestaende) * 100) / 100;
+    if (delta === 0) continue;
+    changes.push({ id: row.id, leietaker: row.leietaker, prevUtestaende: prev.utestaende, nyUtestaende: row.utestaende, delta });
+  }
+  return changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+function ReceivableChangeRow({ change }: { change: ReceivableChange }) {
+  const increased = change.delta > 0;
+  return (
+    <div className="flex items-center justify-between gap-2 border-t border-line py-1.5 text-xs first:border-t-0">
+      <span className="min-w-0 truncate text-ink-2">{change.leietaker}</span>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-2xs text-ink-4">
+          {formatKr(change.prevUtestaende)} → {formatKr(change.nyUtestaende)}
+        </span>
+        <span className={`w-24 shrink-0 text-right font-medium tabular-nums ${increased ? "text-status-danger" : "text-status-positive"}`}>
+          {formatKr(change.delta, true)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+type ReceivableSortKey = "leietaker" | "utestaende" | "overdue6190" | "overdue91" | "risiko";
+
+const RISK_ORDER: Record<ReceivableRiskLevel, number> = { lav: 1, medium: 2, hoy: 3 };
+
+function ReceivablesSortHeader({
+  label,
+  sortKey,
+  active,
+  dir,
+  onSort,
+  align = "left",
+  className = "",
+}: {
+  label: string;
+  sortKey: ReceivableSortKey;
+  active: boolean;
+  dir: "asc" | "desc";
+  onSort: (key: ReceivableSortKey) => void;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  return (
+    <th className={`px-2 py-1.5 text-2xs font-medium ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`flex items-center gap-0.5 hover:text-ink-1 ${align === "right" ? "ml-auto flex-row-reverse" : ""} ${active ? "text-ink-1" : ""}`}
+      >
+        {label}
+        {active ? dir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} /> : null}
+      </button>
+    </th>
+  );
+}
+
 function ReceivablesCard({ today }: { today: string }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
   const [risks, setRisks] = useState<Record<string, ReceivableRiskLevel>>({});
+  const [snapshots, setSnapshots] = useState<ReceivableSnapshot[]>([]);
   const [snapshotConfirmOpen, setSnapshotConfirmOpen] = useState(false);
   const [snapshotStatus, setSnapshotStatus] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: ReceivableSortKey; dir: "asc" | "desc" } | null>(null);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
-  const visible = showAll ? RECEIVABLES : RECEIVABLES.slice(0, 20);
-  const { comments, addComment, removeComment, confirmDelete } = useComments();
+  const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
 
   useEffect(() => {
     fetch("/api/receivables/risk")
@@ -2127,6 +2233,73 @@ function ReceivablesCard({ today }: { today: string }) {
       .then((d) => setRisks((d.risks ?? {}) as Record<string, ReceivableRiskLevel>))
       .catch(() => {});
   }, []);
+
+  function refreshSnapshots() {
+    fetch("/api/receivables/snapshot")
+      .then((r) => r.json())
+      .then((d) => setSnapshots((d.snapshots ?? []) as ReceivableSnapshot[]))
+      .catch(() => {});
+  }
+
+  useEffect(refreshSnapshots, []);
+
+  const agingById = useMemo(() => {
+    const map = new Map<string, { band6190: number; overdue91: number }>();
+    for (const r of RECEIVABLES) {
+      const aging = computeAging(r, today);
+      map.set(r.id, { band6190: aging.d61_90, overdue91: aging.d91Plus });
+    }
+    return map;
+  }, [today]);
+
+  const totals = useMemo(() => {
+    let band6190 = 0;
+    let overdue91 = 0;
+    for (const v of agingById.values()) {
+      band6190 += v.band6190;
+      overdue91 += v.overdue91;
+    }
+    return { band6190, overdue91 };
+  }, [agingById]);
+
+  const sorted = useMemo(() => {
+    if (!sort) return RECEIVABLES;
+    const copy = [...RECEIVABLES];
+    copy.sort((a, b) => {
+      let cmp: number;
+      switch (sort.key) {
+        case "leietaker":
+          cmp = a.leietaker.localeCompare(b.leietaker);
+          break;
+        case "utestaende":
+          cmp = a.utestaende - b.utestaende;
+          break;
+        case "overdue6190":
+          cmp = (agingById.get(a.id)?.band6190 ?? 0) - (agingById.get(b.id)?.band6190 ?? 0);
+          break;
+        case "overdue91":
+          cmp = (agingById.get(a.id)?.overdue91 ?? 0) - (agingById.get(b.id)?.overdue91 ?? 0);
+          break;
+        case "risiko": {
+          const av = RISK_ORDER[risks[a.id] ?? computeAutoRisk(a, today)];
+          const bv = RISK_ORDER[risks[b.id] ?? computeAutoRisk(b, today)];
+          cmp = av - bv;
+          break;
+        }
+      }
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }, [sort, risks, agingById, today]);
+
+  const visible = showAll ? sorted : sorted.slice(0, 20);
+
+  function handleSort(key: ReceivableSortKey) {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: key === "leietaker" ? "asc" : "desc" };
+      return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+    });
+  }
 
   async function handleSetRisk(id: string, risk: ReceivableRiskLevel) {
     setRisks((prev) => ({ ...prev, [id]: risk }));
@@ -2143,10 +2316,20 @@ function ReceivablesCard({ today }: { today: string }) {
       const res = await fetch("/api/receivables/snapshot", { method: "POST" });
       const data = await res.json();
       setSnapshotStatus(data.snapshot?.dato ? `Periode ${formatDateDMY(data.snapshot.dato)} lagret.` : "Kunne ikke lagre periode.");
+      refreshSnapshots();
     } catch {
       setSnapshotStatus("Kunne ikke lagre periode.");
     }
   }
+
+  const historyPoints: ReceivablesHistoryPoint[] = snapshots.map((s) => ({
+    dato: s.dato,
+    total: s.rader.reduce((sum, r) => sum + r.utestaende, 0),
+    forfalt: s.rader.reduce((sum, r) => sum + r.forfalt, 0),
+    forfalt91: s.rader.reduce((sum, r) => sum + r.forfalt91, 0),
+  }));
+
+  const changes = snapshots.length >= 2 ? computeReceivableChanges(snapshots[snapshots.length - 2], snapshots[snapshots.length - 1]) : [];
 
   return (
     <div className={`${CARD_SHELL} !border-2 !border-fuchsia-400 !bg-fuchsia-400/8 p-4`}>
@@ -2170,13 +2353,22 @@ function ReceivablesCard({ today }: { today: string }) {
             <table className="w-full min-w-[460px] table-fixed text-sm">
               <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
-                  <th className="w-[22%] px-2 py-1.5 text-2xs font-medium">Leietaker</th>
+                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[22%]" />
                   <th className="w-[16%] px-2 py-1.5 text-2xs font-medium">Selskap</th>
-                  <th className="w-[14%] px-2 py-1.5 text-2xs font-medium text-right">Utestående</th>
-                  <th className="w-[12%] px-2 py-1.5 text-2xs font-medium text-right">60+ dgr</th>
-                  <th className="w-[12%] px-2 py-1.5 text-2xs font-medium text-right">91+ dgr</th>
-                  <th className="w-[16%] px-1 py-1.5 text-2xs font-medium">Risiko</th>
+                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[14%] text-right" />
+                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
+                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
+                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[16%] px-1" />
                   <th className="w-[8%] px-2 py-1.5 text-2xs font-medium">Notat</th>
+                </tr>
+                <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
+                  <td className="px-2 py-1.5">Totalt</td>
+                  <td className="px-2 py-1.5"></td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">{formatKr(total)}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-status-warning">{formatKr(totals.band6190)}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-status-danger">{formatKr(totals.overdue91)}</td>
+                  <td className="px-1 py-1.5"></td>
+                  <td className="px-2 py-1.5"></td>
                 </tr>
               </thead>
               <tbody>
@@ -2190,6 +2382,7 @@ function ReceivablesCard({ today }: { today: string }) {
                     onSetRisk={(risk) => handleSetRisk(r.id, risk)}
                     onAdd={(tekst) => addComment("receivable", r.id, tekst)}
                     onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "receivable", targetId: r.id, commentId, preview })}
+                    onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("receivable", r.id, commentId, ikkeRelevant)}
                   />
                 ))}
               </tbody>
@@ -2203,13 +2396,24 @@ function ReceivablesCard({ today }: { today: string }) {
             >
               {showAll ? "Vis kun de 20 største" : `Vis alle (${RECEIVABLES.length})`}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowTrend((v) => !v)}
-              className="text-xs font-medium text-accent hover:text-accent/80"
-            >
-              {showTrend ? "Skjul utvikling" : "Vis utvikling siste 3 mnd"}
-            </button>
+            {historyPoints.length >= 2 && (
+              <button
+                type="button"
+                onClick={() => setShowTrend((v) => !v)}
+                className="text-xs font-medium text-accent hover:text-accent/80"
+              >
+                {showTrend ? "Skjul utvikling" : "Vis utvikling over tid"}
+              </button>
+            )}
+            {changes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowChanges((v) => !v)}
+                className="text-xs font-medium text-accent hover:text-accent/80"
+              >
+                {showChanges ? "Skjul endringer" : `Endringer siden forrige periode (${changes.length})`}
+              </button>
+            )}
             <a
               href="/api/receivables/export"
               className="text-xs font-medium text-accent hover:text-accent/80"
@@ -2225,9 +2429,21 @@ function ReceivablesCard({ today }: { today: string }) {
             </button>
             {snapshotStatus && <span className="text-xs text-ink-4">{snapshotStatus}</span>}
           </div>
-          {showTrend && (
+          {showTrend && historyPoints.length >= 2 && (
             <div className="mt-3 border-t border-line pt-3">
-              <WeeklyTrendChart data={RECEIVABLES_TREND} />
+              <ReceivablesHistoryChart points={historyPoints} />
+            </div>
+          )}
+          {showChanges && changes.length > 0 && (
+            <div className="mt-3 border-t border-line pt-3">
+              <div className="mb-1.5 text-2xs text-ink-4">
+                {formatDateDMY(snapshots[snapshots.length - 2].dato)} → {formatDateDMY(snapshots[snapshots.length - 1].dato)}, sortert etter størst endring
+              </div>
+              <div className="max-h-[320px] overflow-y-auto">
+                {changes.map((c) => (
+                  <ReceivableChangeRow key={c.id} change={c} />
+                ))}
+              </div>
             </div>
           )}
         </>

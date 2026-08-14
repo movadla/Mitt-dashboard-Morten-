@@ -1,4 +1,5 @@
 import type { Receivable } from "./widgets";
+import type { ReceivableRiskLevel } from "./receivableRisk";
 
 export interface ReceivableAging {
   ikkeForfalt: number;
@@ -34,14 +35,13 @@ export function computeAging(receivable: Receivable, asOfDateISO: string): Recei
   return agg;
 }
 
-// Enkel terskelsum (brukt for kortets "60+ dgr"/"91+ dgr"-kolonner) — samme
-// inkluder-alt-prinsipp som computeAging, bare uten faste 30-dagers bøtter.
-export function sumOverdueDays(receivable: Receivable, asOfDateISO: string, minDays: number): number {
-  let sum = 0;
-  for (const selskap of receivable.selskaper) {
-    for (const f of selskap.fakturaer) {
-      if (daysOverdue(f.forfallsdato, asOfDateISO) >= minDays) sum += f.belop;
-    }
-  }
-  return sum;
+// Standard-risiko når Morten ikke har satt en manuell overstyring (lib/receivableRisk.ts):
+// 91+ dager forfalt regnes som høy risiko, 61-90 dager som medium, ellers lav. Bevisst plassert
+// her (ikke i receivableRisk.ts) siden den filen importerer "server-only"/ioredis via lib/kv.ts —
+// denne funksjonen må også kunne importeres trygt inn i klientkomponenter (ReceivablesCard).
+export function computeAutoRisk(receivable: Receivable, asOfDateISO: string): ReceivableRiskLevel {
+  const aging = computeAging(receivable, asOfDateISO);
+  if (aging.d91Plus > 0) return "hoy";
+  if (aging.d61_90 > 0) return "medium";
+  return "lav";
 }

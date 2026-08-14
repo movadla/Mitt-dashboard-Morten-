@@ -7,7 +7,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // api/backup har sin egen autorisering (cookie ELLER CRON_SECRET) siden en
-  // planlagt jobb uten nettleser-cookie må kunne nå den — se app/api/backup/route.ts.
-  matcher: ["/((?!login|api/auth|api/backup|_next/static|_next/image|favicon.ico).*)"],
+  // api/backup og api/cron har sin egen autorisering (cookie ELLER CRON_SECRET)
+  // siden planlagte jobber uten nettleser-cookie må kunne nå dem — se
+  // app/api/backup/route.ts og app/api/cron/receivables-snapshot/route.ts.
+  matcher: ["/((?!login|api/auth|api/backup|api/cron|_next/static|_next/image|favicon.ico).*)"],
 };

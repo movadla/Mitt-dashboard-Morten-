@@ -49,5 +49,21 @@ export function useComments() {
     await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, { method: "DELETE" });
   }, []);
 
-  return { comments, loaded, addComment, removeComment, confirmDelete };
+  const toggleRelevance = useCallback(
+    async (targetType: CommentTargetType, targetId: string, commentId: string, ikkeRelevant: boolean) => {
+      const key = commentKey(targetType, targetId);
+      setComments((prev) => ({
+        ...prev,
+        [key]: (prev[key] ?? []).map((c) => (c.id === commentId ? { ...c, ikkeRelevant } : c)),
+      }));
+      await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ikkeRelevant }),
+      });
+    },
+    [],
+  );
+
+  return { comments, loaded, addComment, removeComment, toggleRelevance, confirmDelete };
 }

@@ -1,8 +1,10 @@
 import { hdel, hgetallJSON, hsetJSON } from "./kv";
 
-// Manuelt satt av Morten selv — ingen kobling til NXT-data. Nøkkelen er Receivable.id
-// (r1, r2, ...), som er posisjonsbasert og kan skifte leietaker ved neste NXT-oppdatering
-// (samme kjente begrensning som allerede gjelder kommentarer på kundefordringer).
+// Hash-nøkkelen inneholder KUN manuelle overstyringer av risiko, satt av Morten selv i
+// dropdownen. Er en leietaker ikke i denne hashen, brukes computeAutoRisk() (lib/receivablesAging.ts)
+// som effektiv verdi i UI. Nøkkelen er Receivable.id (r1, r2, ...), som er posisjonsbasert og kan
+// skifte leietaker ved neste NXT-oppdatering (samme kjente begrensning som allerede gjelder
+// kommentarer på kundefordringer).
 export type ReceivableRiskLevel = "lav" | "medium" | "hoy";
 
 const HASH_KEY = "jobb:kundefordringer-risiko";

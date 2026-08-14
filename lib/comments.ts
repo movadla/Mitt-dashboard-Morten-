@@ -14,6 +14,7 @@ export interface Comment {
   id: string;
   tekst: string;
   opprettet: string; // ISO datetime
+  ikkeRelevant?: boolean;
 }
 
 const HASH_KEY = "jobb:kommentarer";
@@ -51,4 +52,15 @@ export async function deleteComment(targetType: CommentTargetType, targetId: str
   } else {
     await hsetJSON(HASH_KEY, fieldKey(targetType, targetId), next);
   }
+}
+
+export async function setCommentRelevance(
+  targetType: CommentTargetType,
+  targetId: string,
+  commentId: string,
+  ikkeRelevant: boolean,
+): Promise<void> {
+  const existing = await getComments(targetType, targetId);
+  const next = existing.map((c) => (c.id === commentId ? { ...c, ikkeRelevant } : c));
+  await hsetJSON(HASH_KEY, fieldKey(targetType, targetId), next);
 }
