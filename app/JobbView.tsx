@@ -1406,11 +1406,11 @@ function calendarDateBadge(dato: string, today: string): string {
 
 function CalendarCard({ today }: { today: string }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kalender", true);
-  const [showAll, setShowAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(6);
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, addNote, removeNote] = useCalendarNotes();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const visible = showAll ? CALENDAR_EVENTS : CALENDAR_EVENTS.slice(0, 6);
+  const visible = CALENDAR_EVENTS.slice(0, visibleCount);
   return (
     <div className={`${CARD_SHELL} !border-2 !border-indigo-400 !bg-indigo-400/8 p-4`}>
       <CardHeader
@@ -1532,13 +1532,13 @@ function CalendarCard({ today }: { today: string }) {
                 </tbody>
               </table>
             </div>
-            {CALENDAR_EVENTS.length > 6 && (
+            {CALENDAR_EVENTS.length > visibleCount && (
               <button
                 type="button"
-                onClick={() => setShowAll((v) => !v)}
+                onClick={() => setVisibleCount((v) => v + 10)}
                 className="mt-3 text-xs font-medium text-accent hover:text-accent/80"
               >
-                {showAll ? "Vis færre" : `Mer (${CALENDAR_EVENTS.length - 6})`}
+                {`Mer (${CALENDAR_EVENTS.length - visibleCount})`}
               </button>
             )}
           </>
