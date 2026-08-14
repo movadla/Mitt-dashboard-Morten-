@@ -30,10 +30,12 @@ import {
   RECEIVABLES,
   RECEIVABLES_TREND,
   type Receivable,
+  type ReceivableInvoice,
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
 import type { Comment } from "@/lib/comments";
+import type { ReceivableRiskLevel } from "@/lib/receivableRisk";
 import { CalendarClock, CalendarDays, FileSignature, Receipt, ShieldCheck } from "lucide-react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
@@ -1981,69 +1983,114 @@ function WeeklyTrendChart({ data }: { data: number[] }) {
   );
 }
 
+const RISK_META: Record<ReceivableRiskLevel, { label: string; textClass: string }> = {
+  lav: { label: "Lav", textClass: "text-status-positive" },
+  medium: { label: "Medium", textClass: "text-status-warning" },
+  hoy: { label: "Høy", textClass: "text-status-danger" },
+};
+
+function ReceivableInvoiceRow({ invoice: f }: { invoice: ReceivableInvoice }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 py-0.5 text-2xs">
+      <span className="min-w-0 truncate text-ink-3">
+        {f.fakturaNr ? `Fakt. ${f.fakturaNr}` : "Direkte postering"}
+        {f.underInkasso ? " · inkasso" : ""}
+      </span>
+      <span className="tabular-nums text-ink-2">{formatKr(f.belop)}</span>
+      <span className="w-16 shrink-0 text-right tabular-nums text-ink-4">{formatDateDMY(f.forfallsdato)}</span>
+    </div>
+  );
+}
+
 function ReceivableRow({
   receivable: r,
   comments,
+  risk,
+  onSetRisk,
   onAdd,
   onRequestDelete,
 }: {
   receivable: Receivable;
   comments: Comment[];
+  risk: ReceivableRiskLevel | null;
+  onSetRisk: (risk: ReceivableRiskLevel) => void;
   onAdd: (tekst: string) => void;
   onRequestDelete: (commentId: string, preview: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
-  const [companiesOpen, setCompaniesOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const multiCompany = r.selskaper.length > 1;
   const underInkasso = r.selskaper.some((s) => s.underInkasso);
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="px-3 py-2 text-ink-2">{r.leietaker}</td>
-        <td className="whitespace-nowrap px-3 py-2 text-ink-3">
-          {multiCompany ? (
-            <button
-              type="button"
-              onClick={() => setCompaniesOpen((v) => !v)}
-              aria-expanded={companiesOpen}
-              className="underline decoration-dotted underline-offset-2 hover:text-ink-1"
-            >
-              {r.selskaper.length} selskaper
-            </button>
-          ) : (
-            r.selskaper[0]?.selskap ?? "—"
-          )}
+        <td className="max-w-0 px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((v) => !v)}
+            aria-expanded={detailsOpen}
+            className="flex w-full items-center gap-1.5 text-left text-ink-2 hover:text-ink-1"
+          >
+            {underInkasso && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" title="Under inkasso" />}
+            <span className="min-w-0 truncate">{r.leietaker}</span>
+          </button>
         </td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className="whitespace-nowrap px-3 py-2">
-          {underInkasso && (
-            <span className="rounded-full bg-status-danger/12 px-2 py-0.5 text-2xs font-medium text-status-danger">Inkasso</span>
-          )}
+        <td className="max-w-0 truncate px-2 py-1.5 text-2xs text-ink-3">
+          {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
         </td>
-        <td className="whitespace-nowrap px-3 py-2">
+        <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
+        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-4"}`}>
+          {r.utestaende60 > 0 ? formatKr(r.utestaende60) : "–"}
+        </td>
+        <td className="whitespace-nowrap px-1 py-1.5">
+          <select
+            value={risk ?? ""}
+            onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
+            className={`w-full max-w-full rounded-lg border border-line bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${risk ? RISK_META[risk].textClass : "text-ink-4"}`}
+          >
+            <option value="" disabled>
+              —
+            </option>
+            <option value="lav">Lav</option>
+            <option value="medium">Medium</option>
+            <option value="hoy">Høy</option>
+          </select>
+        </td>
+        <td className="whitespace-nowrap px-2 py-1.5">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
-      {companiesOpen && (
+      {detailsOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={5} className="px-3 py-2 pl-9">
-            <ul className="flex flex-col gap-1">
+          <td colSpan={6} className="px-3 py-2 pl-9">
+            <div className="flex flex-col gap-2.5">
               {r.selskaper.map((s, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 text-xs text-ink-3">
-                  <span className="min-w-0 truncate">
-                    {s.selskap}
-                    {s.underInkasso ? " · under inkasso" : ""}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-ink-2">{formatKr(s.belop)}</span>
-                </li>
+                <div key={i}>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="min-w-0 truncate font-medium text-ink-2">
+                      {s.selskap}
+                      {s.underInkasso && (
+                        <span className="ml-1.5 rounded-full bg-status-danger/12 px-1.5 py-0.5 text-2xs font-medium text-status-danger">
+                          Inkasso
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-ink-2">{formatKr(s.belop)}</span>
+                  </div>
+                  <div className="mt-1 border-l border-line pl-2">
+                    {s.fakturaer.map((f, j) => (
+                      <ReceivableInvoiceRow key={j} invoice={f} />
+                    ))}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </td>
         </tr>
       )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={5} className="px-3 py-2 pl-9">
+          <td colSpan={6} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
           </td>
         </tr>
@@ -2056,10 +2103,28 @@ function ReceivablesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
+  const [risks, setRisks] = useState<Record<string, ReceivableRiskLevel>>({});
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
   const visible = showAll ? RECEIVABLES : RECEIVABLES.slice(0, 20);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
+
+  useEffect(() => {
+    fetch("/api/receivables/risk")
+      .then((r) => r.json())
+      .then((d) => setRisks((d.risks ?? {}) as Record<string, ReceivableRiskLevel>))
+      .catch(() => {});
+  }, []);
+
+  async function handleSetRisk(id: string, risk: ReceivableRiskLevel) {
+    setRisks((prev) => ({ ...prev, [id]: risk }));
+    await fetch("/api/receivables/risk", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, risk }),
+    });
+  }
+
   return (
     <div className={`${CARD_SHELL} !border-2 !border-fuchsia-400 !bg-fuchsia-400/8 p-4`}>
       <CardHeader
@@ -2079,14 +2144,15 @@ function ReceivablesCard() {
       {!collapsed && (
         <>
           <div className={`-mx-1 overflow-x-auto ${showAll ? "max-h-[480px] overflow-y-auto" : ""}`}>
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[460px] table-fixed text-sm">
               <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
-                  <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Selskap</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Utestående</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Status</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
+                  <th className="w-[27%] px-2 py-1.5 text-2xs font-medium">Leietaker</th>
+                  <th className="w-[20%] px-2 py-1.5 text-2xs font-medium">Selskap</th>
+                  <th className="w-[16%] px-2 py-1.5 text-2xs font-medium text-right">Utestående</th>
+                  <th className="w-[15%] px-2 py-1.5 text-2xs font-medium text-right">60+ dgr</th>
+                  <th className="w-[14%] px-1 py-1.5 text-2xs font-medium">Risiko</th>
+                  <th className="w-[8%] px-2 py-1.5 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
               <tbody>
@@ -2095,6 +2161,8 @@ function ReceivablesCard() {
                     key={r.id}
                     receivable={r}
                     comments={comments[commentKey("receivable", r.id)] ?? []}
+                    risk={risks[r.id] ?? null}
+                    onSetRisk={(risk) => handleSetRisk(r.id, risk)}
                     onAdd={(tekst) => addComment("receivable", r.id, tekst)}
                     onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "receivable", targetId: r.id, commentId, preview })}
                   />
