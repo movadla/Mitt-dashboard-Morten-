@@ -1601,16 +1601,42 @@ function ContractRow({
   );
 }
 
-function ContractsCard() {
+// Cutoff for "siden årsstart": de tre første månedene av et nytt år faller tilbake til
+// forrige årsstart i stedet (unngår en nesten tom "siden 2027"-visning i januar-mars —
+// utvider først til inneværende års 1. januar fra og med april).
+function yearStartCutoff(todayISO: string): string {
+  const [yearStr, monthStr] = todayISO.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const effectiveYear = month <= 3 ? year - 1 : year;
+  return `${effectiveYear}-01-01`;
+}
+
+function oneMonthBack(todayISO: string): string {
+  const d = new Date(todayISO);
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function ContractsCard({ today }: { today: string }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter", true);
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? CONTRACTS : CONTRACTS.slice(0, 5);
+  const [expanded, setExpanded] = useState(false);
+  const lastMonthCutoff = oneMonthBack(today);
+  const yearCutoff = yearStartCutoff(today);
+  const sinceLastMonth = CONTRACTS.filter((c) => c.signeringsdato >= lastMonthCutoff);
+  const sinceYearStart = CONTRACTS.filter((c) => c.signeringsdato >= yearCutoff);
+  const visible = expanded ? sinceYearStart : sinceLastMonth;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} !border-2 !border-rose-400 !bg-rose-400/8 p-4`}>
       <CardHeader
         title="Nye kontrakter"
-        subtitle={<><span className="font-medium tabular-nums text-ink-2">{CONTRACTS.length}</span> signert siste 30 dager</>}
+        subtitle={
+          <>
+            <span className="font-medium tabular-nums text-ink-2">{visible.length}</span>{" "}
+            {expanded ? `signert siden ${yearCutoff.slice(0, 4)}` : "signert siste måned"}
+          </>
+        }
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={FileSignature}
@@ -1618,9 +1644,9 @@ function ContractsCard() {
       />
       {!collapsed && (
         <>
-          <div className="-mx-1 overflow-x-auto">
+          <div className={`-mx-1 overflow-x-auto ${expanded ? "max-h-[480px] overflow-y-auto" : ""}`}>
             <table className="w-full min-w-[620px] text-sm">
-              <thead>
+              <thead className={expanded ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
                   <th className="px-2 py-2 text-2xs font-medium">Kunde</th>
                   <th className="px-2 py-2 text-2xs font-medium text-right">Signert</th>
@@ -1647,13 +1673,13 @@ function ContractsCard() {
               </tbody>
             </table>
           </div>
-          {CONTRACTS.length > 5 && (
+          {sinceYearStart.length > sinceLastMonth.length && (
             <button
               type="button"
-              onClick={() => setShowAll((v) => !v)}
+              onClick={() => setExpanded((v) => !v)}
               className="mt-3 text-xs font-medium text-accent hover:text-accent/80"
             >
-              {showAll ? "Vis færre" : `Mer (${CONTRACTS.length - 5})`}
+              {expanded ? "Vis kun siste måned" : `Vis alle siden ${yearCutoff.slice(0, 4)} (${sinceYearStart.length - sinceLastMonth.length} flere)`}
             </button>
           )}
         </>
@@ -2810,7 +2836,7 @@ export default function JobbView({
       </p>
       <div className="mb-6 flex flex-col gap-3">
         <CalendarCard today={today} />
-        <ContractsCard />
+        <ContractsCard today={today} />
         <ExpiryListCard />
         <GuaranteesCard />
         <ReceivablesCard today={today} />

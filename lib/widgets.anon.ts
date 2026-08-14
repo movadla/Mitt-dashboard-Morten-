@@ -1,4 +1,5 @@
 import { buildIncomeForecastContext } from "./incomeForecast";
+import { localDateString } from "./payday";
 
 export function formatKr(n: number, signed = false): string {
   const sign = signed && n > 0 ? "+" : "";
@@ -132,8 +133,11 @@ export const CALENDAR_EVENTS: { id: string; dato: string; start: string; slutt: 
 /**
  * MIDLERTIDIG ANONYMISERT (se AGENTS.md-historikk/commit-melding for dato) — kundenavn er
  * byttet ut med "Demokunde N" på Mortens forespørsel før dashboardet skulle vises frem.
- * Beløp/datoer/bygg er ekte (fra Fazile, hentet 2026-08-10). Ekte kundenavn og SF-lenker
- * finnes i git-historikken før denne endringen — spør Morten før du bytter tilbake.
+ * Beløp/datoer/bygg er ekte (fra Fazile, hentet 2026-08-14 — se widgets.local.ts for full
+ * metodikk-forklaring, inkl. 60-dagers signeringsdato-heuristikken). Ekte kundenavn og
+ * SF-lenker finnes i lib/widgets.local.ts (gitignored) — spør Morten før du bytter tilbake.
+ * Nummer gjenbrukt fra RECEIVABLES der samme leietaker opptrer der; nye leietakere denne
+ * runden er nummerert 220–277.
  */
 export interface Contract {
   id: string;
@@ -151,11 +155,145 @@ export interface Contract {
 // anonymisert her men ekte i widgets.local.ts og må gi SAMME id i begge filer for at
 // kommentarer (lib/comments.ts) skal treffe riktig rad uansett hvilken variant som kjører.
 export const CONTRACTS: Contract[] = [
-  { id: "c1", kunde: "Demokunde 1", signeringsdato: "2026-08-08", startdato: "2026-09-01", arsbelop: 186800, bygg: "Lilleakerveien 31", kvm: 135.6, leietype: "Lagerleie", sfUrl: null },
-  { id: "c2", kunde: "Demokunde 2 AS", signeringsdato: "2026-08-07", startdato: "2026-05-18", arsbelop: 67400, bygg: "Strandveien 4-8", kvm: 63, leietype: "Lagerleie", sfUrl: null },
-  { id: "c3", kunde: "Demokunde 3 AS", signeringsdato: "2026-08-03", startdato: "2026-08-01", arsbelop: 34800, bygg: "Lilleakerveien 2E", kvm: 12.9, leietype: "Husleie", sfUrl: null },
-  { id: "c4", kunde: "Demokunde 4 AS", signeringsdato: "2026-07-24", startdato: "2026-07-15", arsbelop: 60000, bygg: "Lilleakerveien 4CDEF", kvm: 0, leietype: "Parkering", sfUrl: null },
-  { id: "c5", kunde: "Demokunde 5 AS", signeringsdato: "2026-07-09", startdato: "2026-07-01", arsbelop: 33127, bygg: "Lilleakerveien 10", kvm: 11.3, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c1", kunde: "Demokunde 29", signeringsdato: "2026-08-11", startdato: "2026-08-12", arsbelop: 30000, bygg: "Lilleakerveien 8", kvm: 12, leietype: "Parkering", sfUrl: null },
+  { id: "c2", kunde: "Demokunde 1", signeringsdato: "2026-08-08", startdato: "2026-09-01", arsbelop: 186800, bygg: "Lilleakerveien 31", kvm: 135.6, leietype: "Lagerleie", sfUrl: null },
+  { id: "c3", kunde: "Demokunde 169", signeringsdato: "2026-08-03", startdato: "2026-08-01", arsbelop: 34800, bygg: "Lilleakerveien 2E", kvm: 12.9, leietype: "Husleie", sfUrl: null },
+  { id: "c4", kunde: "Demokunde 209", signeringsdato: "2026-07-24", startdato: "2026-07-15", arsbelop: 60000, bygg: "Lilleakerveien 4CDEF", kvm: 24.6, leietype: "Parkering", sfUrl: null },
+  { id: "c5", kunde: "Demokunde 198", signeringsdato: "2026-07-09", startdato: "2026-07-01", arsbelop: 33127.19, bygg: "Lilleakerveien 10", kvm: 11.3, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c6", kunde: "Demokunde 175", signeringsdato: "2026-07-09", startdato: "2026-07-01", arsbelop: 61988.73, bygg: "Lilleakerveien 10", kvm: 24, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c7", kunde: "Demokunde 220 AS", signeringsdato: "2026-07-07", startdato: "2026-09-01", arsbelop: 952271.04, bygg: "Lilleakerveien 16 mm", kvm: 85.8, leietype: "Minimumsleie/Minimumsleie år 1+2/Leie", sfUrl: null },
+  { id: "c8", kunde: "Demokunde 221 AS", signeringsdato: "2026-07-07", startdato: "2026-09-04", arsbelop: 2028695, bygg: "Vollsveien 13-19", kvm: 754.8, leietype: "Kontorleie", sfUrl: null },
+  { id: "c9", kunde: "Demokunde 175", signeringsdato: "2026-07-01", startdato: "2026-07-01", arsbelop: 2991001.77, bygg: "Lilleakerveien 10", kvm: 882.3, leietype: "Husleie/Garasje/El-bil", sfUrl: null },
+  { id: "c10", kunde: "Demokunde 198", signeringsdato: "2026-07-01", startdato: "2026-07-01", arsbelop: 830224.56, bygg: "Lilleakerveien 8", kvm: 286.9, leietype: "Husleie/Garasje/El-bil", sfUrl: null },
+  { id: "c11", kunde: "Demokunde 150", signeringsdato: "2026-06-30", startdato: "2026-07-01", arsbelop: 72000, bygg: "Vollsveien 21", kvm: 32.6, leietype: "Lagerleie", sfUrl: null },
+  { id: "c12", kunde: "Demokunde 222 AS", signeringsdato: "2026-06-30", startdato: "2026-06-23", arsbelop: 92800, bygg: "Lilleakerveien 2CD", kvm: 24, leietype: "Kontor", sfUrl: null },
+  { id: "c13", kunde: "Demokunde 223 AS", signeringsdato: "2026-06-24", startdato: "2026-06-01", arsbelop: 480000, bygg: "Lilleakerveien 2E", kvm: 225.7, leietype: "Husleie", sfUrl: null },
+  { id: "c14", kunde: "Demokunde 224 AS", signeringsdato: "2026-06-21", startdato: "2026-07-01", arsbelop: 90000, bygg: "Lilleakerveien 2 Garasje", kvm: 33.4, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c15", kunde: "Demokunde 224 AS", signeringsdato: "2026-06-21", startdato: "2026-07-01", arsbelop: 614250, bygg: "Lilleakerveien 2AB", kvm: 90.1, leietype: "Kontorleie", sfUrl: null },
+  { id: "c16", kunde: "Demokunde 225 AS", signeringsdato: "2026-06-21", startdato: "2026-05-15", arsbelop: 46800, bygg: "Lilleakerveien 2E", kvm: 50.8, leietype: "Lagerleie", sfUrl: null },
+  { id: "c17", kunde: "Demokunde 29", signeringsdato: "2026-06-19", startdato: "2026-06-15", arsbelop: 30000, bygg: "Lilleakerveien 8", kvm: 12, leietype: "Parkering", sfUrl: null },
+  { id: "c18", kunde: "Demokunde 44", signeringsdato: "2026-06-19", startdato: "2026-06-15", arsbelop: 30826.53, bygg: "Lilleakerveien 4CDEF", kvm: 12.3, leietype: "Parkering", sfUrl: null },
+  { id: "c19", kunde: "Demokunde 226 AS", signeringsdato: "2026-06-19", startdato: "2026-06-15", arsbelop: 30000, bygg: "Lilleakerveien 16 mm", kvm: 13.8, leietype: "Parkering", sfUrl: null },
+  { id: "c20", kunde: "Demokunde 7", signeringsdato: "2026-06-18", startdato: "2026-08-01", arsbelop: 144000, bygg: "Lilleakerveien 19", kvm: 1.8, leietype: "Husleie", sfUrl: null },
+  { id: "c21", kunde: "Demokunde 29", signeringsdato: "2026-06-18", startdato: "2026-06-12", arsbelop: 525000, bygg: "Lilleakerveien 8", kvm: 150, leietype: "Kontorleie", sfUrl: null },
+  { id: "c22", kunde: "Demokunde 20", signeringsdato: "2026-06-12", startdato: "2026-07-01", arsbelop: 171587.88, bygg: "Gamle Drammensvei 10", kvm: 0, leietype: "Husleie", sfUrl: null },
+  { id: "c23", kunde: "Demokunde 112", signeringsdato: "2026-06-12", startdato: "2026-08-01", arsbelop: 40800, bygg: "Lilleakerveien 31", kvm: 29.5, leietype: "Parkering", sfUrl: null },
+  { id: "c24", kunde: "Demokunde 227 AS", signeringsdato: "2026-06-10", startdato: "2026-07-01", arsbelop: 26037.55, bygg: "Lilleakerveien 6", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c25", kunde: "Demokunde 228 AS", signeringsdato: "2026-06-10", startdato: "2026-07-01", arsbelop: 10500, bygg: "Lilleakerveien 2 Garasje", kvm: 11.3, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c26", kunde: "Demokunde 229 AS", signeringsdato: "2026-06-05", startdato: "2026-06-01", arsbelop: 60000, bygg: "Lilleakerveien 2 Garasje", kvm: 24, leietype: "Parkering", sfUrl: null },
+  { id: "c27", kunde: "Demokunde 230 AS", signeringsdato: "2026-06-05", startdato: "2026-06-01", arsbelop: 60000, bygg: "Lilleakerveien 10", kvm: 24.4, leietype: "Parkering", sfUrl: null },
+  { id: "c28", kunde: "Demokunde 174", signeringsdato: "2026-06-05", startdato: "2026-06-02", arsbelop: 27500, bygg: "Lilleakerveien 8", kvm: 11.7, leietype: "Parkering", sfUrl: null },
+  { id: "c29", kunde: "Demokunde 141", signeringsdato: "2026-06-05", startdato: "2026-06-01", arsbelop: 27500, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c30", kunde: "Demokunde 231 AS", signeringsdato: "2026-06-01", startdato: "2026-06-01", arsbelop: 27500, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c31", kunde: "Demokunde 176", signeringsdato: "2026-06-01", startdato: "2026-07-16", arsbelop: 81198.32, bygg: "Lilleakerveien 2 Garasje", kvm: 42.1, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c32", kunde: "Demokunde 176", signeringsdato: "2026-05-29", startdato: "2026-07-16", arsbelop: 969224.43, bygg: "Lilleakerveien 2AB", kvm: 241.3, leietype: "Husleie", sfUrl: null },
+  { id: "c33", kunde: "Demokunde 147", signeringsdato: "2026-05-29", startdato: "2026-07-01", arsbelop: 175800, bygg: "Lilleakerveien 26", kvm: 36.8, leietype: "Husleie", sfUrl: null },
+  { id: "c34", kunde: "Demokunde 136", signeringsdato: "2026-05-29", startdato: "2026-06-01", arsbelop: 204000, bygg: "Lilleakerveien 26", kvm: 0, leietype: "Husleie", sfUrl: null },
+  { id: "c35", kunde: "Demokunde 232 AS", signeringsdato: "2026-05-26", startdato: "2026-05-25", arsbelop: 27500, bygg: "Strandveien 10", kvm: 32.4, leietype: "Parkering", sfUrl: null },
+  { id: "c36", kunde: "Demokunde 50", signeringsdato: "2026-05-19", startdato: "2026-06-01", arsbelop: 15158.5, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c37", kunde: "Demokunde 233 AS", signeringsdato: "2026-05-19", startdato: "2026-06-01", arsbelop: 19477.92, bygg: "Vollsveien 21", kvm: 0, leietype: "Parkering", sfUrl: null },
+  { id: "c38", kunde: "Demokunde 155", signeringsdato: "2026-05-13", startdato: "2026-04-27", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c39", kunde: "Demokunde 112", signeringsdato: "2026-05-12", startdato: "2026-06-01", arsbelop: 183225, bygg: "Lilleakerveien 31", kvm: 94, leietype: "Kontorleie", sfUrl: null },
+  { id: "c40", kunde: "Demokunde 146", signeringsdato: "2026-05-12", startdato: "2026-06-01", arsbelop: 180000, bygg: "Lilleakerveien 19", kvm: 54.2, leietype: "Husleie", sfUrl: null },
+  { id: "c41", kunde: "Demokunde 234 AS", signeringsdato: "2026-05-12", startdato: "2026-05-11", arsbelop: 25000, bygg: "Vollsveien 13-19", kvm: 12.5, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c42", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 498167, bygg: "Lilleakerveien 2 Garasje", kvm: 233, leietype: "Rent Parking vat free flow", sfUrl: null },
+  { id: "c43", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 116689, bygg: "Vollsveien 13-19", kvm: 62, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c44", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 216773, bygg: "Vollsveien 13-19", kvm: 150.1, leietype: "Rent Parking vat free flow", sfUrl: null },
+  { id: "c45", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 246659, bygg: "Vollsveien 13D", kvm: 163.8, leietype: "Rent Parking vat free flow", sfUrl: null },
+  { id: "c46", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 5495, bygg: "Lilleakerveien 2AB", kvm: 4.4, leietype: "Rent Storage vat", sfUrl: null },
+  { id: "c47", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 2382092, bygg: "Lilleakerveien 2AB", kvm: 640.5, leietype: "Rent Office vat 856 m²", sfUrl: null },
+  { id: "c48", kunde: "Demokunde 235 AS", signeringsdato: "2026-05-08", startdato: "2026-06-01", arsbelop: 1555596, bygg: "Lilleakerveien 2AB", kvm: 397.1, leietype: "Rent Office vat 559 m²", sfUrl: null },
+  { id: "c49", kunde: "Demokunde 236 AS", signeringsdato: "2026-05-08", startdato: "2026-05-15", arsbelop: 235080, bygg: "Lilleakerveien 2E", kvm: 109.4, leietype: "Kontorleie", sfUrl: null },
+  { id: "c50", kunde: "Demokunde 234 AS", signeringsdato: "2026-05-08", startdato: "2026-05-01", arsbelop: 172500, bygg: "Vollsveien 13-19", kvm: 57.4, leietype: "Kontorleie", sfUrl: null },
+  { id: "c51", kunde: "Demokunde 135", signeringsdato: "2026-05-06", startdato: "2026-05-01", arsbelop: 204000, bygg: "Lilleakerveien 26", kvm: 0, leietype: "Husleie", sfUrl: null },
+  { id: "c52", kunde: "Demokunde 229 AS", signeringsdato: "2026-05-06", startdato: "2026-06-01", arsbelop: 552600, bygg: "Lilleakerveien 2E", kvm: 256.6, leietype: "Kontorleie", sfUrl: null },
+  { id: "c53", kunde: "Demokunde 230 AS", signeringsdato: "2026-05-06", startdato: "2026-06-01", arsbelop: 120000, bygg: "Lilleakerveien 4A", kvm: 22.4, leietype: "Kontorleie", sfUrl: null },
+  { id: "c54", kunde: "Demokunde 143", signeringsdato: "2026-05-06", startdato: "2026-04-10", arsbelop: 204000, bygg: "Lilleakerveien 26", kvm: 0, leietype: "Husleie", sfUrl: null },
+  { id: "c55", kunde: "Demokunde 226 AS", signeringsdato: "2026-05-04", startdato: "2026-05-11", arsbelop: 87960, bygg: "Lilleakerveien 16 mm", kvm: 10.1, leietype: "Husleie", sfUrl: null },
+  { id: "c56", kunde: "Demokunde 233 AS", signeringsdato: "2026-04-23", startdato: "2026-06-01", arsbelop: 762508.49, bygg: "Vollsveien 13-19", kvm: 325.4, leietype: "Husleie/Garasje/El-bil", sfUrl: null },
+  { id: "c57", kunde: "Demokunde 237", signeringsdato: "2026-04-17", startdato: "2026-04-13", arsbelop: 20000, bygg: "Lilleakerveien 2E", kvm: 12.4, leietype: "Husleie", sfUrl: null },
+  { id: "c58", kunde: "Demokunde 148", signeringsdato: "2026-04-17", startdato: "2026-04-15", arsbelop: 30000, bygg: "Lilleakerveien 2E", kvm: 9.1, leietype: "Husleie", sfUrl: null },
+  { id: "c59", kunde: "Demokunde 238 AS", signeringsdato: "2026-04-13", startdato: "2026-05-01", arsbelop: 79194.09, bygg: "Lilleakerveien 2CD", kvm: 11.3, leietype: "Kontorleie", sfUrl: null },
+  { id: "c60", kunde: "Demokunde 202", signeringsdato: "2026-04-13", startdato: "2026-04-13", arsbelop: 283650, bygg: "Lilleakerveien 10", kvm: 144.5, leietype: "Garasje/El-bil/Lagerleie", sfUrl: null },
+  { id: "c61", kunde: "Demokunde 239 AS", signeringsdato: "2026-04-13", startdato: "2026-04-01", arsbelop: 102750, bygg: "Lilleakerveien 31", kvm: 74.5, leietype: "Lagerleie", sfUrl: null },
+  { id: "c62", kunde: "Demokunde 210", signeringsdato: "2026-04-13", startdato: "2026-03-01", arsbelop: 7950, bygg: "Lilleakerveien 4A", kvm: 3.6, leietype: "Lagerleie", sfUrl: null },
+  { id: "c63", kunde: "Demokunde 240 AS", signeringsdato: "2026-04-13", startdato: "2026-03-01", arsbelop: 28142.03, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Parkering", sfUrl: null },
+  { id: "c64", kunde: "Demokunde 240 AS", signeringsdato: "2026-04-13", startdato: "2026-03-01", arsbelop: 79194.09, bygg: "Lilleakerveien 2CD", kvm: 11.3, leietype: "Husleie", sfUrl: null },
+  { id: "c65", kunde: "Demokunde 241 A/S", signeringsdato: "2026-04-07", startdato: "2026-04-01", arsbelop: 237500, bygg: "Vollsveien 13-19", kvm: 423.2, leietype: "Husleie", sfUrl: null },
+  { id: "c66", kunde: "Demokunde 227 AS", signeringsdato: "2026-04-07", startdato: "2026-04-01", arsbelop: 189812.15, bygg: "Lilleakerveien 16 mm", kvm: 153.4, leietype: "Minimumsleie", sfUrl: null },
+  { id: "c67", kunde: "Demokunde 242", signeringsdato: "2026-04-07", startdato: "2026-04-01", arsbelop: 120000, bygg: "Gamle Drammensvei 10", kvm: 12.4, leietype: "Husleie", sfUrl: null },
+  { id: "c68", kunde: "Demokunde 95", signeringsdato: "2026-03-31", startdato: "2026-04-07", arsbelop: 900000, bygg: "Lilleakerveien 6", kvm: 827.7, leietype: "Leie/Minimumsleie", sfUrl: null },
+  { id: "c69", kunde: "Demokunde 7", signeringsdato: "2026-03-31", startdato: "2026-04-01", arsbelop: 6000, bygg: "Lilleakerveien 2E", kvm: 12.4, leietype: "Lagerleie", sfUrl: null },
+  { id: "c70", kunde: "Demokunde 243 AS", signeringsdato: "2026-03-30", startdato: "2026-04-01", arsbelop: 60000, bygg: "Lilleakerveien 2 Garasje", kvm: 24, leietype: "Parkering", sfUrl: null },
+  { id: "c71", kunde: "Demokunde 244 AS", signeringsdato: "2026-03-30", startdato: "2026-03-01", arsbelop: 37000, bygg: "Vollsveien 13-19", kvm: 22.2, leietype: "Husleie/Lagerleie", sfUrl: null },
+  { id: "c72", kunde: "Demokunde 244 AS", signeringsdato: "2026-03-30", startdato: "2026-03-01", arsbelop: 121140.57, bygg: "Vollsveien 13-19", kvm: 80, leietype: "Leie trimrom", sfUrl: null },
+  { id: "c73", kunde: "Demokunde 231 AS", signeringsdato: "2026-03-14", startdato: "2026-02-16", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Parkering", sfUrl: null },
+  { id: "c74", kunde: "Demokunde 74", signeringsdato: "2026-03-12", startdato: "2026-04-01", arsbelop: 568906.19, bygg: "Lilleakerveien 16 mm", kvm: 48.5, leietype: "Minimumsleie", sfUrl: null },
+  { id: "c75", kunde: "Demokunde 245 AS", signeringsdato: "2026-03-12", startdato: "2026-03-09", arsbelop: 26000, bygg: "Vollsveien 13-19", kvm: 12.5, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c76", kunde: "Demokunde 246 AS", signeringsdato: "2026-03-12", startdato: "2026-03-09", arsbelop: 27500, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c77", kunde: "Demokunde 245 AS", signeringsdato: "2026-03-11", startdato: "2026-03-09", arsbelop: 26000, bygg: "Vollsveien 13-19", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c78", kunde: "Demokunde 245 AS", signeringsdato: "2026-03-06", startdato: "2026-03-09", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c79", kunde: "Demokunde 247 AS", signeringsdato: "2026-03-06", startdato: "2026-03-15", arsbelop: 60000, bygg: "Lilleakerveien 2E", kvm: 27.2, leietype: "Husleie", sfUrl: null },
+  { id: "c80", kunde: "Demokunde 248 AS", signeringsdato: "2026-03-04", startdato: "2026-04-01", arsbelop: 12246.88, bygg: "Lilleakerveien 2E", kvm: 10.4, leietype: "Husleie", sfUrl: null },
+  { id: "c81", kunde: "Demokunde 249 AS", signeringsdato: "2026-03-04", startdato: "2026-03-01", arsbelop: 496000, bygg: "Lilleakerveien 16 mm", kvm: 0, leietype: "Omsetingsleie Pop - up", sfUrl: null },
+  { id: "c82", kunde: "Demokunde 250 AS", signeringsdato: "2026-03-04", startdato: "2026-03-01", arsbelop: 180000, bygg: "Lilleakerveien 4CDEF", kvm: 140.7, leietype: "Husleie", sfUrl: null },
+  { id: "c83", kunde: "Demokunde 228 AS", signeringsdato: "2026-03-04", startdato: "2026-03-01", arsbelop: 685350, bygg: "Lilleakerveien 16 mm", kvm: 119.1, leietype: "Leie handel", sfUrl: null },
+  { id: "c84", kunde: "Demokunde 245 AS", signeringsdato: "2026-02-27", startdato: "2026-03-01", arsbelop: 240000, bygg: "Lilleakerveien 2CD", kvm: 33.8, leietype: "Husleie", sfUrl: null },
+  { id: "c85", kunde: "Demokunde 249 AS", signeringsdato: "2026-02-27", startdato: "2026-01-19", arsbelop: 25799.22, bygg: "Lilleakerveien 16 mm", kvm: 0, leietype: "Omsetningsleie Pop - up", sfUrl: null },
+  { id: "c86", kunde: "Demokunde 141", signeringsdato: "2026-02-27", startdato: "2026-03-01", arsbelop: 1300000, bygg: "Lilleakerveien 16 mm", kvm: 327.1, leietype: "Parkering/Husleie/Uteareal", sfUrl: null },
+  { id: "c87", kunde: "Demokunde 251 AS", signeringsdato: "2026-02-27", startdato: "2026-02-06", arsbelop: 118625, bygg: "Vollsveien 13-19", kvm: 67, leietype: "Husleie/Lagerleie", sfUrl: null },
+  { id: "c88", kunde: "Demokunde 134", signeringsdato: "2026-02-26", startdato: "2026-02-01", arsbelop: 204000, bygg: "Lilleakerveien 26", kvm: 70.9, leietype: "Husleie", sfUrl: null },
+  { id: "c89", kunde: "Demokunde 252 AS", signeringsdato: "2026-02-26", startdato: "2026-01-26", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c90", kunde: "Demokunde 251 AS", signeringsdato: "2026-02-26", startdato: "2026-02-10", arsbelop: 52000, bygg: "Vollsveien 21", kvm: 25, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c91", kunde: "Demokunde 231 AS", signeringsdato: "2026-02-26", startdato: "2026-02-01", arsbelop: 805000, bygg: "Lilleakerveien 2AB", kvm: 172.8, leietype: "Husleie", sfUrl: null },
+  { id: "c92", kunde: "Demokunde 202", signeringsdato: "2026-02-26", startdato: "2026-03-01", arsbelop: 621230, bygg: "Lilleakerveien 4A", kvm: 175.4, leietype: "Husleie", sfUrl: null },
+  { id: "c93", kunde: "Demokunde 253", signeringsdato: "2026-02-26", startdato: "2026-02-16", arsbelop: 800, bygg: "Vollsveien 13-19", kvm: 19.8, leietype: "Lagerleie", sfUrl: null },
+  { id: "c94", kunde: "Demokunde 119", signeringsdato: "2026-02-26", startdato: "2026-01-26", arsbelop: 156600, bygg: "Lilleakerveien 16 mm", kvm: 21, leietype: "Husleie", sfUrl: null },
+  { id: "c95", kunde: "Demokunde 254 AS", signeringsdato: "2026-02-26", startdato: "2026-02-01", arsbelop: 79084, bygg: "Lilleakerveien 2CD", kvm: 11.3, leietype: "Husleie", sfUrl: null },
+  { id: "c96", kunde: "Demokunde 255 AS", signeringsdato: "2026-02-26", startdato: "2026-03-01", arsbelop: 554000, bygg: "Lilleakerveien 2E", kvm: 256.8, leietype: "Husleie", sfUrl: null },
+  { id: "c97", kunde: "Demokunde 217", signeringsdato: "2026-02-25", startdato: "2026-01-01", arsbelop: 26170, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c98", kunde: "Demokunde 199", signeringsdato: "2026-02-23", startdato: "2026-01-01", arsbelop: 41689, bygg: "Vollsveien 13-19", kvm: 28.6, leietype: "Lagerleie", sfUrl: null },
+  { id: "c99", kunde: "Demokunde 256 AS", signeringsdato: "2026-02-22", startdato: "2026-04-01", arsbelop: 317840.06, bygg: "Lilleakerveien 16 mm", kvm: 29.6, leietype: "Husleie", sfUrl: null },
+  { id: "c100", kunde: "Demokunde 257 AS", signeringsdato: "2026-02-22", startdato: "2026-03-01", arsbelop: 92400, bygg: "Vollsveien 13-19", kvm: 11, leietype: "Husleie", sfUrl: null },
+  { id: "c101", kunde: "Demokunde 258 AS", signeringsdato: "2026-02-19", startdato: "2026-01-01", arsbelop: 52000, bygg: "Vollsveien 13-19", kvm: 25, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c102", kunde: "Demokunde 54", signeringsdato: "2026-02-19", startdato: "2026-01-10", arsbelop: 26000, bygg: "Vollsveien 13D", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c103", kunde: "Demokunde 259", signeringsdato: "2026-02-18", startdato: "2026-01-01", arsbelop: 82183, bygg: "Lilleakerveien 31", kvm: 37.9, leietype: "Husleie/Garasje/El-bil", sfUrl: null },
+  { id: "c104", kunde: "Demokunde 260 AS", signeringsdato: "2026-02-18", startdato: "2026-01-01", arsbelop: 47288, bygg: "P-bro mellom LV8 og LV4", kvm: 24.6, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c105", kunde: "Demokunde 261 AS", signeringsdato: "2026-02-17", startdato: "2026-01-01", arsbelop: 427959.11, bygg: "Lilleakerveien 16 mm", kvm: 131.9, leietype: "Husleie", sfUrl: null },
+  { id: "c106", kunde: "Demokunde 262", signeringsdato: "2026-02-10", startdato: "2026-01-01", arsbelop: 3002716.54, bygg: "Lilleakerveien 16 mm", kvm: 1237.7, leietype: "Husleie", sfUrl: null },
+  { id: "c107", kunde: "Demokunde 13", signeringsdato: "2026-02-10", startdato: "2026-01-01", arsbelop: 1152162, bygg: "Lilleakerveien 2E", kvm: 304.3, leietype: "Husleie/Minimumsleie", sfUrl: null },
+  { id: "c108", kunde: "Demokunde 263 AS", signeringsdato: "2026-02-10", startdato: "2026-02-01", arsbelop: 70800, bygg: "Lilleakerveien 31", kvm: 10.3, leietype: "Husleie", sfUrl: null },
+  { id: "c109", kunde: "Demokunde 264 AS", signeringsdato: "2026-02-10", startdato: "2026-01-01", arsbelop: 0.1, bygg: "Lilleakerveien 16 mm", kvm: 0, leietype: "Omsetningsleie", sfUrl: null },
+  { id: "c110", kunde: "Demokunde 265", signeringsdato: "2026-02-09", startdato: "2026-01-01", arsbelop: 73040.4, bygg: "Lilleakerveien 2E", kvm: 50.8, leietype: "Lagerleie", sfUrl: null },
+  { id: "c111", kunde: "Demokunde 265", signeringsdato: "2026-02-09", startdato: "2026-01-01", arsbelop: 92451.39, bygg: "Lilleakerveien 2E", kvm: 79.2, leietype: "Husleie", sfUrl: null },
+  { id: "c112", kunde: "Demokunde 266 AS", signeringsdato: "2026-02-09", startdato: "2026-02-01", arsbelop: 282293, bygg: "Lilleakerveien 31", kvm: 116.3, leietype: "Husleie", sfUrl: null },
+  { id: "c113", kunde: "Demokunde 205", signeringsdato: "2026-02-09", startdato: "2026-01-07", arsbelop: 90000, bygg: "Lilleakerveien 2 Garasje", kvm: 22.7, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c114", kunde: "Demokunde 267 AS", signeringsdato: "2026-02-09", startdato: "2026-01-01", arsbelop: 98550, bygg: "Lilleakerveien 31", kvm: 44.1, leietype: "Husleie/Lagerleie", sfUrl: null },
+  { id: "c115", kunde: "Demokunde 268 AS", signeringsdato: "2026-02-09", startdato: "2026-02-01", arsbelop: 84000, bygg: "Lilleakerveien 2CD", kvm: 11.3, leietype: "Husleie", sfUrl: null },
+  { id: "c116", kunde: "Demokunde 269 AS", signeringsdato: "2026-02-09", startdato: "2026-01-01", arsbelop: 63450, bygg: "Lilleakerveien 16 mm", kvm: 0, leietype: "Parkering", sfUrl: null },
+  { id: "c117", kunde: "Demokunde 270 AS", signeringsdato: "2026-02-09", startdato: "2026-02-01", arsbelop: 180000, bygg: "Vollsveien 21", kvm: 25.1, leietype: "Husleie", sfUrl: null },
+  { id: "c118", kunde: "Demokunde 271 AS", signeringsdato: "2026-02-08", startdato: "2025-12-31", arsbelop: 56000, bygg: "Lilleakerveien 31", kvm: 26, leietype: "Parkering", sfUrl: null },
+  { id: "c119", kunde: "Demokunde 271 AS", signeringsdato: "2026-02-08", startdato: "2025-12-31", arsbelop: 121368, bygg: "Lilleakerveien 31", kvm: 33.9, leietype: "Husleie/Kontorleie", sfUrl: null },
+  { id: "c120", kunde: "Demokunde 272 A/S", signeringsdato: "2026-02-08", startdato: "2026-01-01", arsbelop: 1552000, bygg: "Lilleakerveien 14", kvm: 465.7, leietype: "Minimumsleie/Lagerleie", sfUrl: null },
+  { id: "c121", kunde: "Demokunde 273 AS", signeringsdato: "2026-02-08", startdato: "2026-01-01", arsbelop: 269587, bygg: "Lilleakerveien 31", kvm: 43.9, leietype: "Husleie", sfUrl: null },
+  { id: "c122", kunde: "Demokunde 78", signeringsdato: "2026-02-08", startdato: "2026-01-08", arsbelop: 28000, bygg: "Lilleakerveien 2 Garasje", kvm: 11.5, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c123", kunde: "Demokunde 78", signeringsdato: "2026-02-08", startdato: "2026-01-06", arsbelop: 84000, bygg: "Lilleakerveien 2CD", kvm: 11.3, leietype: "Husleie", sfUrl: null },
+  { id: "c124", kunde: "Demokunde 38", signeringsdato: "2026-02-08", startdato: "2026-01-01", arsbelop: 501415.45, bygg: "Lilleakerveien 16 mm", kvm: 115.2, leietype: "Husleie", sfUrl: null },
+  { id: "c125", kunde: "Demokunde 219", signeringsdato: "2026-02-08", startdato: "2026-01-01", arsbelop: 26496.69, bygg: "Lilleakerveien 14", kvm: 12.5, leietype: "Parkering", sfUrl: null },
+  { id: "c126", kunde: "Demokunde 219", signeringsdato: "2026-02-08", startdato: "2026-01-01", arsbelop: 1680000, bygg: "Lilleakerveien 16 mm", kvm: 154.3, leietype: "Husleie", sfUrl: null },
+  { id: "c127", kunde: "Demokunde 34", signeringsdato: "2026-02-07", startdato: "2026-01-01", arsbelop: 28672.55, bygg: "Lilleakerveien 16 mm", kvm: 21, leietype: "Parkering", sfUrl: null },
+  { id: "c128", kunde: "Demokunde 34", signeringsdato: "2026-02-07", startdato: "2026-01-01", arsbelop: 4237064.7, bygg: "Lilleakerveien 16 mm", kvm: 1177.8, leietype: "Butikkleie/Minimumsleie/Lagerleie", sfUrl: null },
+  { id: "c129", kunde: "Demokunde 91", signeringsdato: "2026-02-07", startdato: "2026-01-01", arsbelop: 52578.12, bygg: "Lilleakerveien 2 Garasje", kvm: 24, leietype: "Parkering", sfUrl: null },
+  { id: "c130", kunde: "Demokunde 223 AS", signeringsdato: "2026-02-07", startdato: "2026-01-12", arsbelop: 480000, bygg: "Lilleakerveien 2E", kvm: 225.7, leietype: "Husleie", sfUrl: null },
+  { id: "c131", kunde: "Demokunde 274", signeringsdato: "2026-02-07", startdato: "2026-01-01", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 12, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c132", kunde: "Demokunde 274", signeringsdato: "2026-02-06", startdato: "2026-01-01", arsbelop: 30000, bygg: "Lilleakerveien 2 Garasje", kvm: 13, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c133", kunde: "Demokunde 91", signeringsdato: "2026-02-06", startdato: "2026-01-01", arsbelop: 314422.59, bygg: "Lilleakerveien 2CD", kvm: 113.7, leietype: "Husleie/Lagerleie", sfUrl: null },
+  { id: "c134", kunde: "Demokunde 274", signeringsdato: "2026-02-06", startdato: "2026-01-01", arsbelop: 88580.93, bygg: "Lilleakerveien 2E", kvm: 85.3, leietype: "Husleie", sfUrl: null },
+  { id: "c135", kunde: "Demokunde 274", signeringsdato: "2026-02-06", startdato: "2026-01-01", arsbelop: 42664.64, bygg: "Lilleakerveien 2E", kvm: 28.4, leietype: "Lagerleie", sfUrl: null },
+  { id: "c136", kunde: "Demokunde 266 AS", signeringsdato: "2026-02-05", startdato: "2026-02-01", arsbelop: 25000, bygg: "Lilleakerveien 31", kvm: 12.2, leietype: "Garasje/El-bil", sfUrl: null },
+  { id: "c137", kunde: "Demokunde 275", signeringsdato: "2026-02-05", startdato: "2026-01-01", arsbelop: 25683, bygg: "Lilleakerveien 2E", kvm: 9.6, leietype: "Kontorleie", sfUrl: null },
+  { id: "c138", kunde: "Demokunde 276 AS", signeringsdato: "2026-01-16", startdato: "2025-11-17", arsbelop: 50326.56, bygg: "Vollsveien 13-19", kvm: 25, leietype: "Parkering", sfUrl: null },
+  { id: "c139", kunde: "Demokunde 277 AS", signeringsdato: "2026-01-16", startdato: "2026-01-01", arsbelop: 75000, bygg: "Vollsveien 13-19", kvm: 37.5, leietype: "Parkering", sfUrl: null },
 ];
 
 export type GuaranteeStatus = "Mangler" | "Forespurt" | "Kommer";
@@ -638,8 +776,11 @@ export function buildDashboardContext(): string {
     }
   }
 
-  lines.push("\nNYE KONTRAKTER (siste 30 dager):");
-  for (const c of CONTRACTS) {
+  const contractCutoff = new Date(localDateString());
+  contractCutoff.setMonth(contractCutoff.getMonth() - 1);
+  const recentContracts = CONTRACTS.filter((c) => c.signeringsdato >= contractCutoff.toISOString().slice(0, 10));
+  lines.push(`\nNYE KONTRAKTER (siste måned, ${recentContracts.length} av ${CONTRACTS.length} totalt siden 2026):`);
+  for (const c of recentContracts) {
     lines.push(
       `- ${c.kunde} | signert ${c.signeringsdato} | start ${c.startdato} | ${formatKr(c.arsbelop)}/år | ${c.bygg} | ${c.kvm} kvm | ${c.leietype}${c.sfUrl ? ` | SF: ${c.sfUrl}` : " | ikke funnet i Salesforce"}`,
     );
