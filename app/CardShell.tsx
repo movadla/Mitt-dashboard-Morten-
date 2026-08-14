@@ -166,6 +166,7 @@ export function ConfirmDialog({
   title = "Er du sikker?",
   message,
   confirmLabel = "Slett",
+  confirmVariant = "danger",
   onConfirm,
   onCancel,
 }: {
@@ -173,6 +174,7 @@ export function ConfirmDialog({
   title?: string;
   message: string;
   confirmLabel?: string;
+  confirmVariant?: "danger" | "default";
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -228,7 +230,11 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-status-danger px-3 py-1.5 text-sm font-semibold text-surface-0 transition hover:bg-status-danger/85"
+            className={`rounded-lg px-3 py-1.5 text-sm font-semibold text-surface-0 transition ${
+              confirmVariant === "danger"
+                ? "bg-status-danger hover:bg-status-danger/85"
+                : "bg-accent hover:bg-accent/85"
+            }`}
           >
             {confirmLabel}
           </button>

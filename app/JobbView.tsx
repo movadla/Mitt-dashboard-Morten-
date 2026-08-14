@@ -36,6 +36,8 @@ import {
 } from "@/lib/widgets";
 import type { Comment } from "@/lib/comments";
 import type { ReceivableRiskLevel } from "@/lib/receivableRisk";
+import { sumOverdueDays } from "@/lib/receivablesAging";
+import { getMainBuilding } from "@/lib/receivableBuilding";
 import { CalendarClock, CalendarDays, FileSignature, Receipt, ShieldCheck } from "lucide-react";
 import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
@@ -2004,6 +2006,7 @@ function ReceivableInvoiceRow({ invoice: f }: { invoice: ReceivableInvoice }) {
 
 function ReceivableRow({
   receivable: r,
+  today,
   comments,
   risk,
   onSetRisk,
@@ -2011,6 +2014,7 @@ function ReceivableRow({
   onRequestDelete,
 }: {
   receivable: Receivable;
+  today: string;
   comments: Comment[];
   risk: ReceivableRiskLevel | null;
   onSetRisk: (risk: ReceivableRiskLevel) => void;
@@ -2021,6 +2025,8 @@ function ReceivableRow({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const multiCompany = r.selskaper.length > 1;
   const underInkasso = r.selskaper.some((s) => s.underInkasso);
+  const overdue91 = sumOverdueDays(r, today, 91);
+  const bygg = getMainBuilding(r.leietaker);
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
@@ -2042,6 +2048,9 @@ function ReceivableRow({
         <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-4"}`}>
           {r.utestaende60 > 0 ? formatKr(r.utestaende60) : "–"}
         </td>
+        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
+          {overdue91 > 0 ? formatKr(overdue91) : "–"}
+        </td>
         <td className="whitespace-nowrap px-1 py-1.5">
           <select
             value={risk ?? ""}
@@ -2062,7 +2071,8 @@ function ReceivableRow({
       </tr>
       {detailsOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={6} className="px-3 py-2 pl-9">
+          <td colSpan={7} className="px-3 py-2 pl-9">
+            <div className="mb-1.5 text-2xs text-ink-4">Bygg: {bygg}</div>
             <div className="flex flex-col gap-2.5">
               {r.selskaper.map((s, i) => (
                 <div key={i}>
@@ -2090,7 +2100,7 @@ function ReceivableRow({
       )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={6} className="px-3 py-2 pl-9">
+          <td colSpan={7} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} />
           </td>
         </tr>
@@ -2099,11 +2109,13 @@ function ReceivableRow({
   );
 }
 
-function ReceivablesCard() {
+function ReceivablesCard({ today }: { today: string }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
   const [risks, setRisks] = useState<Record<string, ReceivableRiskLevel>>({});
+  const [snapshotConfirmOpen, setSnapshotConfirmOpen] = useState(false);
+  const [snapshotStatus, setSnapshotStatus] = useState<string | null>(null);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
   const visible = showAll ? RECEIVABLES : RECEIVABLES.slice(0, 20);
@@ -2123,6 +2135,17 @@ function ReceivablesCard() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, risk }),
     });
+  }
+
+  async function handleStartNewPeriod() {
+    setSnapshotConfirmOpen(false);
+    try {
+      const res = await fetch("/api/receivables/snapshot", { method: "POST" });
+      const data = await res.json();
+      setSnapshotStatus(data.snapshot?.dato ? `Periode ${formatDateDMY(data.snapshot.dato)} lagret.` : "Kunne ikke lagre periode.");
+    } catch {
+      setSnapshotStatus("Kunne ikke lagre periode.");
+    }
   }
 
   return (
@@ -2147,11 +2170,12 @@ function ReceivablesCard() {
             <table className="w-full min-w-[460px] table-fixed text-sm">
               <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
-                  <th className="w-[27%] px-2 py-1.5 text-2xs font-medium">Leietaker</th>
-                  <th className="w-[20%] px-2 py-1.5 text-2xs font-medium">Selskap</th>
-                  <th className="w-[16%] px-2 py-1.5 text-2xs font-medium text-right">Utestående</th>
-                  <th className="w-[15%] px-2 py-1.5 text-2xs font-medium text-right">60+ dgr</th>
-                  <th className="w-[14%] px-1 py-1.5 text-2xs font-medium">Risiko</th>
+                  <th className="w-[22%] px-2 py-1.5 text-2xs font-medium">Leietaker</th>
+                  <th className="w-[16%] px-2 py-1.5 text-2xs font-medium">Selskap</th>
+                  <th className="w-[14%] px-2 py-1.5 text-2xs font-medium text-right">Utestående</th>
+                  <th className="w-[12%] px-2 py-1.5 text-2xs font-medium text-right">60+ dgr</th>
+                  <th className="w-[12%] px-2 py-1.5 text-2xs font-medium text-right">91+ dgr</th>
+                  <th className="w-[16%] px-1 py-1.5 text-2xs font-medium">Risiko</th>
                   <th className="w-[8%] px-2 py-1.5 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
@@ -2160,6 +2184,7 @@ function ReceivablesCard() {
                   <ReceivableRow
                     key={r.id}
                     receivable={r}
+                    today={today}
                     comments={comments[commentKey("receivable", r.id)] ?? []}
                     risk={risks[r.id] ?? null}
                     onSetRisk={(risk) => handleSetRisk(r.id, risk)}
@@ -2185,6 +2210,20 @@ function ReceivablesCard() {
             >
               {showTrend ? "Skjul utvikling" : "Vis utvikling siste 3 mnd"}
             </button>
+            <a
+              href="/api/receivables/export"
+              className="text-xs font-medium text-accent hover:text-accent/80"
+            >
+              Eksporter til Excel
+            </a>
+            <button
+              type="button"
+              onClick={() => setSnapshotConfirmOpen(true)}
+              className="text-xs font-medium text-accent hover:text-accent/80"
+            >
+              Start ny periode
+            </button>
+            {snapshotStatus && <span className="text-xs text-ink-4">{snapshotStatus}</span>}
           </div>
           {showTrend && (
             <div className="mt-3 border-t border-line pt-3">
@@ -2203,6 +2242,14 @@ function ReceivablesCard() {
           removeComment(pending.targetType, pending.targetId, pending.commentId);
           confirmDelete.cancel();
         }}
+      />
+      <ConfirmDialog
+        open={snapshotConfirmOpen}
+        message="Lagre dagens kundefordringer-status som en ny periode? Dette blir grunnlaget for neste sammenligning i Excel-eksporten."
+        confirmLabel="Lagre periode"
+        confirmVariant="default"
+        onCancel={() => setSnapshotConfirmOpen(false)}
+        onConfirm={handleStartNewPeriod}
       />
     </div>
   );
@@ -2550,7 +2597,7 @@ export default function JobbView({
         <ContractsCard />
         <ExpiryListCard />
         <GuaranteesCard />
-        <ReceivablesCard />
+        <ReceivablesCard today={today} />
       </div>
 
       <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
