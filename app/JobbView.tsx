@@ -1993,19 +1993,54 @@ function ReceivableRow({
   onRequestDelete: (commentId: string, preview: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [companiesOpen, setCompaniesOpen] = useState(false);
+  const multiCompany = r.selskaper.length > 1;
+  const underInkasso = r.selskaper.some((s) => s.underInkasso);
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{r.leietaker}</td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${r.utestaende60 > 0 ? "text-status-danger" : "text-ink-3"}`}>
-          {formatKr(r.utestaende60)}
+        <td className="px-3 py-2 text-ink-2">{r.leietaker}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-ink-3">
+          {multiCompany ? (
+            <button
+              type="button"
+              onClick={() => setCompaniesOpen((v) => !v)}
+              aria-expanded={companiesOpen}
+              className="underline decoration-dotted underline-offset-2 hover:text-ink-1"
+            >
+              {r.selskaper.length} selskaper
+            </button>
+          ) : (
+            r.selskaper[0]?.selskap ?? "—"
+          )}
         </td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{r.dagerSidenBetaling}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
+        <td className="whitespace-nowrap px-3 py-2">
+          {underInkasso && (
+            <span className="rounded-full bg-status-danger/12 px-2 py-0.5 text-2xs font-medium text-status-danger">Inkasso</span>
+          )}
+        </td>
         <td className="whitespace-nowrap px-3 py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
+      {companiesOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={5} className="px-3 py-2 pl-9">
+            <ul className="flex flex-col gap-1">
+              {r.selskaper.map((s, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 text-xs text-ink-3">
+                  <span className="min-w-0 truncate">
+                    {s.selskap}
+                    {s.underInkasso ? " · under inkasso" : ""}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-ink-2">{formatKr(s.belop)}</span>
+                </li>
+              ))}
+            </ul>
+          </td>
+        </tr>
+      )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={5} className="px-3 py-2 pl-9">
@@ -2019,14 +2054,23 @@ function ReceivableRow({
 
 function ReceivablesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
+  const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
+  const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
+  const visible = showAll ? RECEIVABLES : RECEIVABLES.slice(0, 20);
   const { comments, addComment, removeComment, confirmDelete } = useComments();
   return (
     <div className={`${CARD_SHELL} !border-2 !border-fuchsia-400 !bg-fuchsia-400/8 p-4`}>
       <CardHeader
         title="Kundefordringer"
-        subtitle={<span className="font-medium tabular-nums text-ink-2">{formatKr(total)}</span>}
+        subtitle={
+          <>
+            <span className="font-medium tabular-nums text-ink-2">{formatKr(total)}</span>
+            {` · ${RECEIVABLES.length} leietakere`}
+            {antallUnderInkasso > 0 ? ` · ${antallUnderInkasso} under inkasso` : ""}
+          </>
+        }
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Receipt}
@@ -2034,19 +2078,19 @@ function ReceivablesCard() {
       />
       {!collapsed && (
         <>
-          <div className="-mx-1 overflow-x-auto">
+          <div className={`-mx-1 overflow-x-auto ${showAll ? "max-h-[480px] overflow-y-auto" : ""}`}>
             <table className="w-full min-w-[640px] text-sm">
-              <thead>
+              <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
                   <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Selskap</th>
                   <th className="px-3 py-2 text-2xs font-medium text-right">Utestående</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Utestående 60+ dager</th>
-                  <th className="px-3 py-2 text-2xs font-medium text-right">Dager siden betaling</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Status</th>
                   <th className="px-3 py-2 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
               <tbody>
-                {RECEIVABLES.map((r) => (
+                {visible.map((r) => (
                   <ReceivableRow
                     key={r.id}
                     receivable={r}
@@ -2058,13 +2102,22 @@ function ReceivablesCard() {
               </tbody>
             </table>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowTrend((v) => !v)}
-            className="mt-3 text-xs font-medium text-accent hover:text-accent/80"
-          >
-            {showTrend ? "Skjul utvikling" : "Vis utvikling siste 3 mnd"}
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="text-xs font-medium text-accent hover:text-accent/80"
+            >
+              {showAll ? "Vis kun de 20 største" : `Vis alle (${RECEIVABLES.length})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTrend((v) => !v)}
+              className="text-xs font-medium text-accent hover:text-accent/80"
+            >
+              {showTrend ? "Skjul utvikling" : "Vis utvikling siste 3 mnd"}
+            </button>
+          </div>
           {showTrend && (
             <div className="mt-3 border-t border-line pt-3">
               <WeeklyTrendChart data={RECEIVABLES_TREND} />
