@@ -39,7 +39,9 @@ import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
 import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck } from "lucide-react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse } from "./CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import IncomeForecastSection from "./IncomeForecastSection";
@@ -2497,6 +2499,37 @@ function ReceivablesCard({ today }: { today: string }) {
   );
 }
 
+const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v1";
+const DEFAULT_JOBB_SECTION_ORDER = [
+  "calendar",
+  "contracts",
+  "expiry",
+  "guarantees",
+  "receivables",
+  "reminders",
+  "events",
+  "leasing-managers",
+  "tenant-directory",
+  "procedure-notes",
+  "income-forecast",
+];
+
+// Rekkefølgen på boksene kan dras om (usePersistedOrder, samme mønster som Privat-fanen) —
+// derfor er dette en id → node-oppslagstabell istedenfor en hardkodet JSX-rekkefølge.
+const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
+  calendar: (today) => <CalendarCard today={today} />,
+  contracts: (today) => <ContractsCard today={today} />,
+  expiry: () => <ExpiryListCard />,
+  guarantees: () => <GuaranteesCard />,
+  receivables: (today) => <ReceivablesCard today={today} />,
+  reminders: () => <JobbRemindersSection />,
+  events: () => <JobbEventsSection />,
+  "leasing-managers": () => <JobbLeasingManagersCard />,
+  "tenant-directory": () => <JobbTenantDirectoryCard />,
+  "procedure-notes": () => <JobbProcedureNotesCard />,
+  "income-forecast": () => <IncomeForecastSection />,
+};
+
 export default function JobbView({
   tasks,
   today,
@@ -2507,6 +2540,17 @@ export default function JobbView({
   now: string;
 }) {
   const nowMs = Date.parse(now);
+  const [order, setOrder] = usePersistedOrder(JOBB_SECTION_ORDER_KEY, DEFAULT_JOBB_SECTION_ORDER);
+  const [reorderMode, setReorderMode] = useState(false);
+  const reorderSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  function handleSectionDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = order.indexOf(active.id as string);
+    const newIndex = order.indexOf(over.id as string);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setOrder(arrayMove(order, oldIndex, newIndex));
+  }
   const [filter, setFilter] = useState<Filter>("all");
   const [sfBucket, setSfBucket] = useState<SfBucket>("faktura");
   const [outlookBucket, setOutlookBucket] = useState<OutlookBucket>("trenger-oppfolging");
@@ -2831,40 +2875,33 @@ export default function JobbView({
         />
       </div>
 
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Nøkkeltall · Ekte data: kontrakter, kalender, garantier og kundefordringer · Testdata: ukesgraf
-      </p>
-      <div className="mb-6 flex flex-col gap-3">
-        <CalendarCard today={today} />
-        <ContractsCard today={today} />
-        <ExpiryListCard />
-        <GuaranteesCard />
-        <ReceivablesCard today={today} />
+      {/* Ekte data: kontrakter, kalender, garantier og kundefordringer · Testdata: ukesgraf.
+          Boksene er én flat, fritt sorterbar liste (samme mønster som Privat-fanen) —
+          "Endre rekkefølge"-knappen viser dra-håndtak til man trykker "Lagre" igjen. */}
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setReorderMode((v) => !v)}
+          className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+        >
+          {reorderMode ? "Lagre" : "Endre rekkefølge"}
+        </button>
       </div>
-
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Påminnelser og hendelser · Egne notater, ikke fra Outlook/Asana
-      </p>
-      <div className="mb-6 flex flex-col gap-3">
-        <JobbRemindersSection />
-        <JobbEventsSection />
-      </div>
-
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Info · Utleieansvarlige, leietakersøk og driftsnotater
-      </p>
-      <div className="mb-6 flex flex-col gap-3">
-        <JobbLeasingManagersCard />
-        <JobbTenantDirectoryCard />
-        <JobbProcedureNotesCard />
-      </div>
-
-      <p className="mb-2 text-2xs uppercase tracking-wider text-ink-3">
-        Inntektsprognose · Snapshot — oppdateres manuelt ved forespørsel, ikke live
-      </p>
-      <div className="mb-6">
-        <IncomeForecastSection />
-      </div>
+      <DndContext sensors={reorderSensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <div className="mb-6 flex flex-col gap-3">
+            {order.map((id) => {
+              const node = JOBB_SECTION_NODES[id]?.(today);
+              if (!node) return null;
+              return (
+                <SortableSection key={id} id={id} reorderMode={reorderMode}>
+                  {node}
+                </SortableSection>
+              );
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       <p id="oppgaver" className="mb-2 scroll-mt-4 text-2xs uppercase tracking-wider text-ink-3">Oppgaver</p>
       <div

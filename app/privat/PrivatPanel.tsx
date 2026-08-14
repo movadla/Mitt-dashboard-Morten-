@@ -14,11 +14,9 @@ import NewsSection from "./NewsSection";
 import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
-import { CARD_SHELL, SkeletonRows, usePersistedOrder } from "../CardShell";
-import { GripVertical } from "lucide-react";
+import { CARD_SHELL, SkeletonRows, usePersistedOrder, SortableSection } from "../CardShell";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
 const SECTION_ORDER_KEY = "mitt-dashboard:privat-section-order:v1";
 const DEFAULT_SECTION_ORDER = [
@@ -36,50 +34,6 @@ const DEFAULT_SECTION_ORDER = [
   "fpl",
   "darts",
 ];
-
-// Grip-håndtak ved siden av hvert kort — trykk-og-dra for å flytte kortet i
-// lista, f.eks. midlertidig flytte Sport høyere opp i en periode. Rekkefølgen
-// lagres lokalt (usePersistedOrder), ikke i skyen. Håndtaket sitter til
-// venstre for kortet (samme mønster som rad-nivå-reordering i
-// RemindersSection/TreningSection), ikke som en egen stripe mellom kortene.
-// Vises kun i reorderMode (styrt av en egen "Endre rekkefølge"/"Lagre"-knapp
-// over lista) — ellers rendres kortet uten håndtak, siden useSortable sin
-// setNodeRef/drag-lytting uansett må festes til noe for at reordering skal
-// virke DEN dagen man faktisk går inn i reorderMode.
-function SortableSection({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    zIndex: isDragging ? 10 : undefined,
-  };
-
-  if (!reorderMode) {
-    return (
-      <div ref={setNodeRef} style={style}>
-        {children}
-      </div>
-    );
-  }
-
-  return (
-    <div ref={setNodeRef} style={style} className="flex items-stretch gap-1">
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        aria-label="Endre rekkefølge på kortet"
-        className="grid w-5 shrink-0 place-items-center rounded-xl text-ink-4/60 transition hover:text-ink-2 active:cursor-grabbing"
-        style={{ touchAction: "none", cursor: "grab" }}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  );
-}
 
 export default function PrivatPanel() {
   const [fpl, setFpl] = useState<FplData | null>(null);

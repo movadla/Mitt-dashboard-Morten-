@@ -11,6 +11,7 @@ import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
+import { vibrate } from "@/lib/haptics";
 import {
   Sun,
   Cloud,
@@ -71,6 +72,7 @@ function ReminderLine({
   onStartEdit,
   onChangeDueDate,
   onCancelEdit,
+  onToggleDone,
 }: {
   reminder: Reminder;
   overdue: boolean;
@@ -78,13 +80,32 @@ function ReminderLine({
   onStartEdit: () => void;
   onChangeDueDate: (date: string) => void;
   onCancelEdit: () => void;
+  onToggleDone: () => void;
 }) {
   return (
     <li className="flex items-start gap-1.5">
-      <span className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${overdue ? "bg-status-danger" : "bg-ink-4"}`} />
+      <button
+        type="button"
+        onClick={onToggleDone}
+        aria-pressed={reminder.done}
+        aria-label={reminder.done ? "Merk som ikke fullført" : "Merk som fullført"}
+        className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ring-1 ring-inset transition ${
+          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
+        }`}
+      >
+        {reminder.done && (
+          <svg viewBox="0 0 24 24" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth={3}>
+            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className={`min-w-0 text-sm ${overdue ? "text-status-danger" : "text-ink-1"}`}>{reminder.text}</span>
+          <span
+            className={`min-w-0 text-sm ${reminder.done ? "text-ink-4 line-through" : overdue ? "text-status-danger" : "text-ink-1"}`}
+          >
+            {reminder.text}
+          </span>
           <button
             type="button"
             onClick={onStartEdit}
@@ -218,6 +239,10 @@ export default function TodaySummary() {
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  // Holder en nettopp fullført påminnelse synlig ~700ms (med hakemerket vist)
+  // før den forsvinner fra "I dag" — samme mønster som Påminnelser-kortet
+  // (justToggledIds), se feedback_checkoff-visible-feedback-memory.
+  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
 
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragAxis = useRef<"x" | "y" | null>(null);
@@ -347,11 +372,33 @@ export default function TodaySummary() {
     }
   }
 
-  const activeReminders = reminders.filter((r) => !r.done && (!r.dueDate || r.dueDate <= realToday));
+  async function handleToggleReminderDone(id: string) {
+    const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      vibrate(updated.done ? 15 : 8);
+      setJustToggledIds((prev) => new Set(prev).add(id));
+      setTimeout(() => {
+        setJustToggledIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }, 700);
+    }
+  }
+
+  const activeReminders = reminders.filter(
+    (r) => (!r.done || justToggledIds.has(r.id)) && (!r.dueDate || r.dueDate <= realToday),
+  );
   const overdueReal = activeReminders.filter((r) => r.dueDate && r.dueDate < realToday);
   const dueTodayReal = activeReminders.filter((r) => !r.dueDate || r.dueDate === realToday);
 
-  const dueOnViewed = reminders.filter((r) => !r.done && (r.dueDate === viewedDate || (!r.dueDate && isToday)));
+  const dueOnViewed = reminders.filter(
+    (r) => (!r.done || justToggledIds.has(r.id)) && (r.dueDate === viewedDate || (!r.dueDate && isToday)),
+  );
   // Slår sammen oversittede (kun relevant på selve i dag-visningen) og de som
   // forfaller på den viste dagen i én liste, med et overdue-flagg per rad —
   // vises i samme boks, ikke to separate, jf. tilbakemelding.
@@ -474,6 +521,7 @@ export default function TodaySummary() {
                         onStartEdit={() => setEditingReminderId(reminder.id)}
                         onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
                         onCancelEdit={() => setEditingReminderId(null)}
+                        onToggleDone={() => handleToggleReminderDone(reminder.id)}
                       />
                     ))}
                   </ul>

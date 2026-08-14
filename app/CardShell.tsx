@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, GripVertical } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15";
 
@@ -50,6 +52,47 @@ export function usePersistedOrder(storageKey: string, defaultOrder: string[]): [
   }, [order, hydrated, storageKey]);
 
   return [order, setOrder];
+}
+
+// Grip-håndtak ved siden av hvert kort — trykk-og-dra for å flytte kortet i
+// lista. Delt mellom Privat- og Jobb-fanen (begge bruker usePersistedOrder
+// over). Vises kun i reorderMode (styrt av en "Endre rekkefølge"/"Lagre"-knapp
+// over lista) — ellers rendres kortet uten håndtak, siden useSortable sin
+// setNodeRef/drag-lytting uansett må festes til noe for at reordering skal
+// virke DEN dagen man faktisk går inn i reorderMode.
+export function SortableSection({ id, reorderMode, children }: { id: string; reorderMode: boolean; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  if (!reorderMode) {
+    return (
+      <div ref={setNodeRef} style={style}>
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-stretch gap-1">
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label="Endre rekkefølge på kortet"
+        className="grid w-5 shrink-0 place-items-center rounded-xl text-ink-4/60 transition hover:text-ink-2 active:cursor-grabbing"
+        style={{ touchAction: "none", cursor: "grab" }}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
 }
 
 export function CardHeader({
