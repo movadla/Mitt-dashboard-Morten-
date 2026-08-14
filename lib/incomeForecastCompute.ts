@@ -42,6 +42,9 @@ export function computeForecastRollup(params: {
     else delB.manueltNxtHittil += v.belop;
   }
 
+  delA.gjenstaendeSikker += remaining.sikkerTotalDelA;
+  delB.gjenstaendeSikker += remaining.sikkerTotalDelB;
+
   for (const t of remaining.tenants) {
     for (const l of t.lines) {
       const target = l.del === "A" ? delA : delB;

@@ -166,42 +166,47 @@ function RemainingTenantRow({ tenant }: { tenant: RemainingTenantGroup }) {
 
 function RemainingBlock() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Gjenstår å fakturere", true);
-  const total = REMAINING.tenants.reduce((s, t) => s + t.lines.reduce((s2, l) => s2 + l.belopGjenstaende, 0), 0);
+  const usikkerTotal = REMAINING.tenants.reduce((s, t) => s + t.lines.reduce((s2, l) => s2 + l.belopGjenstaende, 0), 0);
+  const sikkerTotal = REMAINING.sikkerTotalDelA + REMAINING.sikkerTotalDelB;
+  const total = sikkerTotal + usikkerTotal;
   return (
     <div className="rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Gjenstår å fakturere"
-        subtitle={
-          <>
-            <span className="font-medium tabular-nums text-ink-2">{REMAINING.tenants.length}</span> leietakere ·{" "}
-            {formatKr(total)}
-          </>
-        }
+        subtitle={formatKr(total)}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
       />
-      {!collapsed &&
-        (REMAINING.tenants.length === 0 ? (
-          <p className="text-sm text-ink-3">Ingen data lagt inn ennå.</p>
-        ) : (
-          <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
-              <thead>
-                <tr className="text-left text-ink-4">
-                  <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Linjer</th>
-                  <th className="px-3 py-2 text-2xs font-medium">Gjenstående</th>
-                </tr>
-              </thead>
-              <tbody>
-                {REMAINING.tenants.map((t) => (
-                  <RemainingTenantRow key={t.customerId} tenant={t} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+      {!collapsed && (
+        <>
+          <p className="mb-2 text-2xs text-ink-4">
+            Sikkert (kontrakter som løper forbi/til 31.12): <span className="font-medium tabular-nums text-ink-2">{formatKr(sikkerTotal)}</span> ·
+            Usikkert / fornyelse antatt ({REMAINING.tenants.length} leietaker/bygg-kombinasjoner):{" "}
+            <span className="font-medium tabular-nums text-ink-2">{formatKr(usikkerTotal)}</span>
+          </p>
+          {REMAINING.tenants.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen leietakere med fornyelsesantagelse registrert.</p>
+          ) : (
+            <div className="-mx-1 overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr className="text-left text-ink-4">
+                    <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
+                    <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
+                    <th className="px-3 py-2 text-2xs font-medium">Linjer</th>
+                    <th className="px-3 py-2 text-2xs font-medium">Gjenstående</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {REMAINING.tenants.map((t) => (
+                    <RemainingTenantRow key={t.customerId} tenant={t} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
