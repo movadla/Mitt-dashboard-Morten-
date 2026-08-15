@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { Note } from "@/lib/notes";
 import { Pin, Plus, StickyNote } from "lucide-react";
 
@@ -329,7 +329,7 @@ export default function NotesSection() {
         icon={StickyNote}
         iconColorClass="text-status-warning"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <input
             type="text"
@@ -374,7 +374,7 @@ export default function NotesSection() {
             </div>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={

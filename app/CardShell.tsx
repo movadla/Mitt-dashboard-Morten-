@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Plus, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15";
+// hover:shadow/border gir en synlig affordance på kort som kan utvides
+// (collapse-header) eller drilles ned i (klikkbare rader inni) — dekker
+// praktisk talt alle kort i Jobb/Privat siden nesten alle har en av delene.
+export const CARD_SHELL =
+  "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15 transition-shadow duration-150 hover:border-line-strong hover:shadow-lg hover:shadow-black/25";
 
 // Navnet er historisk — tilstanden persisteres bevisst IKKE lenger på tvers av
 // sideoppdateringer (jf. tilbakemelding: alle kort skal starte kollapset ved
@@ -13,6 +17,57 @@ export const CARD_SHELL = "rounded-2xl border border-line bg-surface-1 shadow-md
 export function usePersistedCollapse(key: string, defaultCollapsed = false): [boolean, () => void] {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   return [collapsed, () => setCollapsed((v) => !v)];
+}
+
+// Jevn høyde-overgang for kort-innhold som vises/skjules med usePersistedCollapse
+// — samme 220ms max-height-teknikk som TodaySummary sin dag-sveip, gjort
+// generisk for kollaps/utvid-mønsteret. Erstatter `{!collapsed && (<div>...)}`
+// med `<CollapsibleBody collapsed={collapsed}><div>...</div></CollapsibleBody>`.
+// Innholdet monteres først når kortet utvides FØRSTE gang (samme lat oppførsel
+// som før — ingen ekstra arbeid for skjulte kort), men blir værende montert
+// etterpå slik at senere kollaps/utvid-bytter kan animeres (måler faktisk
+// scrollHeight istedenfor å hoppe rett fra 0 til full høyde).
+export function CollapsibleBody({ collapsed, children }: { collapsed: boolean; children: React.ReactNode }) {
+  const [everExpanded, setEverExpanded] = useState(!collapsed);
+  const ref = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number | "none">(collapsed ? 0 : "none");
+
+  // Justeres direkte i render (ikke i en effekt) — det anbefalte React-mønsteret
+  // for å avlede state fra en prop-endring: React fanger opp setState-kallet
+  // og gjør om renderen umiddelbart før noe males på skjermen, uten en ekstra
+  // effekt-runde.
+  if (!collapsed && !everExpanded) {
+    setEverExpanded(true);
+  }
+
+  useLayoutEffect(() => {
+    if (!everExpanded) return;
+    const el = ref.current;
+    if (!el) return;
+    if (collapsed) {
+      setMaxHeight(el.scrollHeight);
+      const raf = requestAnimationFrame(() => setMaxHeight(0));
+      return () => cancelAnimationFrame(raf);
+    }
+    setMaxHeight(el.scrollHeight);
+    const resetId = setTimeout(() => setMaxHeight("none"), 250);
+    return () => clearTimeout(resetId);
+  }, [collapsed, everExpanded]);
+
+  if (!everExpanded) return null;
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        maxHeight: maxHeight === "none" ? "none" : `${maxHeight}px`,
+        overflow: maxHeight === "none" ? "visible" : "hidden",
+        transition: "max-height 220ms ease",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 // Lar brukeren dra kort til egen rekkefølge (f.eks. flytte Sport-kortet opp en

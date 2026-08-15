@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
@@ -784,7 +784,7 @@ export default function FinanceSection() {
         icon={Wallet}
         iconColorClass="text-source-outlook"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-4">
           {loading ? (
             <SkeletonRows count={3} />
@@ -897,7 +897,7 @@ export default function FinanceSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={(() => {

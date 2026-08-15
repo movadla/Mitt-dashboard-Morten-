@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import useSWR, { mutate } from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
 import { FplBox, type FplData } from "./FplSection";
 import { SportSection, WorldCupSection, type SportEvent } from "./SportSection";
 import RemindersSection from "./RemindersSection";
@@ -36,32 +38,30 @@ const DEFAULT_SECTION_ORDER = [
 ];
 
 export default function PrivatPanel() {
-  const [fpl, setFpl] = useState<FplData | null>(null);
-  const [fplLoading, setFplLoading] = useState(true);
-  const [sports, setSports] = useState<SportEvent[]>([]);
-  const [sportsLoading, setSportsLoading] = useState(true);
-  const [sportsFetchedAt, setSportsFetchedAt] = useState<number | null>(null);
-  const [worldCup, setWorldCup] = useState<SportEvent[]>([]);
+  const { data: fplData, isLoading: fplLoading } = useSWR<FplData>("/api/fpl", jsonFetcher);
+  const { data: sportsData, isLoading: sportsLoading } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>(
+    "/api/sports",
+    jsonFetcher,
+  );
+  const { data: worldCupData } = useSWR<{ events: SportEvent[] }>("/api/worldcup", jsonFetcher);
+  const fpl = fplData ?? null;
+  const sports = sportsData?.events ?? [];
+  const sportsFetchedAt = sportsData?.fetchedAt ?? null;
+  const worldCup = worldCupData?.events ?? [];
   const [order, setOrder] = usePersistedOrder(SECTION_ORDER_KEY, DEFAULT_SECTION_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  // Éncentralisert lytter for det gamle "privat-refresh"-eventet (fortsatt
+  // dispatchet av alle mutasjons-handlere i de fulle kortene) — reveraliderer
+  // ALLE SWR-nøkler på tvers av appen (reminders, calendar, sports, fpl,
+  // events osv.) istedenfor at hvert migrert kort trenger sin egen lytter.
   useEffect(() => {
-    fetch("/api/fpl")
-      .then(r => r.json())
-      .then(setFpl)
-      .finally(() => setFplLoading(false));
-    fetch("/api/sports")
-      .then(r => r.json())
-      .then(d => {
-        setSports(d.events ?? []);
-        setSportsFetchedAt(d.fetchedAt ?? null);
-      })
-      .finally(() => setSportsLoading(false));
-    fetch("/api/worldcup")
-      .then(r => r.json())
-      .then(d => setWorldCup(d.events ?? []))
-      .catch(() => {});
+    function handler() {
+      mutate(() => true);
+    }
+    window.addEventListener("mitt-dashboard:privat-refresh", handler);
+    return () => window.removeEventListener("mitt-dashboard:privat-refresh", handler);
   }, []);
 
   function handleDragEnd(event: DragEndEvent) {

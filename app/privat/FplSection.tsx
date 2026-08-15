@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { Shirt } from "lucide-react";
 
@@ -550,12 +550,10 @@ export function FplBox({ fpl }: { fpl: FplData }) {
         iconColorClass="text-lime-400"
         alwaysShowSubtitle
       />
-      {!collapsed && (
-        <>
-          <FplHero fpl={fpl} />
-          {fpl.fetchedAt && <p className="mt-2 text-2xs text-ink-4">Oppdatert {timeAgo(fpl.fetchedAt)}</p>}
-        </>
-      )}
+      <CollapsibleBody collapsed={collapsed}>
+        <FplHero fpl={fpl} />
+        {fpl.fetchedAt && <p className="mt-2 text-2xs text-ink-4">Oppdatert {timeAgo(fpl.fetchedAt)}</p>}
+      </CollapsibleBody>
     </div>
   );
 }

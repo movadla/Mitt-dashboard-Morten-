@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
 import type { QuickPick } from "@/lib/shoppingQuickPicks";
 import { vibrate } from "@/lib/haptics";
@@ -457,7 +457,7 @@ export default function ShoppingListSection() {
         icon={ShoppingCart}
         iconColorClass="text-cyan-400"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {quickPicks.length > 0 && (
             <div className="flex flex-col gap-1.5">
@@ -642,7 +642,7 @@ export default function ShoppingListSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette «${items.find((i) => i.id === confirmDelete.pending)?.name ?? ""}» fra handlelisten?`}

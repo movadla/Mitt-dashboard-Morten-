@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -186,8 +188,11 @@ function EventRow({
 
 export default function CalendarSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender", true);
-  const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: PrivatCalendarEvent[] }>(
+    "/api/privat-calendar",
+    jsonFetcher,
+  );
+  const events = data?.events ?? [];
   const [showAll, setShowAll] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
@@ -199,19 +204,6 @@ export default function CalendarSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
-
-  const load = useCallback(() => {
-    fetch("/api/privat-calendar")
-      .then((r) => r.json())
-      .then((d) => setEvents((d.events ?? []) as PrivatCalendarEvent[]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -230,10 +222,14 @@ export default function CalendarSection() {
       });
       if (res.ok) {
         const created: PrivatCalendarEvent = await res.json();
-        setEvents((prev) =>
-          [...prev, created].sort(
-            (a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? ""),
-          ),
+        mutateEvents(
+          (current) =>
+            current && {
+              events: [...current.events, created].sort(
+                (a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? ""),
+              ),
+            },
+          { revalidate: false },
         );
         setTitle("");
         setDate("");
@@ -249,7 +245,9 @@ export default function CalendarSection() {
   }
 
   async function handleRemove(id: string) {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
+    mutateEvents((current) => current && { events: current.events.filter((e) => e.id !== id) }, {
+      revalidate: false,
+    });
     vibrate([10, 30, 10]);
     await fetch(`/api/privat-calendar/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -272,10 +270,14 @@ export default function CalendarSection() {
     });
     if (res.ok) {
       const updated: PrivatCalendarEvent = await res.json();
-      setEvents((prev) =>
-        prev
-          .map((e) => (e.id === id ? updated : e))
-          .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")),
+      mutateEvents(
+        (current) =>
+          current && {
+            events: current.events
+              .map((e) => (e.id === id ? updated : e))
+              .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? "")),
+          },
+        { revalidate: false },
       );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -304,7 +306,7 @@ export default function CalendarSection() {
         icon={Calendar}
         iconColorClass="text-source-teams"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {showForm ? (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
@@ -432,7 +434,7 @@ export default function CalendarSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

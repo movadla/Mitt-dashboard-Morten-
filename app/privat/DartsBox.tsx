@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { Target } from "lucide-react";
 import type { DartsMatch, DartsStats } from "@/lib/darts";
@@ -60,8 +60,8 @@ export default function DartsBox() {
         onToggleCollapse={toggleCollapsed}
         icon={Target}
       />
-      {!collapsed &&
-        (loading ? (
+      <CollapsibleBody collapsed={collapsed}>
+        {loading ? (
           <SkeletonRows count={1} className="h-16" />
         ) : (
           stats && (
@@ -86,7 +86,8 @@ export default function DartsBox() {
               )}
             </div>
           )
-        ))}
+        )}
+      </CollapsibleBody>
     </div>
   );
 }

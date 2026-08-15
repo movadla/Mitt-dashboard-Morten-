@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { NewsItem } from "@/lib/news";
 import { Newspaper } from "lucide-react";
 
@@ -84,7 +84,7 @@ export default function NewsSection() {
         icon={Newspaper}
         iconColorClass="text-white"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {loading ? (
             <SkeletonRows count={3} />
@@ -103,7 +103,7 @@ export default function NewsSection() {
             </ul>
           )}
         </div>
-      )}
+      </CollapsibleBody>
     </div>
   );
 }

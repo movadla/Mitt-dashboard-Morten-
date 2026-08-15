@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -124,7 +124,9 @@ function AlfredSubSection({
           <path d="M4 6l4 4 4-4" />
         </svg>
       </button>
-      {!collapsed && <div className="flex flex-col gap-1.5 px-3 pb-3">{children}</div>}
+      <CollapsibleBody collapsed={collapsed}>
+        <div className="flex flex-col gap-1.5 px-3 pb-3">{children}</div>
+      </CollapsibleBody>
     </div>
   );
 }
@@ -577,7 +579,7 @@ export default function AlfredSection() {
         icon={Bot}
         iconColorClass="text-status-action"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-3">
           {loading ? (
             <SkeletonRows count={3} />
@@ -616,7 +618,7 @@ export default function AlfredSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={(() => {

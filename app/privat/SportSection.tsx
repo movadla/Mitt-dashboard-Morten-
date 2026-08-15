@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { localDateString, toOsloDateString } from "@/lib/payday";
 
@@ -258,8 +258,8 @@ export function SportSection({
         icon={Trophy}
         iconColorClass="text-accent"
       />
-      {!collapsed &&
-        (loading && !events.length ? (
+      <CollapsibleBody collapsed={collapsed}>
+        {loading && !events.length ? (
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((n) => (
               <div key={n} className="h-12 animate-pulse rounded-xl bg-surface-2" />
@@ -299,7 +299,8 @@ export function SportSection({
             )}
             {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
           </div>
-        ))}
+        )}
+      </CollapsibleBody>
     </div>
   );
 }
@@ -378,13 +379,13 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
   return (
     <div className={`${CARD_SHELL} p-4`}>
       <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={Trophy} />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {days.map((day, i) => (
             <WorldCupDayCard key={day} date={day} matches={byDay.get(day)!} defaultOpen={i === 0} />
           ))}
         </div>
-      )}
+      </CollapsibleBody>
     </div>
   );
 }

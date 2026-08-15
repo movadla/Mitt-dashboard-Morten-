@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -344,8 +346,13 @@ function SortableReminderRow({
 
 export default function RemindersSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser", true);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Delt SWR-nøkkel med TodaySummary — begge leser/skriver samme cache-oppføring
+  // istedenfor å holde hver sin kopi og hente uavhengig av hverandre.
+  const { data, isLoading: loading, mutate: mutateReminders } = useSWR<{ reminders: Reminder[] }>(
+    "/api/reminders",
+    jsonFetcher,
+  );
+  const reminders = data?.reminders ?? [];
   const [showAll, setShowAll] = useState(false);
   const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false);
   // "now" leses fra state (ikke Date.now() direkte i render, som React
@@ -369,19 +376,6 @@ export default function RemindersSection() {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  const load = useCallback(() => {
-    fetch("/api/reminders")
-      .then((r) => r.json())
-      .then((d) => setReminders((d.reminders ?? []) as Reminder[]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
-
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
@@ -399,7 +393,10 @@ export default function RemindersSection() {
       if (res.ok) {
         const created: Reminder = await res.json();
         if (notes.trim()) await addComment("reminder", created.id, notes.trim());
-        setReminders((prev) => [...prev, created].sort(sortReminders));
+        mutateReminders(
+          (current) => current && { reminders: [...current.reminders, created].sort(sortReminders) },
+          { revalidate: false },
+        );
         setText("");
         setDueDate(localDateString());
         setDueTime("");
@@ -417,7 +414,10 @@ export default function RemindersSection() {
     const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
     if (res.ok) {
       const updated: Reminder = await res.json();
-      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
+      mutateReminders(
+        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)).sort(sortReminders) },
+        { revalidate: false },
+      );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       vibrate(updated.done ? 15 : 8);
       setJustToggledIds((prev) => new Set(prev).add(id));
@@ -432,7 +432,9 @@ export default function RemindersSection() {
   }
 
   async function handleRemove(id: string) {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
+    mutateReminders((current) => current && { reminders: current.reminders.filter((r) => r.id !== id) }, {
+      revalidate: false,
+    });
     vibrate([10, 30, 10]);
     await fetch(`/api/reminders/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -454,7 +456,10 @@ export default function RemindersSection() {
     });
     if (res.ok) {
       const updated: Reminder = await res.json();
-      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
+      mutateReminders(
+        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)).sort(sortReminders) },
+        { revalidate: false },
+      );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
@@ -466,27 +471,25 @@ export default function RemindersSection() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    setReminders((prev) => {
-      const todaysIds = prev
-        .filter((r) => isDueToday(r, today))
-        .sort((a, b) => a.order - b.order)
-        .map((r) => r.id);
-      const oldIndex = todaysIds.indexOf(activeId);
-      const newIndex = todaysIds.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1) return prev;
+    const todaysIds = reminders
+      .filter((r) => isDueToday(r, today))
+      .sort((a, b) => a.order - b.order)
+      .map((r) => r.id);
+    const oldIndex = todaysIds.indexOf(activeId);
+    const newIndex = todaysIds.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1) return;
 
-      const reordered = arrayMove(todaysIds, oldIndex, newIndex);
-      const orderOf = new Map(reordered.map((id, i) => [id, i]));
-      const next = prev.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r));
+    const reordered = arrayMove(todaysIds, oldIndex, newIndex);
+    const orderOf = new Map(reordered.map((id, i) => [id, i]));
+    const next = reminders.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r));
+    mutateReminders({ reminders: next }, { revalidate: false });
 
-      fetch("/api/reminders/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: reordered }),
-      }).then(() => window.dispatchEvent(new Event("mitt-dashboard:privat-refresh")));
+    fetch("/api/reminders/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered }),
+    }).then(() => window.dispatchEvent(new Event("mitt-dashboard:privat-refresh")));
 
-      return next;
-    });
     vibrate(10);
   }
 
@@ -530,7 +533,7 @@ export default function RemindersSection() {
         icon={Lightbulb}
         iconColorClass="text-accent-privat"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {showForm ? (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
@@ -706,7 +709,7 @@ export default function RemindersSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette påminnelsen «${reminders.find((r) => r.id === confirmDelete.pending)?.text ?? ""}»?`}

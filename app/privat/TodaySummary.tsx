@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import useSWR from "swr";
 import { CARD_SHELL, SkeletonRows } from "../CardShell";
+import { jsonFetcher } from "@/lib/swrFetcher";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
@@ -227,15 +229,29 @@ function hourLabel(iso: string): string {
 }
 
 export default function TodaySummary() {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [events, setEvents] = useState<PrivatCalendarEvent[]>([]);
-  const [sports, setSports] = useState<SportEvent[]>([]);
-  const [fpl, setFpl] = useState<FplData | null>(null);
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [lifeEvents, setLifeEvents] = useState<LifeEvent[]>([]);
-  const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
+  // Delt SWR-cache (samme nøkkel/URL brukt av de fulle kortene, f.eks.
+  // RemindersSection) — deduperer kallene istedenfor at "I dag"-boksen og
+  // det fulle kortet henter akkurat det samme to ganger ved hver visning.
+  const { data: remindersData, mutate: mutateReminders } = useSWR<{ reminders: Reminder[] }>("/api/reminders", jsonFetcher);
+  const { data: calendarData } = useSWR<{ events: PrivatCalendarEvent[] }>("/api/privat-calendar", jsonFetcher);
+  const { data: sportsData } = useSWR<{ events: SportEvent[] }>("/api/sports", jsonFetcher);
+  const { data: fplRaw } = useSWR<FplData | { error: string }>("/api/fpl", jsonFetcher);
+  const { data: weatherRaw } = useSWR<WeatherData | { error: string }>("/api/weather", jsonFetcher);
+  const { data: eventsData } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
+  const { data: aiUsageRaw } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
+
+  const reminders = remindersData?.reminders ?? [];
+  const events = calendarData?.events ?? [];
+  const sports = sportsData?.events ?? [];
+  const fpl = fplRaw && !("error" in fplRaw) ? fplRaw : null;
+  const weather = weatherRaw && !("error" in weatherRaw) ? weatherRaw : null;
+  const lifeEvents = eventsData?.events ?? [];
+  const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
+  const loading = [remindersData, calendarData, sportsData, fplRaw, weatherRaw, eventsData, aiUsageRaw].some(
+    (d) => d === undefined,
+  );
+
   const [weatherExpanded, setWeatherExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -258,33 +274,6 @@ export default function TodaySummary() {
     const el = heightWrapRef.current;
     if (el) pendingOldHeightRef.current = el.getBoundingClientRect().height;
   }
-
-  const load = useCallback(() => {
-    Promise.allSettled([
-      fetch("/api/reminders").then((r) => r.json()),
-      fetch("/api/privat-calendar").then((r) => r.json()),
-      fetch("/api/sports").then((r) => r.json()),
-      fetch("/api/fpl").then((r) => r.json()),
-      fetch("/api/weather").then((r) => r.json()),
-      fetch("/api/events").then((r) => r.json()),
-      fetch("/api/ai-usage").then((r) => r.json()),
-    ]).then(([r, e, s, f, w, ev, au]) => {
-      setReminders(r.status === "fulfilled" ? ((r.value.reminders ?? []) as Reminder[]) : []);
-      setEvents(e.status === "fulfilled" ? ((e.value.events ?? []) as PrivatCalendarEvent[]) : []);
-      setSports(s.status === "fulfilled" ? ((s.value.events ?? []) as SportEvent[]) : []);
-      setFpl(f.status === "fulfilled" && !f.value.error ? (f.value as FplData) : null);
-      setWeather(w.status === "fulfilled" && !w.value.error ? (w.value as WeatherData) : null);
-      setLifeEvents(ev.status === "fulfilled" ? ((ev.value.events ?? []) as LifeEvent[]) : []);
-      setAiUsage(au.status === "fulfilled" && !au.value.error ? (au.value as AiUsageSummary) : null);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
 
   const realToday = localDateString();
   const viewedDate = addDaysIso(realToday, viewedOffset);
@@ -367,7 +356,10 @@ export default function TodaySummary() {
     });
     if (res.ok) {
       const updated: Reminder = await res.json();
-      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      mutateReminders(
+        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)) },
+        { revalidate: false },
+      );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
   }
@@ -376,7 +368,10 @@ export default function TodaySummary() {
     const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
     if (res.ok) {
       const updated: Reminder = await res.json();
-      setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      mutateReminders(
+        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)) },
+        { revalidate: false },
+      );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       vibrate(updated.done ? 15 : 8);
       setJustToggledIds((prev) => new Set(prev).add(id));

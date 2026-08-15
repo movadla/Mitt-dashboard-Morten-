@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { PartyPopper } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
@@ -215,8 +217,8 @@ function EventRow({
 
 export default function EventsSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser", true);
-  const [events, setEvents] = useState<LifeEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
+  const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
@@ -228,19 +230,6 @@ export default function EventsSection() {
   const [visibleCount, setVisibleCount] = useState(5);
   const confirmDelete = useConfirmDelete<string>();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
-
-  const load = useCallback(() => {
-    fetch("/api/events")
-      .then((r) => r.json())
-      .then((d) => setEvents((d.events ?? []) as LifeEvent[]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
 
   // Start alltid på 5 synlige hendelser når kortet åpnes på nytt — "+10 til"
   // utvider gradvis i stedet for å vise hele lista med det samme.
@@ -259,7 +248,7 @@ export default function EventsSection() {
       });
       if (res.ok) {
         const created: LifeEvent = await res.json();
-        setEvents((prev) => [...prev, created]);
+        mutateEvents((current) => current && { events: [...current.events, created] }, { revalidate: false });
         if (note.trim()) await addComment("life-event", created.id, note.trim());
         setTitle("");
         setDate("");
@@ -275,7 +264,9 @@ export default function EventsSection() {
   }
 
   async function handleRemove(id: string) {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
+    mutateEvents((current) => current && { events: current.events.filter((e) => e.id !== id) }, {
+      revalidate: false,
+    });
     vibrate([10, 30, 10]);
     await fetch(`/api/events/${id}`, { method: "DELETE" });
     window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -292,7 +283,10 @@ export default function EventsSection() {
     });
     if (res.ok) {
       const updated: LifeEvent = await res.json();
-      setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      mutateEvents(
+        (current) => current && { events: current.events.map((e) => (e.id === id ? updated : e)) },
+        { revalidate: false },
+      );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     }
@@ -337,7 +331,7 @@ export default function EventsSection() {
         icon={PartyPopper}
         iconColorClass="text-status-danger"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {showForm ? (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
@@ -456,7 +450,7 @@ export default function EventsSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

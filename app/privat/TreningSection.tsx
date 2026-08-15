@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
@@ -1512,7 +1512,7 @@ export default function TreningSection() {
         iconColorClass="text-status-positive"
         alwaysShowSubtitle={!!activeSession}
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {loading ? (
             <SkeletonRows count={2} />
@@ -1710,7 +1710,7 @@ export default function TreningSection() {
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDeleteSession.isOpen}
         message={

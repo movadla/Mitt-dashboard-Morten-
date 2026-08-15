@@ -310,8 +310,8 @@ export interface ManualNxtSnapshot {
   vouchers: ManualNxtVoucher[];
 }
 
-// Se lib/incomeForecast.local.ts for full metodikk-kommentar. "Moniker AS" i bilagstekst er
-// anonymisert til "Demokunde 40" (samme krysskobling som ellers) siden dette er en
+// Se lib/incomeForecast.local.ts for full metodikk-kommentar. Leietakernavn i bilagstekst
+// er anonymisert til "Demokunde N" (samme krysskobling som ellers) siden dette er en
 // leietaker-identifiserende tekststreng.
 export const MANUAL_NXT: ManualNxtSnapshot = {
   sistOppdatert: "2026-08-14",
