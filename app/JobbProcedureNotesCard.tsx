@@ -128,7 +128,7 @@ export default function JobbProcedureNotesCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-amber-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-amber-400/60 p-4`}>
       <CardHeader
         title="Prosedyrenotater"
         subtitle={`${notes.length} notater`}

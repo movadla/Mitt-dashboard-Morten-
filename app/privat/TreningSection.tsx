@@ -66,6 +66,9 @@ function useElapsed(startedAt: string | undefined): number {
 
   useEffect(() => {
     if (!startedAt) {
+      // Date.now()-baserte klokke kan ikke avledes i render (render må være
+      // rent) — hele denne synkroniseringen må derfor skje i en effekt.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setElapsed(0);
       return;
     }
@@ -1502,7 +1505,7 @@ export default function TreningSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-status-positive/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-status-positive/60 p-4`}>
       <CardHeader
         title="Trening"
         subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}

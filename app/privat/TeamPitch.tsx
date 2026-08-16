@@ -145,12 +145,19 @@ function PitchBackground() {
 
 export default function TeamPitch({ managerId, accent }: { managerId?: number; accent: string }) {
   const [data, setData] = useState<PicksData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !!managerId);
+
+  // Nullstiller data/loading avledet i render når managerId endres (ikke i
+  // useEffect) — selve fetch-kallet må fortsatt skje i en effekt.
+  const [prevManagerId, setPrevManagerId] = useState(managerId);
+  if (managerId !== prevManagerId) {
+    setPrevManagerId(managerId);
+    setData(null);
+    setLoading(!!managerId);
+  }
 
   useEffect(() => {
     if (!managerId) return;
-    setLoading(true);
-    setData(null);
     fetch(`/api/fpl/picks?managerId=${managerId}`)
       .then(r => r.json())
       .then(d => { setData(d); setLoading(false); })

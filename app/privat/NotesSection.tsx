@@ -163,9 +163,13 @@ function NoteRow({
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "append">("view");
 
-  useEffect(() => {
+  // Avledet i render (ikke useEffect) — reagerer på expanded-prop-endring uten
+  // en ekstra effekt-runde.
+  const [prevExpanded, setPrevExpanded] = useState(expanded);
+  if (expanded !== prevExpanded) {
+    setPrevExpanded(expanded);
     if (!expanded) setMode("view");
-  }, [expanded]);
+  }
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${note.pinned ? "border-status-warning/50 bg-status-warning/8" : "border-line bg-surface-2"}`}>
@@ -318,7 +322,7 @@ export default function NotesSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-status-warning/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-status-warning/60 p-4`}>
       <CardHeader
         title="Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}

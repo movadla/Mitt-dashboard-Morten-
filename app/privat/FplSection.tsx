@@ -437,6 +437,9 @@ export function FplHero({ fpl }: { fpl: FplData }) {
   }, [fpl.teams]);
 
   useEffect(() => {
+    // fetchPicks er async — setPicks skjer etter en await, ikke synkront i
+    // effekt-kroppen. Lint-regelen følger likevel kallgrafen inn i den.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPicks();
     const id = setInterval(fetchPicks, 2 * 60 * 1000);
     return () => clearInterval(id);
@@ -540,7 +543,7 @@ export function FplBox({ fpl }: { fpl: FplData }) {
   if (!fpl.active || !fpl.gw?.deadline) return null;
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-lime-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-lime-400/60 p-4`}>
       <CardHeader
         title="Fantasy Premier League"
         subtitle={fplCountdownText(fpl.gw.deadline)}

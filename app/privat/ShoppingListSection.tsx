@@ -446,7 +446,7 @@ export default function ShoppingListSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-cyan-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-cyan-400/60 p-4`}>
       <CardHeader
         title="Handleliste"
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}

@@ -39,7 +39,7 @@ import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
 import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck } from "lucide-react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import { CARD_SHELL, CardErrorBoundary, CardHeader, ConfirmDialog, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
@@ -1370,6 +1370,9 @@ function useCalendarNotes(): [Record<string, string[]>, (id: string, value: stri
         for (const [id, value] of Object.entries(parsed)) {
           normalized[id] = Array.isArray(value) ? value : [value];
         }
+        // localStorage kan ikke leses under SSR/første render uten hydrerings-
+        // avvik — dette MÅ skje i en effekt, ikke avledes i render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setNotes(normalized);
       }
     } catch {
@@ -1414,7 +1417,7 @@ function CalendarCard({ today }: { today: string }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const visible = CALENDAR_EVENTS.slice(0, visibleCount);
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-indigo-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-indigo-400/60 p-4`}>
       <CardHeader
         title="Kalender"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{CALENDAR_EVENTS.length}</span> kommende</>}
@@ -1630,7 +1633,7 @@ function ContractsCard({ today }: { today: string }) {
   const visible = expanded ? sinceYearStart : sinceLastMonth;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-rose-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-rose-400/60 p-4`}>
       <CardHeader
         title="Nye kontrakter"
         subtitle={
@@ -1805,7 +1808,7 @@ function ExpiryListCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-orange-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-orange-400/60 p-4`}>
       <CardHeader
         title="Utløpsliste"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{EXPIRIES.length}</span> leietakere, neste 30 dager</>}
@@ -1913,7 +1916,7 @@ function GuaranteesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-teal-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-teal-400/60 p-4`}>
       <CardHeader
         title="Garantioversikt"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{GUARANTEE_TOTAL}</span> mangler garanti/depositum</>}
@@ -2360,7 +2363,7 @@ function ReceivablesCard({ today }: { today: string }) {
   const changes = snapshots.length >= 2 ? computeReceivableChanges(snapshots[snapshots.length - 2], snapshots[snapshots.length - 1]) : [];
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-fuchsia-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-fuchsia-400/60 p-4`}>
       <CardHeader
         title="Kundefordringer"
         subtitle={
@@ -2573,6 +2576,9 @@ export default function JobbView({
       if (stored) {
         const ids: unknown = JSON.parse(stored);
         if (Array.isArray(ids)) {
+          // localStorage kan ikke leses under SSR/første render uten hydrerings-
+          // avvik — dette MÅ skje i en effekt, ikke avledes i render.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setDone(new Set(ids.filter((x): x is string => typeof x === "string")));
         }
       }
@@ -2868,11 +2874,13 @@ export default function JobbView({
       </header>
 
       <div className="mb-6">
-        <JobbTodaySummary
-          tasks={tasks}
-          onJumpToAsana={() => jumpToOppgaver("asana")}
-          onJumpToTask={(id) => jumpToCase(id)}
-        />
+        <CardErrorBoundary>
+          <JobbTodaySummary
+            tasks={tasks}
+            onJumpToAsana={() => jumpToOppgaver("asana")}
+            onJumpToTask={(id) => jumpToCase(id)}
+          />
+        </CardErrorBoundary>
       </div>
 
       {/* Ekte data: kontrakter, kalender, garantier og kundefordringer · Testdata: ukesgraf.

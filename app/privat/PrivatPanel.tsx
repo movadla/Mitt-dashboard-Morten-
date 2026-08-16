@@ -16,7 +16,7 @@ import NewsSection from "./NewsSection";
 import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
-import { CARD_SHELL, SkeletonRows, usePersistedOrder, SortableSection } from "../CardShell";
+import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder, SortableSection } from "../CardShell";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
@@ -99,7 +99,9 @@ export default function PrivatPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <TodaySummary />
+      <CardErrorBoundary>
+        <TodaySummary />
+      </CardErrorBoundary>
       {/* Dra-håndtakene er skjult som standard — "Endre rekkefølge"-knappen
           slår på reorderMode, som viser grip-håndtak på alle kort til man
           trykker "Lagre" (samme knapp, samme plass) igjen. Holder normalvisningen

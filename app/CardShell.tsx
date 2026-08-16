@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Component, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Plus, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -10,8 +11,55 @@ import { CSS } from "@dnd-kit/utilities";
 // gir i tillegg en synlig affordance på kort som kan utvides (collapse-header)
 // eller drilles ned i (klikkbare rader inni), som dekker praktisk talt alle
 // kort i Jobb/Privat siden nesten alle har en av delene.
+//
+// Hover-kanten er bevisst begrenset til høyre/bunn/venstre (ikke toppen) —
+// kort med en aksentfarget topplinje (border-t-2 border-t-X, satt av det
+// enkelte kortet) skal beholde den fargen uendret ved hover i stedet for at
+// den blir overskrevet av border-line-strong. Dette gjør det også unødvendig
+// å bruke !important noe sted for å vinne over border-line: siden CARD_SHELL
+// aldri selv setter en border-top-farge, er det ingen kant å konkurrere med.
 export const CARD_SHELL =
-  "card-shell rounded-2xl border border-line bg-surface-1 transition-shadow duration-150 hover:border-line-strong";
+  "card-shell rounded-2xl border border-line bg-surface-1 transition-shadow duration-150 hover:border-r-line-strong hover:border-b-line-strong hover:border-l-line-strong";
+
+// Fanger opp en kastet feil i ETT kort slik at resten av Jobb-/Privat-
+// visningen fortsetter å virke i stedet for at hele siden blankes ut — må
+// være en klassekomponent siden React (ennå) ikke har en hooks-variant av
+// componentDidCatch/getDerivedStateFromError. "Prøv igjen" nullstiller kun
+// denne boundary-en; hvis den underliggende feilen er varig (f.eks. en
+// datafeil), vil kortet kaste på nytt til dataen/koden er fikset.
+interface CardErrorBoundaryState {
+  hasError: boolean;
+}
+
+export class CardErrorBoundary extends Component<{ children: ReactNode }, CardErrorBoundaryState> {
+  state: CardErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("Kort krasjet:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className={`${CARD_SHELL} p-4`}>
+          <p className="text-sm text-ink-3">Noe gikk galt med dette kortet.</p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="mt-2 text-xs font-medium text-ink-2 underline hover:text-ink-1"
+          >
+            Prøv igjen
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Navnet er historisk — tilstanden persisteres bevisst IKKE lenger på tvers av
 // sideoppdateringer (jf. tilbakemelding: alle kort skal starte kollapset ved
@@ -89,6 +137,9 @@ export function usePersistedOrder(storageKey: string, defaultOrder: string[]): [
         const known = new Set(defaultOrder);
         const kept = parsed.filter((id) => known.has(id));
         const missing = defaultOrder.filter((id) => !kept.includes(id));
+        // localStorage kan ikke leses under SSR/første render uten hydrerings-
+        // avvik — dette MÅ skje i en effekt, ikke avledes i render.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setOrder([...kept, ...missing]);
       }
     } catch {
@@ -129,7 +180,7 @@ export function SortableSection({ id, reorderMode, children }: { id: string; reo
   if (!reorderMode) {
     return (
       <div ref={setNodeRef} style={style}>
-        {children}
+        <CardErrorBoundary>{children}</CardErrorBoundary>
       </div>
     );
   }
@@ -147,7 +198,9 @@ export function SortableSection({ id, reorderMode, children }: { id: string; reo
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        <CardErrorBoundary>{children}</CardErrorBoundary>
+      </div>
     </div>
   );
 }

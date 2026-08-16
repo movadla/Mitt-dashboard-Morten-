@@ -186,7 +186,7 @@ export default function JobbLeasingManagersCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-violet-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-violet-400/60 p-4`}>
       <CardHeader
         title="Utleieansvarlige"
         subtitle={`${managers.length} personer`}

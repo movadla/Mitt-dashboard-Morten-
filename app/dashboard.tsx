@@ -73,6 +73,9 @@ export default function Dashboard({
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
+      // localStorage kan ikke leses under SSR/første render uten hydrerings-
+      // avvik — dette MÅ skje i en effekt, ikke avledes i render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(stored === "privat" ? "privat" : "jobb");
     } catch {
       setMode("jobb");

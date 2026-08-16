@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+// navigator.onLine er en ekte ekstern kilde (nettleseren) — useSyncExternalStore
+// er Reacts egen anbefalte løsning for akkurat dette (abonnere på en ekstern
+// mutable verdi), i stedet for useEffect+useState som krever en ekstra
+// render-runde og trigget lint-regelen for setState-i-effekt.
+function subscribe(callback: () => void) {
+  window.addEventListener("online", callback);
+  window.addEventListener("offline", callback);
+  return () => {
+    window.removeEventListener("online", callback);
+    window.removeEventListener("offline", callback);
+  };
+}
+
+function getSnapshot() {
+  return navigator.onLine;
+}
+
+function getServerSnapshot() {
+  return true; // anta online ved SSR — korrigeres umiddelbart ved hydrering
+}
 
 export default function OfflineBanner() {
-  const [online, setOnline] = useState(true);
-
-  useEffect(() => {
-    setOnline(navigator.onLine);
-    const goOnline = () => setOnline(true);
-    const goOffline = () => setOnline(false);
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
-    return () => {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
-    };
-  }, []);
+  const online = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   if (online) return null;
 

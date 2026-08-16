@@ -232,10 +232,14 @@ export default function EventsSection() {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
 
   // Start alltid på 5 synlige hendelser når kortet åpnes på nytt — "+10 til"
-  // utvider gradvis i stedet for å vise hele lista med det samme.
-  useEffect(() => {
+  // utvider gradvis i stedet for å vise hele lista med det samme. Avledet
+  // direkte i render (ikke useEffect) — det anbefalte React-mønsteret for å
+  // reagere på en prop/state-endring uten en ekstra effekt-runde.
+  const [prevCollapsed, setPrevCollapsed] = useState(collapsed);
+  if (collapsed !== prevCollapsed) {
+    setPrevCollapsed(collapsed);
     if (collapsed) setVisibleCount(5);
-  }, [collapsed]);
+  }
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -320,7 +324,7 @@ export default function EventsSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-status-danger/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-status-danger/60 p-4`}>
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}

@@ -641,7 +641,7 @@ export default function IncomeForecastSection() {
   const lastUpdated = oldestSnapshotDate();
 
   return (
-    <div className={`${CARD_SHELL} !border-t-2 !border-t-yellow-400/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-yellow-400/60 p-4`}>
       <CardHeader
         title="Inntektsprognose 2026"
         subtitle={
