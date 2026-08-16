@@ -3,6 +3,12 @@ import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
 export type Recurrence = "none" | "daily" | "weekly" | "monthly";
 
+export interface Subtask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface Reminder {
   id: string;
   text: string;
@@ -12,6 +18,7 @@ export interface Reminder {
   done: boolean;
   completedAt?: string; // ISO datetime — satt når done settes til true, brukes for "angre"-vinduet
   order: number; // manuell prioritet i "i dag"-lista, lavest først
+  subtasks?: Subtask[];
 }
 
 export interface NewReminderInput {
@@ -133,6 +140,35 @@ export async function updateReminder(id: string, updates: ReminderUpdateInput): 
 
 export async function deleteReminder(id: string): Promise<void> {
   await hdel(HASH_KEY, id);
+}
+
+export async function addSubtask(reminderId: string, text: string): Promise<Reminder | null> {
+  if (!text.trim()) throw new Error("Underpunkt mangler tekst");
+  const current = await hgetJSON<Reminder>(HASH_KEY, reminderId);
+  if (!current) return null;
+  const subtask: Subtask = { id: randomUUID(), text: text.trim(), done: false };
+  const next: Reminder = { ...current, subtasks: [...(current.subtasks ?? []), subtask] };
+  await hsetJSON(HASH_KEY, reminderId, next);
+  return next;
+}
+
+export async function toggleSubtask(reminderId: string, subtaskId: string): Promise<Reminder | null> {
+  const current = await hgetJSON<Reminder>(HASH_KEY, reminderId);
+  if (!current) return null;
+  const next: Reminder = {
+    ...current,
+    subtasks: (current.subtasks ?? []).map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s)),
+  };
+  await hsetJSON(HASH_KEY, reminderId, next);
+  return next;
+}
+
+export async function deleteSubtask(reminderId: string, subtaskId: string): Promise<Reminder | null> {
+  const current = await hgetJSON<Reminder>(HASH_KEY, reminderId);
+  if (!current) return null;
+  const next: Reminder = { ...current, subtasks: (current.subtasks ?? []).filter((s) => s.id !== subtaskId) };
+  await hsetJSON(HASH_KEY, reminderId, next);
+  return next;
 }
 
 // Setter order = posisjon i den oppgitte lista. Brukes for å persistere manuell

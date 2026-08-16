@@ -4,6 +4,7 @@ import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 // Bevisst utelatt: fødselsnummer. Ikke nødvendig for ukentlig utviklingsoppfølging,
 // og bør ikke ligge i flere systemer enn strengt tatt nødvendig.
 export interface AlfredProfile {
+  name: string;
   born: string; // "YYYY-MM-DD"
   birthPlace: string;
   parents: string;
@@ -41,10 +42,22 @@ export interface Milestone {
   done: boolean;
 }
 
+export interface PlayIdea {
+  id: string;
+  label: string;
+}
+
 const PROFILE_KEY = "privat:alfred:profile";
 const PROFILE_FIELD = "main";
 const GROWTH_KEY = "privat:alfred:growth";
 const MILESTONE_KEY = "privat:alfred:milestones";
+const PLAY_KEY = "privat:alfred:play";
+
+// Forhåndsutfylt med Mortens egen liste — kun brukt til å "frø" hashen første
+// gang noen henter den (samme mønster som defaultverdiene i updateAlfredProfile).
+// Etter første henting er Redis alene sannheten; å fjerne alle punktene senere
+// gir en tom liste, ikke en ny runde med disse forslagene.
+const DEFAULT_PLAY_IDEAS = ["Bære på nakken", "Spille musikk", "Balkong og se på biler", "Se i speil", "Gå med vogn"];
 
 export async function getAlfredProfile(): Promise<AlfredProfile | null> {
   return hgetJSON<AlfredProfile>(PROFILE_KEY, PROFILE_FIELD);
@@ -52,6 +65,7 @@ export async function getAlfredProfile(): Promise<AlfredProfile | null> {
 
 export async function updateAlfredProfile(updates: Partial<AlfredProfile>): Promise<AlfredProfile> {
   const current = (await getAlfredProfile()) ?? {
+    name: "",
     born: "",
     birthPlace: "",
     parents: "",
@@ -125,4 +139,24 @@ export async function toggleMilestone(id: string): Promise<Milestone | null> {
 
 export async function deleteMilestone(id: string): Promise<void> {
   await hdel(MILESTONE_KEY, id);
+}
+
+export async function getPlayIdeas(): Promise<PlayIdea[]> {
+  const map = await hgetallJSON<PlayIdea>(PLAY_KEY);
+  if (Object.keys(map).length > 0) return Object.values(map);
+
+  const seeded: PlayIdea[] = DEFAULT_PLAY_IDEAS.map((label) => ({ id: randomUUID(), label }));
+  await Promise.all(seeded.map((idea) => hsetJSON(PLAY_KEY, idea.id, idea)));
+  return seeded;
+}
+
+export async function addPlayIdea(label: string): Promise<PlayIdea> {
+  if (!label.trim()) throw new Error("Mangler tekst");
+  const idea: PlayIdea = { id: randomUUID(), label: label.trim() };
+  await hsetJSON(PLAY_KEY, idea.id, idea);
+  return idea;
+}
+
+export async function deletePlayIdea(id: string): Promise<void> {
+  await hdel(PLAY_KEY, id);
 }

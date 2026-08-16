@@ -255,6 +255,8 @@ export default function TodaySummary() {
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [addingReminder, setAddingReminder] = useState(false);
+  const [newReminderText, setNewReminderText] = useState("");
   // Holder en nettopp fullført påminnelse synlig ~700ms (med hakemerket vist)
   // før den forsvinner fra "I dag" — samme mønster som Påminnelser-kortet
   // (justToggledIds), se feedback_checkoff-visible-feedback-memory.
@@ -361,6 +363,23 @@ export default function TodaySummary() {
         { revalidate: false },
       );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
+  }
+
+  async function handleAddReminder() {
+    const text = newReminderText.trim();
+    if (!text) return;
+    const res = await fetch("/api/reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, dueDate: viewedDate }),
+    });
+    if (res.ok) {
+      const created: Reminder = await res.json();
+      mutateReminders((current) => current && { reminders: [...current.reminders, created] }, { revalidate: false });
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      setNewReminderText("");
+      setAddingReminder(false);
     }
   }
 
@@ -522,6 +541,38 @@ export default function TodaySummary() {
                   </ul>
                 ) : (
                   <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
+                )}
+                {addingReminder ? (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={newReminderText}
+                      onChange={(e) => setNewReminderText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddReminder();
+                        if (e.key === "Escape") setAddingReminder(false);
+                      }}
+                      placeholder="Ny påminnelse..."
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddReminder}
+                      disabled={!newReminderText.trim()}
+                      className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                    >
+                      Legg til
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddingReminder(true)}
+                    className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                  >
+                    + Ny påminnelse
+                  </button>
                 )}
               </CategoryRow>
             </div>

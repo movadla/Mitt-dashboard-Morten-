@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
-import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory } from "@/lib/alfred";
+import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import { Bot } from "lucide-react";
@@ -133,12 +133,14 @@ function AlfredSubSection({
 
 function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (updates: Partial<AlfredProfile>) => void }) {
   const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(profile.name);
   const [born, setBorn] = useState(profile.born);
   const [birthPlace, setBirthPlace] = useState(profile.birthPlace);
   const [parents, setParents] = useState(profile.parents);
   const [address, setAddress] = useState(profile.address);
 
   function startEditing() {
+    setName(profile.name);
     setBorn(profile.born);
     setBirthPlace(profile.birthPlace);
     setParents(profile.parents);
@@ -149,6 +151,13 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
   if (editing) {
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Navn"
+          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
         <div className="flex flex-wrap gap-2">
           <input
             type="date"
@@ -185,7 +194,7 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
           <button
             type="button"
             onClick={() => {
-              onSave({ born, birthPlace, parents, address });
+              onSave({ name, born, birthPlace, parents, address });
               setEditing(false);
             }}
             className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
@@ -204,6 +213,7 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
       className="flex flex-col gap-1 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left"
     >
       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Grunninfo</p>
+      {profile.name && <p className="text-sm font-medium text-ink-1">{profile.name}</p>}
       <p className="text-sm text-ink-1">
         Født {profile.born ? formatDMY(profile.born) : "—"}
         {profile.birthPlace ? `, ${profile.birthPlace}` : ""}
@@ -297,6 +307,76 @@ function MilestoneGroup({
               setLabel("");
               setAdding(false);
             }}
+            disabled={!label.trim()}
+            className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          >
+            Legg til
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80">
+          + Nytt punkt
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PlayList({
+  ideas,
+  onAdd,
+  onRemove,
+}: {
+  ideas: PlayIdea[];
+  onAdd: (label: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [label, setLabel] = useState("");
+
+  function submit() {
+    if (!label.trim()) return;
+    onAdd(label.trim());
+    setLabel("");
+    setAdding(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {ideas.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {ideas.map((idea) => (
+            <li key={idea.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+              <p className="min-w-0 flex-1 text-sm text-ink-1">{idea.label}</p>
+              <button
+                type="button"
+                onClick={() => onRemove(idea.id)}
+                aria-label="Slett punkt"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            autoFocus
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") setAdding(false);
+            }}
+            placeholder="Ny idé..."
+            className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <button
+            type="button"
+            onClick={submit}
             disabled={!label.trim()}
             className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
           >
@@ -475,6 +555,7 @@ export default function AlfredSection() {
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [playIdeas, setPlayIdeas] = useState<PlayIdea[]>([]);
   const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone"; id: string }>();
   const [loading, setLoading] = useState(true);
 
@@ -483,11 +564,13 @@ export default function AlfredSection() {
       fetch("/api/alfred/profile").then((r) => r.json()),
       fetch("/api/alfred/growth").then((r) => r.json()),
       fetch("/api/alfred/milestones").then((r) => r.json()),
+      fetch("/api/alfred/play").then((r) => r.json()),
     ])
-      .then(([p, g, m]) => {
+      .then(([p, g, m, pl]) => {
         setProfile(p.profile ?? null);
         setGrowth((g.entries ?? []) as GrowthEntry[]);
         setMilestones((m.milestones ?? []) as Milestone[]);
+        setPlayIdeas((pl.ideas ?? []) as PlayIdea[]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -559,6 +642,25 @@ export default function AlfredSection() {
     }
   }
 
+  async function addPlayIdeaItem(label: string) {
+    const res = await fetch("/api/alfred/play", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+    if (res.ok) {
+      const created: PlayIdea = await res.json();
+      setPlayIdeas((prev) => [...prev, created]);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
+  }
+
+  async function removePlayIdea(id: string) {
+    setPlayIdeas((prev) => prev.filter((p) => p.id !== id));
+    await fetch(`/api/alfred/play/${id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+  }
+
   const today = localDateString();
   const months = profile ? ageInMonths(profile.born, today) : null;
   const latestGrowth = growth[growth.length - 1];
@@ -603,6 +705,10 @@ export default function AlfredSection() {
                     onAdd={addMilestoneItem}
                   />
                 ))}
+              </AlfredSubSection>
+
+              <AlfredSubSection title="Lek" storageKey="Alfred - Lek">
+                <PlayList ideas={playIdeas} onAdd={addPlayIdeaItem} onRemove={removePlayIdea} />
               </AlfredSubSection>
 
               {profile && (

@@ -7,7 +7,7 @@ import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, u
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
-import type { Recurrence, Reminder } from "@/lib/reminders";
+import type { Recurrence, Reminder, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
@@ -132,6 +132,8 @@ function ReminderRowContent({
   commentCount,
   notesOpen,
   onToggleNotes,
+  subtasksOpen,
+  onToggleSubtasks,
 }: {
   reminder: Reminder;
   onToggle: (id: string) => void;
@@ -140,6 +142,8 @@ function ReminderRowContent({
   commentCount: number;
   notesOpen: boolean;
   onToggleNotes: () => void;
+  subtasksOpen: boolean;
+  onToggleSubtasks: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
@@ -176,6 +180,7 @@ function ReminderRowContent({
           </p>
         )}
       </button>
+      <SubtaskBadge subtasks={reminder.subtasks ?? []} open={subtasksOpen} onClick={onToggleSubtasks} />
       <CommentBadge count={commentCount} open={notesOpen} onClick={onToggleNotes} />
       <button
         type="button"
@@ -207,6 +212,111 @@ function ReminderNotes({
   );
 }
 
+function SubtaskBadge({ subtasks, open, onClick }: { subtasks: Subtask[]; open: boolean; onClick: () => void }) {
+  const doneCount = subtasks.filter((s) => s.done).length;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className={
+        subtasks.length > 0
+          ? "inline-flex items-center rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 transition hover:bg-surface-3/70"
+          : "inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium text-ink-4 transition hover:text-ink-2"
+      }
+    >
+      {subtasks.length > 0 ? `${doneCount}/${subtasks.length}` : "+ underpunkt"}
+    </button>
+  );
+}
+
+function ReminderSubtasks({
+  subtasks,
+  onAdd,
+  onToggle,
+  onRemove,
+}: {
+  subtasks: Subtask[];
+  onAdd: (text: string) => void;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+
+  function submit() {
+    if (!text.trim()) return;
+    onAdd(text.trim());
+    setText("");
+    setAdding(false);
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+      {subtasks.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {subtasks.map((s) => (
+            <li key={s.id} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onToggle(s.id)}
+                aria-pressed={s.done}
+                aria-label={s.done ? "Marker underpunkt som ikke ferdig" : "Marker underpunkt som ferdig"}
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
+                  s.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+                }`}
+              >
+                {s.done && (
+                  <svg viewBox="0 0 16 16" className="h-3 w-3 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 8.5L6.5 12 13 5" />
+                  </svg>
+                )}
+              </button>
+              <p className={`min-w-0 flex-1 text-sm ${s.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{s.text}</p>
+              <button
+                type="button"
+                onClick={() => onRemove(s.id)}
+                aria-label="Slett underpunkt"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") setAdding(false);
+            }}
+            placeholder="Nytt underpunkt..."
+            className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!text.trim()}
+            className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          >
+            Legg til
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80">
+          + Nytt underpunkt
+        </button>
+      )}
+    </div>
+  );
+}
+
 type RowCallbacks = {
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
@@ -222,6 +332,12 @@ type RowCommentProps = {
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 };
 
+type RowSubtaskProps = {
+  onAddSubtask: (text: string) => void;
+  onToggleSubtask: (subtaskId: string) => void;
+  onRemoveSubtask: (subtaskId: string) => void;
+};
+
 function ReminderRow({
   reminder,
   editing,
@@ -234,8 +350,12 @@ function ReminderRow({
   onAddComment,
   onDeleteComment,
   onToggleCommentRelevance,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
+  onAddSubtask,
+  onToggleSubtask,
+  onRemoveSubtask,
+}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps & RowSubtaskProps) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [subtasksOpen, setSubtasksOpen] = useState(false);
 
   if (editing) {
     return (
@@ -261,8 +381,13 @@ function ReminderRow({
           commentCount={comments.length}
           notesOpen={notesOpen}
           onToggleNotes={() => setNotesOpen((v) => !v)}
+          subtasksOpen={subtasksOpen}
+          onToggleSubtasks={() => setSubtasksOpen((v) => !v)}
         />
       </SwipeableRow>
+      {subtasksOpen && (
+        <ReminderSubtasks subtasks={reminder.subtasks ?? []} onAdd={onAddSubtask} onToggle={onToggleSubtask} onRemove={onRemoveSubtask} />
+      )}
       {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
     </li>
   );
@@ -282,11 +407,15 @@ function SortableReminderRow({
   onAddComment,
   onDeleteComment,
   onToggleCommentRelevance,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps) {
+  onAddSubtask,
+  onToggleSubtask,
+  onRemoveSubtask,
+}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps & RowSubtaskProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reminder.id,
   });
   const [notesOpen, setNotesOpen] = useState(false);
+  const [subtasksOpen, setSubtasksOpen] = useState(false);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -331,10 +460,17 @@ function SortableReminderRow({
               commentCount={comments.length}
               notesOpen={notesOpen}
               onToggleNotes={() => setNotesOpen((v) => !v)}
+              subtasksOpen={subtasksOpen}
+              onToggleSubtasks={() => setSubtasksOpen((v) => !v)}
             />
           </SwipeableRow>
         </div>
       </div>
+      {subtasksOpen && (
+        <div className="pl-7">
+          <ReminderSubtasks subtasks={reminder.subtasks ?? []} onAdd={onAddSubtask} onToggle={onToggleSubtask} onRemove={onRemoveSubtask} />
+        </div>
+      )}
       {notesOpen && (
         <div className="pl-7">
           <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />
@@ -462,6 +598,41 @@ export default function RemindersSection() {
       );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    }
+  }
+
+  async function handleAddSubtask(reminderId: string, text: string) {
+    const res = await fetch(`/api/reminders/${reminderId}/subtasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
+        revalidate: false,
+      });
+    }
+  }
+
+  async function handleToggleSubtask(reminderId: string, subtaskId: string) {
+    const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "PATCH" });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
+        revalidate: false,
+      });
+      vibrate(8);
+    }
+  }
+
+  async function handleRemoveSubtask(reminderId: string, subtaskId: string) {
+    const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "DELETE" });
+    if (res.ok) {
+      const updated: Reminder = await res.json();
+      mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
+        revalidate: false,
+      });
     }
   }
 
@@ -634,6 +805,9 @@ export default function RemindersSection() {
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
                     />
                   ))}
                 </ul>
@@ -661,6 +835,9 @@ export default function RemindersSection() {
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
                     />
                   ))}
                 </ul>
@@ -695,6 +872,9 @@ export default function RemindersSection() {
                         confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
                       }
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
                     />
                   ))}
                 </ul>
