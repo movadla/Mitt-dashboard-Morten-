@@ -57,11 +57,14 @@ function ReminderEditForm({
   reminder,
   onCancel,
   onSave,
+  onAddSubtask,
+  onToggleSubtask,
+  onRemoveSubtask,
 }: {
   reminder: Reminder;
   onCancel: () => void;
   onSave: (updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
-}) {
+} & RowSubtaskProps) {
   const [text, setText] = useState(reminder.text);
   const [dueDate, setDueDate] = useState(reminder.dueDate ?? "");
   const [dueTime, setDueTime] = useState(reminder.dueTime ?? "");
@@ -120,6 +123,10 @@ function ReminderEditForm({
           Lagre
         </button>
       </div>
+      <div>
+        <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">Underoppgaver</p>
+        <ReminderSubtasks subtasks={reminder.subtasks ?? []} onAdd={onAddSubtask} onToggle={onToggleSubtask} onRemove={onRemoveSubtask} />
+      </div>
     </div>
   );
 }
@@ -132,8 +139,6 @@ function ReminderRowContent({
   commentCount,
   notesOpen,
   onToggleNotes,
-  subtasksOpen,
-  onToggleSubtasks,
 }: {
   reminder: Reminder;
   onToggle: (id: string) => void;
@@ -142,9 +147,9 @@ function ReminderRowContent({
   commentCount: number;
   notesOpen: boolean;
   onToggleNotes: () => void;
-  subtasksOpen: boolean;
-  onToggleSubtasks: () => void;
 }) {
+  const subtasks = reminder.subtasks ?? [];
+  const subtasksDone = subtasks.filter((s) => s.done).length;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button
@@ -172,15 +177,16 @@ function ReminderRowContent({
           <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
           {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
         </div>
-        {(reminder.dueDate || reminder.recurrence !== "none") && (
+        {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0) && (
           <p className="mt-0.5 text-2xs text-ink-4">
             {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
             {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
             {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
+            {(reminder.dueDate || reminder.recurrence !== "none") && subtasks.length > 0 ? " · " : ""}
+            {subtasks.length > 0 ? `${subtasksDone}/${subtasks.length} underoppgaver` : ""}
           </p>
         )}
       </button>
-      <SubtaskBadge subtasks={reminder.subtasks ?? []} open={subtasksOpen} onClick={onToggleSubtasks} />
       <CommentBadge count={commentCount} open={notesOpen} onClick={onToggleNotes} />
       <button
         type="button"
@@ -209,24 +215,6 @@ function ReminderNotes({
     <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
       <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
     </div>
-  );
-}
-
-function SubtaskBadge({ subtasks, open, onClick }: { subtasks: Subtask[]; open: boolean; onClick: () => void }) {
-  const doneCount = subtasks.filter((s) => s.done).length;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-expanded={open}
-      className={
-        subtasks.length > 0
-          ? "inline-flex items-center rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 transition hover:bg-surface-3/70"
-          : "inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium text-ink-4 transition hover:text-ink-2"
-      }
-    >
-      {subtasks.length > 0 ? `${doneCount}/${subtasks.length}` : "+ underpunkt"}
-    </button>
   );
 }
 
@@ -355,12 +343,18 @@ function ReminderRow({
   onRemoveSubtask,
 }: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps & RowSubtaskProps) {
   const [notesOpen, setNotesOpen] = useState(false);
-  const [subtasksOpen, setSubtasksOpen] = useState(false);
 
   if (editing) {
     return (
       <li>
-        <ReminderEditForm reminder={reminder} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(reminder.id, updates)} />
+        <ReminderEditForm
+          reminder={reminder}
+          onCancel={onCancelEdit}
+          onSave={(updates) => onSaveEdit(reminder.id, updates)}
+          onAddSubtask={onAddSubtask}
+          onToggleSubtask={onToggleSubtask}
+          onRemoveSubtask={onRemoveSubtask}
+        />
       </li>
     );
   }
@@ -381,13 +375,8 @@ function ReminderRow({
           commentCount={comments.length}
           notesOpen={notesOpen}
           onToggleNotes={() => setNotesOpen((v) => !v)}
-          subtasksOpen={subtasksOpen}
-          onToggleSubtasks={() => setSubtasksOpen((v) => !v)}
         />
       </SwipeableRow>
-      {subtasksOpen && (
-        <ReminderSubtasks subtasks={reminder.subtasks ?? []} onAdd={onAddSubtask} onToggle={onToggleSubtask} onRemove={onRemoveSubtask} />
-      )}
       {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
     </li>
   );
@@ -415,7 +404,6 @@ function SortableReminderRow({
     id: reminder.id,
   });
   const [notesOpen, setNotesOpen] = useState(false);
-  const [subtasksOpen, setSubtasksOpen] = useState(false);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -426,7 +414,14 @@ function SortableReminderRow({
   if (editing) {
     return (
       <li ref={setNodeRef} style={style}>
-        <ReminderEditForm reminder={reminder} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(reminder.id, updates)} />
+        <ReminderEditForm
+          reminder={reminder}
+          onCancel={onCancelEdit}
+          onSave={(updates) => onSaveEdit(reminder.id, updates)}
+          onAddSubtask={onAddSubtask}
+          onToggleSubtask={onToggleSubtask}
+          onRemoveSubtask={onRemoveSubtask}
+        />
       </li>
     );
   }
@@ -460,17 +455,10 @@ function SortableReminderRow({
               commentCount={comments.length}
               notesOpen={notesOpen}
               onToggleNotes={() => setNotesOpen((v) => !v)}
-              subtasksOpen={subtasksOpen}
-              onToggleSubtasks={() => setSubtasksOpen((v) => !v)}
             />
           </SwipeableRow>
         </div>
       </div>
-      {subtasksOpen && (
-        <div className="pl-7">
-          <ReminderSubtasks subtasks={reminder.subtasks ?? []} onAdd={onAddSubtask} onToggle={onToggleSubtask} onRemove={onRemoveSubtask} />
-        </div>
-      )}
       {notesOpen && (
         <div className="pl-7">
           <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />
