@@ -390,7 +390,7 @@ export default function JobbRemindersSection() {
   const rest = reminders.filter((r) => !isDueToday(r, today) && !justToggledIds.has(r.id));
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-accent !bg-accent/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-accent/60 p-4`}>
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

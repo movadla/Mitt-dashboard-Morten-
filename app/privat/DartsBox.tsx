@@ -52,13 +52,14 @@ export default function DartsBox() {
   if (!loading && !stats) return null;
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-sky-400/60 p-4`}>
       <CardHeader
         title="Darts"
         subtitle={stats ? `${stats.hitPct}% treff` : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Target}
+        iconColorClass="text-sky-400"
       />
       <CollapsibleBody collapsed={collapsed}>
         {loading ? (

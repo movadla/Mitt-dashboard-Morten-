@@ -5,11 +5,13 @@ import { Plus, GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-// hover:shadow/border gir en synlig affordance på kort som kan utvides
-// (collapse-header) eller drilles ned i (klikkbare rader inni) — dekker
-// praktisk talt alle kort i Jobb/Privat siden nesten alle har en av delene.
+// .card-shell (globals.css) gir en lagvis "glass"-skygge (indre høylys + myk
+// ytre glød, samme teknikk som Sport/FPL sin .section) — hover:border/shadow
+// gir i tillegg en synlig affordance på kort som kan utvides (collapse-header)
+// eller drilles ned i (klikkbare rader inni), som dekker praktisk talt alle
+// kort i Jobb/Privat siden nesten alle har en av delene.
 export const CARD_SHELL =
-  "rounded-2xl border border-line bg-surface-1 shadow-md shadow-black/15 transition-shadow duration-150 hover:border-line-strong hover:shadow-lg hover:shadow-black/25";
+  "card-shell rounded-2xl border border-line bg-surface-1 transition-shadow duration-150 hover:border-line-strong";
 
 // Navnet er historisk — tilstanden persisteres bevisst IKKE lenger på tvers av
 // sideoppdateringer (jf. tilbakemelding: alle kort skal starte kollapset ved
@@ -175,11 +177,20 @@ export function CardHeader({
   alwaysShowSubtitle?: boolean;
 }) {
   const showSubtitle = subtitle && (alwaysShowSubtitle || !collapsed);
+  // Avledet fra iconColorClass ("text-X" -> "bg-X/10") — gir ikonet en rund
+  // fargechip-bakgrunn i samme aksentfarge i stedet for å flyte fritt, uten at
+  // hvert kall-sted må sette to separate farge-props som uansett alltid skal
+  // matche hverandre.
+  const iconBgClass = `${iconColorClass.replace("text-", "bg-")}/10`;
 
   const inner = (
     <>
-      <div className="flex min-w-0 items-center gap-1.5">
-        {Icon && <Icon className={`h-4 w-4 shrink-0 ${iconColorClass}`} />}
+      <div className="flex min-w-0 items-center gap-2">
+        {Icon && (
+          <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${iconBgClass}`}>
+            <Icon className={`h-3.5 w-3.5 ${iconColorClass}`} />
+          </span>
+        )}
         <h3 className="truncate text-sm font-semibold text-ink-1">{title}</h3>
       </div>
       <div className="flex shrink-0 items-baseline gap-2">

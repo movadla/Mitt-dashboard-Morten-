@@ -249,7 +249,7 @@ export function SportSection({
   }).filter((day) => day !== today && events.some((e) => e.date === day));
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-accent !bg-accent/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-accent/60 p-4`}>
       <CardHeader
         title="Sport"
         subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}

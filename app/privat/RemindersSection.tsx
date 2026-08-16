@@ -522,7 +522,7 @@ export default function RemindersSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-accent-privat !bg-accent-privat/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-accent-privat/60 p-4`}>
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

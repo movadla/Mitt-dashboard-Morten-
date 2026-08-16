@@ -32,7 +32,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
         onClick={() => onChange("jobb")}
         className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
           mode === "jobb"
-            ? "bg-orange-500/20 text-orange-200 ring-1 ring-orange-400/40"
+            ? "bg-accent/20 text-accent ring-1 ring-accent/40"
             : "text-ink-3 hover:text-ink-1"
         }`}
       >
@@ -45,7 +45,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
         onClick={() => onChange("privat")}
         className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
           mode === "privat"
-            ? "bg-emerald-500/20 text-emerald-200 ring-1 ring-emerald-400/40"
+            ? "bg-accent-privat/20 text-accent-privat ring-1 ring-accent-privat/40"
             : "text-ink-3 hover:text-ink-1"
         }`}
       >

@@ -193,7 +193,7 @@ export default function JobbEventsSection() {
   const rows = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-emerald-400 !bg-emerald-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-emerald-400/60 p-4`}>
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].date)}` : "Ingen"}

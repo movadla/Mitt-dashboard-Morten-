@@ -320,7 +320,7 @@ export default function EventsSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-status-danger !bg-status-danger/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-status-danger/60 p-4`}>
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}

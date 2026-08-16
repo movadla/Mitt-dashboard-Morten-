@@ -1414,7 +1414,7 @@ function CalendarCard({ today }: { today: string }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const visible = CALENDAR_EVENTS.slice(0, visibleCount);
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-indigo-400 !bg-indigo-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-indigo-400/60 p-4`}>
       <CardHeader
         title="Kalender"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{CALENDAR_EVENTS.length}</span> kommende</>}
@@ -1630,7 +1630,7 @@ function ContractsCard({ today }: { today: string }) {
   const visible = expanded ? sinceYearStart : sinceLastMonth;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-rose-400 !bg-rose-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-rose-400/60 p-4`}>
       <CardHeader
         title="Nye kontrakter"
         subtitle={
@@ -1805,7 +1805,7 @@ function ExpiryListCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-orange-400 !bg-orange-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-orange-400/60 p-4`}>
       <CardHeader
         title="Utløpsliste"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{EXPIRIES.length}</span> leietakere, neste 30 dager</>}
@@ -1913,7 +1913,7 @@ function GuaranteesCard() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-teal-400 !bg-teal-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-teal-400/60 p-4`}>
       <CardHeader
         title="Garantioversikt"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{GUARANTEE_TOTAL}</span> mangler garanti/depositum</>}
@@ -2360,7 +2360,7 @@ function ReceivablesCard({ today }: { today: string }) {
   const changes = snapshots.length >= 2 ? computeReceivableChanges(snapshots[snapshots.length - 2], snapshots[snapshots.length - 1]) : [];
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-fuchsia-400 !bg-fuchsia-400/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-fuchsia-400/60 p-4`}>
       <CardHeader
         title="Kundefordringer"
         subtitle={

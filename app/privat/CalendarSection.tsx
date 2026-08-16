@@ -295,7 +295,7 @@ export default function CalendarSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} !border-2 !border-source-teams !bg-source-teams/8 p-4`}>
+    <div className={`${CARD_SHELL} !border-t-2 !border-t-source-teams/60 p-4`}>
       <CardHeader
         title="Kalender"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
