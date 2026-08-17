@@ -65,14 +65,19 @@ export default function SwipeableRow({
   return (
     <div className="relative overflow-hidden rounded-xl">
       <div className="absolute inset-0 flex items-center justify-between px-4">
+        {/* Fargefylt bakteppe som vokser med sveipelengden (samme teknikk som
+            iOS Mail/Gmail) — flytende tekst alene på en nøytral bakgrunn ga
+            ingen følelse av at handlingen faktisk var i ferd med å utløses. */}
+        <div className="absolute inset-0 bg-status-positive" style={{ opacity: dx > 0 ? Math.min(0.3, (dx / MAX_DRAG) * 0.3) : 0 }} />
+        <div className="absolute inset-0 bg-status-danger" style={{ opacity: dx < 0 ? Math.min(0.3, (-dx / MAX_DRAG) * 0.3) : 0 }} />
         <span
-          className="text-xs font-semibold text-status-positive transition-opacity"
+          className="relative text-xs font-semibold text-status-positive transition-opacity"
           style={{ opacity: dx > 16 ? Math.min(1, dx / THRESHOLD) : 0 }}
         >
           {rightLabel}
         </span>
         <span
-          className="text-xs font-semibold text-status-danger transition-opacity"
+          className="relative text-xs font-semibold text-status-danger transition-opacity"
           style={{ opacity: dx < -16 ? Math.min(1, -dx / THRESHOLD) : 0 }}
         >
           {leftLabel}

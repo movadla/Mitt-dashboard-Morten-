@@ -7,7 +7,7 @@ import type { JobbEvent } from "@/lib/jobbEvents";
 import type { Task } from "@/lib/tasks";
 import { localDateString } from "@/lib/payday";
 import { CALENDAR_EVENTS, CONTRACTS, EXPIRIES, GUARANTEES, formatDateDMY, formatKr } from "@/lib/widgets";
-import { AlertTriangle, Calendar, ClipboardList, Lightbulb, PartyPopper } from "lucide-react";
+import { AlertTriangle, Bell, Calendar, ClipboardList, PartyPopper } from "lucide-react";
 
 function CategoryLabel({
   icon: Icon,
@@ -116,70 +116,75 @@ export default function JobbTodaySummary({
         <SkeletonRows count={3} className="h-6" />
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
-            <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
-            {todaysMeetings.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {todaysMeetings.map((m) => (
-                  <li key={m.id} className="text-sm text-ink-1">
-                    <span className="tabular-nums text-ink-3">{m.start} </span>
-                    {m.mote}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-3">Ingen møter i dag.</p>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
-            <CategoryLabel icon={Lightbulb} colorClass="text-accent" label="Påminnelser" />
-            {dueReminders.length > 0 ? (
-              <ul className="flex flex-col gap-1">
-                {dueReminders.map((r) => (
-                  <li key={r.id} className="text-sm text-ink-1">
-                    {r.text}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
-            )}
-          </div>
-
-          {todaysEvents.length > 0 && (
-            <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
-              <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
-              <ul className="flex flex-col gap-1">
-                {todaysEvents.map((e) => (
-                  <li key={e.id} className="text-sm text-ink-1">
-                    {e.title}
-                  </li>
-                ))}
-              </ul>
+          {/* Kategoriene under deles av én flat liste med tynne skillelinjer
+              (divide-y) i stedet for hver sin fargede ramme+tint-boks — ikonets
+              farge (colorClass) er allerede signalet for hvilken kategori det er. */}
+          <div className="flex flex-col divide-y divide-line">
+            <div className="pb-2 first:pt-0">
+              <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
+              {todaysMeetings.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {todaysMeetings.map((m) => (
+                    <li key={m.id} className="text-sm text-ink-1">
+                      <span className="tabular-nums text-ink-3">{m.start} </span>
+                      {m.mote}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">Ingen møter i dag.</p>
+              )}
             </div>
-          )}
 
-          {oppfolging.length > 0 && (
-            <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-              <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Krever oppfølging" count={oppfolging.length} />
-              <ul className="flex flex-col gap-1">
-                {oppfolging.map((item) =>
-                  item.onClick ? (
-                    <li key={item.key}>
-                      <button type="button" onClick={item.onClick} className="text-left text-sm text-ink-1 hover:underline">
+            <div className="py-2 last:pb-0">
+              <CategoryLabel icon={Bell} colorClass="text-accent" label="Påminnelser" />
+              {dueReminders.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {dueReminders.map((r) => (
+                    <li key={r.id} className="text-sm text-ink-1">
+                      {r.text}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
+              )}
+            </div>
+
+            {todaysEvents.length > 0 && (
+              <div className="py-2 last:pb-0">
+                <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
+                <ul className="flex flex-col gap-1">
+                  {todaysEvents.map((e) => (
+                    <li key={e.id} className="text-sm text-ink-1">
+                      {e.title}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {oppfolging.length > 0 && (
+              <div className="py-2 last:pb-0">
+                <CategoryLabel icon={AlertTriangle} colorClass="text-status-danger" label="Krever oppfølging" count={oppfolging.length} />
+                <ul className="flex flex-col gap-1">
+                  {oppfolging.map((item) =>
+                    item.onClick ? (
+                      <li key={item.key}>
+                        <button type="button" onClick={item.onClick} className="text-left text-sm text-ink-1 hover:underline">
+                          {item.text}
+                        </button>
+                      </li>
+                    ) : (
+                      <li key={item.key} className="text-sm text-ink-1">
                         {item.text}
-                      </button>
-                    </li>
-                  ) : (
-                    <li key={item.key} className="text-sm text-ink-1">
-                      {item.text}
-                    </li>
-                  ),
-                )}
-              </ul>
-            </div>
-          )}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
 
           <button
             type="button"

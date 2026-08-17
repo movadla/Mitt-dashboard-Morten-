@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MessageSquare, X } from "lucide-react";
 import type { Comment } from "@/lib/comments";
 
 function formatDateTime(iso: string): string {
@@ -22,18 +23,32 @@ export function CommentBadge({
   open: boolean;
   onClick: () => void;
 }) {
+  // Ved 0 kommentarer: et lite, stille ikon (ingen "+ notat"-tekst som
+  // konkurrerer med selve påminnelsen på hver eneste rad) — men fortsatt
+  // klikkbart, siden dette er eneste sted man kan legge til det aller
+  // første notatet på en eksisterende påminnelse.
+  if (count === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-expanded={open}
+        aria-label="Legg til notat"
+        title="Legg til notat"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-2"
+      >
+        <MessageSquare className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className={
-        count > 0
-          ? "inline-flex items-center rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 transition hover:bg-surface-3/70"
-          : "inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium text-ink-4 transition hover:text-ink-2"
-      }
+      className="inline-flex items-center rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 transition hover:bg-surface-3/70"
     >
-      {count > 0 ? `Notat (${count})` : "+ notat"}
+      {`Notat (${count})`}
     </button>
   );
 }
@@ -89,9 +104,9 @@ export function CommentThreadBody({
                   type="button"
                   onClick={() => onDelete(c.id, c.tekst)}
                   aria-label="Slett kommentar"
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
                 >
-                  ×
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </li>
             ))}

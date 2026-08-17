@@ -446,6 +446,17 @@ export function MutationError({ message }: { message: string | null }) {
   return <p className="text-xs text-status-danger">{message}</p>;
 }
 
+// Delt hakemerke-ikon for "ferdig"-tilstand — tidligere reimplementert med
+// litt ulik viewBox/strekbredde tre separate steder (Reminders-rad,
+// underoppgave-rad, TodaySummary sin ReminderLine).
+export function CheckIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8.5L6.5 12 13 5" />
+    </svg>
+  );
+}
+
 export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number; className?: string }) {
   return (
     <div className="flex flex-col gap-2">

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { CARD_SHELL, MutationError, SkeletonRows, useMutationError } from "../CardShell";
+import { CARD_SHELL, CheckIcon, MutationError, SkeletonRows, useMutationError } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
@@ -24,7 +24,7 @@ import {
   CloudSnow,
   CloudLightning,
   CloudFog,
-  Lightbulb,
+  Bell,
   Calendar,
   CalendarClock,
   Trophy,
@@ -96,25 +96,19 @@ function ReminderLine({
           reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
         }`}
       >
-        {reminder.done && (
-          <svg viewBox="0 0 24 24" className="h-2.5 w-2.5 text-white" fill="none" stroke="currentColor" strokeWidth={3}>
-            <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
+        {reminder.done && <CheckIcon className="h-2.5 w-2.5 text-white" />}
       </button>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span
-            className={`min-w-0 text-sm ${reminder.done ? "text-ink-4 line-through" : overdue ? "text-status-danger" : "text-ink-1"}`}
-          >
+          <span className={`min-w-0 text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>
             {reminder.text}
           </span>
           <button
             type="button"
             onClick={onStartEdit}
-            aria-label="Endre frist"
-            title="Endre frist"
-            className="shrink-0 text-ink-4 transition hover:text-ink-2"
+            aria-label={overdue ? "Oversittet frist — endre frist" : "Endre frist"}
+            title={overdue ? "Oversittet frist — endre frist" : "Endre frist"}
+            className={`shrink-0 transition ${overdue && !reminder.done ? "text-status-danger hover:text-status-danger/80" : "text-ink-4 hover:text-ink-2"}`}
           >
             <CalendarClock className="h-3 w-3" />
           </button>
@@ -540,126 +534,133 @@ export default function TodaySummary() {
               </div>
             )}
 
-            {/* Påminnelser og Kalender vises alltid, med egen tom-tekst — slik at Sport
-                aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
-            <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
-              <CategoryRow icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser">
-                <MutationError message={mutationError.message} />
-                {reminderRows.length > 0 ? (
-                  <ul className="flex flex-col gap-1">
-                    {reminderRows.map(({ reminder, overdue }) => (
-                      <ReminderLine
-                        key={reminder.id}
-                        reminder={reminder}
-                        overdue={overdue}
-                        editing={editingReminderId === reminder.id}
-                        onStartEdit={() => setEditingReminderId(reminder.id)}
-                        onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
-                        onCancelEdit={() => setEditingReminderId(null)}
-                        onToggleDone={() => handleToggleReminderDone(reminder.id)}
+            {/* Kategoriene under deles av én flat liste med tynne skillelinjer
+                (divide-y) i stedet for hver sin fargede ramme+tint-boks — ikonets
+                farge (colorClass) er allerede signalet for hvilken kategori det
+                er, en boks per kategori var et overflødig andre fargesignal for
+                samme informasjon. Påminnelser og Kalender vises alltid, med egen
+                tom-tekst — slik at Sport aldri kan "vinne" toppen bare fordi de to
+                viktigste kategoriene er tomme. */}
+            <div className="flex flex-col divide-y divide-line">
+              <div className="pb-2 first:pt-0">
+                <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser">
+                  <MutationError message={mutationError.message} />
+                  {reminderRows.length > 0 ? (
+                    <ul className="flex flex-col gap-1">
+                      {reminderRows.map(({ reminder, overdue }) => (
+                        <ReminderLine
+                          key={reminder.id}
+                          reminder={reminder}
+                          overdue={overdue}
+                          editing={editingReminderId === reminder.id}
+                          onStartEdit={() => setEditingReminderId(reminder.id)}
+                          onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
+                          onCancelEdit={() => setEditingReminderId(null)}
+                          onToggleDone={() => handleToggleReminderDone(reminder.id)}
+                        />
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
+                  )}
+                  {addingReminder ? (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newReminderText}
+                        onChange={(e) => setNewReminderText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddReminder();
+                          if (e.key === "Escape") setAddingReminder(false);
+                        }}
+                        placeholder="Ny påminnelse..."
+                        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
                       />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
-                )}
-                {addingReminder ? (
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <input
-                      type="text"
-                      autoFocus
-                      value={newReminderText}
-                      onChange={(e) => setNewReminderText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleAddReminder();
-                        if (e.key === "Escape") setAddingReminder(false);
-                      }}
-                      placeholder="Ny påminnelse..."
-                      className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-                    />
+                      <button
+                        type="button"
+                        onClick={handleAddReminder}
+                        disabled={!newReminderText.trim() || submittingReminder}
+                        className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                      >
+                        Legg til
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={handleAddReminder}
-                      disabled={!newReminderText.trim() || submittingReminder}
-                      className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                      onClick={() => setAddingReminder(true)}
+                      className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
                     >
-                      Legg til
+                      + Ny påminnelse
                     </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAddingReminder(true)}
-                    className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                  >
-                    + Ny påminnelse
-                  </button>
-                )}
-              </CategoryRow>
+                  )}
+                </CategoryRow>
+              </div>
+
+              <div className="py-2">
+                <CategoryRow icon={Calendar} colorClass="text-source-teams" label="Kalender">
+                  {eventsOnViewed.length > 0 ? (
+                    <ul className="flex flex-col gap-1">
+                      {eventsOnViewed.map((e) => (
+                        <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
+                          <span className="min-w-0 truncate">{e.title}</span>
+                          {e.startTime && <span className="shrink-0 tabular-nums text-ink-3">{e.startTime}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-3">{isToday ? "Ingen hendelser i dag." : "Ingen hendelser denne dagen."}</p>
+                  )}
+                </CategoryRow>
+              </div>
+
+              {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0) && (
+                <div className="py-2 last:pb-0">
+                  <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
+                    <ul className="flex flex-col gap-1">
+                      {sportsOnViewed.map((s) => (
+                        <li key={s.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
+                          <span className="min-w-0 truncate">{s.name}</span>
+                          {s.time && <span className="shrink-0 tabular-nums text-ink-3">{s.time}</span>}
+                        </li>
+                      ))}
+                      {sportRoundsOnViewed.map((g) => (
+                        <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
+                      ))}
+                    </ul>
+                  </CategoryRow>
+                </div>
+              )}
+
+              {fplDeadlineOnViewed && (
+                <div className="py-2 last:pb-0">
+                  <CategoryRow icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League">
+                    <p className="text-sm text-ink-1">
+                      Deadline kl.{" "}
+                      <span className="tabular-nums">
+                        {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </p>
+                  </CategoryRow>
+                </div>
+              )}
+
+              {(paydayOnViewed || lifeEventsOnViewed.length > 0) && (
+                <div className="py-2 last:pb-0">
+                  <CategoryRow icon={PartyPopper} colorClass="text-status-warning" label="Hendelser">
+                    <ul className="flex flex-col gap-1">
+                      {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
+                      {lifeEventsOnViewed.map((e) => (
+                        <li key={e.id} className="text-sm text-ink-1">
+                          {e.title}
+                        </li>
+                      ))}
+                    </ul>
+                  </CategoryRow>
+                </div>
+              )}
             </div>
-
-            <div className="rounded-lg border border-source-teams/40 bg-source-teams/8 px-3 py-1.5">
-              <CategoryRow icon={Calendar} colorClass="text-source-teams" label="Kalender">
-                {eventsOnViewed.length > 0 ? (
-                  <ul className="flex flex-col gap-1">
-                    {eventsOnViewed.map((e) => (
-                      <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
-                        <span className="min-w-0 truncate">{e.title}</span>
-                        {e.startTime && <span className="shrink-0 tabular-nums text-ink-3">{e.startTime}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-ink-3">{isToday ? "Ingen hendelser i dag." : "Ingen hendelser denne dagen."}</p>
-                )}
-              </CategoryRow>
-            </div>
-
-            {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0) && (
-              <div className="rounded-lg border border-accent/40 bg-accent/8 px-3 py-1.5">
-                <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
-                  <ul className="flex flex-col gap-1">
-                    {sportsOnViewed.map((s) => (
-                      <li key={s.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
-                        <span className="min-w-0 truncate">{s.name}</span>
-                        {s.time && <span className="shrink-0 tabular-nums text-ink-3">{s.time}</span>}
-                      </li>
-                    ))}
-                    {sportRoundsOnViewed.map((g) => (
-                      <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
-                    ))}
-                  </ul>
-                </CategoryRow>
-              </div>
-            )}
-
-            {fplDeadlineOnViewed && (
-              <div className="rounded-lg border border-status-action/40 bg-status-action/8 px-3 py-1.5">
-                <CategoryRow icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League">
-                  <p className="text-sm text-ink-1">
-                    Deadline kl.{" "}
-                    <span className="tabular-nums">
-                      {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </p>
-                </CategoryRow>
-              </div>
-            )}
-
-            {(paydayOnViewed || lifeEventsOnViewed.length > 0) && (
-              <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
-                <CategoryRow icon={PartyPopper} colorClass="text-status-warning" label="Hendelser">
-                  <ul className="flex flex-col gap-1">
-                    {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
-                    {lifeEventsOnViewed.map((e) => (
-                      <li key={e.id} className="text-sm text-ink-1">
-                        {e.title}
-                      </li>
-                    ))}
-                  </ul>
-                </CategoryRow>
-              </div>
-            )}
           </div>
         </div>
       )}

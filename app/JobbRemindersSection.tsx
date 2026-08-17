@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
+import { CARD_SHELL, CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
 import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./privat/SwipeableRow";
-import { GripVertical, Lightbulb } from "lucide-react";
+import { Bell, GripVertical, X } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -77,19 +77,19 @@ function ReminderEditForm({
           if (e.key === "Enter") save();
           if (e.key === "Escape") onCancel();
         }}
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <select
           value={recurrence}
           onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         >
           {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
             <option key={r} value={r}>
@@ -132,14 +132,10 @@ function ReminderRowContent({
         aria-pressed={reminder.done}
         aria-label={reminder.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
         className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
-          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
         }`}
       >
-        {reminder.done && (
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 8.5L6.5 12 13 5" />
-          </svg>
-        )}
+        {reminder.done && <CheckIcon className="h-3.5 w-3.5 text-surface-0" />}
       </button>
       <button
         type="button"
@@ -150,7 +146,7 @@ function ReminderRowContent({
             ReminderRowContent for hvorfor: en fast aria-label ville overstyrt
             HELE det beregnede tilgjengelighetsnavnet for alle rader. */}
         <span className="sr-only">Rediger: </span>
-        <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+        <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>{reminder.text}</p>
         {(reminder.dueDate || reminder.recurrence !== "none") && (
           <p className="mt-0.5 text-2xs text-ink-4">
             {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
@@ -163,9 +159,9 @@ function ReminderRowContent({
         type="button"
         onClick={() => onRemove(reminder.id)}
         aria-label="Slett påminnelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
-        ×
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
@@ -449,11 +445,11 @@ export default function JobbRemindersSection() {
           setShowForm(true);
         }}
         addLabel="Ny påminnelse"
-        icon={Lightbulb}
+        icon={Bell}
         iconColorClass="text-accent"
         alwaysShowSubtitle
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {showForm && (
@@ -467,19 +463,19 @@ export default function JobbRemindersSection() {
                   if (e.key === "Escape") setShowForm(false);
                 }}
                 placeholder="Ny påminnelse..."
-                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
                 <select
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 >
                   {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
                     <option key={r} value={r}>
@@ -552,7 +548,7 @@ export default function JobbRemindersSection() {
               <button
                 type="button"
                 onClick={() => setShowAll((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
+                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
               </button>
@@ -580,14 +576,14 @@ export default function JobbRemindersSection() {
               <button
                 type="button"
                 onClick={() => setShowRecentlyCompleted((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-ink-4 hover:text-ink-2"
+                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
               >
                 {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
               </button>
             </>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette påminnelsen «${reminders.find((r) => r.id === confirmDelete.pending)?.text ?? ""}»?`}

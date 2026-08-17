@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -12,7 +12,7 @@ import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
-import { GripVertical, Lightbulb } from "lucide-react";
+import { Bell, GripVertical, X } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -87,25 +87,25 @@ function ReminderEditForm({
           if (e.key === "Enter") save();
           if (e.key === "Escape") onCancel();
         }}
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <input
           type="time"
           value={dueTime}
           onChange={(e) => setDueTime(e.target.value)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <select
           value={recurrence}
           onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         >
           {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
             <option key={r} value={r}>
@@ -191,14 +191,10 @@ function ReminderRowContent({
         aria-pressed={reminder.done}
         aria-label={reminder.done ? "Marker som ikke ferdig" : "Marker som ferdig"}
         className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
-          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+          reminder.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
         }`}
       >
-        {reminder.done && (
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 8.5L6.5 12 13 5" />
-          </svg>
-        )}
+        {reminder.done && <CheckIcon className="h-3.5 w-3.5 text-surface-0" />}
       </button>
       <button
         type="button"
@@ -212,11 +208,11 @@ function ReminderRowContent({
             skjult handlings-prefiks foran. */}
         <span className="sr-only">Rediger: </span>
         <div className="flex items-baseline justify-between gap-2">
-          <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
+          <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>{reminder.text}</p>
           {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
         </div>
         {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0) && (
-          <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-4">
+          <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-4">
             <span>
               {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
               {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
@@ -226,7 +222,7 @@ function ReminderRowContent({
               <span className="inline-flex items-center gap-1">
                 {(reminder.dueDate || reminder.recurrence !== "none") && <span>·</span>}
                 <SubtaskProgress done={subtasksDone} total={subtasks.length} />
-                {`${subtasksDone}/${subtasks.length} underoppgaver`}
+                {`${subtasksDone}/${subtasks.length}`}
               </span>
             )}
           </p>
@@ -237,9 +233,9 @@ function ReminderRowContent({
         type="button"
         onClick={() => onRemove(reminder.id)}
         aria-label="Slett påminnelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
-        ×
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
@@ -257,7 +253,7 @@ function ReminderNotes({
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
   return (
-    <div className="mt-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+    <div className="mt-1.5 border-l-2 border-line py-0.5 pl-3">
       <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
     </div>
   );
@@ -285,7 +281,7 @@ function ReminderSubtasks({
   }
 
   return (
-    <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-line bg-surface-2/60 px-3 py-2">
+    <div className="mt-1.5 flex flex-col gap-1.5 border-l-2 border-line py-0.5 pl-3">
       {subtasks.length > 0 && (
         <ul className="flex flex-col gap-1">
           {subtasks.map((s) => (
@@ -296,23 +292,19 @@ function ReminderSubtasks({
                 aria-pressed={s.done}
                 aria-label={s.done ? "Marker underpunkt som ikke ferdig" : "Marker underpunkt som ferdig"}
                 className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
-                  s.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+                  s.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
                 }`}
               >
-                {s.done && (
-                  <svg viewBox="0 0 16 16" className="h-3 w-3 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 8.5L6.5 12 13 5" />
-                  </svg>
-                )}
+                {s.done && <CheckIcon className="h-3 w-3 text-surface-0" />}
               </button>
               <p className={`min-w-0 flex-1 truncate text-sm ${s.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{s.text}</p>
               <button
                 type="button"
                 onClick={() => onRemove(s.id)}
                 aria-label="Slett underpunkt"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
               >
-                ×
+                <X className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}
@@ -790,7 +782,7 @@ export default function RemindersSection() {
         onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny påminnelse"
-        icon={Lightbulb}
+        icon={Bell}
         iconColorClass="text-accent-privat"
         alwaysShowSubtitle
       />
@@ -808,25 +800,25 @@ export default function RemindersSection() {
                   if (e.key === "Escape") setShowForm(false);
                 }}
                 placeholder="Ny påminnelse..."
-                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
                 <input
                   type="time"
                   value={dueTime}
                   onChange={(e) => setDueTime(e.target.value)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
                 <select
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 >
                   {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
                     <option key={r} value={r}>
@@ -840,7 +832,7 @@ export default function RemindersSection() {
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Notat (valgfritt)..."
-                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
               <div className="flex items-center gap-2">
                 <button
@@ -926,7 +918,7 @@ export default function RemindersSection() {
               <button
                 type="button"
                 onClick={() => setShowAll((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
               </button>
@@ -963,7 +955,7 @@ export default function RemindersSection() {
               <button
                 type="button"
                 onClick={() => setShowRecentlyCompleted((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-ink-4 hover:text-ink-2"
+                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
               >
                 {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
               </button>
