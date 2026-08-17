@@ -3,15 +3,16 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { Recurrence, Reminder, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
-import { GripVertical, Lightbulb, Plus } from "lucide-react";
+import { GripVertical, Lightbulb } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -79,6 +80,7 @@ function ReminderEditForm({
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
       <input
         type="text"
+        autoFocus
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -131,6 +133,37 @@ function ReminderEditForm({
   );
 }
 
+// Liten fremdrifts-ring for underoppgaver — tidligere var "x/y
+// underoppgaver"-teksten eneste signal, og en fullført underoppgave-liste
+// hadde ingen synlig virkning på raden.
+function SubtaskProgress({ done, total }: { done: number; total: number }) {
+  if (total === 0) return null;
+  const size = 12;
+  const strokeWidth = 2;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference * (1 - done / total);
+  const complete = done === total;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0" aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={strokeWidth} className="text-line-strong" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        className={complete ? "text-emerald-500" : "text-accent-privat"}
+      />
+    </svg>
+  );
+}
+
 function ReminderRowContent({
   reminder,
   onToggle,
@@ -170,20 +203,32 @@ function ReminderRowContent({
       <button
         type="button"
         onClick={() => onStartEdit(reminder.id)}
-        aria-label="Rediger påminnelse"
         className="min-w-0 flex-1 text-left"
       >
+        {/* Ingen aria-label her — den ville overstyrt HELE det beregnede
+            tilgjengelighetsnavnet med kun "Rediger påminnelse" for alle
+            rader, og gjøre selve påminnelseteksten usynlig for skjermlesere.
+            Den synlige teksten under er i stedet navnet, med en kort
+            skjult handlings-prefiks foran. */}
+        <span className="sr-only">Rediger: </span>
         <div className="flex items-baseline justify-between gap-2">
           <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
           {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
         </div>
         {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0) && (
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
-            {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
-            {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
-            {(reminder.dueDate || reminder.recurrence !== "none") && subtasks.length > 0 ? " · " : ""}
-            {subtasks.length > 0 ? `${subtasksDone}/${subtasks.length} underoppgaver` : ""}
+          <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-4">
+            <span>
+              {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+              {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
+              {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
+            </span>
+            {subtasks.length > 0 && (
+              <span className="inline-flex items-center gap-1">
+                {(reminder.dueDate || reminder.recurrence !== "none") && <span>·</span>}
+                <SubtaskProgress done={subtasksDone} total={subtasks.length} />
+                {`${subtasksDone}/${subtasks.length} underoppgaver`}
+              </span>
+            )}
           </p>
         )}
       </button>
@@ -260,7 +305,7 @@ function ReminderSubtasks({
                   </svg>
                 )}
               </button>
-              <p className={`min-w-0 flex-1 text-sm ${s.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{s.text}</p>
+              <p className={`min-w-0 flex-1 truncate text-sm ${s.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{s.text}</p>
               <button
                 type="button"
                 onClick={() => onRemove(s.id)}
@@ -492,11 +537,13 @@ export default function RemindersSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Holder en nettopp avhuket (eller angret) påminnelse synlig i "i dag"-lista
-  // en kort stund etter trykk — uten denne filtreres raden ut med det samme
-  // state oppdateres, og man rekker aldri se haken bli fylt inn før den er
-  // borte. Se samme mønster i ShoppingListSection/JobbRemindersSection.
-  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
+  // en kort stund etter trykk — delt på tvers av TodaySummary/JobbReminders
+  // via lib/justToggled.ts, slik at en avkrysning i én komponent også gir
+  // synlig fade i de andre (samme underliggende påminnelse-liste).
+  const justToggled = useJustToggled();
   const confirmDelete = useConfirmDelete<string>();
+  const confirmSubtaskDelete = useConfirmDelete<{ reminderId: string; subtaskId: string; preview: string }>();
+  const mutationError = useMutationError();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -514,71 +561,98 @@ export default function RemindersSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence }),
       });
-      if (res.ok) {
-        const created: Reminder = await res.json();
-        if (notes.trim()) await addComment("reminder", created.id, notes.trim());
-        mutateReminders(
-          (current) => current && { reminders: [...current.reminders, created].sort(sortReminders) },
-          { revalidate: false },
-        );
-        setText("");
-        setDueDate(localDateString());
-        setDueTime("");
-        setRecurrence("none");
-        setNotes("");
-        setShowForm(false);
-        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
+        return;
       }
+      const created: Reminder = await res.json();
+      if (notes.trim()) {
+        const ok = await addComment("reminder", created.id, notes.trim());
+        if (!ok) mutationError.show("Påminnelsen ble lagret, men notatet kunne ikke lagres.");
+      }
+      mutateReminders(
+        (current) => current && { reminders: [...current.reminders, created].sort(sortReminders) },
+        { revalidate: false },
+      );
+      setText("");
+      setDueDate(localDateString());
+      setDueTime("");
+      setRecurrence("none");
+      setNotes("");
+      setShowForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleToggle(id: string) {
-    const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
-    if (res.ok) {
+    const current = reminders.find((r) => r.id === id);
+    if (!current) return;
+    const optimisticDone = !current.done;
+    let previous: Reminder[] = [];
+    mutateReminders(
+      (curr) => {
+        previous = curr?.reminders ?? [];
+        return curr && { reminders: curr.reminders.map((r) => (r.id === id ? { ...r, done: optimisticDone } : r)) };
+      },
+      { revalidate: false },
+    );
+    markJustToggled(id);
+    vibrate(optimisticDone ? 15 : 8);
+    try {
+      const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("toggle failed");
       const updated: Reminder = await res.json();
       mutateReminders(
-        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)).sort(sortReminders) },
+        (curr) => curr && { reminders: curr.reminders.map((r) => (r.id === id ? updated : r)).sort(sortReminders) },
         { revalidate: false },
       );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-      vibrate(updated.done ? 15 : 8);
-      setJustToggledIds((prev) => new Set(prev).add(id));
-      setTimeout(() => {
-        setJustToggledIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }, 700);
+    } catch {
+      mutateReminders({ reminders: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke oppdatere påminnelsen. Prøv igjen.");
     }
   }
 
   async function handleRemove(id: string) {
-    mutateReminders((current) => current && { reminders: current.reminders.filter((r) => r.id !== id) }, {
-      revalidate: false,
-    });
+    let previous: Reminder[] = [];
+    mutateReminders(
+      (current) => {
+        previous = current?.reminders ?? [];
+        return current && { reminders: current.reminders.filter((r) => r.id !== id) };
+      },
+      { revalidate: false },
+    );
     vibrate([10, 30, 10]);
-    await fetch(`/api/reminders/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    try {
+      const res = await fetch(`/api/reminders/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateReminders({ reminders: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette påminnelsen. Prøv igjen.");
+    }
   }
 
   async function handleSaveEdit(
     id: string,
     updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence },
   ) {
-    const res = await fetch(`/api/reminders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: updates.text,
-        dueDate: updates.dueDate ?? null,
-        dueTime: updates.dueTime ?? null,
-        recurrence: updates.recurrence,
-      }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reminders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: updates.text,
+          dueDate: updates.dueDate ?? null,
+          dueTime: updates.dueTime ?? null,
+          recurrence: updates.recurrence,
+        }),
+      });
+      if (!res.ok) throw new Error("save failed");
       const updated: Reminder = await res.json();
       mutateReminders(
         (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)).sort(sortReminders) },
@@ -586,42 +660,58 @@ export default function RemindersSection() {
       );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
   async function handleAddSubtask(reminderId: string, text: string) {
-    const res = await fetch(`/api/reminders/${reminderId}/subtasks`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reminders/${reminderId}/subtasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("add subtask failed");
       const updated: Reminder = await res.json();
       mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
         revalidate: false,
       });
+    } catch {
+      mutationError.show("Kunne ikke legge til underpunktet. Prøv igjen.");
     }
   }
 
   async function handleToggleSubtask(reminderId: string, subtaskId: string) {
-    const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "PATCH" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("toggle subtask failed");
       const updated: Reminder = await res.json();
       mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
         revalidate: false,
       });
       vibrate(8);
+    } catch {
+      mutationError.show("Kunne ikke oppdatere underpunktet. Prøv igjen.");
     }
   }
 
   async function handleRemoveSubtask(reminderId: string, subtaskId: string) {
-    const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "DELETE" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reminders/${reminderId}/subtasks/${subtaskId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("remove subtask failed");
       const updated: Reminder = await res.json();
       mutateReminders((current) => current && { reminders: current.reminders.map((r) => (r.id === reminderId ? updated : r)) }, {
         revalidate: false,
       });
+    } catch {
+      mutationError.show("Kunne ikke slette underpunktet. Prøv igjen.");
     }
+  }
+
+  function requestRemoveSubtask(reminder: Reminder, subtaskId: string) {
+    const preview = reminder.subtasks?.find((s) => s.id === subtaskId)?.text ?? "";
+    confirmSubtaskDelete.request({ reminderId: reminder.id, subtaskId, preview });
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -640,31 +730,42 @@ export default function RemindersSection() {
 
     const reordered = arrayMove(todaysIds, oldIndex, newIndex);
     const orderOf = new Map(reordered.map((id, i) => [id, i]));
-    const next = reminders.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r));
-    mutateReminders({ reminders: next }, { revalidate: false });
+    mutateReminders(
+      (current) =>
+        current && { reminders: current.reminders.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r)) },
+      { revalidate: false },
+    );
 
     fetch("/api/reminders/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: reordered }),
-    }).then(() => window.dispatchEvent(new Event("mitt-dashboard:privat-refresh")));
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("reorder failed");
+        window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      })
+      .catch(() => mutationError.show("Kunne ikke lagre ny rekkefølge."));
 
     vibrate(10);
   }
 
   const today = localDateString();
   const todays = reminders
-    .filter((r) => isDueToday(r, today) || justToggledIds.has(r.id))
+    .filter((r) => isDueToday(r, today) || justToggled.has(r.id))
     .sort((a, b) => a.order - b.order);
   const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done);
   // Avhukede påminnelser havner ikke lenger i "rest" — de får sin egen
   // seksjon her, slik at man kan angre (huke av igjen) i minst 24 timer
-  // etter man trykket dem bort, jf. tilbakemelding.
+  // etter man trykket dem bort, jf. tilbakemelding. justToggled brukes kun
+  // her når påminnelsen faktisk er fullført (r.done) — en gjentakende
+  // påminnelse som bare rykker datoen fram skal ikke dukke opp som "nylig
+  // fullført".
   const recentlyCompleted = reminders
     .filter(
       (r) =>
         (r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS) ||
-        justToggledIds.has(r.id),
+        (r.done && justToggled.has(r.id)),
     )
     .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
@@ -691,10 +792,12 @@ export default function RemindersSection() {
         addLabel="Ny påminnelse"
         icon={Lightbulb}
         iconColorClass="text-accent-privat"
+        alwaysShowSubtitle
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
-          {showForm ? (
+          <MutationError message={mutationError.message} />
+          {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
                 type="text"
@@ -757,16 +860,6 @@ export default function RemindersSection() {
                 </button>
               </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={openAddForm}
-              aria-label="Ny påminnelse"
-              title="Ny påminnelse"
-              className="grid h-9 w-9 place-items-center self-start rounded-xl border border-dashed border-line text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
           )}
 
           {loading ? (
@@ -795,7 +888,7 @@ export default function RemindersSection() {
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                       onAddSubtask={(text) => handleAddSubtask(r.id, text)}
                       onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
-                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
                     />
                   ))}
                 </ul>
@@ -825,7 +918,7 @@ export default function RemindersSection() {
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                       onAddSubtask={(text) => handleAddSubtask(r.id, text)}
                       onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
-                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
                     />
                   ))}
                 </ul>
@@ -862,7 +955,7 @@ export default function RemindersSection() {
                       onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
                       onAddSubtask={(text) => handleAddSubtask(r.id, text)}
                       onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
-                      onRemoveSubtask={(subtaskId) => handleRemoveSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
                     />
                   ))}
                 </ul>
@@ -895,6 +988,16 @@ export default function RemindersSection() {
           const pending = confirmCommentDelete.pending;
           if (pending) removeComment(pending.targetType, pending.targetId, pending.commentId);
           confirmCommentDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmSubtaskDelete.isOpen}
+        message={confirmSubtaskDelete.pending ? `Slette underpunktet «${confirmSubtaskDelete.pending.preview}»?` : ""}
+        onCancel={confirmSubtaskDelete.cancel}
+        onConfirm={() => {
+          const pending = confirmSubtaskDelete.pending;
+          if (pending) handleRemoveSubtask(pending.reminderId, pending.subtaskId);
+          confirmSubtaskDelete.cancel();
         }}
       />
     </div>

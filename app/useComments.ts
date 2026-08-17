@@ -30,37 +30,60 @@ export function useComments() {
       .catch(() => setLoaded(true));
   }, []);
 
-  const addComment = useCallback(async (targetType: CommentTargetType, targetId: string, tekst: string) => {
-    const res = await fetch("/api/comments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetType, targetId, tekst }),
-    });
-    if (res.ok) {
+  const addComment = useCallback(async (targetType: CommentTargetType, targetId: string, tekst: string): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetType, targetId, tekst }),
+      });
+      if (!res.ok) return false;
       const created: Comment = await res.json();
       const key = commentKey(targetType, targetId);
       setComments((prev) => ({ ...prev, [key]: [...(prev[key] ?? []), created] }));
+      return true;
+    } catch {
+      return false;
     }
   }, []);
 
-  const removeComment = useCallback(async (targetType: CommentTargetType, targetId: string, commentId: string) => {
+  const removeComment = useCallback(async (targetType: CommentTargetType, targetId: string, commentId: string): Promise<boolean> => {
     const key = commentKey(targetType, targetId);
-    setComments((prev) => ({ ...prev, [key]: (prev[key] ?? []).filter((c) => c.id !== commentId) }));
-    await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, { method: "DELETE" });
+    let prevList: Comment[] = [];
+    setComments((prev) => {
+      prevList = prev[key] ?? [];
+      return { ...prev, [key]: prevList.filter((c) => c.id !== commentId) };
+    });
+    try {
+      const res = await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      return true;
+    } catch {
+      setComments((prev) => ({ ...prev, [key]: prevList }));
+      return false;
+    }
   }, []);
 
   const toggleRelevance = useCallback(
-    async (targetType: CommentTargetType, targetId: string, commentId: string, ikkeRelevant: boolean) => {
+    async (targetType: CommentTargetType, targetId: string, commentId: string, ikkeRelevant: boolean): Promise<boolean> => {
       const key = commentKey(targetType, targetId);
-      setComments((prev) => ({
-        ...prev,
-        [key]: (prev[key] ?? []).map((c) => (c.id === commentId ? { ...c, ikkeRelevant } : c)),
-      }));
-      await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ikkeRelevant }),
+      let prevList: Comment[] = [];
+      setComments((prev) => {
+        prevList = prev[key] ?? [];
+        return { ...prev, [key]: prevList.map((c) => (c.id === commentId ? { ...c, ikkeRelevant } : c)) };
       });
+      try {
+        const res = await fetch(`/api/comments/${targetType}/${targetId}/${commentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ikkeRelevant }),
+        });
+        if (!res.ok) throw new Error("update failed");
+        return true;
+      } catch {
+        setComments((prev) => ({ ...prev, [key]: prevList }));
+        return false;
+      }
     },
     [],
   );

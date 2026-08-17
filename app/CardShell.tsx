@@ -342,9 +342,14 @@ export function ConfirmDialog({
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  // Husker hva som hadde fokus FØR dialogen åpnet (typisk slett-knappen som
+  // trigget den) slik at et tastatur-drevet besøk ikke mister stedet sitt i
+  // siden når dialogen lukkes igjen.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
     cancelRef.current?.focus();
 
     function onKeyDown(e: KeyboardEvent) {
@@ -360,7 +365,10 @@ export function ConfirmDialog({
       }
     }
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocusedRef.current?.focus();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -416,6 +424,26 @@ export function useConfirmDelete<T = string>() {
     request: (item: T) => setPending(item),
     cancel: () => setPending(null),
   };
+}
+
+// Enkel, ikke-blokkerende feilmelding for mislykkede lagringer/slettinger —
+// vises kort ved siden av handlingen i stedet for at feilen forsvinner
+// stille. Tidligere kastet praktisk talt alle mutasjoner i appen bort
+// nettverks-/serverfeil uten noe synlig tegn til brukeren.
+export function useMutationError(autoClearMs = 4000) {
+  const [message, setMessage] = useState<string | null>(null);
+  function show(msg: string) {
+    setMessage(msg);
+    setTimeout(() => {
+      setMessage((current) => (current === msg ? null : current));
+    }, autoClearMs);
+  }
+  return { message, show, clear: () => setMessage(null) };
+}
+
+export function MutationError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return <p className="text-xs text-status-danger">{message}</p>;
 }
 
 export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number; className?: string }) {

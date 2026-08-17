@@ -9,6 +9,7 @@ export interface JobbReminder {
   dueDate?: string; // "YYYY-MM-DD"
   recurrence: Recurrence;
   done: boolean;
+  completedAt?: string; // ISO datetime — satt når done settes til true, brukes for "angre"-vinduet
   order: number; // manuell prioritet i "i dag"-lista, lavest først
 }
 
@@ -76,13 +77,19 @@ export async function getJobbReminders(): Promise<JobbReminder[]> {
 
 export async function addJobbReminder(input: NewJobbReminderInput): Promise<JobbReminder> {
   if (!input.text?.trim()) throw new Error("Påminnelse mangler tekst");
+  // order = laveste eksisterende - 1, ikke Date.now() — se lib/reminders.ts
+  // sin addReminder for begrunnelse (nye påminnelser dukker nå opp øverst
+  // i stedet for alltid bakerst uansett hastegrad).
+  const map = await hgetallJSON<JobbReminder>(HASH_KEY);
+  const existingOrders = Object.values(map).map((r) => r.order ?? 0);
+  const order = existingOrders.length > 0 ? Math.min(...existingOrders) - 1 : 0;
   const reminder: JobbReminder = {
     id: randomUUID(),
     text: input.text.trim(),
     dueDate: input.dueDate,
     recurrence: input.recurrence ?? "none",
     done: false,
-    order: Date.now(),
+    order,
   };
   await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
@@ -92,10 +99,13 @@ export async function toggleJobbReminder(id: string): Promise<JobbReminder | nul
   const current = await hgetJSON<JobbReminder>(HASH_KEY, id);
   if (!current) return null;
 
-  const next: JobbReminder =
-    current.recurrence !== "none" && !current.done && current.dueDate
-      ? { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false }
-      : { ...current, done: !current.done };
+  let next: JobbReminder;
+  if (current.recurrence !== "none" && !current.done && current.dueDate) {
+    next = { ...current, dueDate: advanceDate(current.dueDate, current.recurrence), done: false };
+  } else {
+    const willBeDone = !current.done;
+    next = { ...current, done: willBeDone, completedAt: willBeDone ? new Date().toISOString() : undefined };
+  }
 
   await hsetJSON(HASH_KEY, id, next);
   return next;

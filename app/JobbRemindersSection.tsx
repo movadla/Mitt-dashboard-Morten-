@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { CARD_SHELL, CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
 import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./privat/SwipeableRow";
-import { Bell, GripVertical } from "lucide-react";
+import { GripVertical, Lightbulb } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -17,6 +18,10 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+
+// Hvor lenge en avhuket påminnelse fortsatt vises i "Nylig fullført" og kan
+// angres — se lib/reminders.ts sin RemindersSection for samme mønster.
+const RECENTLY_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const RECURRENCE_LABEL: Record<Recurrence, string> = {
   none: "Ingen",
@@ -139,9 +144,12 @@ function ReminderRowContent({
       <button
         type="button"
         onClick={() => onStartEdit(reminder.id)}
-        aria-label="Rediger påminnelse"
         className="min-w-0 flex-1 text-left"
       >
+        {/* Ingen aria-label her — se app/privat/RemindersSection.tsx sin
+            ReminderRowContent for hvorfor: en fast aria-label ville overstyrt
+            HELE det beregnede tilgjengelighetsnavnet for alle rader. */}
+        <span className="sr-only">Rediger: </span>
         <p className={`text-sm ${reminder.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{reminder.text}</p>
         {(reminder.dueDate || reminder.recurrence !== "none") && (
           <p className="mt-0.5 text-2xs text-ink-4">
@@ -263,16 +271,20 @@ export default function JobbRemindersSection() {
   const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [showForm, setShowForm] = useState(false);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState(localDateString());
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Holder en nettopp avhuket påminnelse synlig i "i dag"-lista en kort stund
+  // Delt med Privat-fanens Påminnelser/TodaySummary via lib/justToggled.ts —
+  // holder en nettopp avhuket påminnelse synlig i "i dag"-lista en kort stund
   // etter trykk, slik at man rekker se haken fylles inn før raden forsvinner.
-  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
+  const justToggled = useJustToggled();
   const confirmDelete = useConfirmDelete<string>();
+  const mutationError = useMutationError();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const load = useCallback(() => {
@@ -288,6 +300,11 @@ export default function JobbRemindersSection() {
     return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
 
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   async function handleAdd() {
     if (!text.trim() || submitting) return;
     setSubmitting(true);
@@ -297,59 +314,75 @@ export default function JobbRemindersSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, dueDate: dueDate || undefined, recurrence }),
       });
-      if (res.ok) {
-        const created: JobbReminder = await res.json();
-        setReminders((prev) => [...prev, created].sort(sortReminders));
-        setText("");
-        setDueDate(localDateString());
-        setRecurrence("none");
-        setShowForm(false);
-        window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
+        return;
       }
+      const created: JobbReminder = await res.json();
+      setReminders((prev) => [...prev, created].sort(sortReminders));
+      setText("");
+      setDueDate(localDateString());
+      setRecurrence("none");
+      setShowForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleToggle(id: string) {
-    const res = await fetch(`/api/jobb-reminders/${id}`, { method: "PATCH" });
-    if (res.ok) {
+    const current = reminders.find((r) => r.id === id);
+    if (!current) return;
+    const optimisticDone = !current.done;
+    const previous = reminders;
+    setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, done: optimisticDone } : r)));
+    markJustToggled(id);
+    vibrate(optimisticDone ? 15 : 8);
+    try {
+      const res = await fetch(`/api/jobb-reminders/${id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("toggle failed");
       const updated: JobbReminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
-      vibrate(updated.done ? 15 : 8);
-      setJustToggledIds((prev) => new Set(prev).add(id));
-      setTimeout(() => {
-        setJustToggledIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }, 700);
+    } catch {
+      setReminders(previous);
+      mutationError.show("Kunne ikke oppdatere påminnelsen. Prøv igjen.");
     }
   }
 
   async function handleRemove(id: string) {
+    const previous = reminders;
     setReminders((prev) => prev.filter((r) => r.id !== id));
     vibrate([10, 30, 10]);
-    await fetch(`/api/jobb-reminders/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    try {
+      const res = await fetch(`/api/jobb-reminders/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setReminders(previous);
+      mutationError.show("Kunne ikke slette påminnelsen. Prøv igjen.");
+    }
   }
 
   async function handleSaveEdit(
     id: string,
     updates: { text: string; dueDate?: string; recurrence: Recurrence },
   ) {
-    const res = await fetch(`/api/jobb-reminders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: updates.text, dueDate: updates.dueDate ?? null, recurrence: updates.recurrence }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/jobb-reminders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: updates.text, dueDate: updates.dueDate ?? null, recurrence: updates.recurrence }),
+      });
+      if (!res.ok) throw new Error("save failed");
       const updated: JobbReminder = await res.json();
       setReminders((prev) => prev.map((r) => (r.id === id ? updated : r)).sort(sortReminders));
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
@@ -376,7 +409,12 @@ export default function JobbRemindersSection() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: reordered }),
-      }).then(() => window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh")));
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("reorder failed");
+          window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+        })
+        .catch(() => mutationError.show("Kunne ikke lagre ny rekkefølge."));
 
       return next;
     });
@@ -385,9 +423,19 @@ export default function JobbRemindersSection() {
 
   const today = localDateString();
   const todays = reminders
-    .filter((r) => isDueToday(r, today) || justToggledIds.has(r.id))
+    .filter((r) => isDueToday(r, today) || justToggled.has(r.id))
     .sort((a, b) => a.order - b.order);
-  const rest = reminders.filter((r) => !isDueToday(r, today) && !justToggledIds.has(r.id));
+  const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done);
+  // Avhukede påminnelser får sin egen "Nylig fullført"-seksjon (samme mønster
+  // som Privat-fanens Påminnelser-kort) i stedet for å forsvinne permanent
+  // uten angre-mulighet.
+  const recentlyCompleted = reminders
+    .filter(
+      (r) =>
+        (r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS) ||
+        (r.done && justToggled.has(r.id)),
+    )
+    .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
   return (
     <div className={`${CARD_SHELL} border-t-2 border-t-accent/60 p-4`}>
@@ -401,11 +449,13 @@ export default function JobbRemindersSection() {
           setShowForm(true);
         }}
         addLabel="Ny påminnelse"
-        icon={Bell}
+        icon={Lightbulb}
         iconColorClass="text-accent"
+        alwaysShowSubtitle
       />
       {!collapsed && (
         <div className="flex flex-col gap-2">
+          <MutationError message={mutationError.message} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
@@ -505,6 +555,34 @@ export default function JobbRemindersSection() {
                 className="mt-1 text-left text-xs font-medium text-accent hover:text-accent/80"
               >
                 {showAll ? "Vis mindre" : `Mer (${rest.length})`}
+              </button>
+            </>
+          )}
+
+          {recentlyCompleted.length > 0 && (
+            <>
+              {showRecentlyCompleted && (
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {recentlyCompleted.map((r) => (
+                    <ReminderRow
+                      key={r.id}
+                      reminder={r}
+                      editing={editingId === r.id}
+                      onToggle={handleToggle}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                    />
+                  ))}
+                </ul>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowRecentlyCompleted((v) => !v)}
+                className="mt-1 text-left text-xs font-medium text-ink-4 hover:text-ink-2"
+              >
+                {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
               </button>
             </>
           )}

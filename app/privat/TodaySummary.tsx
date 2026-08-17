@@ -2,8 +2,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { CARD_SHELL, SkeletonRows } from "../CardShell";
+import { CARD_SHELL, MutationError, SkeletonRows, useMutationError } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
+import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
@@ -257,10 +258,12 @@ export default function TodaySummary() {
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [addingReminder, setAddingReminder] = useState(false);
   const [newReminderText, setNewReminderText] = useState("");
-  // Holder en nettopp fullført påminnelse synlig ~700ms (med hakemerket vist)
-  // før den forsvinner fra "I dag" — samme mønster som Påminnelser-kortet
-  // (justToggledIds), se feedback_checkoff-visible-feedback-memory.
-  const [justToggledIds, setJustToggledIds] = useState<Set<string>>(new Set());
+  const [submittingReminder, setSubmittingReminder] = useState(false);
+  // Delt med Påminnelser-kortet/JobbRemindersSection via lib/justToggled.ts
+  // (se feedback_checkoff-visible-feedback-memory) — holder en nettopp
+  // fullført påminnelse synlig ~700ms før den forsvinner fra "I dag".
+  const justToggled = useJustToggled();
+  const mutationError = useMutationError();
 
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const dragAxis = useRef<"x" | "y" | null>(null);
@@ -351,67 +354,84 @@ export default function TodaySummary() {
   }
 
   async function handleChangeDueDate(id: string, newDate: string) {
-    const res = await fetch(`/api/reminders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dueDate: newDate || null }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/reminders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate: newDate || null }),
+      });
+      if (!res.ok) throw new Error("change due date failed");
       const updated: Reminder = await res.json();
       mutateReminders(
         (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)) },
         { revalidate: false },
       );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke endre fristen. Prøv igjen.");
     }
   }
 
   async function handleAddReminder() {
     const text = newReminderText.trim();
-    if (!text) return;
-    const res = await fetch("/api/reminders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, dueDate: viewedDate }),
-    });
-    if (res.ok) {
+    if (!text || submittingReminder) return;
+    setSubmittingReminder(true);
+    try {
+      const res = await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, dueDate: viewedDate }),
+      });
+      if (!res.ok) throw new Error("add reminder failed");
       const created: Reminder = await res.json();
       mutateReminders((current) => current && { reminders: [...current.reminders, created] }, { revalidate: false });
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       setNewReminderText("");
       setAddingReminder(false);
+    } catch {
+      mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
+    } finally {
+      setSubmittingReminder(false);
     }
   }
 
   async function handleToggleReminderDone(id: string) {
-    const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
-    if (res.ok) {
+    const current = reminders.find((r) => r.id === id);
+    if (!current) return;
+    const optimisticDone = !current.done;
+    let previous: Reminder[] = [];
+    mutateReminders(
+      (curr) => {
+        previous = curr?.reminders ?? [];
+        return curr && { reminders: curr.reminders.map((r) => (r.id === id ? { ...r, done: optimisticDone } : r)) };
+      },
+      { revalidate: false },
+    );
+    markJustToggled(id);
+    vibrate(optimisticDone ? 15 : 8);
+    try {
+      const res = await fetch(`/api/reminders/${id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("toggle failed");
       const updated: Reminder = await res.json();
       mutateReminders(
-        (current) => current && { reminders: current.reminders.map((r) => (r.id === id ? updated : r)) },
+        (curr) => curr && { reminders: curr.reminders.map((r) => (r.id === id ? updated : r)) },
         { revalidate: false },
       );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-      vibrate(updated.done ? 15 : 8);
-      setJustToggledIds((prev) => new Set(prev).add(id));
-      setTimeout(() => {
-        setJustToggledIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }, 700);
+    } catch {
+      mutateReminders({ reminders: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke oppdatere påminnelsen. Prøv igjen.");
     }
   }
 
   const activeReminders = reminders.filter(
-    (r) => (!r.done || justToggledIds.has(r.id)) && (!r.dueDate || r.dueDate <= realToday),
+    (r) => (!r.done || justToggled.has(r.id)) && (!r.dueDate || r.dueDate <= realToday),
   );
   const overdueReal = activeReminders.filter((r) => r.dueDate && r.dueDate < realToday);
   const dueTodayReal = activeReminders.filter((r) => !r.dueDate || r.dueDate === realToday);
 
   const dueOnViewed = reminders.filter(
-    (r) => (!r.done || justToggledIds.has(r.id)) && (r.dueDate === viewedDate || (!r.dueDate && isToday)),
+    (r) => (!r.done || justToggled.has(r.id)) && (r.dueDate === viewedDate || (!r.dueDate && isToday)),
   );
   // Slår sammen oversittede (kun relevant på selve i dag-visningen) og de som
   // forfaller på den viste dagen i én liste, med et overdue-flagg per rad —
@@ -524,6 +544,7 @@ export default function TodaySummary() {
                 aldri kan "vinne" toppen bare fordi de to viktigste kategoriene er tomme. */}
             <div className="rounded-lg border border-accent-privat/40 bg-accent-privat/8 px-3 py-1.5">
               <CategoryRow icon={Lightbulb} colorClass="text-accent-privat" label="Påminnelser">
+                <MutationError message={mutationError.message} />
                 {reminderRows.length > 0 ? (
                   <ul className="flex flex-col gap-1">
                     {reminderRows.map(({ reminder, overdue }) => (
@@ -559,7 +580,7 @@ export default function TodaySummary() {
                     <button
                       type="button"
                       onClick={handleAddReminder}
-                      disabled={!newReminderText.trim()}
+                      disabled={!newReminderText.trim() || submittingReminder}
                       className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
                     >
                       Legg til

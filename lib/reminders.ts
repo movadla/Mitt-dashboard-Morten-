@@ -89,6 +89,13 @@ export async function getReminders(): Promise<Reminder[]> {
 
 export async function addReminder(input: NewReminderInput): Promise<Reminder> {
   if (!input.text?.trim()) throw new Error("Påminnelse mangler tekst");
+  // order = laveste eksisterende - 1, ikke Date.now() — en ny påminnelse fikk
+  // tidligere alltid et epoke-millisekund-stort tall, som uansett sorterte
+  // den bakerst i "i dag"-lista uansett hastegrad, bak alt manuelt omsortert
+  // (order 0..N-1 fra reorderReminders). Nye påminnelser dukker nå opp øverst.
+  const map = await hgetallJSON<Reminder>(HASH_KEY);
+  const existingOrders = Object.values(map).map((r) => r.order ?? 0);
+  const order = existingOrders.length > 0 ? Math.min(...existingOrders) - 1 : 0;
   const reminder: Reminder = {
     id: randomUUID(),
     text: input.text.trim(),
@@ -96,7 +103,7 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     dueTime: input.dueTime,
     recurrence: input.recurrence ?? "none",
     done: false,
-    order: Date.now(),
+    order,
   };
   await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
