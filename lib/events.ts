@@ -10,7 +10,6 @@ export interface NewLifeEventInput {
   date: string;
   category: EventCategory;
   recurrence?: LifeEventRecurrence;
-  note?: string;
 }
 
 export interface LifeEventUpdateInput {
@@ -18,7 +17,6 @@ export interface LifeEventUpdateInput {
   date?: string;
   category?: EventCategory;
   recurrence?: LifeEventRecurrence;
-  note?: string | null;
 }
 
 const HASH_KEY = "privat:hendelser";
@@ -56,7 +54,6 @@ export async function addLifeEvent(input: NewLifeEventInput): Promise<LifeEvent>
     date: input.date,
     category: input.category,
     recurrence: input.recurrence ?? "none",
-    note: input.note?.trim() || undefined,
   };
   await hsetJSON(HASH_KEY, event.id, event);
   return event;
@@ -77,7 +74,6 @@ export async function updateLifeEvent(id: string, updates: LifeEventUpdateInput)
     date,
     category: updates.category !== undefined ? updates.category : current.category,
     recurrence: updates.recurrence !== undefined ? updates.recurrence : current.recurrence,
-    note: updates.note !== undefined ? (updates.note ?? undefined) : current.note,
   };
   await hsetJSON(HASH_KEY, id, next);
   return next;

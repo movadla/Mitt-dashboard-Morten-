@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { Fragment, useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
 import type { JobbEvent } from "@/lib/jobbEvents";
-import { localDateString } from "@/lib/payday";
+import { formatDMY, localDateString, relativeDayLabel } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./privat/SwipeableRow";
-import { CalendarPlus } from "lucide-react";
-
-function formatDMY(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
-}
+import { CalendarPlus, X } from "lucide-react";
 
 function EventEditForm({
   event,
@@ -40,14 +37,14 @@ function EventEditForm({
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
         }}
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
           Avbryt
@@ -66,7 +63,7 @@ function EventEditForm({
         value={note}
         onChange={(e) => setNote(e.target.value)}
         placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
       />
     </li>
   );
@@ -92,21 +89,18 @@ function EventRow({
   }
 
   const content = (
-    <div className="flex items-center gap-3 rounded-xl border-l-2 border-l-accent bg-accent/8 px-3 py-2">
+    <div className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2">
       <button type="button" onClick={() => onStartEdit(event.id)} className="min-w-0 flex-1 text-left">
-        <p className="text-sm text-ink-1">{event.title}</p>
-        <p className="mt-0.5 text-2xs text-ink-4">
-          {formatDMY(event.date)}
-          {event.note ? ` · ${event.note}` : ""}
-        </p>
+        <p className="min-w-0 truncate text-sm font-medium text-ink-1">{event.title}</p>
+        {event.note && <p className="mt-0.5 text-2xs text-ink-4">{event.note}</p>}
       </button>
       <button
         type="button"
         onClick={() => onRemove(event.id)}
         aria-label="Slett hendelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
-        ×
+        <X className="h-4 w-4" />
       </button>
     </div>
   );
@@ -122,8 +116,8 @@ function EventRow({
 
 export default function JobbEventsSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser (Jobb)", true);
-  const [events, setEvents] = useState<JobbEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: JobbEvent[] }>("/api/jobb-events", jsonFetcher);
+  const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
@@ -131,19 +125,7 @@ export default function JobbEventsSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
-
-  const load = useCallback(() => {
-    fetch("/api/jobb-events")
-      .then((r) => r.json())
-      .then((d) => setEvents((d.events ?? []) as JobbEvent[]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:jobb-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
-  }, [load]);
+  const mutationError = useMutationError();
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -154,38 +136,61 @@ export default function JobbEventsSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, date, note: note.trim() || undefined }),
       });
-      if (res.ok) {
-        const created: JobbEvent = await res.json();
-        setEvents((prev) => [...prev, created]);
-        setTitle("");
-        setDate("");
-        setNote("");
-        setShowForm(false);
-        window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til hendelsen. Prøv igjen.");
+        return;
       }
+      const created: JobbEvent = await res.json();
+      mutateEvents((current) => current && { events: [...current.events, created] }, { revalidate: false });
+      setTitle("");
+      setDate("");
+      setNote("");
+      setShowForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til hendelsen. Prøv igjen.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleRemove(id: string) {
-    setEvents((prev) => prev.filter((e) => e.id !== id));
+    let previous: JobbEvent[] = [];
+    mutateEvents(
+      (current) => {
+        previous = current?.events ?? [];
+        return current && { events: current.events.filter((e) => e.id !== id) };
+      },
+      { revalidate: false },
+    );
     vibrate([10, 30, 10]);
-    await fetch(`/api/jobb-events/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    try {
+      const res = await fetch(`/api/jobb-events/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutateEvents({ events: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette hendelsen. Prøv igjen.");
+    }
   }
 
   async function handleSaveEdit(id: string, updates: { title: string; date: string; note?: string }) {
-    const res = await fetch(`/api/jobb-events/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: updates.title, date: updates.date, note: updates.note ?? null }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/jobb-events/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: updates.title, date: updates.date, note: updates.note ?? null }),
+      });
+      if (!res.ok) throw new Error("save failed");
       const updated: JobbEvent = await res.json();
-      setEvents((prev) => prev.map((e) => (e.id === id ? updated : e)));
+      mutateEvents(
+        (current) => current && { events: current.events.map((e) => (e.id === id ? updated : e)) },
+        { revalidate: false },
+      );
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
@@ -204,8 +209,9 @@ export default function JobbEventsSection() {
         icon={CalendarPlus}
         iconColorClass="text-emerald-400"
       />
-      {!collapsed && (
+      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
+          <MutationError message={mutationError.message} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
@@ -217,14 +223,14 @@ export default function JobbEventsSection() {
                   if (e.key === "Escape") setShowForm(false);
                 }}
                 placeholder="F.eks. Åpning av ny butikk"
-                className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                 />
                 <button
                   type="button"
@@ -247,7 +253,7 @@ export default function JobbEventsSection() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 placeholder="Notat (valgfritt)"
-                className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+                className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
               />
             </div>
           )}
@@ -258,21 +264,33 @@ export default function JobbEventsSection() {
             <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {rows.map((event) => (
-                <EventRow
-                  key={event.id}
-                  event={event}
-                  editing={editingId === event.id}
-                  onRemove={confirmDelete.request}
-                  onStartEdit={setEditingId}
-                  onCancelEdit={() => setEditingId(null)}
-                  onSaveEdit={handleSaveEdit}
-                />
-              ))}
+              {rows.map((event, i) => {
+                const prevDate = i > 0 ? rows[i - 1].date : null;
+                const showHeader = event.date !== prevDate;
+                return (
+                  <Fragment key={event.id}>
+                    {showHeader && (
+                      <li className="mt-2 first:mt-0">
+                        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                          {relativeDayLabel(event.date, today)}
+                        </p>
+                      </li>
+                    )}
+                    <EventRow
+                      event={event}
+                      editing={editingId === event.id}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                    />
+                  </Fragment>
+                );
+              })}
             </ul>
           )}
         </div>
-      )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

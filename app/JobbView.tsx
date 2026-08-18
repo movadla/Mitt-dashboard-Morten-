@@ -38,8 +38,9 @@ import type { ReceivableRiskLevel } from "@/lib/receivableRisk";
 import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
-import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck } from "lucide-react";
-import { CARD_SHELL, CardErrorBoundary, CardHeader, ConfirmDialog, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck, X } from "lucide-react";
+import { CARD_SHELL, CardErrorBoundary, CardHeader, CollapsibleBody, ConfirmDialog, useConfirmDelete, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import { relativeDayLabel } from "@/lib/payday";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
@@ -1415,6 +1416,7 @@ function CalendarCard({ today }: { today: string }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, addNote, removeNote] = useCalendarNotes();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const confirmDeleteNote = useConfirmDelete<{ meetingId: string; index: number; preview: string }>();
   const visible = CALENDAR_EVENTS.slice(0, visibleCount);
   return (
     <div className={`${CARD_SHELL} border-t-2 border-t-indigo-400/60 p-4`}>
@@ -1426,8 +1428,8 @@ function CalendarCard({ today }: { today: string }) {
         icon={CalendarDays}
         iconColorClass="text-indigo-400"
       />
-      {!collapsed && (
-        CALENDAR_EVENTS.length === 0 ? (
+      <CollapsibleBody collapsed={collapsed}>
+        {CALENDAR_EVENTS.length === 0 ? (
           <p className="text-sm text-ink-3">Ingen møter i perioden.</p>
         ) : (
           <>
@@ -1444,10 +1446,19 @@ function CalendarCard({ today }: { today: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((m) => {
+                  {visible.map((m, i) => {
                     const isOpen = selected === m.id;
+                    const prevDate = i > 0 ? visible[i - 1].dato : null;
+                    const showHeader = m.dato !== prevDate;
                     return (
                       <Fragment key={m.id}>
+                        {showHeader && (
+                          <tr className="border-t border-line">
+                            <td colSpan={6} className="px-3 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                              {relativeDayLabel(m.dato, today)}
+                            </td>
+                          </tr>
+                        )}
                         <tr
                           onClick={() => setSelected(isOpen ? null : m.id)}
                           onKeyDown={(e) => {
@@ -1490,7 +1501,7 @@ function CalendarCard({ today }: { today: string }) {
                                     onClick={(e) => e.stopPropagation()}
                                     placeholder="Skriv et nytt notat om møtet …"
                                     rows={2}
-                                    className="w-full resize-none rounded-lg border border-line bg-surface-1 p-2 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                                    className="w-full resize-none rounded-lg border border-transparent bg-surface-1 p-2 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
                                   />
                                   <button
                                     type="button"
@@ -1515,12 +1526,12 @@ function CalendarCard({ today }: { today: string }) {
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              removeNote(m.id, i);
+                                              confirmDeleteNote.request({ meetingId: m.id, index: i, preview: note });
                                             }}
                                             className="shrink-0 text-ink-4 hover:text-rose-400"
                                             aria-label="Slett notat"
                                           >
-                                            ×
+                                            <X className="h-3.5 w-3.5" />
                                           </button>
                                         </li>
                                       ))}
@@ -1541,14 +1552,24 @@ function CalendarCard({ today }: { today: string }) {
               <button
                 type="button"
                 onClick={() => setVisibleCount((v) => v + 10)}
-                className="mt-3 text-xs font-medium text-accent hover:text-accent/80"
+                className="mt-3 text-xs font-medium text-ink-3 hover:text-ink-1"
               >
                 {`Mer (${CALENDAR_EVENTS.length - visibleCount})`}
               </button>
             )}
           </>
-        )
-      )}
+        )}
+      </CollapsibleBody>
+      <ConfirmDialog
+        open={confirmDeleteNote.isOpen}
+        message={confirmDeleteNote.pending ? `Slette notatet «${confirmDeleteNote.pending.preview}»?` : ""}
+        onCancel={confirmDeleteNote.cancel}
+        onConfirm={() => {
+          const pending = confirmDeleteNote.pending;
+          if (pending) removeNote(pending.meetingId, pending.index);
+          confirmDeleteNote.cancel();
+        }}
+      />
     </div>
   );
 }

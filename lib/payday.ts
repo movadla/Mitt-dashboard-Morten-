@@ -15,6 +15,13 @@ export function localDateString(): string {
   return toOsloDateString(new Date());
 }
 
+// "17.08.2026" — delt av alle Hendelser-/Kalender-visningene (Privat +
+// Jobb), som tidligere hver hadde sin egen identiske kopi.
+export function formatDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+}
+
 // Legger til `n` dager til en "YYYY-MM-DD"-dato — brukes for å bla fremover i
 // "I dag"-boksen uten tidssone-fallgruver (ren kalenderdag-aritmetikk i UTC).
 export function addDaysIso(iso: string, n: number): string {
@@ -33,7 +40,6 @@ export interface LifeEvent {
   date: string; // "YYYY-MM-DD"
   category: EventCategory;
   recurrence: LifeEventRecurrence;
-  note?: string;
 }
 
 function daysBetween(fromIso: string, toIso: string): number {
@@ -139,4 +145,24 @@ export function nextPaydayFrom(todayIso: string): string {
   const nextMonthIndex0 = m % 12;
   const nextYear = m === 12 ? y + 1 : y;
   return paydayForMonth(nextYear, nextMonthIndex0);
+}
+
+// "Mandag 17.08" — ukedag + dato uten noe "i dag"/"i morgen"-særtilfelle.
+// Brukt alene der man alltid vil se ukedagen (f.eks. en fast dagsoverskrift),
+// og som fallback-gren i relativeDayLabel under.
+export function weekdayDateLabel(dateIso: string): string {
+  const d = new Date(dateIso + "T12:00:00");
+  const weekday = d.toLocaleDateString("nb-NO", { weekday: "long" });
+  const [, m, day] = dateIso.split("-");
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day}.${m}`;
+}
+
+// Dag-gruppeoverskrift for lister over kommende hendelser/møter: "I dag" og
+// "I morgen" som særtilfeller, ellers ukedag+dato — samme prinsipp som
+// dayHeaderLabel i TodaySummary.tsx brukte for selve "I dag"-toppteksten, men
+// her ment for å gruppere en LISTE av fremtidige rader under egne overskrifter.
+export function relativeDayLabel(dateIso: string, todayIso: string): string {
+  if (dateIso === todayIso) return "I dag";
+  if (dateIso === addDaysIso(todayIso, 1)) return "I morgen";
+  return weekdayDateLabel(dateIso);
 }

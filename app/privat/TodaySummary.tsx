@@ -12,7 +12,7 @@ import type { SportEvent } from "@/lib/sports";
 import type { FplData } from "@/lib/fpl";
 import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
-import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString } from "@/lib/payday";
+import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString, weekdayDateLabel } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import {
@@ -167,13 +167,6 @@ function SportRoundLine({ label, matches }: { label: string; matches: SportEvent
 // (ukedag, så dato), uansett hvilken dag som vises, slik at teksten ikke
 // bytter form/plassering når man blar mellom dager med pil-navigeringen.
 // "Tilbake til i dag"-knappen dekker signalet om at man ser en annen dag.
-function dayHeaderLabel(dateIso: string): string {
-  const d = new Date(dateIso + "T12:00:00");
-  const weekday = d.toLocaleDateString("nb-NO", { weekday: "long" });
-  const [, m, day] = dateIso.split("-");
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day}.${m}`;
-}
-
 function setBadgeCount(count: number) {
   if (typeof navigator === "undefined") return;
   const nav = navigator as Navigator & {
@@ -466,7 +459,7 @@ export default function TodaySummary() {
     <div className={`${CARD_SHELL} p-4`}>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate text-sm font-semibold text-ink-1">{dayHeaderLabel(viewedDate)}</h2>
+          <h2 className="truncate text-sm font-semibold text-ink-1">{weekdayDateLabel(viewedDate)}</h2>
           {!isToday && (
             <button
               type="button"
