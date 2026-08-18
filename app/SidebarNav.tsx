@@ -124,9 +124,10 @@ function SortableNavButton({
 // Delt, generisk navigasjonskomponent — brukes i dag av Privat-fanen, bygget
 // for at Jobb-fanen skal kunne gjenbruke den uendret i en senere runde.
 // Renderer samme items/activeId/onSelect-state på to måter: en vertikal rail
-// til venstre på md:+ (med valgfri dra-og-slipp-omorganisering), og en
-// horisontal skrollbar chip-stripe på mobil (fast rekkefølge, ingen dra —
-// drag kolliderer med skroll-gesten på en horisontalt scrollet liste).
+// til venstre på md:+ (med valgfri dra-og-slipp-omorganisering), og et
+// wrappet grid av chips på mobil (fast rekkefølge, ingen dra — hele poenget
+// er at ALLE kategorier skal være synlige samtidig uten skjult skroll, en
+// horisontal stripe skjulte for mange av dem bak kanten).
 export function SidebarNav({
   items,
   activeId,
@@ -242,37 +243,32 @@ export function SidebarNav({
         </DndContext>
       </nav>
 
-      {/* Mobil: horisontal skrollbar chip-stripe, fast rekkefølge (samme som
-          railen sist lagret), ingen dra — se komponent-kommentaren over. */}
-      <div className="relative md:hidden">
-        <nav
-          role="tablist"
-          aria-label={ariaLabel}
-          aria-orientation="horizontal"
-          className="flex gap-2 overflow-x-auto pb-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          {items.map((item) => {
-            const active = item.id === activeId;
-            return (
-              <NavButton
-                key={item.id}
-                item={item}
-                active={active}
-                tabIndex={active ? 0 : -1}
-                onSelect={() => onSelect(item.id)}
-                onKeyDown={handleStripKeyDown}
-                buttonRef={(el) => {
-                  stripRefs.current[item.id] = el;
-                }}
-                compact
-              />
-            );
-          })}
-        </nav>
-        {/* Fade-gradient i høyre kant — signaliserer at det finnes flere
-            kategorier å skrolle til, uten en synlig skrollbar. */}
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface-0 to-transparent" />
-      </div>
+      {/* Mobil: wrappet grid av chips, fast rekkefølge (samme som railen sist
+          lagret), ingen dra — se komponent-kommentaren over. */}
+      <nav
+        role="tablist"
+        aria-label={ariaLabel}
+        aria-orientation="horizontal"
+        className="flex flex-wrap gap-2 md:hidden"
+      >
+        {items.map((item) => {
+          const active = item.id === activeId;
+          return (
+            <NavButton
+              key={item.id}
+              item={item}
+              active={active}
+              tabIndex={active ? 0 : -1}
+              onSelect={() => onSelect(item.id)}
+              onKeyDown={handleStripKeyDown}
+              buttonRef={(el) => {
+                stripRefs.current[item.id] = el;
+              }}
+              compact
+            />
+          );
+        })}
+      </nav>
     </>
   );
 }
