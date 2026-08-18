@@ -14,14 +14,13 @@ export type TeamKey = "fisak" | "boko";
 export interface FplLeague {
   id: number; name: string; rank: number; lastRank: number | null;
   targetRank?: number;
-  gapToTarget?: number; pointsAtTarget?: number | null;
+  gapToTarget?: number;
   topEntries?: { name: string; total: number; rank: number }[];
 }
 export interface FplTeam {
   teamKey: TeamKey; teamId: number; teamName: string;
   overallRank?: number; totalPoints?: number;
   currentGwPoints?: number; currentGw?: number;
-  gapToTop100k?: number;
   gwHistory?: { event: number; rank: number; points?: number }[];
   leagues: FplLeague[];
 }
@@ -96,7 +95,6 @@ async function fetchTeam(entry: EntryData, myPoints: number): Promise<Omit<FplTe
       lastRank: l.entry_last_rank ?? null,
       targetRank,
       gapToTarget: atTarget != null ? myPoints - atTarget.total : undefined,
-      pointsAtTarget: atTarget?.total ?? null,
       topEntries: (topEntries?.length ?? 0) > 0 ? topEntries : undefined,
     };
   });
@@ -117,9 +115,8 @@ export async function getFplData(): Promise<FplData> {
   if (cached) return cached;
 
   try {
-    const [bootstrapRes, overall100kRes, ...entryAndHistResps] = await Promise.all([
+    const [bootstrapRes, ...entryAndHistResps] = await Promise.all([
       fetch("https://fantasy.premierleague.com/api/bootstrap-static/", UA),
-      fetch("https://fantasy.premierleague.com/api/leagues-classic/314/standings/?page_standings=2000", UA),
       ...TEAMS.flatMap(t => [
         fetch(`https://fantasy.premierleague.com/api/entry/${t.id}/`, UA),
         fetch(`https://fantasy.premierleague.com/api/entry/${t.id}/history/`, UA),
@@ -128,23 +125,14 @@ export async function getFplData(): Promise<FplData> {
 
     if (!bootstrapRes.ok) throw new Error("bootstrap failed");
 
-    const [bootstrap, overall100kData, ...entryAndHistData] = await Promise.all([
+    const [bootstrap, ...entryAndHistData] = await Promise.all([
       bootstrapRes.json(),
-      overall100kRes.ok ? overall100kRes.json() : null,
       ...entryAndHistResps.map(r => r.ok ? r.json() : null),
     ]);
 
     // Interleaved [entry0, history0, entry1, history1, ...]
     const rawEntries   = entryAndHistData.filter((_, i) => i % 2 === 0);
     const rawHistories = entryAndHistData.filter((_, i) => i % 2 === 1);
-
-    const overallResults: StandingEntry[] = overall100kData?.standings?.results ?? [];
-    const at100k = overallResults.find(e => e.rank === 100_000)
-      ?? (overallResults.length > 0
-        ? overallResults.reduce((best, e) =>
-            Math.abs(e.rank - 100_000) < Math.abs(best.rank - 100_000) ? e : best)
-        : null);
-    const pointsAt100k: number | null = at100k?.total ?? null;
 
     const now = Date.now();
     const events = bootstrap.events as FplEvent[];
@@ -161,8 +149,7 @@ export async function getFplData(): Promise<FplData> {
         const pts: number = entry?.summary_overall_points ?? 0;
         return fetchTeam(entry!, pts).then((team): FplTeam | null => {
           if (!team) return null;
-          const gapToTop100k = pointsAt100k != null ? pts - pointsAt100k : undefined;
-          return { ...team, teamKey: t.key, gapToTop100k, gwHistory };
+          return { ...team, teamKey: t.key, gwHistory };
         });
       })
     );

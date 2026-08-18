@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import useSWR from "swr";
 import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
 import { CARD_SHELL, CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
+import { jsonFetcher } from "@/lib/swrFetcher";
 import { timeAgo } from "@/lib/timeAgo";
 import { Shirt } from "lucide-react";
 
@@ -57,6 +59,18 @@ function RankSparkline({ history, color }: { history: { event: number; rank: num
 function rankDelta(rank: number, last: number | null) {
   if (!last || last === rank) return null;
   return last > rank ? "up" : "down";
+}
+
+// Delt SWR-nøkkel med TeamPitch.tsx (samme URL-format) — når begge
+// komponenter henter picks for samme managerId dedupliserer SWR sin
+// globale cache kallet i stedet for at det gjøres to ganger.
+export function usePicksForTeam(managerId: number | undefined): PicksResult | null {
+  const { data } = useSWR<PicksResult>(
+    managerId ? `/api/fpl/picks?managerId=${managerId}` : null,
+    jsonFetcher,
+    { refreshInterval: 2 * 60 * 1000 },
+  );
+  return data && !data.error ? data : null;
 }
 
 const TEAM_THEME = {
@@ -234,13 +248,15 @@ function LeaguesPanel({
 
               <button
                 onClick={() => setExpandedLeagueId(isExpanded ? null : league.id)}
+                aria-expanded={isExpanded}
                 className="w-full flex items-center px-3 py-2 text-left">
                 <div className="flex-1 min-w-0 pr-2">
                   <p className="text-[11px] text-white/65 truncate leading-tight">{league.name}</p>
                 </div>
                 <div className="w-16 flex items-center justify-end gap-1 shrink-0">
                   {delta && (
-                    <svg viewBox="0 0 10 10" fill="currentColor"
+                    <svg viewBox="0 0 10 10" fill="currentColor" role="img"
+                      aria-label={delta === "up" ? "Rangering opp" : "Rangering ned"}
                       className={`w-1.5 h-1.5 shrink-0 ${delta === "up" ? "text-emerald-400" : "text-red-400"} ${delta === "down" ? "rotate-180" : ""}`}>
                       <polygon points="5,1 9,9 1,9" />
                     </svg>
@@ -313,9 +329,11 @@ function TeamPanel({
 }) {
   const th = TEAM_THEME[teamKey];
   return (
-    <div className="flex-1 relative overflow-hidden flex flex-col rounded-xl cursor-pointer select-none"
+    <button type="button"
+      className="flex-1 relative overflow-hidden flex flex-col rounded-xl cursor-pointer select-none text-left"
       style={{ border: `2px solid ${th.topBar}` }}
-      onClick={onToggle}>
+      onClick={onToggle}
+      aria-expanded={isExpanded}>
       <div className="h-[3px] shrink-0" style={{ background: th.topBar }} />
       <div className="flex-1 relative px-4 py-4" style={{ background: th.panelBg }}>
         {teamKey === "boko" && (
@@ -404,53 +422,29 @@ function TeamPanel({
           <polyline points="1,1 6,7 11,1" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
-    </div>
+    </button>
   );
 }
 
 export function FplHero({ fpl }: { fpl: FplData }) {
   const [expandedTeam, setExpandedTeam] = useState<TeamKey | null>(null);
   const [, setTick] = useState(0);
-  const [picks, setPicks] = useState<Record<TeamKey, PicksResult | null>>({ fisak: null, boko: null });
 
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const fetchPicks = useCallback(async () => {
-    if (!fpl.teams?.length) return;
-    const settled = await Promise.allSettled(
-      fpl.teams.map(team =>
-        fetch(`/api/fpl/picks?managerId=${team.teamId}`)
-          .then(r => r.json() as Promise<PicksResult>)
-          .then(d => ({ key: team.teamKey as TeamKey, data: d }))
-      )
-    );
-    setPicks(prev => {
-      const next = { ...prev };
-      for (const r of settled) {
-        if (r.status === "fulfilled" && !r.value.data.error) next[r.value.key] = r.value.data;
-      }
-      return next;
-    });
-  }, [fpl.teams]);
-
-  useEffect(() => {
-    // fetchPicks er async — setPicks skjer etter en await, ikke synkront i
-    // effekt-kroppen. Lint-regelen følger likevel kallgrafen inn i den.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPicks();
-    const id = setInterval(fetchPicks, 2 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [fetchPicks]);
+  const fisak = fpl.teams?.find(t => t.teamKey === "fisak");
+  const boko = fpl.teams?.find(t => t.teamKey === "boko");
+  const fisakPicks = usePicksForTeam(fisak?.teamId);
+  const bokoPicks = usePicksForTeam(boko?.teamId);
+  const picks: Record<TeamKey, PicksResult | null> = { fisak: fisakPicks, boko: bokoPicks };
 
   if (!fpl.active || !fpl.gw?.deadline) return null;
   const { d } = fplParts(fpl.gw.deadline);
   const isPulsing = d === 0;
 
-  const fisak = fpl.teams?.find(t => t.teamKey === "fisak");
-  const boko = fpl.teams?.find(t => t.teamKey === "boko");
   const currentGwId = fisak?.currentGw ?? boko?.currentGw;
   const expandedTeamData = expandedTeam ? fpl.teams?.find(t => t.teamKey === expandedTeam) : undefined;
   const anyLive = Object.values(picks).some(p => p?.hasLivePlayers);

@@ -1,7 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import {
+  CARD_SHELL,
+  CardHeader,
+  CollapsibleBody,
+  ConfirmDialog,
+  MutationError,
+  SkeletonRows,
+  useConfirmDelete,
+  useMutationError,
+  usePersistedCollapse,
+} from "../CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
@@ -9,25 +21,40 @@ import type { SalaryEntry } from "@/lib/salary";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
-import { Wallet } from "lucide-react";
+import { Wallet, X } from "lucide-react";
+
+const EMPTY_LOANS: Loan[] = [];
+const EMPTY_SAVINGS: SavingsAccount[] = [];
+const EMPTY_SALARY: SalaryEntry[] = [];
 
 function formatUsd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-function AiUsageBox({ usage, onSaveBalance }: { usage: AiUsageSummary; onSaveBalance: (amount: number) => void }) {
+function AiUsageBox({
+  usage,
+  onSaveBalance,
+}: {
+  usage: AiUsageSummary;
+  onSaveBalance: (amount: number) => Promise<boolean>;
+}) {
   const [editing, setEditing] = useState(false);
   const [input, setInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   function startEdit() {
     setInput(usage.balanceUsd != null ? String(usage.balanceUsd) : "");
     setEditing(true);
   }
-  function save() {
+  async function save() {
     const amount = Number(input.replace(",", "."));
-    if (Number.isFinite(amount) && amount >= 0) {
-      onSaveBalance(amount);
-      setEditing(false);
+    if (!Number.isFinite(amount) || amount < 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      const ok = await onSaveBalance(amount);
+      if (ok) setEditing(false);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -55,9 +82,9 @@ function AiUsageBox({ usage, onSaveBalance }: { usage: AiUsageSummary; onSaveBal
                 if (e.key === "Escape") setEditing(false);
               }}
               placeholder="USD"
-              className="w-20 rounded-lg border border-line bg-surface-1 px-2 py-1 text-xs text-ink-1 outline-none focus:border-line-strong"
+              className="w-20 rounded-lg border border-transparent bg-surface-1 px-2 py-1 text-xs text-ink-1 outline-none focus:border-line-strong"
             />
-            <button type="button" onClick={save} className="text-2xs font-semibold uppercase text-accent-privat">
+            <button type="button" onClick={save} disabled={submitting} className="text-2xs font-semibold uppercase text-accent-privat disabled:opacity-40">
               Lagre
             </button>
           </div>
@@ -147,13 +174,24 @@ function LoanForm({
 }: {
   initial: LoanFormValues;
   onCancel: () => void;
-  onSave: (form: LoanFormValues) => void;
+  onSave: (form: LoanFormValues) => Promise<boolean>;
 }) {
   const [form, setForm] = useState(initial);
+  const [submitting, setSubmitting] = useState(false);
   const valid = form.name.trim() && form.lender.trim() && form.remainingAmount.trim();
 
   function set<K extends keyof LoanFormValues>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function save() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -163,7 +201,7 @@ function LoanForm({
         value={form.name}
         onChange={(e) => set("name", e.target.value)}
         placeholder="Navn (f.eks. Fastrente 5 år annuitet)"
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex flex-wrap gap-2">
         <input
@@ -171,14 +209,14 @@ function LoanForm({
           value={form.lender}
           onChange={(e) => set("lender", e.target.value)}
           placeholder="Bank"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="text"
           value={form.coBorrower}
           onChange={(e) => set("coBorrower", e.target.value)}
           placeholder="Medlåntaker (valgfritt)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <div className="flex flex-wrap gap-2">
@@ -187,14 +225,14 @@ function LoanForm({
           value={form.remainingAmount}
           onChange={(e) => set("remainingAmount", e.target.value)}
           placeholder="Gjenstående (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="number"
           value={form.originalAmount}
           onChange={(e) => set("originalAmount", e.target.value)}
           placeholder="Opprinnelig (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <div className="flex flex-wrap gap-2">
@@ -204,7 +242,7 @@ function LoanForm({
           value={form.nominalRate}
           onChange={(e) => set("nominalRate", e.target.value)}
           placeholder="Nominell rente %"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="number"
@@ -212,7 +250,7 @@ function LoanForm({
           value={form.effectiveRate}
           onChange={(e) => set("effectiveRate", e.target.value)}
           placeholder="Effektiv rente %"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -222,7 +260,7 @@ function LoanForm({
             type="date"
             value={form.nextPaymentDate}
             onChange={(e) => set("nextPaymentDate", e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
@@ -231,7 +269,7 @@ function LoanForm({
             type="date"
             value={form.rateFixedUntil}
             onChange={(e) => set("rateFixedUntil", e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
@@ -240,7 +278,7 @@ function LoanForm({
             type="date"
             value={form.maturityDate}
             onChange={(e) => set("maturityDate", e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
           />
         </label>
       </div>
@@ -250,8 +288,8 @@ function LoanForm({
         </button>
         <button
           type="button"
-          onClick={() => valid && onSave(form)}
-          disabled={!valid}
+          onClick={save}
+          disabled={!valid || submitting}
           className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Lagre
@@ -289,7 +327,7 @@ function LoanRow({
   editing: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, form: LoanFormValues) => void;
+  onSaveEdit: (id: string, form: LoanFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
   if (editing) {
@@ -305,7 +343,7 @@ function LoanRow({
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(loan.id)} aria-label="Rediger lån" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm text-ink-1">{loan.name}</p>
+            <p className="truncate text-sm font-medium text-ink-1">{loan.name}</p>
             <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(loan.remainingAmount)}</p>
           </div>
           <p className="mt-0.5 text-2xs text-ink-4">
@@ -334,9 +372,9 @@ function LoanRow({
           type="button"
           onClick={() => onRemove(loan.id)}
           aria-label="Slett lån"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
     </li>
@@ -366,13 +404,24 @@ function SavingsForm({
 }: {
   initial: SavingsFormValues;
   onCancel: () => void;
-  onSave: (form: SavingsFormValues) => void;
+  onSave: (form: SavingsFormValues) => Promise<boolean>;
 }) {
   const [form, setForm] = useState(initial);
+  const [submitting, setSubmitting] = useState(false);
   const valid = form.name.trim() && form.institution.trim() && form.balance.trim();
 
   function set<K extends keyof SavingsFormValues>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function save() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -382,7 +431,7 @@ function SavingsForm({
         value={form.name}
         onChange={(e) => set("name", e.target.value)}
         placeholder="Navn (f.eks. Fondskonto)"
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex flex-wrap gap-2">
         <input
@@ -390,14 +439,14 @@ function SavingsForm({
           value={form.institution}
           onChange={(e) => set("institution", e.target.value)}
           placeholder="Bank/plattform"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="number"
           value={form.balance}
           onChange={(e) => set("balance", e.target.value)}
           placeholder="Saldo (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <input
@@ -405,7 +454,7 @@ function SavingsForm({
         value={form.note}
         onChange={(e) => set("note", e.target.value)}
         placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -413,8 +462,8 @@ function SavingsForm({
         </button>
         <button
           type="button"
-          onClick={() => valid && onSave(form)}
-          disabled={!valid}
+          onClick={save}
+          disabled={!valid || submitting}
           className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Lagre
@@ -436,7 +485,7 @@ function SavingsRow({
   editing: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, form: SavingsFormValues) => void;
+  onSaveEdit: (id: string, form: SavingsFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
   if (editing) {
@@ -452,7 +501,7 @@ function SavingsRow({
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(account.id)} aria-label="Rediger sparekonto" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm text-ink-1">{account.name}</p>
+            <p className="truncate text-sm font-medium text-ink-1">{account.name}</p>
             <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(account.balance)}</p>
           </div>
           <p className="mt-0.5 text-2xs text-ink-4">
@@ -464,9 +513,9 @@ function SavingsRow({
           type="button"
           onClick={() => onRemove(account.id)}
           aria-label="Slett sparekonto"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
     </li>
@@ -503,13 +552,24 @@ function SalaryForm({
 }: {
   initial: SalaryFormValues;
   onCancel: () => void;
-  onSave: (form: SalaryFormValues) => void;
+  onSave: (form: SalaryFormValues) => Promise<boolean>;
 }) {
   const [form, setForm] = useState(initial);
+  const [submitting, setSubmitting] = useState(false);
   const valid = form.person.trim() && form.employer.trim() && form.grossMonthly.trim();
 
   function set<K extends keyof SalaryFormValues>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function save() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -520,14 +580,14 @@ function SalaryForm({
           value={form.person}
           onChange={(e) => set("person", e.target.value)}
           placeholder="Person"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="text"
           value={form.employer}
           onChange={(e) => set("employer", e.target.value)}
           placeholder="Arbeidsgiver"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <div className="flex flex-wrap gap-2">
@@ -536,14 +596,14 @@ function SalaryForm({
           value={form.grossMonthly}
           onChange={(e) => set("grossMonthly", e.target.value)}
           placeholder="Bruttolønn/mnd (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <input
           type="number"
           value={form.netMonthly}
           onChange={(e) => set("netMonthly", e.target.value)}
           placeholder="Nettolønn/mnd (valgfritt)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
       </div>
       <input
@@ -551,7 +611,7 @@ function SalaryForm({
         value={form.note}
         onChange={(e) => set("note", e.target.value)}
         placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -559,8 +619,8 @@ function SalaryForm({
         </button>
         <button
           type="button"
-          onClick={() => valid && onSave(form)}
-          disabled={!valid}
+          onClick={save}
+          disabled={!valid || submitting}
           className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Lagre
@@ -582,7 +642,7 @@ function SalaryRow({
   editing: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, form: SalaryFormValues) => void;
+  onSaveEdit: (id: string, form: SalaryFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
   if (editing) {
@@ -598,7 +658,7 @@ function SalaryRow({
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(entry.id)} aria-label="Rediger lønn" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm text-ink-1">{entry.person}</p>
+            <p className="truncate text-sm font-medium text-ink-1">{entry.person}</p>
             <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(entry.grossMonthly)}/mnd</p>
           </div>
           <p className="mt-0.5 text-2xs text-ink-4">
@@ -611,9 +671,9 @@ function SalaryRow({
           type="button"
           onClick={() => onRemove(entry.id)}
           aria-label="Slett lønnsoppføring"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
     </li>
@@ -622,163 +682,265 @@ function SalaryRow({
 
 export default function FinanceSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Økonomi", true);
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [savings, setSavings] = useState<SavingsAccount[]>([]);
-  const [salary, setSalary] = useState<SalaryEntry[]>([]);
-  const [aiUsage, setAiUsage] = useState<AiUsageSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: loansData, isLoading: loansLoading, mutate: mutateLoans } = useSWR<{ loans: Loan[] }>("/api/loans", jsonFetcher);
+  const { data: savingsData, isLoading: savingsLoading, mutate: mutateSavings } = useSWR<{ savings: SavingsAccount[] }>("/api/savings", jsonFetcher);
+  const { data: salaryData, isLoading: salaryLoading, mutate: mutateSalary } = useSWR<{ salary: SalaryEntry[] }>("/api/salary", jsonFetcher);
+  const { data: aiUsageRaw, mutate: mutateAiUsage } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
+  const loans = loansData?.loans ?? EMPTY_LOANS;
+  const savings = savingsData?.savings ?? EMPTY_SAVINGS;
+  const salary = salaryData?.salary ?? EMPTY_SALARY;
+  const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
+  const loading = loansLoading || savingsLoading || salaryLoading;
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  const [visibleLoanCount, setVisibleLoanCount] = useState(10);
+  const [visibleSavingsCount, setVisibleSavingsCount] = useState(10);
+  const [visibleSalaryCount, setVisibleSalaryCount] = useState(10);
   const confirmDelete = useConfirmDelete<{ type: "loan" | "savings" | "salary"; id: string }>();
+  const mutationError = useMutationError();
 
-  const load = useCallback(() => {
-    Promise.allSettled([
-      fetch("/api/loans").then((r) => r.json()),
-      fetch("/api/savings").then((r) => r.json()),
-      fetch("/api/salary").then((r) => r.json()),
-      fetch("/api/ai-usage").then((r) => r.json()),
-    ]).then(([l, s, p, a]) => {
-      setLoans(l.status === "fulfilled" ? ((l.value.loans ?? []) as Loan[]) : []);
-      setSavings(s.status === "fulfilled" ? ((s.value.savings ?? []) as SavingsAccount[]) : []);
-      setSalary(p.status === "fulfilled" ? ((p.value.salary ?? []) as SalaryEntry[]) : []);
-      setAiUsage(a.status === "fulfilled" && !a.value.error ? (a.value as AiUsageSummary) : null);
-      setLoading(false);
-    });
-  }, []);
-
-  useEffect(() => {
-    load();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    return () => window.removeEventListener("mitt-dashboard:privat-refresh", load);
-  }, [load]);
-
-  async function handleAddLoan(form: LoanFormValues) {
-    const res = await fetch("/api/loans", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formToPayload(form)),
-    });
-    if (res.ok) {
+  async function handleAddLoan(form: LoanFormValues): Promise<boolean> {
+    try {
+      const res = await fetch("/api/loans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til lånet. Prøv igjen.");
+        return false;
+      }
       const created: Loan = await res.json();
-      setLoans((prev) => [...prev, created].sort((a, b) => b.remainingAmount - a.remainingAmount));
+      mutateLoans(
+        (current) => current && { loans: [...current.loans, created].sort((a, b) => b.remainingAmount - a.remainingAmount) },
+        { revalidate: false },
+      );
       setShowLoanForm(false);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke legge til lånet. Prøv igjen.");
+      return false;
     }
   }
 
-  async function handleSaveLoanEdit(id: string, form: LoanFormValues) {
-    const res = await fetch(`/api/loans/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(formToPayload(form)),
-    });
-    if (res.ok) {
+  async function handleSaveLoanEdit(id: string, form: LoanFormValues): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/loans/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+        return false;
+      }
       const updated: Loan = await res.json();
-      setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)).sort((a, b) => b.remainingAmount - a.remainingAmount));
+      mutateLoans(
+        (current) =>
+          current && { loans: current.loans.map((l) => (l.id === id ? updated : l)).sort((a, b) => b.remainingAmount - a.remainingAmount) },
+        { revalidate: false },
+      );
       setEditingLoanId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+      return false;
     }
   }
 
   async function handleRemoveLoan(id: string) {
-    setLoans((prev) => prev.filter((l) => l.id !== id));
+    let previous: Loan[] = [];
+    mutateLoans(
+      (current) => {
+        previous = current?.loans ?? [];
+        return current && { loans: current.loans.filter((l) => l.id !== id) };
+      },
+      { revalidate: false },
+    );
     vibrate([10, 30, 10]);
-    await fetch(`/api/loans/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-  }
-
-  async function handleAddSavings(form: SavingsFormValues) {
-    const res = await fetch("/api/savings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(savingsToPayload(form)),
-    });
-    if (res.ok) {
-      const created: SavingsAccount = await res.json();
-      setSavings((prev) => [...prev, created].sort((a, b) => b.balance - a.balance));
-      setShowSavingsForm(false);
+    try {
+      const res = await fetch(`/api/loans/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateLoans({ loans: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette lånet. Prøv igjen.");
     }
   }
 
-  async function handleSaveSavingsEdit(id: string, form: SavingsFormValues) {
-    const res = await fetch(`/api/savings/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(savingsToPayload(form)),
-    });
-    if (res.ok) {
+  async function handleAddSavings(form: SavingsFormValues): Promise<boolean> {
+    try {
+      const res = await fetch("/api/savings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(savingsToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til sparekontoen. Prøv igjen.");
+        return false;
+      }
+      const created: SavingsAccount = await res.json();
+      mutateSavings(
+        (current) => current && { savings: [...current.savings, created].sort((a, b) => b.balance - a.balance) },
+        { revalidate: false },
+      );
+      setShowSavingsForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke legge til sparekontoen. Prøv igjen.");
+      return false;
+    }
+  }
+
+  async function handleSaveSavingsEdit(id: string, form: SavingsFormValues): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/savings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(savingsToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+        return false;
+      }
       const updated: SavingsAccount = await res.json();
-      setSavings((prev) => prev.map((s) => (s.id === id ? updated : s)).sort((a, b) => b.balance - a.balance));
+      mutateSavings(
+        (current) => current && { savings: current.savings.map((s) => (s.id === id ? updated : s)).sort((a, b) => b.balance - a.balance) },
+        { revalidate: false },
+      );
       setEditingSavingsId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+      return false;
     }
   }
 
   async function handleRemoveSavings(id: string) {
-    setSavings((prev) => prev.filter((s) => s.id !== id));
+    let previous: SavingsAccount[] = [];
+    mutateSavings(
+      (current) => {
+        previous = current?.savings ?? [];
+        return current && { savings: current.savings.filter((s) => s.id !== id) };
+      },
+      { revalidate: false },
+    );
     vibrate([10, 30, 10]);
-    await fetch(`/api/savings/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-  }
-
-  async function handleAddSalary(form: SalaryFormValues) {
-    const res = await fetch("/api/salary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(salaryToPayload(form)),
-    });
-    if (res.ok) {
-      const created: SalaryEntry = await res.json();
-      setSalary((prev) => [...prev, created].sort((a, b) => a.person.localeCompare(b.person)));
-      setShowSalaryForm(false);
+    try {
+      const res = await fetch(`/api/savings/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateSavings({ savings: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette sparekontoen. Prøv igjen.");
     }
   }
 
-  async function handleSaveSalaryEdit(id: string, form: SalaryFormValues) {
-    const res = await fetch(`/api/salary/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(salaryToPayload(form)),
-    });
-    if (res.ok) {
+  async function handleAddSalary(form: SalaryFormValues): Promise<boolean> {
+    try {
+      const res = await fetch("/api/salary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(salaryToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til lønnsoppføringen. Prøv igjen.");
+        return false;
+      }
+      const created: SalaryEntry = await res.json();
+      mutateSalary(
+        (current) => current && { salary: [...current.salary, created].sort((a, b) => a.person.localeCompare(b.person)) },
+        { revalidate: false },
+      );
+      setShowSalaryForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke legge til lønnsoppføringen. Prøv igjen.");
+      return false;
+    }
+  }
+
+  async function handleSaveSalaryEdit(id: string, form: SalaryFormValues): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/salary/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(salaryToPayload(form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+        return false;
+      }
       const updated: SalaryEntry = await res.json();
-      setSalary((prev) => prev.map((s) => (s.id === id ? updated : s)).sort((a, b) => a.person.localeCompare(b.person)));
+      mutateSalary(
+        (current) => current && { salary: current.salary.map((s) => (s.id === id ? updated : s)).sort((a, b) => a.person.localeCompare(b.person)) },
+        { revalidate: false },
+      );
       setEditingSalaryId(null);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+      return false;
     }
   }
 
   async function handleRemoveSalary(id: string) {
-    setSalary((prev) => prev.filter((s) => s.id !== id));
+    let previous: SalaryEntry[] = [];
+    mutateSalary(
+      (current) => {
+        previous = current?.salary ?? [];
+        return current && { salary: current.salary.filter((s) => s.id !== id) };
+      },
+      { revalidate: false },
+    );
     vibrate([10, 30, 10]);
-    await fetch(`/api/salary/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    try {
+      const res = await fetch(`/api/salary/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateSalary({ salary: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette lønnsoppføringen. Prøv igjen.");
+    }
   }
 
-  async function handleSaveBalance(amount: number) {
-    const res = await fetch("/api/ai-usage", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ balanceUsd: amount }),
-    });
-    if (res.ok) {
-      setAiUsage((await res.json()) as AiUsageSummary);
+  async function handleSaveBalance(amount: number): Promise<boolean> {
+    try {
+      const res = await fetch("/api/ai-usage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balanceUsd: amount }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      const updated = (await res.json()) as AiUsageSummary;
+      mutateAiUsage(updated, { revalidate: false });
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre saldo. Prøv igjen.");
+      return false;
     }
   }
 
   const totalRemaining = loans.reduce((sum, l) => sum + l.remainingAmount, 0);
+  const visibleLoans = loans.slice(0, visibleLoanCount);
+  const visibleSavings = savings.slice(0, visibleSavingsCount);
+  const visibleSalary = salary.slice(0, visibleSalaryCount);
 
   return (
     <div className={`${CARD_SHELL} border-t-2 border-t-source-outlook/60 p-4`}>
       <CardHeader
         title="Økonomi"
-        subtitle={loans.length > 0 ? formatKr(totalRemaining) : "Ukentlig"}
+        subtitle={loans.length > 0 ? formatKr(totalRemaining) : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Wallet}
@@ -786,6 +948,7 @@ export default function FinanceSection() {
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-4">
+          <MutationError message={mutationError.message} />
           {loading ? (
             <SkeletonRows count={3} />
           ) : (
@@ -806,19 +969,30 @@ export default function FinanceSection() {
                 {loans.length === 0 ? (
                   <p className="text-sm text-ink-3">Ingen lån lagt inn ennå.</p>
                 ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {loans.map((l) => (
-                      <LoanRow
-                        key={l.id}
-                        loan={l}
-                        editing={editingLoanId === l.id}
-                        onStartEdit={setEditingLoanId}
-                        onCancelEdit={() => setEditingLoanId(null)}
-                        onSaveEdit={handleSaveLoanEdit}
-                        onRemove={(id) => confirmDelete.request({ type: "loan", id })}
-                      />
-                    ))}
-                  </ul>
+                  <>
+                    <ul className="flex flex-col gap-1.5">
+                      {visibleLoans.map((l) => (
+                        <LoanRow
+                          key={l.id}
+                          loan={l}
+                          editing={editingLoanId === l.id}
+                          onStartEdit={setEditingLoanId}
+                          onCancelEdit={() => setEditingLoanId(null)}
+                          onSaveEdit={handleSaveLoanEdit}
+                          onRemove={(id) => confirmDelete.request({ type: "loan", id })}
+                        />
+                      ))}
+                    </ul>
+                    {loans.length > visibleLoanCount && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleLoanCount((v) => v + 10)}
+                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                      >
+                        {`Mer (${loans.length - visibleLoanCount})`}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -838,19 +1012,30 @@ export default function FinanceSection() {
                 {savings.length === 0 ? (
                   <p className="text-sm text-ink-3">Ingen sparing lagt inn ennå.</p>
                 ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {savings.map((s) => (
-                      <SavingsRow
-                        key={s.id}
-                        account={s}
-                        editing={editingSavingsId === s.id}
-                        onStartEdit={setEditingSavingsId}
-                        onCancelEdit={() => setEditingSavingsId(null)}
-                        onSaveEdit={handleSaveSavingsEdit}
-                        onRemove={(id) => confirmDelete.request({ type: "savings", id })}
-                      />
-                    ))}
-                  </ul>
+                  <>
+                    <ul className="flex flex-col gap-1.5">
+                      {visibleSavings.map((s) => (
+                        <SavingsRow
+                          key={s.id}
+                          account={s}
+                          editing={editingSavingsId === s.id}
+                          onStartEdit={setEditingSavingsId}
+                          onCancelEdit={() => setEditingSavingsId(null)}
+                          onSaveEdit={handleSaveSavingsEdit}
+                          onRemove={(id) => confirmDelete.request({ type: "savings", id })}
+                        />
+                      ))}
+                    </ul>
+                    {savings.length > visibleSavingsCount && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleSavingsCount((v) => v + 10)}
+                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                      >
+                        {`Mer (${savings.length - visibleSavingsCount})`}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -870,19 +1055,30 @@ export default function FinanceSection() {
                 {salary.length === 0 ? (
                   <p className="text-sm text-ink-3">Ingen lønn lagt inn ennå.</p>
                 ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {salary.map((s) => (
-                      <SalaryRow
-                        key={s.id}
-                        entry={s}
-                        editing={editingSalaryId === s.id}
-                        onStartEdit={setEditingSalaryId}
-                        onCancelEdit={() => setEditingSalaryId(null)}
-                        onSaveEdit={handleSaveSalaryEdit}
-                        onRemove={(id) => confirmDelete.request({ type: "salary", id })}
-                      />
-                    ))}
-                  </ul>
+                  <>
+                    <ul className="flex flex-col gap-1.5">
+                      {visibleSalary.map((s) => (
+                        <SalaryRow
+                          key={s.id}
+                          entry={s}
+                          editing={editingSalaryId === s.id}
+                          onStartEdit={setEditingSalaryId}
+                          onCancelEdit={() => setEditingSalaryId(null)}
+                          onSaveEdit={handleSaveSalaryEdit}
+                          onRemove={(id) => confirmDelete.request({ type: "salary", id })}
+                        />
+                      ))}
+                    </ul>
+                    {salary.length > visibleSalaryCount && (
+                      <button
+                        type="button"
+                        onClick={() => setVisibleSalaryCount((v) => v + 10)}
+                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                      >
+                        {`Mer (${salary.length - visibleSalaryCount})`}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
 

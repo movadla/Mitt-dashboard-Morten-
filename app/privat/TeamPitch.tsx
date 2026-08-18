@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
 
 interface PickPlayer {
   id: number; webName: string; elementType: number;
@@ -144,25 +146,13 @@ function PitchBackground() {
 }
 
 export default function TeamPitch({ managerId, accent }: { managerId?: number; accent: string }) {
-  const [data, setData] = useState<PicksData | null>(null);
-  const [loading, setLoading] = useState(() => !!managerId);
-
-  // Nullstiller data/loading avledet i render når managerId endres (ikke i
-  // useEffect) — selve fetch-kallet må fortsatt skje i en effekt.
-  const [prevManagerId, setPrevManagerId] = useState(managerId);
-  if (managerId !== prevManagerId) {
-    setPrevManagerId(managerId);
-    setData(null);
-    setLoading(!!managerId);
-  }
-
-  useEffect(() => {
-    if (!managerId) return;
-    fetch(`/api/fpl/picks?managerId=${managerId}`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => { setData({ error: "fetch_failed" }); setLoading(false); });
-  }, [managerId]);
+  // Samme SWR-nøkkel-format som FplHero (usePicksForTeam i FplSection.tsx)
+  // — deduplicerer nettverkskallet når begge komponenter viser samme lag,
+  // i stedet for at spillerdata hentes to ganger.
+  const { data, isLoading: loading } = useSWR<PicksData>(
+    managerId ? `/api/fpl/picks?managerId=${managerId}` : null,
+    jsonFetcher,
+  );
 
   if (!managerId) return null;
 

@@ -62,7 +62,16 @@ const SPORT_ICON: Record<string, LucideComp> = {
   personal: Star,
   football_manu: Trophy,
   football_norway: Trophy,
+  football_eli: Trophy,
+  football_obos: Trophy,
+  football_pl: Trophy,
+  football_facup: Trophy,
+  football_ucl: Trophy,
 };
+
+// Nøytral "det er en full liga-runde denne dagen"-indikator — frikoblet fra
+// status-positive-semantikken (den er reservert ekte suksess-/positive-tilstander).
+const LEAGUE_ROUND_DOT_COLOR = "#8b5cf6";
 
 // Fulle liga-/turnerings-runder grupperes bak en drill-down ("X-runde"), i
 // stedet for å liste alle kampene enkeltvis — se LeagueSubsection under.
@@ -112,7 +121,7 @@ function LeagueSubsection({ cat, matches }: { cat: string; matches: SportEvent[]
   const label = SPORT_LABEL[cat] ?? cat;
   return (
     <div className="border-t border-line">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-2.5 text-left">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${col}18` }}>
           <Trophy size={14} style={{ color: col }} />
         </div>
@@ -186,6 +195,8 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
         className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition active:opacity-75"
         style={{ cursor: hasEvents ? "pointer" : "default" }}
         onClick={() => hasEvents && setOpen((v) => !v)}
+        disabled={!hasEvents}
+        aria-expanded={hasEvents ? open : undefined}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -193,7 +204,7 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
             {dotCats.map((cat) => (
               <div key={cat} className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: SPORT_COLOR[cat] ?? "#9ca3af" }} />
             ))}
-            {hasLeague && <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-positive" />}
+            {hasLeague && <div className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: LEAGUE_ROUND_DOT_COLOR }} />}
           </div>
           <p className="mt-0.5 text-2xs text-ink-4">{dateNum}</p>
         </div>
@@ -320,13 +331,14 @@ function WorldCupDayCard({ date, matches, defaultOpen }: { date: string; matches
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border ${isToday ? "border-status-warning/40 bg-surface-2" : "border-line bg-surface-2"}`}
+      className={`overflow-hidden rounded-2xl border ${isToday ? "border-accent-privat/40 bg-surface-2" : "border-line bg-surface-2"}`}
     >
-      {isToday && <div className="h-[2px] bg-status-warning" />}
+      {isToday && <div className="h-[2px] bg-accent-privat" />}
       <button
         type="button"
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition active:opacity-75"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-ink-1">{dayName}</p>
