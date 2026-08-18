@@ -641,7 +641,7 @@ export const EXPIRIES: ExpiringTenant[] = [
   {
     leietaker: "Demokunde 20", customerId: 68084, bygg: "Gamle Drammensvei 10", totalArsleie: 171587.88,
     status: "Mulig endring",
-    statusKilde: "SF-sak: «Flytte ut?» / «Re: Flytte ut?» (Account Ozog/Jeziorwski, uklart utfall)",
+    statusKilde: "SF-sak: «Flytte ut?» / «Re: Flytte ut?» (uklart utfall)",
     lines: [
       { linjeId: 214104, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
       { linjeId: 214105, beskrivelse: "Husleie avg.fritt", bygg: "Gamle Drammensvei 10", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 171587.88, reforhandlet: false }

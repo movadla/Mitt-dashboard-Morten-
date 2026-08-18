@@ -101,7 +101,7 @@ function EventNotes({
   onToggleRelevance,
 }: {
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -134,7 +134,7 @@ function EventRow({
     updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string },
   ) => void;
   comments: Comment[];
-  onAddComment: (tekst: string) => void;
+  onAddComment: (tekst: string) => Promise<boolean>;
   onDeleteComment: (commentId: string, preview: string) => void;
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {

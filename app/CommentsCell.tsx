@@ -61,17 +61,23 @@ export function CommentThreadBody({
   accentClassName = "bg-accent hover:bg-accent/85",
 }: {
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
   accentClassName?: string;
 }) {
   const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function submit() {
-    if (!draft.trim()) return;
-    onAdd(draft);
-    setDraft("");
+  async function submit() {
+    if (!draft.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const ok = await onAdd(draft);
+      if (ok) setDraft("");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -118,12 +124,12 @@ export function CommentThreadBody({
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Skriv en kommentar…"
           rows={2}
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2.5 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <button
           type="button"
           onClick={submit}
-          disabled={!draft.trim()}
+          disabled={!draft.trim() || submitting}
           className={`self-start rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition disabled:opacity-40 ${accentClassName}`}
         >
           Legg til

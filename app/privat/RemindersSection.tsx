@@ -248,7 +248,7 @@ function ReminderNotes({
   onToggleRelevance,
 }: {
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -352,7 +352,7 @@ type RowCallbacks = {
 
 type RowCommentProps = {
   comments: Comment[];
-  onAddComment: (tekst: string) => void;
+  onAddComment: (tekst: string) => Promise<boolean>;
   onDeleteComment: (commentId: string, preview: string) => void;
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 };

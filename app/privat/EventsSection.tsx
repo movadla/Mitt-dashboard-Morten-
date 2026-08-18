@@ -127,7 +127,7 @@ function EventNotes({
   onToggleRelevance,
 }: {
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -160,7 +160,7 @@ function EventRow({
     updates: { title: string; date: string; category: EventCategory; recurrence: LifeEventRecurrence },
   ) => void;
   comments: Comment[];
-  onAddComment: (tekst: string) => void;
+  onAddComment: (tekst: string) => Promise<boolean>;
   onDeleteComment: (commentId: string, preview: string) => void;
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -459,7 +459,7 @@ export default function EventsSection() {
                         onCancelEdit={() => setEditingId(null)}
                         onSaveEdit={handleSaveEdit}
                         comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
-                        onAddComment={(tekst) => row.event && addComment("life-event", row.event.id, tekst)}
+                        onAddComment={(tekst) => (row.event ? addComment("life-event", row.event.id, tekst) : Promise.resolve(false))}
                         onDeleteComment={(commentId, preview) =>
                           row.event &&
                           confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })

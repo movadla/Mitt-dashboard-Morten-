@@ -39,7 +39,7 @@ import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
 import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck, X } from "lucide-react";
-import { CARD_SHELL, CardErrorBoundary, CardHeader, CollapsibleBody, ConfirmDialog, useConfirmDelete, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import { CARD_SHELL, CardErrorBoundary, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, useConfirmDelete, useMutationError, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
 import { relativeDayLabel } from "@/lib/payday";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -1583,7 +1583,7 @@ function ContractRow({
 }: {
   contract: Contract;
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -1604,6 +1604,7 @@ function ContractRow({
               href={c.sfUrl}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label={`Åpne ${c.kunde} i Salesforce`}
               className="text-accent hover:underline"
             >
               Link
@@ -1647,12 +1648,35 @@ function oneMonthBack(todayISO: string): string {
 function ContractsCard({ today }: { today: string }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter", true);
   const [expanded, setExpanded] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
   const lastMonthCutoff = oneMonthBack(today);
   const yearCutoff = yearStartCutoff(today);
-  const sinceLastMonth = CONTRACTS.filter((c) => c.signeringsdato >= lastMonthCutoff);
-  const sinceYearStart = CONTRACTS.filter((c) => c.signeringsdato >= yearCutoff);
+  const sinceLastMonth = useMemo(() => CONTRACTS.filter((c) => c.signeringsdato >= lastMonthCutoff), [lastMonthCutoff]);
+  const sinceYearStart = useMemo(() => CONTRACTS.filter((c) => c.signeringsdato >= yearCutoff), [yearCutoff]);
   const visible = expanded ? sinceYearStart : sinceLastMonth;
+  const visibleRows = expanded ? visible.slice(0, visibleCount) : visible;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
+  const mutationError = useMutationError();
+
+  async function handleAdd(id: string, tekst: string): Promise<boolean> {
+    const ok = await addComment("contract", id, tekst);
+    if (!ok) mutationError.show("Kunne ikke legge til kommentaren. Prøv igjen.");
+    return ok;
+  }
+
+  async function handleToggleRelevance(id: string, commentId: string, ikkeRelevant: boolean) {
+    const ok = await toggleRelevance("contract", id, commentId, ikkeRelevant);
+    if (!ok) mutationError.show("Kunne ikke oppdatere kommentaren. Prøv igjen.");
+  }
+
+  async function handleConfirmDelete() {
+    const pending = confirmDelete.pending;
+    if (!pending) return;
+    const ok = await removeComment(pending.targetType, pending.targetId, pending.commentId);
+    if (!ok) mutationError.show("Kunne ikke slette kommentaren. Prøv igjen.");
+    confirmDelete.cancel();
+  }
+
   return (
     <div className={`${CARD_SHELL} border-t-2 border-t-rose-400/60 p-4`}>
       <CardHeader
@@ -1668,58 +1692,65 @@ function ContractsCard({ today }: { today: string }) {
         icon={FileSignature}
         iconColorClass="text-rose-400"
       />
-      {!collapsed && (
-        <>
-          <div className={`-mx-1 overflow-x-auto ${expanded ? "max-h-[480px] overflow-y-auto" : ""}`}>
-            <table className="w-full min-w-[620px] text-sm">
-              <thead className={expanded ? "sticky top-0 z-10 bg-surface-1" : ""}>
-                <tr className="text-left text-ink-4">
-                  <th className="px-2 py-2 text-2xs font-medium">Kunde</th>
-                  <th className="px-2 py-2 text-2xs font-medium text-right">Signert</th>
-                  <th className="px-2 py-2 text-2xs font-medium text-right">Start</th>
-                  <th className="px-2 py-2 text-2xs font-medium text-right">Beløp</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
-                  <th className="px-2 py-2 text-2xs font-medium text-right">Kvm</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Type</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Kontrakt</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Notat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((c) => (
-                  <ContractRow
-                    key={c.id}
-                    contract={c}
-                    comments={comments[commentKey("contract", c.id)] ?? []}
-                    onAdd={(tekst) => addComment("contract", c.id, tekst)}
-                    onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "contract", targetId: c.id, commentId, preview })}
-                    onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("contract", c.id, commentId, ikkeRelevant)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {sinceYearStart.length > sinceLastMonth.length && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="mt-3 text-xs font-medium text-accent hover:text-accent/80"
-            >
-              {expanded ? "Vis kun siste måned" : `Vis alle siden ${yearCutoff.slice(0, 4)} (${sinceYearStart.length - sinceLastMonth.length} flere)`}
-            </button>
-          )}
-        </>
-      )}
+      <CollapsibleBody collapsed={collapsed}>
+        <MutationError message={mutationError.message} />
+        <div className="-mx-1 overflow-x-auto">
+          <table className="w-full min-w-[620px] text-sm">
+            <thead>
+              <tr className="text-left text-ink-4">
+                <th className="px-2 py-2 text-2xs font-medium">Kunde</th>
+                <th className="px-2 py-2 text-2xs font-medium text-right">Signert</th>
+                <th className="px-2 py-2 text-2xs font-medium text-right">Start</th>
+                <th className="px-2 py-2 text-2xs font-medium text-right">Beløp</th>
+                <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
+                <th className="px-2 py-2 text-2xs font-medium text-right">Kvm</th>
+                <th className="px-2 py-2 text-2xs font-medium">Type</th>
+                <th className="px-2 py-2 text-2xs font-medium">Kontrakt</th>
+                <th className="px-2 py-2 text-2xs font-medium">Notat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRows.map((c) => (
+                <ContractRow
+                  key={c.id}
+                  contract={c}
+                  comments={comments[commentKey("contract", c.id)] ?? []}
+                  onAdd={(tekst) => handleAdd(c.id, tekst)}
+                  onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "contract", targetId: c.id, commentId, preview })}
+                  onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(c.id, commentId, ikkeRelevant)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {expanded && visible.length > visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((v) => v + 10)}
+            className="mt-3 text-xs font-medium text-ink-3 hover:text-ink-1"
+          >
+            {`Mer (${visible.length - visibleCount})`}
+          </button>
+        )}
+        {sinceYearStart.length > sinceLastMonth.length && (
+          <button
+            type="button"
+            onClick={() => {
+              setExpanded((v) => !v);
+              setVisibleCount(10);
+            }}
+            aria-expanded={expanded}
+            className="mt-3 block text-xs font-medium text-accent hover:text-accent/80"
+          >
+            {expanded ? "Vis kun siste måned" : `Vis alle siden ${yearCutoff.slice(0, 4)} (${sinceYearStart.length - sinceLastMonth.length} flere)`}
+          </button>
+        )}
+      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
         onCancel={confirmDelete.cancel}
-        onConfirm={() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return;
-          removeComment(pending.targetType, pending.targetId, pending.commentId);
-          confirmDelete.cancel();
-        }}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );
@@ -1734,7 +1765,7 @@ function ExpiryTenantRow({
 }: {
   tenant: ExpiringTenant;
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -1902,7 +1933,7 @@ function GuaranteeRow({
 }: {
   guarantee: Guarantee;
   comments: Comment[];
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
@@ -2022,7 +2053,7 @@ function ReceivableRow({
   comments: Comment[];
   risk: ReceivableRiskLevel | null;
   onSetRisk: (risk: ReceivableRiskLevel) => void;
-  onAdd: (tekst: string) => void;
+  onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
 }) {
