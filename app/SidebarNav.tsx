@@ -33,7 +33,7 @@ function NavButton({
   onSelect,
   onKeyDown,
   buttonRef,
-  compact = false,
+  dense = false,
 }: {
   item: NavItem;
   active: boolean;
@@ -41,7 +41,9 @@ function NavButton({
   onSelect: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   buttonRef?: (el: HTMLButtonElement | null) => void;
-  compact?: boolean;
+  // dense = mobil-gridets 4-per-rad-celler: mindre ikon/tekst/padding enn
+  // desktop-railens knapper, som har mer bredde å boltre seg på.
+  dense?: boolean;
 }) {
   const Icon = item.icon;
   return (
@@ -53,18 +55,22 @@ function NavButton({
       tabIndex={tabIndex}
       onClick={onSelect}
       onKeyDown={onKeyDown}
-      className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-medium transition ${
-        compact ? "" : "w-full"
+      className={`flex w-full min-w-0 items-center rounded-xl font-medium transition ${
+        dense ? "min-h-11 flex-col justify-center gap-1 px-1 py-1.5 text-center text-2xs" : "min-h-11 gap-2 px-3 text-sm"
       } ${
         active
           ? "bg-accent-privat/15 text-accent-privat ring-1 ring-accent-privat/40"
           : "text-ink-3 hover:bg-surface-2/60 hover:text-ink-1"
       }`}
     >
-      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${iconChipClass(item.iconColorClass)}`}>
-        <Icon className={`h-3.5 w-3.5 ${item.iconColorClass}`} />
+      <span
+        className={`grid shrink-0 place-items-center rounded-full ${iconChipClass(item.iconColorClass)} ${
+          dense ? "h-5 w-5" : "h-6 w-6"
+        }`}
+      >
+        <Icon className={`${dense ? "h-3 w-3" : "h-3.5 w-3.5"} ${item.iconColorClass}`} />
       </span>
-      <span className={compact ? "whitespace-nowrap" : "truncate"}>{item.label}</span>
+      <span className="w-full truncate leading-tight">{item.label}</span>
     </button>
   );
 }
@@ -244,14 +250,15 @@ export function SidebarNav({
       </nav>
 
       {/* Mobil: ekte grid (like brede kolonner) i stedet for flex-wrap — chips
-          med tekst-bred bredde ga urolige, uinnrettede rader. Fast
-          rekkefølge (samme som railen sist lagret), ingen dra — se
-          komponent-kommentaren over. */}
+          med tekst-bred bredde ga urolige, uinnrettede rader. 4 kolonner med
+          "dense" ikon-over-tekst-knapper for å få flere kategorier synlige
+          per skjerm. Fast rekkefølge (samme som railen sist lagret), ingen
+          dra — se komponent-kommentaren over. */}
       <nav
         role="tablist"
         aria-label={ariaLabel}
         aria-orientation="horizontal"
-        className="grid grid-cols-2 gap-2 md:hidden"
+        className="grid grid-cols-4 gap-1.5 md:hidden"
       >
         {items.map((item) => {
           const active = item.id === activeId;
@@ -266,6 +273,7 @@ export function SidebarNav({
               buttonRef={(el) => {
                 stripRefs.current[item.id] = el;
               }}
+              dense
             />
           );
         })}
