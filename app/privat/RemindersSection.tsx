@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -505,8 +505,8 @@ function SortableReminderRow({
   );
 }
 
-export default function RemindersSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser", true);
+export default function RemindersSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser", !defaultExpanded);
   // Delt SWR-nøkkel med TodaySummary — begge leser/skriver samme cache-oppføring
   // istedenfor å holde hver sin kopi og hente uavhengig av hverandre.
   const { data, isLoading: loading, mutate: mutateReminders } = useSWR<{ reminders: Reminder[] }>(
@@ -774,7 +774,7 @@ export default function RemindersSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-accent-privat/60 p-4`}>
+    <div className="border-t-2 border-t-accent-privat/60 p-4">
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

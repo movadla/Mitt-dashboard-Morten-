@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
 import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -550,8 +550,8 @@ function GrowthSection({
   );
 }
 
-export default function AlfredSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Alfred", true);
+export default function AlfredSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Alfred", !defaultExpanded);
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -672,7 +672,7 @@ export default function AlfredSection() {
       : "Ukentlig";
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-status-action/60 p-4`}>
+    <div className="border-t-2 border-t-status-action/60 p-4">
       <CardHeader
         title="Alfred"
         subtitle={subtitle}

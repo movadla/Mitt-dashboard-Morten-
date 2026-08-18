@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { NewsItem } from "@/lib/news";
 import { Newspaper } from "lucide-react";
 
@@ -57,8 +57,8 @@ function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boole
   );
 }
 
-export default function NewsSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nyheter", true);
+export default function NewsSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nyheter", !defaultExpanded);
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export default function NewsSection() {
   }, [load]);
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-white/60 p-4`}>
+    <div className="border-t-2 border-t-white/60 p-4">
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}

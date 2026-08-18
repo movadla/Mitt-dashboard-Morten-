@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import type { Note } from "@/lib/notes";
 import { Pin, StickyNote, X } from "lucide-react";
 
@@ -262,8 +262,8 @@ function NoteRow({
   );
 }
 
-export default function NotesSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Notater", true);
+export default function NotesSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Notater", !defaultExpanded);
   const { data, isLoading: loading, mutate: mutateNotes } = useSWR<{ notes: Note[] }>("/api/notes", jsonFetcher);
   const notes = data?.notes ?? EMPTY_NOTES;
   const [showForm, setShowForm] = useState(false);
@@ -373,7 +373,7 @@ export default function NotesSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-amber-400/60 p-4`}>
+    <div className="border-t-2 border-t-amber-400/60 p-4">
       <CardHeader
         title="Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}

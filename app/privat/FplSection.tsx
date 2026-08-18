@@ -5,7 +5,7 @@ import useSWR from "swr";
 import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
-import { CARD_SHELL, CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { timeAgo } from "@/lib/timeAgo";
 import { Shirt } from "lucide-react";
@@ -525,8 +525,8 @@ function fplCountdownText(deadline: string): string {
   return `${pad(d)}:${pad(h)}:${pad(m)}`;
 }
 
-export function FplBox({ fpl }: { fpl: FplData }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Fantasy", true);
+export function FplBox({ fpl, defaultExpanded = false }: { fpl: FplData; defaultExpanded?: boolean }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Fantasy", !defaultExpanded);
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -537,7 +537,7 @@ export function FplBox({ fpl }: { fpl: FplData }) {
   if (!fpl.active || !fpl.gw?.deadline) return null;
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-lime-400/60 p-4`}>
+    <div className="border-t-2 border-t-lime-400/60 p-4">
       <CardHeader
         title="Fantasy Premier League"
         subtitle={fplCountdownText(fpl.gw.deadline)}

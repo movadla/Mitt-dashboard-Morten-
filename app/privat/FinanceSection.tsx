@@ -4,7 +4,6 @@ import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
-  CARD_SHELL,
   CardHeader,
   CollapsibleBody,
   ConfirmDialog,
@@ -680,8 +679,8 @@ function SalaryRow({
   );
 }
 
-export default function FinanceSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Økonomi", true);
+export default function FinanceSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Økonomi", !defaultExpanded);
   const { data: loansData, isLoading: loansLoading, mutate: mutateLoans } = useSWR<{ loans: Loan[] }>("/api/loans", jsonFetcher);
   const { data: savingsData, isLoading: savingsLoading, mutate: mutateSavings } = useSWR<{ savings: SavingsAccount[] }>("/api/savings", jsonFetcher);
   const { data: salaryData, isLoading: salaryLoading, mutate: mutateSalary } = useSWR<{ salary: SalaryEntry[] }>("/api/salary", jsonFetcher);
@@ -937,7 +936,7 @@ export default function FinanceSection() {
   const visibleSalary = salary.slice(0, visibleSalaryCount);
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-source-outlook/60 p-4`}>
+    <div className="border-t-2 border-t-source-outlook/60 p-4">
       <CardHeader
         title="Økonomi"
         subtitle={loans.length > 0 ? formatKr(totalRemaining) : undefined}

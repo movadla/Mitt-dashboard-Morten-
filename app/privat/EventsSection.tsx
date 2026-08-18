@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { PartyPopper, X } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
@@ -216,8 +216,8 @@ function EventRow({
   );
 }
 
-export default function EventsSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser", true);
+export default function EventsSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser", !defaultExpanded);
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
@@ -349,7 +349,7 @@ export default function EventsSection() {
   const visibleRows = rows.slice(0, visibleCount);
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-accent-privat/60 p-4`}>
+    <div className="border-t-2 border-t-accent-privat/60 p-4">
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}

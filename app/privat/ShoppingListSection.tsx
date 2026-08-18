@@ -4,7 +4,6 @@ import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
-  CARD_SHELL,
   CardHeader,
   CheckIcon,
   CollapsibleBody,
@@ -291,8 +290,8 @@ function QuickPickManageRow({
   );
 }
 
-export default function ShoppingListSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Handleliste", true);
+export default function ShoppingListSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Handleliste", !defaultExpanded);
   const { data: itemsData, isLoading: loading, mutate: mutateItems } = useSWR<{ items: ShoppingItem[] }>("/api/shopping", jsonFetcher);
   const { data: quickPicksData, mutate: mutateQuickPicks } = useSWR<{ quickPicks: QuickPick[] }>("/api/shopping/quick-picks", jsonFetcher);
   const items = itemsData?.items ?? EMPTY_ITEMS;
@@ -518,7 +517,7 @@ export default function ShoppingListSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-cyan-400/60 p-4`}>
+    <div className="border-t-2 border-t-cyan-400/60 p-4">
       <CardHeader
         title="Handleliste"
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}

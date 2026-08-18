@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { Target } from "lucide-react";
 import type { DartsMatch, DartsStats } from "@/lib/darts";
@@ -33,8 +33,8 @@ function MatchRow({ match }: { match: DartsMatch }) {
   );
 }
 
-export default function DartsBox() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Darts", true);
+export default function DartsBox({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Darts", !defaultExpanded);
   const [stats, setStats] = useState<DartsStats | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,7 +52,7 @@ export default function DartsBox() {
   if (!loading && !stats) return null;
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-sky-400/60 p-4`}>
+    <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Darts"
         subtitle={stats ? `${stats.hitPct}% treff` : undefined}

@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -184,8 +184,8 @@ function EventRow({
   );
 }
 
-export default function CalendarSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender", true);
+export default function CalendarSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender", !defaultExpanded);
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: PrivatCalendarEvent[] }>(
     "/api/privat-calendar",
     jsonFetcher,
@@ -304,7 +304,7 @@ export default function CalendarSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-source-teams/60 p-4`}>
+    <div className="border-t-2 border-t-source-teams/60 p-4">
       <CardHeader
         title="Kalender"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}

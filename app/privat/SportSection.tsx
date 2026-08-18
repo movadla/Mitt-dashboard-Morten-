@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
-import { CARD_SHELL, CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { localDateString, toOsloDateString } from "@/lib/payday";
 
@@ -246,12 +246,14 @@ export function SportSection({
   events,
   loading,
   fetchedAt,
+  defaultExpanded = false,
 }: {
   events: SportEvent[];
   loading: boolean;
   fetchedAt?: number | null;
+  defaultExpanded?: boolean;
 }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Sport", true);
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Sport", !defaultExpanded);
   const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
@@ -263,7 +265,7 @@ export function SportSection({
   }).filter((day) => day !== today && events.some((e) => e.date === day));
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-accent/60 p-4`}>
+    <div className="border-t-2 border-t-accent/60 p-4">
       <CardHeader
         title="Sport"
         subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
@@ -373,8 +375,14 @@ function WorldCupDayCard({ date, matches, defaultOpen }: { date: string; matches
   );
 }
 
-export function WorldCupSection({ events }: { events: SportEvent[] }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("VM 2026", true);
+export function WorldCupSection({
+  events,
+  defaultExpanded = false,
+}: {
+  events: SportEvent[];
+  defaultExpanded?: boolean;
+}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("VM 2026", !defaultExpanded);
   if (!events.length) return null;
 
   const byDay = new Map<string, SportEvent[]>();
@@ -392,7 +400,7 @@ export function WorldCupSection({ events }: { events: SportEvent[] }) {
   const days = [...byDay.keys()].sort();
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className="p-4">
       <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={Trophy} />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">

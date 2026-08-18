@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
-  CARD_SHELL,
   CardHeader,
   CollapsibleBody,
   ConfirmDialog,
@@ -1208,8 +1207,8 @@ async function seedRoutineEntries(sessionId: string, exercises: Routine["exercis
   return { session, failedCount };
 }
 
-export default function TreningSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Trening", true);
+export default function TreningSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Trening", !defaultExpanded);
   const { data: sessionsData, isLoading: loading, mutate: mutateSessions } = useSWR<{ sessions: WorkoutSession[] }>("/api/workouts", jsonFetcher);
   const { data: exercisesData, mutate: mutateExercises } = useSWR<{ exercises: Exercise[] }>("/api/exercises", jsonFetcher);
   const { data: routinesData, mutate: mutateRoutines } = useSWR<{ routines: Routine[] }>("/api/routines", jsonFetcher);
@@ -1641,7 +1640,7 @@ export default function TreningSection() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-emerald-400/60 p-4`}>
+    <div className="border-t-2 border-t-emerald-400/60 p-4">
       <CardHeader
         title="Trening"
         subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}

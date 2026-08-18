@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { CARD_SHELL, CheckIcon, MutationError, SkeletonRows, useMutationError } from "../CardShell";
+import { CheckIcon, MutationError, SkeletonRows, useMutationError } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
@@ -456,7 +456,7 @@ export default function TodaySummary() {
   const slideClass = slideDirection === "forward" ? "day-slide-in-right" : slideDirection === "backward" ? "day-slide-in-left" : "";
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="truncate text-sm font-semibold text-ink-1">{weekdayDateLabel(viewedDate)}</h2>
