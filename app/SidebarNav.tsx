@@ -243,13 +243,15 @@ export function SidebarNav({
         </DndContext>
       </nav>
 
-      {/* Mobil: wrappet grid av chips, fast rekkefølge (samme som railen sist
-          lagret), ingen dra — se komponent-kommentaren over. */}
+      {/* Mobil: ekte grid (like brede kolonner) i stedet for flex-wrap — chips
+          med tekst-bred bredde ga urolige, uinnrettede rader. Fast
+          rekkefølge (samme som railen sist lagret), ingen dra — se
+          komponent-kommentaren over. */}
       <nav
         role="tablist"
         aria-label={ariaLabel}
         aria-orientation="horizontal"
-        className="flex flex-wrap gap-2 md:hidden"
+        className="grid grid-cols-2 gap-2 md:hidden"
       >
         {items.map((item) => {
           const active = item.id === activeId;
@@ -264,7 +266,6 @@ export function SidebarNav({
               buttonRef={(el) => {
                 stripRefs.current[item.id] = el;
               }}
-              compact
             />
           );
         })}
