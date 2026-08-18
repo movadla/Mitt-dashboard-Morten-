@@ -1,18 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import {
+  CARD_SHELL,
+  CardHeader,
+  CollapsibleBody,
+  ConfirmDialog,
+  MutationError,
+  SkeletonRows,
+  useConfirmDelete,
+  useMutationError,
+  usePersistedCollapse,
+} from "../CardShell";
 import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
 import { vibrate } from "@/lib/haptics";
-import { Dumbbell, GripVertical, Pencil } from "lucide-react";
+import { Dumbbell, GripVertical, Pencil, X } from "lucide-react";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 const VISIBLE_HISTORY = 5;
 const HISTORY_PAGE_SIZE = 5;
+
+const EMPTY_SESSIONS: WorkoutSession[] = [];
+const EMPTY_EXERCISES: Exercise[] = [];
+const EMPTY_ROUTINES: Routine[] = [];
 
 const CATEGORY_LABEL: Record<ExerciseCategory, string> = { styrke: "Styrke", cardio: "Cardio" };
 const INTENSITY_LABEL: Record<SetIntensity, string> = { lav: "Lav", middels: "Middels", hoy: "Høy" };
@@ -190,7 +206,9 @@ function ProgressChart({ points }: { points: ExerciseHistoryPoint[] }) {
 
   return (
     <div className="flex flex-col gap-1">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-status-positive">
+      {/* Rå farge, ikke status-positive — den er reservert ekte suksess-
+          /positive-tilstander andre steder i appen (se SportSection.tsx). */}
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-emerald-400">
         <polyline
           points={coords.map((c) => `${c.x},${c.y}`).join(" ")}
           fill="none"
@@ -255,9 +273,9 @@ function SetRowShell({
           type="button"
           onClick={onRemove}
           aria-label="Slett sett"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
       {children}
@@ -322,7 +340,7 @@ function StrengthSetRow({
             onChange={(e) => setKg(e.target.value)}
             onBlur={() => commit(kg, reps)}
             placeholder="Kg"
-            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
           <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
         </div>
@@ -335,7 +353,7 @@ function StrengthSetRow({
             onChange={(e) => setReps(e.target.value)}
             onBlur={() => commit(kg, reps)}
             placeholder="Reps"
-            className="w-full min-w-0 rounded-lg border border-line bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
           <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
         </div>
@@ -421,7 +439,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Min"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {minutes.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">min</span>
@@ -443,7 +461,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Km/t"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-10 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-10 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {kmt.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km/t</span>
@@ -465,7 +483,7 @@ function CardioSetRow({
               }}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Distanse"
-              className="w-full min-w-0 rounded-lg border border-line bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             {distanceKm.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km</span>
@@ -480,7 +498,7 @@ function CardioSetRow({
             setIntensity(next);
             commit(minutes, kmt, distanceKm, next);
           }}
-          className="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="w-full rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         >
           <option value="">Intensitet...</option>
           {INTENSITY_OPTIONS.map((i) => (
@@ -611,16 +629,16 @@ function EntryRow({
         <div className="flex items-center gap-2">
           {gripHandle}
           {doneToggle}
-          <button type="button" onClick={() => setCollapsed(false)} className="min-w-0 flex-1 text-left">
+          <button type="button" onClick={() => setCollapsed(false)} aria-expanded={false} className="min-w-0 flex-1 text-left">
             <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
           </button>
           <button
             type="button"
             onClick={onRemoveEntry}
             aria-label="Fjern øvelse fra økten"
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
           >
-            ×
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       </li>
@@ -633,7 +651,7 @@ function EntryRow({
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {gripHandle}
           {doneToggle}
-          <button type="button" onClick={() => setCollapsed(true)} className="min-w-0 flex-1 text-left">
+          <button type="button" onClick={() => setCollapsed(true)} aria-expanded={true} className="min-w-0 flex-1 text-left">
             <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
           </button>
         </div>
@@ -641,9 +659,9 @@ function EntryRow({
           type="button"
           onClick={onRemoveEntry}
           aria-label="Fjern øvelse fra økten"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
       {lastEntry && setSummary(lastEntry) && (
@@ -654,6 +672,7 @@ function EntryRow({
           <button
             type="button"
             onClick={() => setShowGraph((v) => !v)}
+            aria-expanded={showGraph}
             className="self-start text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
           >
             {showGraph ? "Skjul graf" : "Vis graf"}
@@ -703,7 +722,7 @@ function EntryRow({
               onChange={(e) => setMinutes(e.target.value)}
               onBlur={commitEntry}
               placeholder="Minutter"
-              className="w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
           )}
           <input
@@ -712,7 +731,7 @@ function EntryRow({
             onChange={(e) => setNotes(e.target.value)}
             onBlur={commitEntry}
             placeholder="Notat (valgfritt)"
-            className={`w-full rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong ${
+            className={`w-full rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong ${
               entry.category === "cardio" ? "col-span-2" : ""
             }`}
           />
@@ -759,15 +778,21 @@ function ExerciseEditForm({
 }: {
   exercise: Exercise;
   onCancel: () => void;
-  onSave: (updates: { name: string; description?: string; category: ExerciseCategory }) => void;
+  onSave: (updates: { name: string; description?: string; category: ExerciseCategory }) => Promise<boolean>;
 }) {
   const [name, setName] = useState(exercise.name);
   const [description, setDescription] = useState(exercise.description ?? "");
   const [category, setCategory] = useState<ExerciseCategory>(exercise.category);
+  const [submitting, setSubmitting] = useState(false);
 
-  function save() {
-    if (!name.trim()) return;
-    onSave({ name: name.trim(), description: description.trim() || undefined, category });
+  async function save() {
+    if (!name.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave({ name: name.trim(), description: description.trim() || undefined, category });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -779,7 +804,7 @@ function ExerciseEditForm({
         onKeyDown={(e) => {
           if (e.key === "Escape") onCancel();
         }}
-        className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
       <CategoryToggle value={category} onChange={setCategory} />
       <textarea
@@ -787,7 +812,7 @@ function ExerciseEditForm({
         onChange={(e) => setDescription(e.target.value)}
         placeholder="Beskrivelse (valgfritt)"
         rows={2}
-        className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -796,7 +821,7 @@ function ExerciseEditForm({
         <button
           type="button"
           onClick={save}
-          disabled={!name.trim()}
+          disabled={!name.trim() || submitting}
           className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Lagre
@@ -818,8 +843,8 @@ function ExercisePicker({
   exercises: Exercise[];
   recentExercises: Exercise[];
   onPick: (exercise: Exercise) => void;
-  onCreateAndPick: (name: string, description: string, category: ExerciseCategory) => void;
-  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory }) => void;
+  onCreateAndPick: (name: string, description: string, category: ExerciseCategory) => Promise<boolean>;
+  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory }) => Promise<boolean>;
   onDeleteExercise: (exercise: Exercise) => void;
   onClose: () => void;
 }) {
@@ -828,9 +853,26 @@ function ExercisePicker({
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCategory, setNewCategory] = useState<ExerciseCategory>("styrke");
+  const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const filtered = exercises.filter((e) => e.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  async function handleCreateClick() {
+    if (!newName.trim() || creating) return;
+    setCreating(true);
+    try {
+      const ok = await onCreateAndPick(newName.trim(), newDescription.trim(), newCategory);
+      if (ok) {
+        setNewName("");
+        setNewDescription("");
+        setNewCategory("styrke");
+        setShowNewForm(false);
+      }
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
@@ -842,7 +884,8 @@ function ExercisePicker({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Søk øvelse..."
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          aria-label="Søk øvelse"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <button
           type="button"
@@ -864,7 +907,7 @@ function ExercisePicker({
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Navn på øvelse"
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
           <CategoryToggle value={newCategory} onChange={setNewCategory} />
           <textarea
@@ -872,7 +915,7 @@ function ExercisePicker({
             onChange={(e) => setNewDescription(e.target.value)}
             placeholder="Beskrivelse (valgfritt)"
             rows={2}
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setShowNewForm(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -880,14 +923,8 @@ function ExercisePicker({
             </button>
             <button
               type="button"
-              onClick={() => {
-                onCreateAndPick(newName.trim(), newDescription.trim(), newCategory);
-                setNewName("");
-                setNewDescription("");
-                setNewCategory("styrke");
-                setShowNewForm(false);
-              }}
-              disabled={!newName.trim()}
+              onClick={handleCreateClick}
+              disabled={!newName.trim() || creating}
               className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
             >
               Legg til
@@ -920,16 +957,17 @@ function ExercisePicker({
                 key={ex.id}
                 exercise={ex}
                 onCancel={() => setEditingId(null)}
-                onSave={(updates) => {
-                  onSaveExercise(ex.id, updates);
-                  setEditingId(null);
+                onSave={async (updates) => {
+                  const ok = await onSaveExercise(ex.id, updates);
+                  if (ok) setEditingId(null);
+                  return ok;
                 }}
               />
             ) : (
               <li key={ex.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-2">
                 <button type="button" onClick={() => onPick(ex)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
-                    <p className="truncate text-sm text-ink-1">{ex.name}</p>
+                    <p className="truncate text-sm font-medium text-ink-1">{ex.name}</p>
                     <span className="shrink-0 text-2xs text-ink-4">{CATEGORY_LABEL[ex.category]}</span>
                   </div>
                   {ex.description && <p className="truncate text-2xs text-ink-4">{ex.description}</p>}
@@ -946,9 +984,9 @@ function ExercisePicker({
                   type="button"
                   onClick={() => onDeleteExercise(ex)}
                   aria-label="Slett øvelse"
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
                 >
-                  ×
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </li>
             ),
@@ -987,13 +1025,12 @@ function RoutineRow({
       <li className="flex flex-col gap-2 rounded-lg border border-line-strong bg-surface-1 p-2.5">
         <input
           type="text"
-          autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") onCancelEdit();
           }}
-          className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+          className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
         />
         <div className="flex items-center gap-2">
           <button type="button" onClick={onCancelEdit} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -1015,13 +1052,13 @@ function RoutineRow({
   return (
     <li className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm text-ink-1">{routine.name}</p>
+        <p className="truncate text-sm font-medium text-ink-1">{routine.name}</p>
         <p className="truncate text-2xs text-ink-4">{routine.exercises.map((e) => e.exerciseName).join(", ")}</p>
       </div>
       <button
         type="button"
         onClick={onStart}
-        className="shrink-0 rounded-lg bg-status-positive px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-positive/85"
+        className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-emerald-500/85"
       >
         Start
       </button>
@@ -1037,9 +1074,9 @@ function RoutineRow({
         type="button"
         onClick={onDelete}
         aria-label="Slett rutine"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
-        ×
+        <X className="h-3.5 w-3.5" />
       </button>
     </li>
   );
@@ -1060,8 +1097,8 @@ function HistoryRow({
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-left">
-          <p className="text-sm text-ink-1">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
+          <p className="text-sm font-medium text-ink-1">
             {formatSessionDate(session.startedAt)} · {formatSessionTime(session.startedAt)}
           </p>
           <p className="mt-0.5 text-2xs text-ink-4">
@@ -1072,9 +1109,9 @@ function HistoryRow({
           type="button"
           onClick={onDelete}
           aria-label="Slett økt"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
         >
-          ×
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
       {expanded && (
@@ -1137,7 +1174,7 @@ function SessionSummaryDialog({ summary, onClose }: { summary: SessionSummary; o
         <button
           type="button"
           onClick={onClose}
-          className="mt-4 w-full rounded-lg bg-status-positive px-3 py-2 text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
+          className="mt-4 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-surface-0 transition hover:bg-emerald-500/85"
         >
           Lukk
         </button>
@@ -1150,25 +1187,35 @@ function SessionSummaryDialog({ summary, onClose }: { summary: SessionSummary; o
 // — read-modify-write mot samme økt i Redis ville racet ved parallelle kall).
 // Egen frittstående funksjon (ikke inne i komponenten) slik at den kan bruke
 // en vanlig `let`-akkumulator uten å trigge React Compiler sin immutability-regel.
-async function seedRoutineEntries(sessionId: string, exercises: Routine["exercises"]): Promise<WorkoutSession | null> {
+// Returnerer også antall øvelser som ikke lot seg legge til, slik at kallstedet
+// kan varsle brukeren i stedet for å stille starte en ufullstendig økt.
+async function seedRoutineEntries(sessionId: string, exercises: Routine["exercises"]): Promise<{ session: WorkoutSession | null; failedCount: number }> {
   let session: WorkoutSession | null = null;
+  let failedCount = 0;
   for (const ex of exercises) {
-    const res = await fetch(`/api/workouts/${sessionId}/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exerciseId: ex.exerciseId, exerciseName: ex.exerciseName }),
-    });
-    if (res.ok) session = await res.json();
+    try {
+      const res = await fetch(`/api/workouts/${sessionId}/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: ex.exerciseId, exerciseName: ex.exerciseName }),
+      });
+      if (res.ok) session = await res.json();
+      else failedCount++;
+    } catch {
+      failedCount++;
+    }
   }
-  return session;
+  return { session, failedCount };
 }
 
 export default function TreningSection() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Trening", true);
-  const [sessions, setSessions] = useState<WorkoutSession[]>([]);
-  const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [routines, setRoutines] = useState<Routine[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: sessionsData, isLoading: loading, mutate: mutateSessions } = useSWR<{ sessions: WorkoutSession[] }>("/api/workouts", jsonFetcher);
+  const { data: exercisesData, mutate: mutateExercises } = useSWR<{ exercises: Exercise[] }>("/api/exercises", jsonFetcher);
+  const { data: routinesData, mutate: mutateRoutines } = useSWR<{ routines: Routine[] }>("/api/routines", jsonFetcher);
+  const sessions = sessionsData?.sessions ?? EMPTY_SESSIONS;
+  const exercises = exercisesData?.exercises ?? EMPTY_EXERCISES;
+  const routines = routinesData?.routines ?? EMPTY_ROUTINES;
   const [showPicker, setShowPicker] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -1181,41 +1228,7 @@ export default function TreningSection() {
   const confirmDeleteExercise = useConfirmDelete<Exercise>();
   const confirmDeleteRoutine = useConfirmDelete<Routine>();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-
-  const load = useCallback(() => {
-    fetch("/api/workouts")
-      .then((r) => r.json())
-      .then((d) => setSessions((d.sessions ?? []) as WorkoutSession[]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const loadExercises = useCallback(() => {
-    fetch("/api/exercises")
-      .then((r) => r.json())
-      .then((d) => setExercises((d.exercises ?? []) as Exercise[]))
-      .catch(() => {});
-  }, []);
-
-  const loadRoutines = useCallback(() => {
-    fetch("/api/routines")
-      .then((r) => r.json())
-      .then((d) => setRoutines((d.routines ?? []) as Routine[]))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    load();
-    loadExercises();
-    loadRoutines();
-    window.addEventListener("mitt-dashboard:privat-refresh", load);
-    window.addEventListener("mitt-dashboard:privat-refresh", loadExercises);
-    window.addEventListener("mitt-dashboard:privat-refresh", loadRoutines);
-    return () => {
-      window.removeEventListener("mitt-dashboard:privat-refresh", load);
-      window.removeEventListener("mitt-dashboard:privat-refresh", loadExercises);
-      window.removeEventListener("mitt-dashboard:privat-refresh", loadRoutines);
-    };
-  }, [load, loadExercises, loadRoutines]);
+  const mutationError = useMutationError();
 
   const activeSession = sessions.find((s) => !s.endedAt) ?? null;
   const pastSessions = sessions.filter((s) => s.endedAt);
@@ -1228,44 +1241,57 @@ export default function TreningSection() {
 
   async function handleStartSession() {
     if (collapsed) toggleCollapsed();
-    const res = await fetch("/api/workouts", { method: "POST" });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/workouts", { method: "POST" });
+      if (!res.ok) throw new Error("start failed");
       const session: WorkoutSession = await res.json();
-      setSessions((prev) => {
-        const exists = prev.some((s) => s.id === session.id);
-        return exists ? prev.map((s) => (s.id === session.id ? session : s)) : [session, ...prev];
-      });
+      mutateSessions((current) => {
+        if (!current) return current;
+        const exists = current.sessions.some((s) => s.id === session.id);
+        return { sessions: exists ? current.sessions.map((s) => (s.id === session.id ? session : s)) : [session, ...current.sessions] };
+      }, { revalidate: false });
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke starte økten. Prøv igjen.");
     }
   }
 
   async function handleStartFromRoutine(routine: Routine) {
     if (collapsed) toggleCollapsed();
-    const res = await fetch("/api/workouts", { method: "POST" });
-    if (!res.ok) return;
-    const started: WorkoutSession = await res.json();
-    setSessions((prev) => {
-      const exists = prev.some((s) => s.id === started.id);
-      return exists ? prev.map((s) => (s.id === started.id ? started : s)) : [started, ...prev];
-    });
-    const seeded = await seedRoutineEntries(started.id, routine.exercises);
-    if (seeded) {
-      setSessions((prev) => prev.map((s) => (s.id === seeded.id ? seeded : s)));
+    try {
+      const res = await fetch("/api/workouts", { method: "POST" });
+      if (!res.ok) throw new Error("start failed");
+      const started: WorkoutSession = await res.json();
+      mutateSessions((current) => {
+        if (!current) return current;
+        const exists = current.sessions.some((s) => s.id === started.id);
+        return { sessions: exists ? current.sessions.map((s) => (s.id === started.id ? started : s)) : [started, ...current.sessions] };
+      }, { revalidate: false });
+      const { session: seeded, failedCount } = await seedRoutineEntries(started.id, routine.exercises);
+      if (seeded) {
+        mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === seeded.id ? seeded : s)) }, { revalidate: false });
+      }
+      if (failedCount > 0) {
+        mutationError.show(`Klarte ikke å legge til ${failedCount} ${failedCount === 1 ? "øvelse" : "øvelser"} fra rutinen. Legg dem til manuelt.`);
+      }
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke starte økten fra rutinen. Prøv igjen.");
     }
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
   async function handleEndSession() {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("end failed");
       vibrate([10, 30, 10]);
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
       setShowPicker(false);
       setShowSaveRoutineForm(false);
       const sets = updated.entries.flatMap((e) => e.sets);
@@ -1277,6 +1303,8 @@ export default function TreningSection() {
         totalVolumeKg,
       });
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke avslutte økten. Prøv igjen.");
     }
   }
 
@@ -1289,76 +1317,106 @@ export default function TreningSection() {
     const newIndex = ids.indexOf(over.id as string);
     if (oldIndex === -1 || newIndex === -1) return;
     const reordered = arrayMove(ids, oldIndex, newIndex);
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSession.id
-          ? { ...s, entries: reordered.map((id) => s.entries.find((e) => e.id === id)!) }
-          : s,
-      ),
+    const previousEntries = activeSession.entries;
+    mutateSessions(
+      (current) =>
+        current && {
+          sessions: current.sessions.map((s) =>
+            s.id === activeSession.id ? { ...s, entries: reordered.map((id) => s.entries.find((e) => e.id === id)!) } : s,
+          ),
+        },
+      { revalidate: false },
     );
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/reorder`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: reordered }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/reorder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: reordered }),
+      });
+      if (!res.ok) throw new Error("reorder failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutateSessions(
+        (current) => current && { sessions: current.sessions.map((s) => (s.id === activeSession.id ? { ...s, entries: previousEntries } : s)) },
+        { revalidate: false },
+      );
+      mutationError.show("Kunne ikke lagre ny rekkefølge. Prøv igjen.");
     }
   }
 
   async function handleAddEntry(exercise: Exercise) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exerciseId: exercise.id, exerciseName: exercise.name }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: exercise.id, exerciseName: exercise.name }),
+      });
+      if (!res.ok) throw new Error("add entry failed");
       vibrate(8);
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
       // Lukk øvelsesvelgeren igjen etter valg/opprettelse — skjermen går
       // tilbake til kun "+ Legg til øvelse", i stedet for at søk/opprett-
       // panelet blir stående åpent (samme for begge kall-veiene, siden
       // handleCreateExerciseAndAdd selv kaller denne funksjonen under).
       setShowPicker(false);
+    } catch {
+      mutationError.show("Kunne ikke legge til øvelsen. Prøv igjen.");
     }
   }
 
-  async function handleCreateExerciseAndAdd(name: string, description: string, category: ExerciseCategory) {
-    if (!name.trim()) return;
-    const res = await fetch("/api/exercises", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description: description || undefined, category }),
-    });
-    if (res.ok) {
+  async function handleCreateExerciseAndAdd(name: string, description: string, category: ExerciseCategory): Promise<boolean> {
+    if (!name.trim()) return false;
+    try {
+      const res = await fetch("/api/exercises", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: description || undefined, category }),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke opprette øvelsen. Prøv igjen.");
+        return false;
+      }
       const created: Exercise = await res.json();
-      setExercises((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      mutateExercises(
+        (current) => current && { exercises: [...current.exercises, created].sort((a, b) => a.name.localeCompare(b.name, "nb")) },
+        { revalidate: false },
+      );
       await handleAddEntry(created);
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke opprette øvelsen. Prøv igjen.");
+      return false;
     }
   }
 
   async function handleUpdateEntry(entryId: string, updates: { minutes: number | null; notes: string | null }) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("update entry failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
   async function handleRemoveEntry(entryId: string) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, { method: "DELETE" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("remove entry failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke fjerne øvelsen. Prøv igjen.");
     }
   }
 
@@ -1367,14 +1425,17 @@ export default function TreningSection() {
     prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity },
   ) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(prefill),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prefill),
+      });
+      if (!res.ok) throw new Error("add set failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke legge til settet. Prøv igjen.");
     }
   }
 
@@ -1391,74 +1452,124 @@ export default function TreningSection() {
     },
   ) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("update set failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke lagre settet. Prøv igjen.");
     }
   }
 
   async function handleToggleSetDone(entryId: string, setId: string, done: boolean) {
     if (!activeSession) return;
     vibrate(done ? 10 : 6);
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ done }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done }),
+      });
+      if (!res.ok) throw new Error("toggle set failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke oppdatere settet. Prøv igjen.");
     }
   }
 
   async function handleToggleEntryDone(entryId: string, done: boolean) {
     if (!activeSession) return;
     vibrate(done ? [10, 20] : 6);
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ done }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done }),
+      });
+      if (!res.ok) throw new Error("toggle entry failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke oppdatere øvelsen. Prøv igjen.");
     }
   }
 
   async function handleRemoveSet(entryId: string, setId: string) {
     if (!activeSession) return;
-    const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, { method: "DELETE" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("remove set failed");
       const updated: WorkoutSession = await res.json();
-      setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+    } catch {
+      mutationError.show("Kunne ikke fjerne settet. Prøv igjen.");
     }
   }
 
   async function handleDeleteSession(session: WorkoutSession) {
-    setSessions((prev) => prev.filter((s) => s.id !== session.id));
-    await fetch(`/api/workouts/${session.id}`, { method: "DELETE" });
+    let previous: WorkoutSession[] = [];
+    mutateSessions(
+      (current) => {
+        previous = current?.sessions ?? [];
+        return current && { sessions: current.sessions.filter((s) => s.id !== session.id) };
+      },
+      { revalidate: false },
+    );
+    try {
+      const res = await fetch(`/api/workouts/${session.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete session failed");
+    } catch {
+      mutateSessions({ sessions: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette økten. Prøv igjen.");
+    }
   }
 
-  async function handleSaveExercise(id: string, updates: { name: string; description?: string; category: ExerciseCategory }) {
-    const res = await fetch(`/api/exercises/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (res.ok) {
+  async function handleSaveExercise(id: string, updates: { name: string; description?: string; category: ExerciseCategory }): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/exercises/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke lagre øvelsen. Prøv igjen.");
+        return false;
+      }
       const updated: Exercise = await res.json();
-      setExercises((prev) => prev.map((e) => (e.id === id ? updated : e)).sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      mutateExercises(
+        (current) =>
+          current && { exercises: current.exercises.map((e) => (e.id === id ? updated : e)).sort((a, b) => a.name.localeCompare(b.name, "nb")) },
+        { revalidate: false },
+      );
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre øvelsen. Prøv igjen.");
+      return false;
     }
   }
 
   async function handleDeleteExercise(exercise: Exercise) {
-    setExercises((prev) => prev.filter((e) => e.id !== exercise.id));
-    await fetch(`/api/exercises/${exercise.id}`, { method: "DELETE" });
+    let previous: Exercise[] = [];
+    mutateExercises(
+      (current) => {
+        previous = current?.exercises ?? [];
+        return current && { exercises: current.exercises.filter((e) => e.id !== exercise.id) };
+      },
+      { revalidate: false },
+    );
+    try {
+      const res = await fetch(`/api/exercises/${exercise.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete exercise failed");
+    } catch {
+      mutateExercises({ exercises: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette øvelsen. Prøv igjen.");
+    }
   }
 
   async function handleSaveRoutine(name: string) {
@@ -1473,50 +1584,76 @@ export default function TreningSection() {
       .map((e) => ({ exerciseId: e.exerciseId, exerciseName: e.exerciseName }));
     if (routineExercises.length === 0) return;
 
-    const res = await fetch("/api/routines", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), exercises: routineExercises }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/routines", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), exercises: routineExercises }),
+      });
+      if (!res.ok) throw new Error("save routine failed");
       const created: Routine = await res.json();
-      setRoutines((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      mutateRoutines(
+        (current) => current && { routines: [...current.routines, created].sort((a, b) => a.name.localeCompare(b.name, "nb")) },
+        { revalidate: false },
+      );
       setShowSaveRoutineForm(false);
       setNewRoutineName("");
+    } catch {
+      mutationError.show("Kunne ikke lagre rutinen. Prøv igjen.");
     }
   }
 
   async function handleRenameRoutine(id: string, name: string) {
-    const res = await fetch(`/api/routines/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/routines/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error("rename routine failed");
       const updated: Routine = await res.json();
-      setRoutines((prev) => prev.map((r) => (r.id === id ? updated : r)).sort((a, b) => a.name.localeCompare(b.name, "nb")));
+      mutateRoutines(
+        (current) => current && { routines: current.routines.map((r) => (r.id === id ? updated : r)).sort((a, b) => a.name.localeCompare(b.name, "nb")) },
+        { revalidate: false },
+      );
       setEditingRoutineId(null);
+    } catch {
+      mutationError.show("Kunne ikke lagre navnet. Prøv igjen.");
     }
   }
 
   async function handleDeleteRoutine(routine: Routine) {
-    setRoutines((prev) => prev.filter((r) => r.id !== routine.id));
-    await fetch(`/api/routines/${routine.id}`, { method: "DELETE" });
+    let previous: Routine[] = [];
+    mutateRoutines(
+      (current) => {
+        previous = current?.routines ?? [];
+        return current && { routines: current.routines.filter((r) => r.id !== routine.id) };
+      },
+      { revalidate: false },
+    );
+    try {
+      const res = await fetch(`/api/routines/${routine.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete routine failed");
+    } catch {
+      mutateRoutines({ routines: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette rutinen. Prøv igjen.");
+    }
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-status-positive/60 p-4`}>
+    <div className={`${CARD_SHELL} border-t-2 border-t-emerald-400/60 p-4`}>
       <CardHeader
         title="Trening"
         subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Dumbbell}
-        iconColorClass="text-status-positive"
+        iconColorClass="text-emerald-400"
         alwaysShowSubtitle={!!activeSession}
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
+          <MutationError message={mutationError.message} />
           {loading ? (
             <SkeletonRows count={2} />
           ) : (
@@ -1538,7 +1675,7 @@ export default function TreningSection() {
                       <button
                         type="button"
                         onClick={handleEndSession}
-                        className="rounded-lg bg-status-danger px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-danger/85"
+                        className="rounded-lg bg-rose-500 px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-rose-500/85"
                       >
                         Avslutt økt
                       </button>
@@ -1553,7 +1690,6 @@ export default function TreningSection() {
                     <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 p-2">
                       <input
                         type="text"
-                        autoFocus
                         value={newRoutineName}
                         onChange={(e) => setNewRoutineName(e.target.value)}
                         onKeyDown={(e) => {
@@ -1561,7 +1697,7 @@ export default function TreningSection() {
                           if (e.key === "Escape") setShowSaveRoutineForm(false);
                         }}
                         placeholder="Navn på rutine"
-                        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                        className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
                       />
                       <button
                         type="button"
@@ -1626,7 +1762,7 @@ export default function TreningSection() {
                     <button
                       type="button"
                       onClick={handleEndSession}
-                      className="rounded-lg bg-status-danger px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-danger/85"
+                      className="rounded-lg bg-rose-500 px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-rose-500/85"
                     >
                       Avslutt økt
                     </button>
@@ -1637,7 +1773,7 @@ export default function TreningSection() {
                   <button
                     type="button"
                     onClick={handleStartSession}
-                    className="rounded-xl bg-status-positive px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
+                    className="rounded-xl bg-emerald-500 px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-emerald-500/85"
                   >
                     Start treningsøkt
                   </button>
@@ -1672,6 +1808,7 @@ export default function TreningSection() {
                         setShowHistory((v) => !v);
                         setVisibleHistoryCount(VISIBLE_HISTORY);
                       }}
+                      aria-expanded={showHistory}
                       className="text-2xs font-semibold uppercase tracking-wide text-ink-3 hover:text-ink-1"
                     >
                       {showHistory ? "Skjul tidligere økter" : `Tidligere økter (${pastSessions.length})`}
@@ -1701,9 +1838,9 @@ export default function TreningSection() {
                         <button
                           type="button"
                           onClick={() => setVisibleHistoryCount((v) => v + HISTORY_PAGE_SIZE)}
-                          className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
                         >
-                          +{Math.min(HISTORY_PAGE_SIZE, pastSessions.length - visibleHistoryCount)} flere
+                          {`Mer (${pastSessions.length - visibleHistoryCount})`}
                         </button>
                       )}
                     </>
