@@ -29,7 +29,7 @@ export interface Tenant {
 /**
  * MIDLERTIDIG ANONYMISERT — se merknad i widgets.anon.ts for konvensjonen. Kontonavn byttet til
  * "Demokunde N" (gjenbruker eksisterende nummerering fra widgets.anon.ts der samme leietaker
- * allerede opptrer — "First Rent A Car Norway AS" = Demokunde 6 — ellers fortløpende fra 30).
+ * allerede opptrer — ellers fortløpende fra 30).
  * Org.nummer og fakturaadresse er FJERNET her (ikke bare byttet) siden org.nummer alene er nok til
  * å slå opp reell identitet i Brønnøysundregistrene. Kontaktpersoner (reelle privatpersoner hos
  * leietaker) er anonymisert til "Kontaktperson N" med rolle beholdt, e-post/telefon fjernet.
