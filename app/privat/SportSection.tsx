@@ -32,6 +32,7 @@ const SPORT_COLOR: Record<string, string> = {
   football_ucl: "#0891b2",
   football_manu: "#da291c",
   football_norway: "#1e3a8a",
+  football_no_uefa: "#4338ca",
   worldcup: "#eab308",
   personal: "#0e9e79",
 };
@@ -48,6 +49,7 @@ const SPORT_LABEL: Record<string, string> = {
   football_ucl: "Champions League",
   football_manu: "Manchester United",
   football_norway: "Norge",
+  football_no_uefa: "Norsk lag i Europa",
   worldcup: "VM 2026",
   personal: "Egen kamp",
 };
@@ -62,6 +64,7 @@ const SPORT_ICON: Record<string, LucideComp> = {
   personal: Star,
   football_manu: Trophy,
   football_norway: Trophy,
+  football_no_uefa: Trophy,
   football_eli: Trophy,
   football_obos: Trophy,
   football_pl: Trophy,

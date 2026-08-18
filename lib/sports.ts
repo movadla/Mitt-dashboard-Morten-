@@ -199,6 +199,42 @@ async function fetchTsdbTeam(teamName: string, category: string, limit = 5): Pro
     }));
 }
 
+// ── TheSportsDB: neste UEFA-cupkamp for et enkelt lag ────────────────────────
+// Samme lag-baserte oppslag som fetchTsdbTeam, men filtrert til kun Champions
+// League/Europa League/Conference League — et lags "neste kamper uansett
+// turnering" vil for det meste være vanlige seriekamper (som allerede dekkes
+// av football_eli), så disse må filtreres bort her for å unngå duplikater.
+const UEFA_CUP_PATTERN = /UEFA|Champions League|Europa League|Conference League/i;
+
+async function fetchTsdbTeamEuropean(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
+  const sRes = await fetch(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`, UA);
+  if (!sRes.ok) return [];
+  const sJson = await sRes.json();
+  const team: TsdbTeam | undefined = (sJson.teams ?? []).find((t: TsdbTeam) => t.strSport === "Soccer");
+  if (!team) return [];
+
+  const eRes = await fetch(`${TSDB}/eventsnext.php?id=${team.idTeam}`, UA);
+  if (!eRes.ok) return [];
+  const eJson = await eRes.json();
+  const today = localDateString();
+  return ((eJson.events ?? []) as TsdbEvent[])
+    .filter(e => e.dateEvent >= today && e.strLeague && UEFA_CUP_PATTERN.test(e.strLeague))
+    .slice(0, limit)
+    .map(e => ({
+      id:          `${category}-${e.idEvent}`,
+      category,
+      name:        e.strEvent,
+      venue:       e.strVenue || undefined,
+      date:        e.dateEvent,
+      time:        e.strTime ? norwayTime(e.dateEvent, e.strTime) : undefined,
+      competition: e.strLeague ?? "UEFA",
+    }));
+}
+
+// Klubber som jevnlig kvalifiserer til europeisk klubbfotball — løs liste,
+// kan trenge justering fra sesong til sesong (se Morten).
+const NORWEGIAN_EUROPEAN_CLUBS = ["Viking", "Bodø/Glimt", "Molde", "Rosenborg", "Brann"];
+
 // ── Golf majors (static calendar) ────────────────────────────────────────────
 function getGolfMajors(): SportEvent[] {
   const today  = localDateString();
@@ -290,6 +326,7 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
   () => fetchESPN("uefa.champions", "football_ucl",  "Champions League", null,                60),
   () => fetchESPN("uefa.champions", "football_manu", "Champions League", "Manchester United", 10),
   () => fetchTsdbTeam("Norway", "football_norway", 5),
+  ...NORWEGIAN_EUROPEAN_CLUBS.map(name => () => fetchTsdbTeamEuropean(name, "football_no_uefa", 5)),
   () => fetchTsdbLeague("Darts", "PDC", "darts", 10),
   () => Promise.resolve(getAthleticsCalendar()),
   () => Promise.resolve(getGolfMajors()),
