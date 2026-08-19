@@ -1,11 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CardHeader, CollapsibleBody, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "../CardShell";
+import {
+  CardHeader,
+  CollapsibleBody,
+  ConfirmDialog,
+  MutationError,
+  SkeletonRows,
+  useConfirmDelete,
+  useMutationError,
+  usePersistedCollapse,
+} from "../CardShell";
 import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
-import { Bot } from "lucide-react";
+import { Bot, X } from "lucide-react";
 
 const CATEGORY_LABEL: Record<MilestoneCategory, string> = {
   motorikk: "Motorisk utvikling",
@@ -96,13 +105,15 @@ function EditableNote({
 function AlfredSubSection({
   title,
   storageKey,
+  defaultCollapsed = true,
   children,
 }: {
   title: string;
   storageKey: string;
+  defaultCollapsed?: boolean;
   children: React.ReactNode;
 }) {
-  const [collapsed, toggle] = usePersistedCollapse(storageKey, true);
+  const [collapsed, toggle] = usePersistedCollapse(storageKey, defaultCollapsed);
   return (
     <div className="rounded-xl border border-line bg-surface-2/40">
       <button
@@ -247,9 +258,9 @@ function MilestoneRow({ item, onToggle, onRemove }: { item: Milestone; onToggle:
         type="button"
         onClick={() => onRemove(item.id)}
         aria-label="Slett punkt"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
       >
-        ×
+        <X className="h-3.5 w-3.5" />
       </button>
     </li>
   );
@@ -352,9 +363,9 @@ function PlayList({
                 type="button"
                 onClick={() => onRemove(idea.id)}
                 aria-label="Slett punkt"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
               >
-                ×
+                <X className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}
@@ -489,9 +500,9 @@ function GrowthSection({
                 type="button"
                 onClick={() => onRemove(e.id)}
                 aria-label="Slett måling"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-base leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
               >
-                ×
+                <X className="h-3.5 w-3.5" />
               </button>
             </li>
           ))}
@@ -556,7 +567,8 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [playIdeas, setPlayIdeas] = useState<PlayIdea[]>([]);
-  const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone"; id: string }>();
+  const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone" | "playIdea"; id: string }>();
+  const mutationError = useMutationError();
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -582,83 +594,128 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
   }, [load]);
 
   async function saveProfile(updates: Partial<AlfredProfile>) {
-    const res = await fetch("/api/alfred/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/alfred/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("save failed");
       setProfile(await res.json());
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
   async function addGrowth(input: { date: string; weightKg: number; lengthCm?: number }) {
-    const res = await fetch("/api/alfred/growth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/alfred/growth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) throw new Error("add failed");
       const created: GrowthEntry = await res.json();
       setGrowth((prev) => [...prev, created].sort((a, b) => a.date.localeCompare(b.date)));
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til målingen. Prøv igjen.");
     }
   }
 
   async function removeGrowth(id: string) {
-    setGrowth((prev) => prev.filter((e) => e.id !== id));
-    await fetch(`/api/alfred/growth/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    let previous: GrowthEntry[] = [];
+    setGrowth((prev) => {
+      previous = prev;
+      return prev.filter((e) => e.id !== id);
+    });
+    try {
+      const res = await fetch(`/api/alfred/growth/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      setGrowth(previous);
+      mutationError.show("Kunne ikke slette målingen. Prøv igjen.");
+    }
   }
 
   async function toggleMilestoneItem(id: string) {
-    const res = await fetch(`/api/alfred/milestones/${id}`, { method: "PATCH" });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/alfred/milestones/${id}`, { method: "PATCH" });
+      if (!res.ok) throw new Error("toggle failed");
       const updated: Milestone = await res.json();
       setMilestones((prev) => prev.map((m) => (m.id === id ? updated : m)));
       vibrate(updated.done ? 15 : 8);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke oppdatere milepælen. Prøv igjen.");
     }
   }
 
   async function removeMilestone(id: string) {
-    setMilestones((prev) => prev.filter((m) => m.id !== id));
+    let previous: Milestone[] = [];
+    setMilestones((prev) => {
+      previous = prev;
+      return prev.filter((m) => m.id !== id);
+    });
     vibrate([10, 30, 10]);
-    await fetch(`/api/alfred/milestones/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    try {
+      const res = await fetch(`/api/alfred/milestones/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      setMilestones(previous);
+      mutationError.show("Kunne ikke slette milepælen. Prøv igjen.");
+    }
   }
 
   async function addMilestoneItem(category: MilestoneCategory, label: string) {
-    const res = await fetch("/api/alfred/milestones", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, label }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/alfred/milestones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category, label }),
+      });
+      if (!res.ok) throw new Error("add failed");
       const created: Milestone = await res.json();
       setMilestones((prev) => [...prev, created]);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til milepælen. Prøv igjen.");
     }
   }
 
   async function addPlayIdeaItem(label: string) {
-    const res = await fetch("/api/alfred/play", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/alfred/play", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) throw new Error("add failed");
       const created: PlayIdea = await res.json();
       setPlayIdeas((prev) => [...prev, created]);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til ideen. Prøv igjen.");
     }
   }
 
   async function removePlayIdea(id: string) {
-    setPlayIdeas((prev) => prev.filter((p) => p.id !== id));
-    await fetch(`/api/alfred/play/${id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    let previous: PlayIdea[] = [];
+    setPlayIdeas((prev) => {
+      previous = prev;
+      return prev.filter((p) => p.id !== id);
+    });
+    try {
+      const res = await fetch(`/api/alfred/play/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      setPlayIdeas(previous);
+      mutationError.show("Kunne ikke slette ideen. Prøv igjen.");
+    }
   }
 
   const today = localDateString();
@@ -683,18 +740,19 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-3">
+          <MutationError message={mutationError.message} />
           {loading ? (
             <SkeletonRows count={3} />
           ) : (
             <>
               {profile && <GrunninfoBox profile={profile} onSave={saveProfile} />}
 
-              <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst">
+              <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst" defaultCollapsed={false}>
                 <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
                 {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
               </AlfredSubSection>
 
-              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler">
+              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler" defaultCollapsed={false}>
                 {CATEGORY_ORDER.map((category) => (
                   <MilestoneGroup
                     key={category}
@@ -708,7 +766,7 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
               </AlfredSubSection>
 
               <AlfredSubSection title="Lek" storageKey="Alfred - Lek">
-                <PlayList ideas={playIdeas} onAdd={addPlayIdeaItem} onRemove={removePlayIdea} />
+                <PlayList ideas={playIdeas} onAdd={addPlayIdeaItem} onRemove={(id) => confirmDelete.request({ type: "playIdea", id })} />
               </AlfredSubSection>
 
               {profile && (
@@ -734,14 +792,16 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
             const entry = growth.find((g) => g.id === pending.id);
             return `Slette vekstmålingen fra ${entry ? formatDMY(entry.date) : "denne datoen"}?`;
           }
-          return `Slette milepælen «${milestones.find((m) => m.id === pending.id)?.label ?? ""}»?`;
+          if (pending.type === "milestone") return `Slette milepælen «${milestones.find((m) => m.id === pending.id)?.label ?? ""}»?`;
+          return `Slette lekidéen «${playIdeas.find((p) => p.id === pending.id)?.label ?? ""}»?`;
         })()}
         onCancel={confirmDelete.cancel}
         onConfirm={() => {
           const pending = confirmDelete.pending;
           if (!pending) return;
           if (pending.type === "growth") removeGrowth(pending.id);
-          else removeMilestone(pending.id);
+          else if (pending.type === "milestone") removeMilestone(pending.id);
+          else removePlayIdea(pending.id);
           confirmDelete.cancel();
         }}
       />
