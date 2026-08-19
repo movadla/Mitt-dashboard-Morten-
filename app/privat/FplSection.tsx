@@ -172,7 +172,7 @@ function ForwardCalc({ gap, currentGw, accentM }: {
       <div className="shrink-0 text-center" style={{ minWidth: 48 }}>
         <p className="text-[26px] font-black tabular-nums leading-none"
           style={{ color: `${accentM}0.75)` }}>{perGw}</p>
-        <p className="text-[8px] font-bold uppercase tracking-[0.12em] mt-0.5"
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] mt-0.5"
           style={{ color: `${accentM}0.32)` }}>p/runde</p>
       </div>
       <div>
@@ -182,7 +182,7 @@ function ForwardCalc({ gap, currentGw, accentM }: {
             {remaining} gjenværende {remaining === 1 ? "runde" : "runder"}
           </span>
         </p>
-        <p className="text-[9px] mt-1 tabular-nums" style={{ color: "rgba(255,255,255,0.22)" }}>
+        <p className="text-[10px] mt-1 tabular-nums" style={{ color: "rgba(255,255,255,0.22)" }}>
           {gap}p mangler totalt
         </p>
       </div>
@@ -214,7 +214,7 @@ function LeaguesPanel({
           <RankSparkline history={team.gwHistory} color={th.accent} />
         )}
         <a href={teamUrl} target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-[0.12em] ml-1"
+          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] ml-1"
           style={{ color: `${th.accentM}0.4)` }}>
           FPL
           <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-2.5 h-2.5">
@@ -224,9 +224,9 @@ function LeaguesPanel({
       </div>
 
       <div className="flex items-center px-3 pt-2 pb-1">
-        <p className="flex-1 text-[8px] font-bold uppercase tracking-[0.16em]" style={{ color: `${th.accentM}0.3)` }}>Liga</p>
-        <p className="w-16 text-right text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: `${th.accentM}0.3)` }}>Nå</p>
-        <p className="w-10 text-right text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: `${th.accentM}0.3)` }}>Forrige</p>
+        <p className="flex-1 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: `${th.accentM}0.3)` }}>Liga</p>
+        <p className="w-16 text-right text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: `${th.accentM}0.3)` }}>Nå</p>
+        <p className="w-10 text-right text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: `${th.accentM}0.3)` }}>Forrige</p>
         <div className="w-5" />
       </div>
 
@@ -370,14 +370,14 @@ function TeamPanel({
           </p>
           <div className="flex items-start gap-4 mt-1">
             <div>
-              <p className="text-[7px] font-bold uppercase tracking-[0.14em]"
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
                 style={{ color: `${th.accentM}0.4)` }}>Totalt</p>
               <p className="font-display text-[15px] font-semibold tabular-nums leading-tight" style={{ color: "rgba(255,255,255,0.7)" }}>
                 {team?.totalPoints?.toLocaleString("nb-NO") ?? "—"}
               </p>
             </div>
             <div>
-              <p className="text-[7px] font-bold uppercase tracking-[0.14em]"
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
                 style={{ color: `${th.accentM}0.4)` }}>GW{team?.currentGw ?? picks?.gw}</p>
               {(() => {
                 const gwPts = picks != null ? picks.liveGwPoints : (team?.currentGwPoints ?? null);
@@ -400,13 +400,13 @@ function TeamPanel({
           </div>
 
           <div className="mt-2">
-            <p className="text-[7px] font-bold uppercase tracking-[0.14em]"
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em]"
               style={{ color: `${th.accentM}0.35)` }}>Verdensrang</p>
             <p className="font-display text-[12px] font-semibold tabular-nums leading-tight" style={{ color: "rgba(255,255,255,0.55)" }}>
               {((picks?.overallRank) ?? team?.overallRank)?.toLocaleString("nb-NO") ?? "—"}
             </p>
             {picks?.gwRank != null && (
-              <p className="text-[8px] tabular-nums leading-none mt-0.5"
+              <p className="text-[10px] tabular-nums leading-none mt-0.5"
                 style={{ color: `${th.accentM}0.4)` }}>
                 GW {picks.gwRank.toLocaleString("nb-NO")}
               </p>
@@ -426,14 +426,12 @@ function TeamPanel({
   );
 }
 
+// Ticker for nedtelling til deadline (fplParts) leves av foreldrekomponenten
+// FplBox alene — FplHero brukes aldri utenfor FplBox, så en egen
+// setInterval her ville bare vært en duplisert klokke som tvinger samme
+// re-render FplBox allerede gir den via props/re-render fra sin egen ticker.
 export function FplHero({ fpl }: { fpl: FplData }) {
   const [expandedTeam, setExpandedTeam] = useState<TeamKey | null>(null);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
 
   const fisak = fpl.teams?.find(t => t.teamKey === "fisak");
   const boko = fpl.teams?.find(t => t.teamKey === "boko");
@@ -470,7 +468,7 @@ export function FplHero({ fpl }: { fpl: FplData }) {
       <div className="relative flex items-center justify-between border-b px-5 py-3"
         style={{ borderColor: "rgba(255,255,255,0.08)", zIndex: 1 }}>
         {currentGwId && (
-          <span className="font-display text-[9px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-lg border"
+          <span className="font-display text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-lg border"
             style={{ color: "#34d399", borderColor: "rgba(52,211,153,0.35)", background: "rgba(0,0,0,0.30)" }}>
             GW{currentGwId}
           </span>
@@ -479,7 +477,7 @@ export function FplHero({ fpl }: { fpl: FplData }) {
           <div className="flex items-center gap-1 px-2 py-1 rounded-lg border ml-auto"
             style={{ borderColor: "rgba(239,68,68,0.45)", background: "rgba(0,0,0,0.35)" }}>
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#ef4444" }} />
-            <span className="text-[9px] font-black tracking-[0.1em] uppercase" style={{ color: "#f87171" }}>Live</span>
+            <span className="text-[10px] font-black tracking-[0.1em] uppercase" style={{ color: "#f87171" }}>Live</span>
           </div>
         )}
       </div>
