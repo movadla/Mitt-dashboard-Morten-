@@ -18,7 +18,8 @@ import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
 import { vibrate } from "@/lib/haptics";
-import { Activity, Dumbbell, GripVertical, Pencil, X } from "lucide-react";
+import { localDateString, toOsloDateString } from "@/lib/payday";
+import { Activity, ChevronLeft, ChevronRight, Dumbbell, GripVertical, Pencil, X } from "lucide-react";
 import SwipeableRow from "./SwipeableRow";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -155,6 +156,38 @@ function formatSessionDate(iso: string): string {
 function formatSessionTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
 }
+
+// { year, month } (month 0-indeksert) for "dagens måned + offset" —
+// localDateString() gir dagens Oslo-kalenderdag som fast utgangspunkt,
+// samme mønster som `today = localDateString()` brukt direkte i render
+// andre steder i appen (TodaySummary, EventsSection m.fl.).
+function calendarMonthFromOffset(offset: number): { year: number; month: number } {
+  const [y, m] = localDateString().split("-").map(Number);
+  const base = new Date(Date.UTC(y, m - 1 + offset, 1));
+  return { year: base.getUTCFullYear(), month: base.getUTCMonth() };
+}
+
+// 6×7-rutenett med "YYYY-MM-DD"-strenger, mandag først — inkluderer
+// utfyllende dager fra forrige/neste måned slik at rutenettet alltid blir
+// helt fylt. Ren UTC-kalenderaritmetikk (samme mønster som addDaysIso i
+// lib/payday.ts) — uavhengig av nettleserens lokale tidssone.
+function calendarMonthDays(year: number, month: number): string[] {
+  const firstOfMonth = new Date(Date.UTC(year, month, 1));
+  const firstWeekday = (firstOfMonth.getUTCDay() + 6) % 7; // 0 = mandag
+  const start = new Date(Date.UTC(year, month, 1 - firstWeekday));
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start);
+    d.setUTCDate(start.getUTCDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+function formatMonthLabel(year: number, month: number): string {
+  const label = new Date(Date.UTC(year, month, 1)).toLocaleDateString("nb-NO", { month: "long", year: "numeric", timeZone: "UTC" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+const WEEKDAY_LABELS = ["Ma", "Ti", "On", "To", "Fr", "Lø", "Sø"];
 
 function formatKg(kg: number): string {
   return Number.isInteger(kg) ? `${kg}` : kg.toFixed(1).replace(/\.0$/, "");
@@ -1252,6 +1285,92 @@ function HistoryRow({
   );
 }
 
+// Månedskalender for å bla tilbake i tid og se hvilke dager man har trent —
+// prikk under dagtallet på dager med minst én avsluttet økt, trykk en dag
+// for å vise økten(e) under rutenettet (gjenbruker HistoryRow, samme
+// ekspander/slett-mønster som listevisningen).
+function TrainingCalendar({
+  sessionsByDate,
+  monthOffset,
+  onMonthOffsetChange,
+  selectedDate,
+  onSelectDate,
+}: {
+  sessionsByDate: Map<string, WorkoutSession[]>;
+  monthOffset: number;
+  onMonthOffsetChange: (offset: number) => void;
+  selectedDate: string | null;
+  onSelectDate: (date: string | null) => void;
+}) {
+  const today = localDateString();
+  const { year, month } = calendarMonthFromOffset(monthOffset);
+  const days = calendarMonthDays(year, month);
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3">
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => onMonthOffsetChange(monthOffset - 1)}
+          aria-label="Forrige måned"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-1"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <p className="text-sm font-semibold text-ink-1">{formatMonthLabel(year, month)}</p>
+        <button
+          type="button"
+          onClick={() => onMonthOffsetChange(monthOffset + 1)}
+          aria-label="Neste måned"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-1"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {WEEKDAY_LABELS.map((w) => (
+          <p key={w} className="text-center text-2xs font-semibold uppercase text-ink-4">
+            {w}
+          </p>
+        ))}
+        {days.map((date) => {
+          const inMonth = Number(date.slice(5, 7)) - 1 === month;
+          const daySessions = sessionsByDate.get(date) ?? [];
+          const hasSessions = daySessions.length > 0;
+          const isToday = date === today;
+          const isSelected = date === selectedDate;
+          return (
+            <button
+              key={date}
+              type="button"
+              onClick={() => (hasSessions ? onSelectDate(isSelected ? null : date) : undefined)}
+              disabled={!hasSessions}
+              aria-pressed={isSelected}
+              className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 text-xs transition ${
+                !inMonth
+                  ? "text-ink-4/50"
+                  : isSelected
+                    ? "bg-accent-privat/15 font-semibold text-accent-privat ring-1 ring-accent-privat/40"
+                    : isToday
+                      ? "font-semibold text-ink-1 ring-1 ring-line-strong"
+                      : hasSessions
+                        ? "text-ink-1 hover:bg-surface-3"
+                        : "text-ink-3"
+              }`}
+            >
+              {Number(date.slice(8, 10))}
+              <span
+                className={`h-1 w-1 rounded-full ${hasSessions && inMonth ? "bg-status-positive" : "bg-transparent"}`}
+                aria-hidden="true"
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface SessionSummary {
   durationMs: number;
   exerciseCount: number;
@@ -1343,6 +1462,9 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
+  const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
+  const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);
   const [newRoutineName, setNewRoutineName] = useState("");
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
@@ -1356,6 +1478,14 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   const activeSession = sessions.find((s) => !s.endedAt) ?? null;
   const pastSessions = sessions.filter((s) => s.endedAt);
   const visibleHistory = pastSessions.slice(0, visibleHistoryCount);
+  const sessionsByDate = new Map<string, WorkoutSession[]>();
+  for (const s of pastSessions) {
+    const date = toOsloDateString(new Date(s.startedAt));
+    const list = sessionsByDate.get(date) ?? [];
+    list.push(s);
+    sessionsByDate.set(date, list);
+  }
+  const selectedDateSessions = selectedCalendarDate ? (sessionsByDate.get(selectedCalendarDate) ?? []) : [];
   const elapsed = useElapsed(activeSession?.startedAt);
   const restTimer = useRestTimer();
   const recentExercises = recentlyUsedExercises(exercises, sessions);
@@ -1978,25 +2108,70 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                   </div>
                   {showHistory && (
                     <>
-                      <ul className="flex flex-col gap-1.5">
-                        {visibleHistory.map((s) => (
-                          <HistoryRow
-                            key={s.id}
-                            session={s}
-                            expanded={expandedHistoryId === s.id}
-                            onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
-                            onDelete={() => confirmDeleteSession.request(s)}
-                          />
+                      <div className="flex items-center gap-1.5 self-start rounded-lg border border-line bg-surface-1 p-0.5">
+                        {(["list", "calendar"] as const).map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setHistoryView(v)}
+                            aria-pressed={historyView === v}
+                            className={`rounded-md px-2.5 py-1 text-2xs font-semibold uppercase transition ${
+                              historyView === v ? "bg-accent-privat/15 text-accent-privat" : "text-ink-3 hover:text-ink-1"
+                            }`}
+                          >
+                            {v === "list" ? "Liste" : "Kalender"}
+                          </button>
                         ))}
-                      </ul>
-                      {pastSessions.length > visibleHistoryCount && (
-                        <button
-                          type="button"
-                          onClick={() => setVisibleHistoryCount((v) => v + HISTORY_PAGE_SIZE)}
-                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
-                        >
-                          {`Mer (${pastSessions.length - visibleHistoryCount})`}
-                        </button>
+                      </div>
+                      {historyView === "list" ? (
+                        <>
+                          <ul className="flex flex-col gap-1.5">
+                            {visibleHistory.map((s) => (
+                              <HistoryRow
+                                key={s.id}
+                                session={s}
+                                expanded={expandedHistoryId === s.id}
+                                onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
+                                onDelete={() => confirmDeleteSession.request(s)}
+                              />
+                            ))}
+                          </ul>
+                          {pastSessions.length > visibleHistoryCount && (
+                            <button
+                              type="button"
+                              onClick={() => setVisibleHistoryCount((v) => v + HISTORY_PAGE_SIZE)}
+                              className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                            >
+                              {`Mer (${pastSessions.length - visibleHistoryCount})`}
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <TrainingCalendar
+                            sessionsByDate={sessionsByDate}
+                            monthOffset={calendarMonthOffset}
+                            onMonthOffsetChange={(offset) => {
+                              setCalendarMonthOffset(offset);
+                              setSelectedCalendarDate(null);
+                            }}
+                            selectedDate={selectedCalendarDate}
+                            onSelectDate={setSelectedCalendarDate}
+                          />
+                          {selectedDateSessions.length > 0 && (
+                            <ul className="flex flex-col gap-1.5">
+                              {selectedDateSessions.map((s) => (
+                                <HistoryRow
+                                  key={s.id}
+                                  session={s}
+                                  expanded={expandedHistoryId === s.id}
+                                  onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
+                                  onDelete={() => confirmDeleteSession.request(s)}
+                                />
+                              ))}
+                            </ul>
+                          )}
+                        </>
                       )}
                     </>
                   )}
