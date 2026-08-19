@@ -33,7 +33,12 @@ const EMPTY_ROUTINES: Routine[] = [];
 
 const CATEGORY_LABEL: Record<ExerciseCategory, string> = { styrke: "Styrke", cardio: "Cardio" };
 const CATEGORY_ICON: Record<ExerciseCategory, typeof Dumbbell> = { styrke: Dumbbell, cardio: Activity };
-const CATEGORY_ACCENT: Record<ExerciseCategory, string> = { styrke: "text-emerald-400", cardio: "text-sky-400" };
+// Styrke er bevisst nøytral (ikke emerald) — Trenings egen fane-farge OG
+// "fullført"-tilstanden (status-positive) er begge grønne, så et grønt
+// styrke-ikon druknet i de to andre grønnfargene og gjorde det umulig å se
+// hvorfor en rad var grønn (kategori, eller ferdig?) i praksis. Selve
+// ikon-formen (Dumbbell vs. Activity) bærer taksonomien, ikke fargen.
+const CATEGORY_ACCENT: Record<ExerciseCategory, string> = { styrke: "text-ink-3", cardio: "text-sky-400" };
 const INTENSITY_LABEL: Record<SetIntensity, string> = { lav: "Lav", middels: "Middels", hoy: "Høy" };
 const INTENSITY_OPTIONS: SetIntensity[] = ["lav", "middels", "hoy"];
 
