@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
   CardHeader,
+  CheckIcon,
   CollapsibleBody,
   ConfirmDialog,
   MutationError,
@@ -17,7 +18,8 @@ import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
 import { vibrate } from "@/lib/haptics";
-import { Dumbbell, GripVertical, Pencil, X } from "lucide-react";
+import { Activity, Dumbbell, GripVertical, Pencil, X } from "lucide-react";
+import SwipeableRow from "./SwipeableRow";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -30,6 +32,8 @@ const EMPTY_EXERCISES: Exercise[] = [];
 const EMPTY_ROUTINES: Routine[] = [];
 
 const CATEGORY_LABEL: Record<ExerciseCategory, string> = { styrke: "Styrke", cardio: "Cardio" };
+const CATEGORY_ICON: Record<ExerciseCategory, typeof Dumbbell> = { styrke: Dumbbell, cardio: Activity };
+const CATEGORY_ACCENT: Record<ExerciseCategory, string> = { styrke: "text-emerald-400", cardio: "text-sky-400" };
 const INTENSITY_LABEL: Record<SetIntensity, string> = { lav: "Lav", middels: "Middels", hoy: "Høy" };
 const INTENSITY_OPTIONS: SetIntensity[] = ["lav", "middels", "hoy"];
 
@@ -54,14 +58,10 @@ function DoneToggle({
       aria-pressed={done}
       aria-label={label}
       className={`grid ${dim} shrink-0 place-items-center rounded-full ring-1 transition ${
-        done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+        done ? "bg-status-positive ring-status-positive" : "bg-transparent ring-line-strong hover:ring-line-strong"
       }`}
     >
-      {done && (
-        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 8.5L6.5 12 13 5" />
-        </svg>
-      )}
+      {done && <CheckIcon className="h-3.5 w-3.5 text-surface-0" />}
     </button>
   );
 }
@@ -237,13 +237,18 @@ function StepperButton({ symbol, label, onClick }: { symbol: "+" | "−"; label:
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-surface-2 text-sm text-ink-2 transition hover:border-line-strong hover:text-ink-1 active:scale-95"
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-surface-1 text-sm text-ink-2 transition hover:border-line-strong hover:bg-surface-3 hover:text-ink-1 active:scale-95"
     >
       {symbol}
     </button>
   );
 }
 
+// bg-surface-2 (ett hakk lysere enn EntryRow sin surface-1) — settraden skal
+// alternere tydelig fra øvelse-nivået rundt, i stedet for å dele bakgrunn med
+// den (tidligere: begge surface-1, så settet "forsvant" inn i øvelsen).
+// Ingen egen border her lenger — tone+avstand alene skiller radene, samme
+// prinsipp som Strong/Hevy bruker for tette sett-lister.
 function SetRowShell({
   index,
   done,
@@ -258,27 +263,29 @@ function SetRowShell({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={`flex flex-col gap-1.5 rounded-lg border p-2 transition ${
-        done ? "border-status-positive/50 bg-status-positive/8" : "border-line bg-surface-1"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <DoneToggle done={done} onToggle={onToggleDone} size="sm" label={done ? "Merk sett som ikke fullført" : "Merk sett som fullført"} />
-          <span className="text-2xs text-ink-4">Sett {index + 1}</span>
+    <SwipeableRow onSwipeLeft={onRemove} leftLabel="Slett">
+      <div
+        className={`flex flex-col gap-1.5 rounded-xl px-2 py-2 transition ${
+          done ? "bg-status-positive/10" : "bg-surface-2"
+        }`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <DoneToggle done={done} onToggle={onToggleDone} size="sm" label={done ? "Merk sett som ikke fullført" : "Merk sett som fullført"} />
+            <span className="text-xs font-semibold tabular-nums text-ink-4">Sett {index + 1}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Slett sett"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label="Slett sett"
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        {children}
       </div>
-      {children}
-    </div>
+    </SwipeableRow>
   );
 }
 
@@ -339,7 +346,7 @@ function StrengthSetRow({
             onChange={(e) => setKg(e.target.value)}
             onBlur={() => commit(kg, reps)}
             placeholder="Kg"
-            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
           />
           <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
         </div>
@@ -352,7 +359,7 @@ function StrengthSetRow({
             onChange={(e) => setReps(e.target.value)}
             onBlur={() => commit(kg, reps)}
             placeholder="Reps"
-            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 px-1 py-1.5 text-center text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
           />
           <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
         </div>
@@ -378,12 +385,6 @@ function CardioSetRow({
   const [kmt, setKmt] = useState(set.kmt?.toString() ?? "");
   const [distanceKm, setDistanceKm] = useState(set.distanceKm?.toString() ?? "");
   const [intensity, setIntensity] = useState<SetIntensity | "">(set.intensity ?? "");
-  // Fritekst-feltene committer på blur som ellers i appen, men cardio-settet
-  // har i tillegg en egen "Lagre"-knapp — man fyller ofte ut flere felt (min,
-  // km/t, distanse, intensitet) før man er ferdig, og en eksplisitt
-  // lagre-handling gir en tydelig bekreftelse i stedet for å stole på at
-  // blur alene fanget opp alt som ble tastet inn.
-  const [dirty, setDirty] = useState(false);
 
   function commit(nextMinutes: string, nextKmt: string, nextDistanceKm: string, nextIntensity: SetIntensity | "") {
     onUpdate({
@@ -392,7 +393,6 @@ function CardioSetRow({
       distanceKm: nextDistanceKm.trim() ? Number(nextDistanceKm) : null,
       intensity: nextIntensity || null,
     });
-    setDirty(false);
   }
 
   function adjustMinutes(delta: number) {
@@ -432,13 +432,10 @@ function CardioSetRow({
               type="number"
               inputMode="numeric"
               value={minutes}
-              onChange={(e) => {
-                setMinutes(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setMinutes(e.target.value)}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Min"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-8 text-left text-base font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong sm:text-lg"
             />
             {minutes.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">min</span>
@@ -454,13 +451,10 @@ function CardioSetRow({
               step="0.5"
               inputMode="decimal"
               value={kmt}
-              onChange={(e) => {
-                setKmt(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setKmt(e.target.value)}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Km/t"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-10 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-10 text-left text-base font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong sm:text-lg"
             />
             {kmt.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km/t</span>
@@ -476,13 +470,10 @@ function CardioSetRow({
               step="0.5"
               inputMode="decimal"
               value={distanceKm}
-              onChange={(e) => {
-                setDistanceKm(e.target.value);
-                setDirty(true);
-              }}
+              onChange={(e) => setDistanceKm(e.target.value)}
               onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
               placeholder="Distanse"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-2 py-1.5 pl-2 pr-8 text-left text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-8 text-left text-base font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong sm:text-lg"
             />
             {distanceKm.trim() && (
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km</span>
@@ -497,7 +488,7 @@ function CardioSetRow({
             setIntensity(next);
             commit(minutes, kmt, distanceKm, next);
           }}
-          className="w-full rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+          className="w-full rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         >
           <option value="">Intensitet...</option>
           {INTENSITY_OPTIONS.map((i) => (
@@ -507,15 +498,6 @@ function CardioSetRow({
           ))}
         </select>
       </div>
-      {dirty && (
-        <button
-          type="button"
-          onClick={() => commit(minutes, kmt, distanceKm, intensity)}
-          className="self-end rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
-        >
-          Lagre
-        </button>
-      )}
     </SetRowShell>
   );
 }
@@ -622,24 +604,44 @@ function EntryRow({
     />
   );
 
-  const containerClass = `rounded-xl border transition ${
-    entry.done ? "border-status-positive/50 bg-status-positive/8" : "border-line bg-surface-2"
+  // Venstre kant-stripe skiller to ulike konsepter fra hverandre: "aktiv nå"
+  // (utvidet, accent-privat — appens signal for "relevant nå") vs. "fullført"
+  // (status-positive, en sluttilstand som prioriteres visuelt over aktiv).
+  // Kategorifargen (styrke/cardio) er bevisst IKKE brukt her — den lever kun
+  // i ikon-chippen, slik at kant-stripen ikke blir tvetydig mellom "dette er
+  // cardio" og "dette jobber jeg med".
+  const containerClass = `rounded-xl border-l-[3px] border transition ${
+    entry.done
+      ? "border-l-status-positive border-status-positive/50 bg-status-positive/10"
+      : collapsed
+        ? "border-l-transparent border-line bg-surface-1"
+        : "border-l-accent-privat border-line-strong bg-surface-1"
   }`;
+
+  const CategoryIcon = CATEGORY_ICON[entry.category];
+  const categoryChip = (
+    <span
+      className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${CATEGORY_ACCENT[entry.category].replace("text-", "bg-")}/10`}
+    >
+      <CategoryIcon className={`h-3 w-3 ${CATEGORY_ACCENT[entry.category]}`} />
+    </span>
+  );
 
   if (collapsed) {
     return (
-      <li ref={setNodeRef} style={style} className={`${containerClass} p-2.5`}>
+      <li ref={setNodeRef} style={style} className={`${containerClass} px-3 py-2.5`}>
         <div className="flex items-center gap-2">
           {gripHandle}
           {doneToggle}
-          <button type="button" onClick={() => setCollapsed(false)} aria-expanded={false} className="min-w-0 flex-1 text-left">
-            <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+          <button type="button" onClick={() => setCollapsed(false)} aria-expanded={false} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            {categoryChip}
+            <p className="truncate text-sm font-semibold text-ink-1">{entry.exerciseName}</p>
           </button>
           <button
             type="button"
             onClick={onRemoveEntry}
             aria-label="Fjern øvelse fra økten"
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -649,20 +651,21 @@ function EntryRow({
   }
 
   return (
-    <li ref={setNodeRef} style={style} className={`${containerClass} flex flex-col gap-2 p-2.5`}>
+    <li ref={setNodeRef} style={style} className={`${containerClass} flex flex-col gap-2 px-3 py-2.5`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {gripHandle}
           {doneToggle}
-          <button type="button" onClick={() => setCollapsed(true)} aria-expanded={true} className="min-w-0 flex-1 text-left">
-            <p className="truncate text-sm font-medium text-ink-1">{entry.exerciseName}</p>
+          <button type="button" onClick={() => setCollapsed(true)} aria-expanded={true} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+            {categoryChip}
+            <p className="truncate text-sm font-semibold text-ink-1">{entry.exerciseName}</p>
           </button>
         </div>
         <button
           type="button"
           onClick={onRemoveEntry}
           aria-label="Fjern øvelse fra økten"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -684,7 +687,7 @@ function EntryRow({
         </div>
       )}
       {entry.sets.length > 0 && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {entry.sets.map((s, i) =>
             entry.category === "cardio" ? (
               <CardioSetRow
@@ -725,7 +728,7 @@ function EntryRow({
               onChange={(e) => setMinutes(e.target.value)}
               onBlur={commitEntry}
               placeholder="Minutter"
-              className="w-full rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              className="w-full rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
           )}
           <input
@@ -734,7 +737,7 @@ function EntryRow({
             onChange={(e) => setNotes(e.target.value)}
             onBlur={commitEntry}
             placeholder="Notat (valgfritt)"
-            className={`w-full rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong ${
+            className={`w-full rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong ${
               entry.category === "cardio" ? "col-span-2" : ""
             }`}
           />
@@ -970,6 +973,12 @@ function ExercisePicker({
               <li key={ex.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-2">
                 <button type="button" onClick={() => onPick(ex)} className="min-w-0 flex-1 text-left">
                   <div className="flex items-center gap-1.5">
+                    <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ${CATEGORY_ACCENT[ex.category].replace("text-", "bg-")}/10`}>
+                      {(() => {
+                        const Icon = CATEGORY_ICON[ex.category];
+                        return <Icon className={`h-3 w-3 ${CATEGORY_ACCENT[ex.category]}`} />;
+                      })()}
+                    </span>
                     <p className="truncate text-sm font-medium text-ink-1">{ex.name}</p>
                     <span className="shrink-0 text-2xs text-ink-4">{CATEGORY_LABEL[ex.category]}</span>
                   </div>
@@ -987,7 +996,7 @@ function ExercisePicker({
                   type="button"
                   onClick={() => onDeleteExercise(ex)}
                   aria-label="Slett øvelse"
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -1061,7 +1070,7 @@ function RoutineRow({
       <button
         type="button"
         onClick={onStart}
-        className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-emerald-500/85"
+        className="shrink-0 rounded-lg bg-accent-privat px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
       >
         Start
       </button>
@@ -1077,7 +1086,7 @@ function RoutineRow({
         type="button"
         onClick={onDelete}
         aria-label="Slett rutine"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
       >
         <X className="h-3.5 w-3.5" />
       </button>
@@ -1112,7 +1121,7 @@ function HistoryRow({
           type="button"
           onClick={onDelete}
           aria-label="Slett økt"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -1177,7 +1186,7 @@ function SessionSummaryDialog({ summary, onClose }: { summary: SessionSummary; o
         <button
           type="button"
           onClick={onClose}
-          className="mt-4 w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-surface-0 transition hover:bg-emerald-500/85"
+          className="mt-4 w-full rounded-lg bg-status-positive px-3 py-2 text-sm font-semibold text-surface-0 transition hover:bg-status-positive/85"
         >
           Lukk
         </button>
@@ -1669,7 +1678,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
           ) : (
             <>
               {activeSession ? (
-                <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3">
+                <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-lg font-semibold tabular-nums text-ink-1">{formatElapsed(elapsed)}</span>
                     <div className="flex items-center gap-3">
@@ -1685,7 +1694,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                       <button
                         type="button"
                         onClick={handleEndSession}
-                        className="rounded-lg bg-rose-500 px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-rose-500/85"
+                        className="rounded-lg bg-status-positive px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-positive/85"
                       >
                         Avslutt økt
                       </button>
@@ -1775,7 +1784,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                   <button
                     type="button"
                     onClick={handleStartSession}
-                    className="rounded-xl bg-emerald-500 px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-emerald-500/85"
+                    className="rounded-xl bg-accent-privat px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-accent-privat/85"
                   >
                     Start treningsøkt
                   </button>
