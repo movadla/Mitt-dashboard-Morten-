@@ -524,6 +524,7 @@ function EntryRow({
   entry,
   lastEntry,
   history,
+  startExpanded = false,
   onAddSet,
   onUpdateSet,
   onToggleSetDone,
@@ -535,6 +536,7 @@ function EntryRow({
   entry: WorkoutEntry;
   lastEntry: WorkoutEntry | null;
   history: ExerciseHistoryPoint[];
+  startExpanded?: boolean;
   onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity }) => void;
   onUpdateSet: (
     setId: string,
@@ -560,8 +562,10 @@ function EntryRow({
   // Lukket (sammenslått) rad viser KUN øvelsesnavnet — man drilles ned igjen
   // ved å trykke raden. Starter kollapset (i motsetning til før) slik at en
   // økt med mange øvelser forblir oversiktlig med det samme man legger dem
-  // til, i stedet for at man må lukke hver og én manuelt.
-  const [collapsed, setCollapsed] = useState(true);
+  // til, i stedet for at man må lukke hver og én manuelt — MED unntak av
+  // øvelsen man akkurat la til (startExpanded), som skal være klar for
+  // sett-registrering med det samme uten en ekstra åpne-handling.
+  const [collapsed, setCollapsed] = useState(!startExpanded);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
   });
@@ -1216,6 +1220,11 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   const exercises = exercisesData?.exercises ?? EMPTY_EXERCISES;
   const routines = routinesData?.routines ?? EMPTY_ROUTINES;
   const [showPicker, setShowPicker] = useState(false);
+  // Id-en til den sist tilførte øvelsen — sendt ned til EntryRow slik at
+  // akkurat DEN raden monteres utvidet (heller enn appens vanlige
+  // "starter kollapset"-regel), så man kan registrere sett med det samme
+  // uten å måtte åpne raden man nettopp la til.
+  const [justAddedEntryId, setJustAddedEntryId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
@@ -1346,6 +1355,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
 
   async function handleAddEntry(exercise: Exercise) {
     if (!activeSession) return;
+    const existingIds = new Set(activeSession.entries.map((e) => e.id));
     try {
       const res = await fetch(`/api/workouts/${activeSession.id}/entries`, {
         method: "POST",
@@ -1356,6 +1366,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
       vibrate(8);
       const updated: WorkoutSession = await res.json();
       mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+      setJustAddedEntryId(updated.entries.find((e) => !existingIds.has(e.id))?.id ?? null);
       // Lukk øvelsesvelgeren igjen etter valg/opprettelse — skjermen går
       // tilbake til kun "+ Legg til øvelse", i stedet for at søk/opprett-
       // panelet blir stående åpent (samme for begge kall-veiene, siden
@@ -1725,6 +1736,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                               entry={entry}
                               lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
                               history={exerciseHistory(entry.exerciseId, sessions, activeSession.id)}
+                              startExpanded={entry.id === justAddedEntryId}
                               onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
                               onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
                               onToggleSetDone={(setId, done) => handleToggleSetDone(entry.id, setId, done)}
@@ -1755,15 +1767,6 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                       className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
                     >
                       <span className="text-base leading-none">+</span> Legg til øvelse
-                    </button>
-                  )}
-                  {activeSession.entries.length > 3 && (
-                    <button
-                      type="button"
-                      onClick={handleEndSession}
-                      className="rounded-lg bg-rose-500 px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-rose-500/85"
-                    >
-                      Avslutt økt
                     </button>
                   )}
                 </div>
