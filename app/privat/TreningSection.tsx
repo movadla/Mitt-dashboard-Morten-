@@ -6,13 +6,11 @@ import { jsonFetcher } from "@/lib/swrFetcher";
 import {
   CardHeader,
   CheckIcon,
-  CollapsibleBody,
   ConfirmDialog,
   MutationError,
   SkeletonRows,
   useConfirmDelete,
   useMutationError,
-  usePersistedCollapse,
 } from "../CardShell";
 import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
@@ -1445,8 +1443,7 @@ async function seedRoutineEntries(sessionId: string, exercises: Routine["exercis
   return { session, failedCount };
 }
 
-export default function TreningSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Trening", !defaultExpanded);
+export default function TreningSection() {
   const { data: sessionsData, isLoading: loading, mutate: mutateSessions } = useSWR<{ sessions: WorkoutSession[] }>("/api/workouts", jsonFetcher);
   const { data: exercisesData, mutate: mutateExercises } = useSWR<{ exercises: Exercise[] }>("/api/exercises", jsonFetcher);
   const { data: routinesData, mutate: mutateRoutines } = useSWR<{ routines: Routine[] }>("/api/routines", jsonFetcher);
@@ -1494,7 +1491,6 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   const isLongSession = !!activeSession && elapsed > 3 * 60 * 60 * 1000;
 
   async function handleStartSession() {
-    if (collapsed) toggleCollapsed();
     try {
       const res = await fetch("/api/workouts", { method: "POST" });
       if (!res.ok) throw new Error("start failed");
@@ -1511,7 +1507,6 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   }
 
   async function handleStartFromRoutine(routine: Routine) {
-    if (collapsed) toggleCollapsed();
     try {
       const res = await fetch("/api/workouts", { method: "POST" });
       if (!res.ok) throw new Error("start failed");
@@ -1922,12 +1917,9 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
       <CardHeader
         title="Trening"
         subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Dumbbell}
         iconColorClass="text-emerald-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {loading ? (
@@ -2180,7 +2172,6 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDeleteSession.isOpen}
         message={

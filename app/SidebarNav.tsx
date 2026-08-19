@@ -163,7 +163,7 @@ export function SidebarNav({
     const nextIndex = (currentIndex + delta + ids.length) % ids.length;
     const nextId = ids[nextIndex];
     onSelect(nextId, { keepFocus: true });
-    refs[nextId]?.focus();
+    refs[nextId]?.focus({ preventScroll: true });
   }
 
   function handleRailKeyDown(e: React.KeyboardEvent) {
@@ -176,12 +176,12 @@ export function SidebarNav({
     } else if (e.key === "Home") {
       e.preventDefault();
       onSelect(items[0].id, { keepFocus: true });
-      railRefs.current[items[0].id]?.focus();
+      railRefs.current[items[0].id]?.focus({ preventScroll: true });
     } else if (e.key === "End") {
       e.preventDefault();
       const last = items[items.length - 1].id;
       onSelect(last, { keepFocus: true });
-      railRefs.current[last]?.focus();
+      railRefs.current[last]?.focus({ preventScroll: true });
     }
   }
 

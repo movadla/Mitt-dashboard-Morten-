@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -505,8 +505,7 @@ function SortableReminderRow({
   );
 }
 
-export default function RemindersSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser", !defaultExpanded);
+export default function RemindersSection() {
   // Delt SWR-nøkkel med TodaySummary — begge leser/skriver samme cache-oppføring
   // istedenfor å holde hver sin kopi og hente uavhengig av hverandre.
   const { data, isLoading: loading, mutate: mutateReminders } = useSWR<{ reminders: Reminder[] }>(
@@ -771,7 +770,6 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
   }
 
   function handleAddClick() {
-    if (collapsed) toggleCollapsed();
     openAddForm();
   }
 
@@ -780,15 +778,11 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny påminnelse"
         icon={Bell}
         iconColorClass="text-accent-privat"
-        alwaysShowSubtitle
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {showForm && (
@@ -988,7 +982,6 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette påminnelsen «${reminders.find((r) => r.id === confirmDelete.pending)?.text ?? ""}»?`}

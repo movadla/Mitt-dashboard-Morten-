@@ -5,13 +5,11 @@ import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
   CardHeader,
-  CollapsibleBody,
   ConfirmDialog,
   MutationError,
   SkeletonRows,
   useConfirmDelete,
   useMutationError,
-  usePersistedCollapse,
 } from "../CardShell";
 import { formatDateDMY, formatKr, formatUsd } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
@@ -682,8 +680,7 @@ function SalaryRow({
   );
 }
 
-export default function FinanceSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Økonomi", !defaultExpanded);
+export default function FinanceSection() {
   const { data: loansData, isLoading: loansLoading, mutate: mutateLoans } = useSWR<{ loans: Loan[] }>("/api/loans", jsonFetcher);
   const { data: savingsData, isLoading: savingsLoading, mutate: mutateSavings } = useSWR<{ savings: SavingsAccount[] }>("/api/savings", jsonFetcher);
   const { data: salaryData, isLoading: salaryLoading, mutate: mutateSalary } = useSWR<{ salary: SalaryEntry[] }>("/api/salary", jsonFetcher);
@@ -944,7 +941,6 @@ export default function FinanceSection({ defaultExpanded = false }: { defaultExp
   // Økonomi sitt eneste avvik fra ett-klikks-legg-til-mønsteret resten av
   // appen bruker.
   function handleAddClick() {
-    if (collapsed) toggleCollapsed();
     setShowLoanForm(true);
   }
 
@@ -953,14 +949,11 @@ export default function FinanceSection({ defaultExpanded = false }: { defaultExp
       <CardHeader
         title="Økonomi"
         subtitle={loans.length > 0 ? formatKr(totalRemaining) : undefined}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Nytt lån"
         icon={Wallet}
         iconColorClass="text-source-outlook"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-4">
           <MutationError message={mutationError.message} />
           {loading ? (
@@ -1107,7 +1100,6 @@ export default function FinanceSection({ defaultExpanded = false }: { defaultExp
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={(() => {

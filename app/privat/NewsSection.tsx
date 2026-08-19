@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CardHeader, SkeletonRows } from "../CardShell";
 import type { NewsItem } from "@/lib/news";
 import { timeAgo } from "@/lib/timeAgo";
 import { Newspaper } from "lucide-react";
@@ -63,8 +63,7 @@ function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boole
   );
 }
 
-export default function NewsSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nyheter", !defaultExpanded);
+export default function NewsSection() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
@@ -91,12 +90,9 @@ export default function NewsSection({ defaultExpanded = false }: { defaultExpand
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Newspaper}
         iconColorClass="text-orange-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           {loading ? (
             <SkeletonRows count={3} />
@@ -116,7 +112,6 @@ export default function NewsSection({ defaultExpanded = false }: { defaultExpand
           )}
           {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
         </div>
-      </CollapsibleBody>
     </div>
   );
 }

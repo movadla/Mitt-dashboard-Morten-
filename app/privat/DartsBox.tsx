@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
+import { CardHeader, SkeletonRows } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { Target } from "lucide-react";
 import type { DartsMatch, DartsStats } from "@/lib/darts";
@@ -33,8 +33,7 @@ function MatchRow({ match }: { match: DartsMatch }) {
   );
 }
 
-export default function DartsBox({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Darts", !defaultExpanded);
+export default function DartsBox() {
   const [stats, setStats] = useState<DartsStats | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,13 +55,10 @@ export default function DartsBox({ defaultExpanded = false }: { defaultExpanded?
       <CardHeader
         title="Darts"
         subtitle={stats ? `${stats.hitPct}% treff` : undefined}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Target}
         iconColorClass="text-sky-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
-        {loading ? (
+      {loading ? (
           <SkeletonRows count={1} className="h-16" />
         ) : (
           stats && (
@@ -88,7 +84,6 @@ export default function DartsBox({ defaultExpanded = false }: { defaultExpanded?
             </div>
           )
         )}
-      </CollapsibleBody>
     </div>
   );
 }

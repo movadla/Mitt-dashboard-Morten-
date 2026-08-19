@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
-import { CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
+import { CardHeader } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { localDateString, toOsloDateString } from "@/lib/payday";
 
@@ -232,14 +232,11 @@ export function SportSection({
   events,
   loading,
   fetchedAt,
-  defaultExpanded = false,
 }: {
   events: SportEvent[];
   loading: boolean;
   fetchedAt?: number | null;
-  defaultExpanded?: boolean;
 }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Sport", !defaultExpanded);
   const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
@@ -255,12 +252,9 @@ export function SportSection({
       <CardHeader
         title="Sport"
         subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Trophy}
         iconColorClass="text-accent"
       />
-      <CollapsibleBody collapsed={collapsed}>
         {loading && !events.length ? (
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((n) => (
@@ -302,7 +296,6 @@ export function SportSection({
             {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
           </div>
         )}
-      </CollapsibleBody>
     </div>
   );
 }
@@ -365,14 +358,11 @@ export function WorldCupSection({
   events,
   loading = false,
   fetchedAt,
-  defaultExpanded = false,
 }: {
   events: SportEvent[];
   loading?: boolean;
   fetchedAt?: number | null;
-  defaultExpanded?: boolean;
 }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("VM 2026", !defaultExpanded);
   const [showMore, setShowMore] = useState(false);
   if (!events.length && !loading) return null;
 
@@ -395,8 +385,7 @@ export function WorldCupSection({
 
   return (
     <div className="p-4">
-      <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={Trophy} />
-      <CollapsibleBody collapsed={collapsed}>
+      <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} icon={Trophy} />
         {loading && !events.length ? (
           <div className="flex flex-col gap-2">
             {[0, 1, 2].map((n) => (
@@ -435,7 +424,6 @@ export function WorldCupSection({
             {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
           </div>
         )}
-      </CollapsibleBody>
     </div>
   );
 }

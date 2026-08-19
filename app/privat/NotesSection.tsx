@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import type { Note } from "@/lib/notes";
 import { Pin, StickyNote, X } from "lucide-react";
 
@@ -256,8 +256,7 @@ function NoteRow({
   );
 }
 
-export default function NotesSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Notater", !defaultExpanded);
+export default function NotesSection() {
   const { data, isLoading: loading, mutate: mutateNotes } = useSWR<{ notes: Note[] }>("/api/notes", jsonFetcher);
   const notes = data?.notes ?? EMPTY_NOTES;
   const [showForm, setShowForm] = useState(false);
@@ -275,7 +274,6 @@ export default function NotesSection({ defaultExpanded = false }: { defaultExpan
   const visibleNotes = filtered.slice(0, visibleCount);
 
   function openAddForm() {
-    if (collapsed) toggleCollapsed();
     setShowForm(true);
   }
 
@@ -371,14 +369,11 @@ export default function NotesSection({ defaultExpanded = false }: { defaultExpan
       <CardHeader
         title="Notater"
         subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={openAddForm}
         addLabel="Nytt notat"
         icon={StickyNote}
         iconColorClass="text-amber-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           <input
@@ -425,7 +420,6 @@ export default function NotesSection({ defaultExpanded = false }: { defaultExpan
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={

@@ -561,8 +561,7 @@ function GrowthSection({
   );
 }
 
-export default function AlfredSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Alfred", !defaultExpanded);
+export default function AlfredSection() {
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -733,12 +732,9 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
       <CardHeader
         title="Alfred"
         subtitle={subtitle}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Bot}
         iconColorClass="text-status-action"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-3">
           <MutationError message={mutationError.message} />
           {loading ? (
@@ -782,7 +778,6 @@ export default function AlfredSection({ defaultExpanded = false }: { defaultExpa
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={(() => {

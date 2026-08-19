@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -184,8 +184,7 @@ function EventRow({
   );
 }
 
-export default function CalendarSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Privat kalender", !defaultExpanded);
+export default function CalendarSection() {
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: PrivatCalendarEvent[] }>(
     "/api/privat-calendar",
     jsonFetcher,
@@ -299,7 +298,6 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
   const visibleRest = rest.slice(0, visibleCount);
 
   function handleAddClick() {
-    if (collapsed) toggleCollapsed();
     setShowForm(true);
   }
 
@@ -308,17 +306,14 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
       <CardHeader
         title="Kalender"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny kalenderhendelse"
         icon={Calendar}
         iconColorClass="text-source-teams"
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
-          <MutationError message={mutationError.message} />
-          {showForm && (
+      <div className="flex flex-col gap-2">
+        <MutationError message={mutationError.message} />
+        {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
                 type="text"
@@ -448,7 +443,6 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

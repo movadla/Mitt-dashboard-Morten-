@@ -6,13 +6,11 @@ import { jsonFetcher } from "@/lib/swrFetcher";
 import {
   CardHeader,
   CheckIcon,
-  CollapsibleBody,
   ConfirmDialog,
   MutationError,
   SkeletonRows,
   useConfirmDelete,
   useMutationError,
-  usePersistedCollapse,
 } from "../CardShell";
 import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
 import type { QuickPick } from "@/lib/shoppingQuickPicks";
@@ -290,8 +288,7 @@ function QuickPickManageRow({
   );
 }
 
-export default function ShoppingListSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Handleliste", !defaultExpanded);
+export default function ShoppingListSection() {
   const { data: itemsData, isLoading: loading, mutate: mutateItems } = useSWR<{ items: ShoppingItem[] }>("/api/shopping", jsonFetcher);
   const { data: quickPicksData, mutate: mutateQuickPicks } = useSWR<{ quickPicks: QuickPick[] }>("/api/shopping/quick-picks", jsonFetcher);
   const items = itemsData?.items ?? EMPTY_ITEMS;
@@ -512,7 +509,6 @@ export default function ShoppingListSection({ defaultExpanded = false }: { defau
       : quickPicks.slice(0, VISIBLE_QUICK_PICKS);
 
   function handleAddClick() {
-    if (collapsed) toggleCollapsed();
     setShowForm(true);
   }
 
@@ -521,14 +517,11 @@ export default function ShoppingListSection({ defaultExpanded = false }: { defau
       <CardHeader
         title="Handleliste"
         subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny vare"
         icon={ShoppingCart}
         iconColorClass="text-cyan-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {quickPicks.length > 0 && (
@@ -735,7 +728,6 @@ export default function ShoppingListSection({ defaultExpanded = false }: { defau
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette «${items.find((i) => i.id === confirmDelete.pending)?.name ?? ""}» fra handlelisten?`}

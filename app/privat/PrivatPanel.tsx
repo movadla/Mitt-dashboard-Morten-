@@ -118,7 +118,7 @@ export default function PrivatPanel() {
       skipFocusMoveRef.current = false;
       return;
     }
-    paneRef.current?.focus();
+    paneRef.current?.focus({ preventScroll: true });
   }, [activeId]);
 
   function handleSelect(id: string, opts?: { keepFocus?: boolean }) {
@@ -132,38 +132,26 @@ export default function PrivatPanel() {
   // fra "fortsatt under lasting").
   const sectionNodes: Record<string, React.ReactNode> = {
     today: <TodaySummary />,
-    reminders: <RemindersSection defaultExpanded={activeId === "reminders"} />,
-    calendar: <CalendarSection defaultExpanded={activeId === "calendar"} />,
-    events: <EventsSection defaultExpanded={activeId === "events"} />,
-    notes: <NotesSection defaultExpanded={activeId === "notes"} />,
-    finance: <FinanceSection defaultExpanded={activeId === "finance"} />,
-    sport: (
-      <SportSection
-        events={sports}
-        loading={sportsLoading}
-        fetchedAt={sportsFetchedAt}
-        defaultExpanded={activeId === "sport"}
-      />
-    ),
+    reminders: <RemindersSection />,
+    calendar: <CalendarSection />,
+    events: <EventsSection />,
+    notes: <NotesSection />,
+    finance: <FinanceSection />,
+    sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />,
     worldcup:
       worldCup.length > 0 || worldCupLoading ? (
-        <WorldCupSection
-          events={worldCup}
-          loading={worldCupLoading}
-          fetchedAt={worldCupFetchedAt}
-          defaultExpanded={activeId === "worldcup"}
-        />
+        <WorldCupSection events={worldCup} loading={worldCupLoading} fetchedAt={worldCupFetchedAt} />
       ) : null,
-    trening: <TreningSection defaultExpanded={activeId === "trening"} />,
-    alfred: <AlfredSection defaultExpanded={activeId === "alfred"} />,
-    shopping: <ShoppingListSection defaultExpanded={activeId === "shopping"} />,
-    news: <NewsSection defaultExpanded={activeId === "news"} />,
+    trening: <TreningSection />,
+    alfred: <AlfredSection />,
+    shopping: <ShoppingListSection />,
+    news: <NewsSection />,
     fpl: fplLoading ? (
       <div className={`${CARD_SHELL} p-4`}>
         <SkeletonRows count={1} className="h-5" />
       </div>
     ) : fpl && fpl.active && fpl.gw?.deadline ? (
-      <FplBox fpl={fpl} defaultExpanded={activeId === "fpl"} />
+      <FplBox fpl={fpl} />
     ) : null,
   };
 

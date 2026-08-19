@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { PartyPopper, X } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
@@ -216,8 +216,7 @@ function EventRow({
   );
 }
 
-export default function EventsSection({ defaultExpanded = false }: { defaultExpanded?: boolean } = {}) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser", !defaultExpanded);
+export default function EventsSection() {
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
@@ -332,7 +331,6 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
   ].sort((a, b) => a.occurrence.localeCompare(b.occurrence));
 
   function handleAddClick() {
-    if (collapsed) toggleCollapsed();
     setShowForm(true);
   }
 
@@ -343,16 +341,13 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={handleAddClick}
         addLabel="Ny hendelse"
         icon={PartyPopper}
         iconColorClass="text-accent-privat"
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
-          <MutationError message={mutationError.message} />
+      <div className="flex flex-col gap-2">
+        <MutationError message={mutationError.message} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
@@ -474,7 +469,6 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

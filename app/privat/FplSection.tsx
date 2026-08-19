@@ -5,7 +5,7 @@ import useSWR from "swr";
 import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
-import { CardHeader, CollapsibleBody, usePersistedCollapse } from "../CardShell";
+import { CardHeader } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { timeAgo } from "@/lib/timeAgo";
 import { Shirt } from "lucide-react";
@@ -523,8 +523,7 @@ function fplCountdownText(deadline: string): string {
   return `${pad(d)}:${pad(h)}:${pad(m)}`;
 }
 
-export function FplBox({ fpl, defaultExpanded = false }: { fpl: FplData; defaultExpanded?: boolean }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Fantasy", !defaultExpanded);
+export function FplBox({ fpl }: { fpl: FplData }) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -539,16 +538,11 @@ export function FplBox({ fpl, defaultExpanded = false }: { fpl: FplData; default
       <CardHeader
         title="Fantasy Premier League"
         subtitle={fplCountdownText(fpl.gw.deadline)}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Shirt}
         iconColorClass="text-lime-400"
-        alwaysShowSubtitle
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <FplHero fpl={fpl} />
-        {fpl.fetchedAt && <p className="mt-2 text-2xs text-ink-4">Oppdatert {timeAgo(fpl.fetchedAt)}</p>}
-      </CollapsibleBody>
+      <FplHero fpl={fpl} />
+      {fpl.fetchedAt && <p className="mt-2 text-2xs text-ink-4">Oppdatert {timeAgo(fpl.fetchedAt)}</p>}
     </div>
   );
 }
