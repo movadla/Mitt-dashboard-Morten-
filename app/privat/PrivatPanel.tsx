@@ -8,7 +8,6 @@ import { SportSection, WorldCupSection, type SportEvent } from "./SportSection";
 import RemindersSection from "./RemindersSection";
 import CalendarSection from "./CalendarSection";
 import TodaySummary from "./TodaySummary";
-import DartsBox from "./DartsBox";
 import FinanceSection from "./FinanceSection";
 import AlfredSection from "./AlfredSection";
 import ShoppingListSection from "./ShoppingListSection";
@@ -31,7 +30,6 @@ import {
   ShoppingCart,
   Newspaper,
   Shirt,
-  Target,
 } from "lucide-react";
 
 const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
@@ -49,7 +47,6 @@ const DEFAULT_NAV_ORDER = [
   "shopping",
   "news",
   "fpl",
-  "darts",
 ];
 
 // Ikon/farge per kategori — samme verdier som hver seksjon selv sender til
@@ -69,7 +66,6 @@ const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColor
   shopping: { label: "Handleliste", icon: ShoppingCart, iconColorClass: "text-cyan-400" },
   news: { label: "Nyheter", icon: Newspaper, iconColorClass: "text-white" },
   fpl: { label: "FPL", icon: Shirt, iconColorClass: "text-lime-400" },
-  darts: { label: "Darts", icon: Target, iconColorClass: "text-sky-400" },
 };
 
 export default function PrivatPanel() {
@@ -160,7 +156,6 @@ export default function PrivatPanel() {
     ) : fpl && fpl.active && fpl.gw?.deadline ? (
       <FplBox fpl={fpl} defaultExpanded={activeId === "fpl"} />
     ) : null,
-    darts: <DartsBox defaultExpanded={activeId === "darts"} />,
   };
 
   // "Skjult av forretningslogikk" (VM utenfor sesong, FPL inaktiv sesong) vs.
