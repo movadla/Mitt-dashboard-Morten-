@@ -164,45 +164,47 @@ function NoteAppendForm({ onCancel, onSave }: { onCancel: () => void; onSave: (e
   );
 }
 
-// Bare første linje vises som "header" i lista — man drilling ned (trykk raden)
-// for å se hele notatet, i stedet for at alt limes rett i lista. Fra utvidet
-// visning kan man redigere hele teksten, legge til mer tekst på slutten uten
-// å måtte skrive alt på nytt, eller pinne notatet til toppen av lista.
+// Ett klikk på raden går rett til redigering (samme mønster som
+// Kalender/Hendelser) — kun første linje vises lukket, og selve
+// redigeringsfeltet viser hele teksten, så det dekker "les hele notatet"-
+// behovet uten et eget mellomsteg. "+ Legg til tekst" er en sekundær snarvei
+// fra redigeringsvisningen for å slippe å skrive alt på nytt når man bare vil
+// føye på noe til slutt.
 function NoteRow({
   note,
-  expanded,
-  onToggle,
+  editing,
+  onStartEdit,
+  onCancelEdit,
   onRemove,
   onSaveEdit,
   onAppend,
   onTogglePin,
 }: {
   note: Note;
-  expanded: boolean;
-  onToggle: () => void;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
   onRemove: (note: Note) => void;
   onSaveEdit: (id: string, text: string) => Promise<boolean>;
   onAppend: (id: string, extra: string) => Promise<boolean>;
   onTogglePin: (note: Note) => void;
 }) {
-  const [mode, setMode] = useState<"view" | "edit" | "append">("view");
+  const [mode, setMode] = useState<"edit" | "append">("edit");
 
-  // Avledet i render (ikke useEffect) — reagerer på expanded-prop-endring uten
-  // en ekstra effekt-runde.
-  const [prevExpanded, setPrevExpanded] = useState(expanded);
-  if (expanded !== prevExpanded) {
-    setPrevExpanded(expanded);
-    if (!expanded) setMode("view");
+  // Avledet i render (ikke useEffect) — nullstiller til redigeringsmodus når
+  // raden lukkes, slik at neste åpning ikke havner midt i append-visningen.
+  const [prevEditing, setPrevEditing] = useState(editing);
+  if (editing !== prevEditing) {
+    setPrevEditing(editing);
+    if (!editing) setMode("edit");
   }
 
   return (
     <div className={`rounded-xl border px-3 py-2 ${note.pinned ? "border-amber-400/50 bg-amber-400/8" : "border-line bg-surface-2"}`}>
       <div className="flex items-start gap-2">
-        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
-          <p className={`text-sm font-medium text-ink-1 ${expanded ? "whitespace-pre-wrap" : "truncate"}`}>
-            {expanded ? note.text : firstLine(note.text)}
-          </p>
-          {!expanded && <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>}
+        <button type="button" onClick={onStartEdit} aria-expanded={editing} className="min-w-0 flex-1 text-left">
+          <p className="truncate text-sm font-medium text-ink-1">{firstLine(note.text)}</p>
+          <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>
         </button>
         <button
           type="button"
@@ -222,37 +224,29 @@ function NoteRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {expanded && mode === "view" && (
-        <div className="mt-1.5 flex items-center gap-3">
-          <p className="text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>
-          <button type="button" onClick={() => setMode("edit")} className="ml-auto text-xs font-medium text-accent-privat hover:text-accent-privat/80">
-            Rediger
-          </button>
-          <button type="button" onClick={() => setMode("append")} className="text-xs font-medium text-accent-privat hover:text-accent-privat/80">
-            + Legg til tekst
-          </button>
-        </div>
-      )}
-      {expanded && mode === "edit" && (
+      {editing && mode === "edit" && (
         <div className="mt-1.5">
           <NoteEditForm
             note={note}
-            onCancel={() => setMode("view")}
+            onCancel={onCancelEdit}
             onSave={async (text) => {
               const ok = await onSaveEdit(note.id, text);
-              if (ok) setMode("view");
+              if (ok) onCancelEdit();
               return ok;
             }}
           />
+          <button type="button" onClick={() => setMode("append")} className="mt-1.5 text-xs font-medium text-accent-privat hover:text-accent-privat/80">
+            + Legg til tekst i stedet
+          </button>
         </div>
       )}
-      {expanded && mode === "append" && (
+      {editing && mode === "append" && (
         <div className="mt-1.5">
           <NoteAppendForm
-            onCancel={() => setMode("view")}
+            onCancel={() => setMode("edit")}
             onSave={async (extra) => {
               const ok = await onAppend(note.id, extra);
-              if (ok) setMode("view");
+              if (ok) onCancelEdit();
               return ok;
             }}
           />
@@ -268,7 +262,7 @@ export default function NotesSection({ defaultExpanded = false }: { defaultExpan
   const notes = data?.notes ?? EMPTY_NOTES;
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(10);
   const confirmDelete = useConfirmDelete<Note>();
   const mutationError = useMutationError();
@@ -409,8 +403,9 @@ export default function NotesSection({ defaultExpanded = false }: { defaultExpan
                   <NoteRow
                     key={n.id}
                     note={n}
-                    expanded={expandedId === n.id}
-                    onToggle={() => setExpandedId((v) => (v === n.id ? null : n.id))}
+                    editing={editingId === n.id}
+                    onStartEdit={() => setEditingId(n.id)}
+                    onCancelEdit={() => setEditingId(null)}
                     onRemove={confirmDelete.request}
                     onSaveEdit={handleSaveEdit}
                     onAppend={handleAppend}

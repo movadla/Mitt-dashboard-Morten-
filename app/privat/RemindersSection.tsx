@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "../CardShell";
@@ -9,7 +9,7 @@ import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { Recurrence, Reminder, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
-import { localDateString } from "@/lib/payday";
+import { localDateString, relativeDayLabel } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
 import { Bell, GripVertical, X } from "lucide-react";
@@ -521,6 +521,7 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
   // for "Nylig fullført" ikke trenger sekund-presisjon.
   const [now, setNow] = useState(() => Date.now());
   const [showForm, setShowForm] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [text, setText] = useState("");
   const [dueDate, setDueDate] = useState(localDateString());
   const [dueTime, setDueTime] = useState("");
@@ -560,7 +561,7 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
       const created: Reminder = await res.json();
       if (notes.trim()) {
         const ok = await addComment("reminder", created.id, notes.trim());
-        if (!ok) mutationError.show("Påminnelsen ble lagret, men notatet kunne ikke lagres.");
+        if (!ok) mutationError.show("Påminnelsen ble lagret, men kommentaren kunne ikke lagres.");
       }
       mutateReminders(
         (current) => current && { reminders: [...current.reminders, created].sort(sortReminders) },
@@ -765,6 +766,7 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
     setDueDate(localDateString());
     setDueTime("");
     setNotes("");
+    setShowMoreOptions(false);
     setShowForm(true);
   }
 
@@ -802,38 +804,50 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
                 placeholder="Ny påminnelse..."
                 className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-                />
-                <input
-                  type="time"
-                  value={dueTime}
-                  onChange={(e) => setDueTime(e.target.value)}
-                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-                />
-                <select
-                  value={recurrence}
-                  onChange={(e) => setRecurrence(e.target.value as Recurrence)}
-                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+              {showMoreOptions ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                    />
+                    <input
+                      type="time"
+                      value={dueTime}
+                      onChange={(e) => setDueTime(e.target.value)}
+                      className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                    />
+                    <select
+                      value={recurrence}
+                      onChange={(e) => setRecurrence(e.target.value as Recurrence)}
+                      className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                    >
+                      {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
+                        <option key={r} value={r}>
+                          {RECURRENCE_LABEL[r]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Kommentar (valgfritt)..."
+                    className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                  />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowMoreOptions(true)}
+                  className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
                 >
-                  {(Object.keys(RECURRENCE_LABEL) as Recurrence[]).map((r) => (
-                    <option key={r} value={r}>
-                      {RECURRENCE_LABEL[r]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                placeholder="Notat (valgfritt)..."
-                className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-              />
+                  + Flere valg (dato, tid, gjentakelse, notat)
+                </button>
+              )}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -892,27 +906,39 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
             <>
               {showAll && (
                 <ul className="mt-1 flex flex-col gap-1.5">
-                  {rest.map((r) => (
-                    <ReminderRow
-                      key={r.id}
-                      reminder={r}
-                      editing={editingId === r.id}
-                      onToggle={handleToggle}
-                      onRemove={confirmDelete.request}
-                      onStartEdit={setEditingId}
-                      onCancelEdit={() => setEditingId(null)}
-                      onSaveEdit={handleSaveEdit}
-                      comments={comments[commentKey("reminder", r.id)] ?? []}
-                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
-                      onDeleteComment={(commentId, preview) =>
-                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
-                      }
-                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
-                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
-                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
-                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
-                    />
-                  ))}
+                  {rest.map((r, i) => {
+                    const prevDate = i > 0 ? rest[i - 1].dueDate : null;
+                    const showHeader = r.dueDate !== prevDate;
+                    return (
+                      <Fragment key={r.id}>
+                        {showHeader && r.dueDate && (
+                          <li className="mt-2 first:mt-0">
+                            <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                              {relativeDayLabel(r.dueDate, today)}
+                            </p>
+                          </li>
+                        )}
+                        <ReminderRow
+                          reminder={r}
+                          editing={editingId === r.id}
+                          onToggle={handleToggle}
+                          onRemove={confirmDelete.request}
+                          onStartEdit={setEditingId}
+                          onCancelEdit={() => setEditingId(null)}
+                          onSaveEdit={handleSaveEdit}
+                          comments={comments[commentKey("reminder", r.id)] ?? []}
+                          onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                          onDeleteComment={(commentId, preview) =>
+                            confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                          }
+                          onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                          onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                          onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                          onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
+                        />
+                      </Fragment>
+                    );
+                  })}
                 </ul>
               )}
               <button
@@ -974,7 +1000,7 @@ export default function RemindersSection({ defaultExpanded = false }: { defaultE
       />
       <ConfirmDialog
         open={confirmCommentDelete.isOpen}
-        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        message={confirmCommentDelete.pending ? `Slette kommentaren «${confirmCommentDelete.pending.preview}»?` : ""}
         onCancel={confirmCommentDelete.cancel}
         onConfirm={() => {
           const pending = confirmCommentDelete.pending;

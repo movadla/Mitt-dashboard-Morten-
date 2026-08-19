@@ -33,8 +33,8 @@ export function CommentBadge({
         type="button"
         onClick={onClick}
         aria-expanded={open}
-        aria-label="Legg til notat"
-        title="Legg til notat"
+        aria-label="Legg til kommentar"
+        title="Legg til kommentar"
         className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-ink-2"
       >
         <MessageSquare className="h-3.5 w-3.5" />
@@ -48,7 +48,7 @@ export function CommentBadge({
       aria-expanded={open}
       className="inline-flex items-center rounded-full bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 transition hover:bg-surface-3/70"
     >
-      {`Notat (${count})`}
+      {`Kommentar (${count})`}
     </button>
   );
 }

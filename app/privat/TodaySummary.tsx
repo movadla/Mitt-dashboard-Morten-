@@ -31,6 +31,7 @@ import {
   Shirt,
   PartyPopper,
   ChevronLeft,
+  ChevronRight,
   ChevronDown,
   Bot,
 } from "lucide-react";
@@ -245,6 +246,7 @@ export default function TodaySummary() {
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
   const [addingReminder, setAddingReminder] = useState(false);
   const [newReminderText, setNewReminderText] = useState("");
+  const [newReminderTime, setNewReminderTime] = useState("");
   const [submittingReminder, setSubmittingReminder] = useState(false);
   // Delt med Påminnelser-kortet/JobbRemindersSection via lib/justToggled.ts
   // (se feedback_checkoff-visible-feedback-memory) — holder en nettopp
@@ -367,13 +369,14 @@ export default function TodaySummary() {
       const res = await fetch("/api/reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, dueDate: viewedDate }),
+        body: JSON.stringify({ text, dueDate: viewedDate, dueTime: newReminderTime || undefined }),
       });
       if (!res.ok) throw new Error("add reminder failed");
       const created: Reminder = await res.json();
       mutateReminders((current) => current && { reminders: [...current.reminders, created] }, { revalidate: false });
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       setNewReminderText("");
+      setNewReminderTime("");
       setAddingReminder(false);
     } catch {
       mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
@@ -458,8 +461,24 @@ export default function TodaySummary() {
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={goBackward}
+            aria-label="Forrige dag"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-2 hover:text-ink-2"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
           <h2 className="truncate text-sm font-semibold text-ink-1">{weekdayDateLabel(viewedDate)}</h2>
+          <button
+            type="button"
+            onClick={goForward}
+            aria-label="Neste dag"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-2 hover:text-ink-2"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
           {!isToday && (
             <button
               type="button"
@@ -569,6 +588,12 @@ export default function TodaySummary() {
                         }}
                         placeholder="Ny påminnelse..."
                         className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                      />
+                      <input
+                        type="time"
+                        value={newReminderTime}
+                        onChange={(e) => setNewReminderTime(e.target.value)}
+                        className="w-24 shrink-0 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
                       />
                       <button
                         type="button"

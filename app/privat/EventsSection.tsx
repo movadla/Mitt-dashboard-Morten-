@@ -177,11 +177,11 @@ function EventRow({
         type="button"
         onClick={() => row.event && onStartEdit(row.event.id)}
         disabled={!row.event}
-        className="min-w-0 flex-1 text-left"
+        className={`min-w-0 flex-1 text-left ${!row.event ? "cursor-default opacity-70" : ""}`}
       >
         <div className="flex items-center gap-2">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
-          <p className="min-w-0 truncate text-sm font-medium text-ink-1">{row.title}</p>
+          <p className={`min-w-0 truncate text-sm ${row.event ? "font-medium text-ink-1" : "text-ink-2"}`}>{row.title}</p>
         </div>
         <p className="mt-0.5 pl-3.5 text-2xs text-ink-4">
           {meta.label}
@@ -228,20 +228,10 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(5);
+  const [visibleCount, setVisibleCount] = useState(10);
   const confirmDelete = useConfirmDelete<string>();
   const mutationError = useMutationError();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
-
-  // Start alltid på 5 synlige hendelser når kortet åpnes på nytt — "+10 til"
-  // utvider gradvis i stedet for å vise hele lista med det samme. Avledet
-  // direkte i render (ikke useEffect) — det anbefalte React-mønsteret for å
-  // reagere på en prop/state-endring uten en ekstra effekt-runde.
-  const [prevCollapsed, setPrevCollapsed] = useState(collapsed);
-  if (collapsed !== prevCollapsed) {
-    setPrevCollapsed(collapsed);
-    if (collapsed) setVisibleCount(5);
-  }
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -260,7 +250,7 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
       mutateEvents((current) => current && { events: [...current.events, created] }, { revalidate: false });
       if (note.trim()) {
         const ok = await addComment("life-event", created.id, note.trim());
-        if (!ok) mutationError.show("Hendelsen ble lagret, men notatet kunne ikke lagres.");
+        if (!ok) mutationError.show("Hendelsen ble lagret, men kommentaren kunne ikke lagres.");
       }
       setTitle("");
       setDate("");
@@ -382,7 +372,7 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setShowForm(false);
                 }}
-                placeholder="Notat (valgfritt), f.eks. født i 1998"
+                placeholder="Kommentar (valgfritt), f.eks. født i 1998"
                 rows={2}
                 className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
@@ -478,7 +468,7 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
                   onClick={() => setVisibleCount((v) => v + 10)}
                   className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
                 >
-                  +10 til
+                  {`Mer (${rows.length - visibleCount})`}
                 </button>
               )}
             </>
@@ -496,7 +486,7 @@ export default function EventsSection({ defaultExpanded = false }: { defaultExpa
       />
       <ConfirmDialog
         open={confirmCommentDelete.isOpen}
-        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        message={confirmCommentDelete.pending ? `Slette kommentaren «${confirmCommentDelete.pending.preview}»?` : ""}
         onCancel={confirmCommentDelete.cancel}
         onConfirm={() => {
           const pending = confirmCommentDelete.pending;

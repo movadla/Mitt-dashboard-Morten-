@@ -193,7 +193,7 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
   const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(localDateString());
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [location, setLocation] = useState("");
@@ -230,7 +230,7 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
       const created: PrivatCalendarEvent = await res.json();
       mutateEvents((current) => current && { events: sortEvents([...current.events, created]) }, { revalidate: false });
       setTitle("");
-      setDate("");
+      setDate(localDateString());
       setStartTime("");
       setEndTime("");
       setLocation("");
@@ -460,7 +460,7 @@ export default function CalendarSection({ defaultExpanded = false }: { defaultEx
       />
       <ConfirmDialog
         open={confirmCommentDelete.isOpen}
-        message={confirmCommentDelete.pending ? `Slette notatet «${confirmCommentDelete.pending.preview}»?` : ""}
+        message={confirmCommentDelete.pending ? `Slette kommentaren «${confirmCommentDelete.pending.preview}»?` : ""}
         onCancel={confirmCommentDelete.cancel}
         onConfirm={() => {
           const pending = confirmCommentDelete.pending;
