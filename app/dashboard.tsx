@@ -93,7 +93,7 @@ export default function Dashboard({
 
   return (
     <>
-      <div className="mx-auto w-full max-w-2xl px-4 pb-24 md:max-w-5xl md:px-8">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-5xl md:px-8">
         <div
           className="sticky top-0 z-40 -mx-4 bg-surface-0/95 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] backdrop-blur supports-[backdrop-filter]:bg-surface-0/80 sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8"
         >

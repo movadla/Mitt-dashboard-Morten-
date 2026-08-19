@@ -64,7 +64,7 @@ export default function ChatWidget() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Lukk assistent" : "Åpne assistent"}
-        className="fixed bottom-5 right-5 z-40 grid h-14 w-14 place-items-center rounded-full border border-line-strong bg-accent text-white shadow-md shadow-black/15 transition hover:bg-accent/85"
+        className="fixed right-5 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-40 grid h-14 w-14 place-items-center rounded-full border border-line-strong bg-accent text-white shadow-md shadow-black/15 transition hover:bg-accent/85"
       >
         <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 4h16v11a1 1 0 01-1 1H9l-4 4V5a1 1 0 011-1z" />
@@ -72,7 +72,7 @@ export default function ChatWidget() {
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-40 flex h-[70vh] w-[min(92vw,380px)] flex-col rounded-2xl border border-line bg-surface-1 shadow-2xl shadow-black/25">
+        <div className="fixed right-5 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-40 flex h-[70vh] w-[min(92vw,380px)] flex-col rounded-2xl border border-line bg-surface-1 shadow-2xl shadow-black/25">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-semibold text-ink-1">Assistent</p>
             <div className="flex items-center gap-3">
