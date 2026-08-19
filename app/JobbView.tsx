@@ -38,11 +38,28 @@ import type { ReceivableRiskLevel } from "@/lib/receivableRisk";
 import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
-import { CalendarClock, CalendarDays, ChevronDown, ChevronUp, FileSignature, Receipt, ShieldCheck, X } from "lucide-react";
-import { CARD_SHELL, CardErrorBoundary, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, useConfirmDelete, useMutationError, usePersistedCollapse, usePersistedOrder, SortableSection } from "./CardShell";
+import {
+  Bell,
+  CalendarClock,
+  CalendarDays,
+  CalendarPlus,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  FileSignature,
+  FileText,
+  Home,
+  Newspaper,
+  Receipt,
+  Search,
+  ShieldCheck,
+  TrendingUp,
+  Users,
+  X,
+} from "lucide-react";
+import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
+import { SidebarNav, type NavItem } from "./SidebarNav";
 import { relativeDayLabel } from "@/lib/payday";
-import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import IncomeForecastSection from "./IncomeForecastSection";
@@ -52,6 +69,7 @@ import JobbEventsSection from "./JobbEventsSection";
 import JobbLeasingManagersCard from "./JobbLeasingManagersCard";
 import JobbTenantDirectoryCard from "./JobbTenantDirectoryCard";
 import JobbProcedureNotesCard from "./JobbProcedureNotesCard";
+import JobbCompanyNewsSection from "./JobbCompanyNewsSection";
 
 type Filter = Source | "all";
 type SfBucket = "alle" | "faktura" | "kreditnota" | "garanti" | "annet";
@@ -563,6 +581,7 @@ function TaskCard({
   relatedCases,
   today,
   nowMs,
+  highlighted,
 }: {
   task: Task;
   priority: Priority | undefined;
@@ -578,6 +597,7 @@ function TaskCard({
   relatedCases: Task[];
   today: string;
   nowMs: number;
+  highlighted?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
@@ -714,7 +734,7 @@ function TaskCard({
       id={`task-${task.id}`}
       className={`group rounded-2xl border border-line p-3 shadow-md shadow-black/15 transition ${
         needsAction ? "bg-surface-2 border-line-strong" : "bg-surface-1"
-      } ${isDone || dimmed ? "opacity-50" : ""}`}
+      } ${isDone || dimmed ? "opacity-50" : ""} ${highlighted ? "ring-2 ring-accent" : ""}`}
     >
       <div className="flex items-start gap-3">
         <button
@@ -1411,7 +1431,6 @@ function calendarDateBadge(dato: string, today: string): string {
 }
 
 function CalendarCard({ today }: { today: string }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kalender", true);
   const [visibleCount, setVisibleCount] = useState(6);
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, addNote, removeNote] = useCalendarNotes();
@@ -1419,16 +1438,13 @@ function CalendarCard({ today }: { today: string }) {
   const confirmDeleteNote = useConfirmDelete<{ meetingId: string; index: number; preview: string }>();
   const visible = CALENDAR_EVENTS.slice(0, visibleCount);
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-indigo-400/60 p-4`}>
+    <div className="border-t-2 border-t-indigo-400/60 p-4">
       <CardHeader
         title="Kalender"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{CALENDAR_EVENTS.length}</span> kommende</>}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={CalendarDays}
         iconColorClass="text-indigo-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         {CALENDAR_EVENTS.length === 0 ? (
           <p className="text-sm text-ink-3">Ingen møter i perioden.</p>
         ) : (
@@ -1559,7 +1575,6 @@ function CalendarCard({ today }: { today: string }) {
             )}
           </>
         )}
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDeleteNote.isOpen}
         message={confirmDeleteNote.pending ? `Slette notatet «${confirmDeleteNote.pending.preview}»?` : ""}
@@ -1646,7 +1661,6 @@ function oneMonthBack(todayISO: string): string {
 }
 
 function ContractsCard({ today }: { today: string }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Nye kontrakter", true);
   const [expanded, setExpanded] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
   const lastMonthCutoff = oneMonthBack(today);
@@ -1678,7 +1692,7 @@ function ContractsCard({ today }: { today: string }) {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-rose-400/60 p-4`}>
+    <div className="border-t-2 border-t-rose-400/60 p-4">
       <CardHeader
         title="Nye kontrakter"
         subtitle={
@@ -1687,12 +1701,9 @@ function ContractsCard({ today }: { today: string }) {
             {expanded ? `signert siden ${yearCutoff.slice(0, 4)}` : "signert siste måned"}
           </>
         }
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={FileSignature}
         iconColorClass="text-rose-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
         <MutationError message={mutationError.message} />
         <div className="-mx-1 overflow-x-auto">
           <table className="w-full min-w-[620px] text-sm">
@@ -1745,7 +1756,6 @@ function ContractsCard({ today }: { today: string }) {
             {expanded ? "Vis kun siste måned" : `Vis alle siden ${yearCutoff.slice(0, 4)} (${sinceYearStart.length - sinceLastMonth.length} flere)`}
           </button>
         )}
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
@@ -1857,19 +1867,15 @@ function ExpiryTenantRow({
 }
 
 function ExpiryListCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utløpsliste", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-orange-400/60 p-4`}>
+    <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
         title="Utløpsliste"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{EXPIRIES.length}</span> leietakere, neste 30 dager</>}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={CalendarClock}
         iconColorClass="text-orange-400"
       />
-      {!collapsed && (
         <>
           <div className="-mx-1 overflow-x-auto">
             <table className="w-full min-w-[600px] text-sm">
@@ -1908,7 +1914,6 @@ function ExpiryListCard() {
             {formatKr(EXPIRIES_TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet) {formatKr(EXPIRIES_REELL_EKSPONERING)}
           </p>
         </>
-      )}
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
@@ -1965,19 +1970,15 @@ function GuaranteeRow({
 }
 
 function GuaranteesCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Garantioversikt", true);
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-teal-400/60 p-4`}>
+    <div className="border-t-2 border-t-teal-400/60 p-4">
       <CardHeader
         title="Garantioversikt"
         subtitle={<><span className="font-medium tabular-nums text-ink-2">{GUARANTEE_TOTAL}</span> mangler garanti/depositum</>}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={ShieldCheck}
         iconColorClass="text-teal-400"
       />
-      {!collapsed && (
         <div className="-mx-1 overflow-x-auto">
           <table className="w-full min-w-[600px] text-sm">
             <thead>
@@ -2003,7 +2004,6 @@ function GuaranteesCard() {
             </tbody>
           </table>
         </div>
-      )}
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
@@ -2297,7 +2297,6 @@ function ReceivablesSortHeader({
 }
 
 function ReceivablesCard({ today }: { today: string }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Kundefordringer", true);
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
@@ -2415,7 +2414,7 @@ function ReceivablesCard({ today }: { today: string }) {
   const changes = snapshots.length >= 2 ? computeReceivableChanges(snapshots[snapshots.length - 2], snapshots[snapshots.length - 1]) : [];
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-fuchsia-400/60 p-4`}>
+    <div className="border-t-2 border-t-fuchsia-400/60 p-4">
       <CardHeader
         title="Kundefordringer"
         subtitle={
@@ -2425,12 +2424,9 @@ function ReceivablesCard({ today }: { today: string }) {
             {antallUnderInkasso > 0 ? ` · ${antallUnderInkasso} under inkasso` : ""}
           </>
         }
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Receipt}
         iconColorClass="text-fuchsia-400"
       />
-      {!collapsed && (
         <>
           <div className={`-mx-1 overflow-x-auto ${showAll ? "max-h-[480px] overflow-y-auto" : ""}`}>
             <table className="w-full min-w-[460px] table-fixed text-sm">
@@ -2530,7 +2526,6 @@ function ReceivablesCard({ today }: { today: string }) {
             </div>
           )}
         </>
-      )}
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
@@ -2554,8 +2549,10 @@ function ReceivablesCard({ today }: { today: string }) {
   );
 }
 
-const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v1";
+const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v2";
 const DEFAULT_JOBB_SECTION_ORDER = [
+  "today",
+  "oppgaver",
   "calendar",
   "contracts",
   "expiry",
@@ -2567,10 +2564,33 @@ const DEFAULT_JOBB_SECTION_ORDER = [
   "tenant-directory",
   "procedure-notes",
   "income-forecast",
+  "mustad-nyheter",
 ];
 
-// Rekkefølgen på boksene kan dras om (usePersistedOrder, samme mønster som Privat-fanen) —
+// Ikon/farge per kategori — samme verdier som hvert kort allerede sender til
+// sin egen CardHeader, gjenbrukt her uendret slik at nav-elementet matcher
+// seksjonens egen identitet (se app/privat/PrivatPanel.tsx for samme mønster).
+const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColorClass: string }> = {
+  today: { label: "I dag", icon: Home, iconColorClass: "text-accent" },
+  oppgaver: { label: "Oppgaver", icon: ClipboardList, iconColorClass: "text-accent" },
+  calendar: { label: "Kalender", icon: CalendarDays, iconColorClass: "text-indigo-400" },
+  contracts: { label: "Kontrakter", icon: FileSignature, iconColorClass: "text-rose-400" },
+  expiry: { label: "Utløp", icon: CalendarClock, iconColorClass: "text-orange-400" },
+  guarantees: { label: "Garantier", icon: ShieldCheck, iconColorClass: "text-teal-400" },
+  receivables: { label: "Kundefordringer", icon: Receipt, iconColorClass: "text-fuchsia-400" },
+  reminders: { label: "Påminnelser", icon: Bell, iconColorClass: "text-accent" },
+  events: { label: "Hendelser", icon: CalendarPlus, iconColorClass: "text-emerald-400" },
+  "leasing-managers": { label: "Utleieansvarlige", icon: Users, iconColorClass: "text-violet-400" },
+  "tenant-directory": { label: "Leietakersøk", icon: Search, iconColorClass: "text-sky-400" },
+  "procedure-notes": { label: "Prosedyrenotater", icon: FileText, iconColorClass: "text-amber-400" },
+  "income-forecast": { label: "Inntektsprognose", icon: TrendingUp, iconColorClass: "text-yellow-400" },
+  "mustad-nyheter": { label: "Mustad-nyheter", icon: Newspaper, iconColorClass: "text-cyan-400" },
+};
+
+// Rekkefølgen på fanene kan dras om (usePersistedOrder, samme mønster som Privat-fanen) —
 // derfor er dette en id → node-oppslagstabell istedenfor en hardkodet JSX-rekkefølge.
+// "today", "oppgaver" og "mustad-nyheter" bygges direkte i sectionNodes (de trenger
+// tilgang til lokal state/handlers i JobbView), resten er enkle, uavhengige kort.
 const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
   calendar: (today) => <CalendarCard today={today} />,
   contracts: (today) => <ContractsCard today={today} />,
@@ -2597,15 +2617,38 @@ export default function JobbView({
   const nowMs = Date.parse(now);
   const [order, setOrder] = usePersistedOrder(JOBB_SECTION_ORDER_KEY, DEFAULT_JOBB_SECTION_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
-  const reorderSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  function handleSectionDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = order.indexOf(active.id as string);
-    const newIndex = order.indexOf(over.id as string);
-    if (oldIndex === -1 || newIndex === -1) return;
-    setOrder(arrayMove(order, oldIndex, newIndex));
+  const [activeId, setActiveId] = useState("today");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const hasNavigatedRef = useRef(false);
+  const skipFocusMoveRef = useRef(false);
+  const highlightTimerRef = useRef<number | null>(null);
+
+  // Samme fokus-flytting ved fanebytte som Privat-fanen (se PrivatPanel.tsx) —
+  // hoppes over ved første montering og ved piltast-navigasjon.
+  useEffect(() => {
+    if (!hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      return;
+    }
+    if (skipFocusMoveRef.current) {
+      skipFocusMoveRef.current = false;
+      return;
+    }
+    paneRef.current?.focus({ preventScroll: true });
+  }, [activeId]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  function handleSelect(id: string, opts?: { keepFocus?: boolean }) {
+    skipFocusMoveRef.current = !!opts?.keepFocus;
+    setActiveId(id);
   }
+
   const [filter, setFilter] = useState<Filter>("all");
   const [sfBucket, setSfBucket] = useState<SfBucket>("faktura");
   const [outlookBucket, setOutlookBucket] = useState<OutlookBucket>("trenger-oppfolging");
@@ -2791,20 +2834,27 @@ export default function JobbView({
     );
   }
 
+  // "Oppgaver" er nå en egen fane (ikke lenger et anker på en lang side) —
+  // hopp dit betyr fanebytte + vent på at panelet rekker å montere før vi
+  // scroller/highlighter riktig oppgave (dobbel rAF, samme knep som brukes
+  // andre steder i appen for "vent til neste commit har rendret").
   function jumpToCase(id: string) {
     setExpandedId(id);
     setDetailsOpen(false);
+    setHighlightId(id);
+    handleSelect("oppgaver");
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = window.setTimeout(() => setHighlightId(null), 2500);
     requestAnimationFrame(() => {
-      const el = document.getElementById(`task-${id}`);
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(() => {
+        document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     });
   }
 
   function jumpToOppgaver(sourceFilter?: Filter) {
     if (sourceFilter) setFilter(sourceFilter);
-    requestAnimationFrame(() => {
-      document.getElementById("oppgaver")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    handleSelect("oppgaver");
   }
 
   const sfBucketCounts = useMemo(() => {
@@ -2882,10 +2932,10 @@ export default function JobbView({
   const showSfTabs = filter === "salesforce";
   const showOutlookTabs = filter === "outlook";
 
-  return (
-    <>
-      <header className="mb-7">
-        <div className="mt-3 flex justify-end">
+  const oppgaverNode = (
+    <div className="flex flex-col gap-3">
+      <div>
+        <div className="flex justify-end">
           <div className="relative">
             <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
@@ -2923,47 +2973,8 @@ export default function JobbView({
             </span>
           )}
         </div>
-      </header>
-
-      <div className="mb-6">
-        <CardErrorBoundary>
-          <JobbTodaySummary
-            tasks={tasks}
-            onJumpToAsana={() => jumpToOppgaver("asana")}
-            onJumpToTask={(id) => jumpToCase(id)}
-          />
-        </CardErrorBoundary>
       </div>
 
-      {/* Ekte data: kontrakter, kalender, garantier og kundefordringer · Testdata: ukesgraf.
-          Boksene er én flat, fritt sorterbar liste (samme mønster som Privat-fanen) —
-          "Endre rekkefølge"-knappen viser dra-håndtak til man trykker "Lagre" igjen. */}
-      <div className="mb-2 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setReorderMode((v) => !v)}
-          className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-        >
-          {reorderMode ? "Lagre" : "Endre rekkefølge"}
-        </button>
-      </div>
-      <DndContext sensors={reorderSensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
-        <SortableContext items={order} strategy={verticalListSortingStrategy}>
-          <div className="mb-6 flex flex-col gap-3">
-            {order.map((id) => {
-              const node = JOBB_SECTION_NODES[id]?.(today);
-              if (!node) return null;
-              return (
-                <SortableSection key={id} id={id} reorderMode={reorderMode}>
-                  {node}
-                </SortableSection>
-              );
-            })}
-          </div>
-        </SortableContext>
-      </DndContext>
-
-      <p id="oppgaver" className="mb-2 scroll-mt-4 text-2xs uppercase tracking-wider text-ink-3">Oppgaver</p>
       <div
         className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 leading-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
@@ -3094,6 +3105,7 @@ export default function JobbView({
               relatedCases={relatedCasesFor(task)}
               today={today}
               nowMs={nowMs}
+              highlighted={highlightId === task.id}
             />
           );
           return (
@@ -3158,6 +3170,65 @@ export default function JobbView({
         })()
       )}
       </div>
-    </>
+    </div>
+  );
+
+  const navItems: NavItem[] = order
+    .filter((id) => NAV_META[id] != null)
+    .map((id) => ({ id, ...NAV_META[id] }));
+
+  const sectionNodes: Record<string, React.ReactNode> = {
+    today: (
+      <JobbTodaySummary
+        tasks={tasks}
+        onJumpToAsana={() => jumpToOppgaver("asana")}
+        onJumpToTask={(id) => jumpToCase(id)}
+        onJumpToNews={() => handleSelect("mustad-nyheter")}
+      />
+    ),
+    oppgaver: oppgaverNode,
+    "mustad-nyheter": <JobbCompanyNewsSection />,
+    calendar: JOBB_SECTION_NODES.calendar(today),
+    contracts: JOBB_SECTION_NODES.contracts(today),
+    expiry: JOBB_SECTION_NODES.expiry(today),
+    guarantees: JOBB_SECTION_NODES.guarantees(today),
+    receivables: JOBB_SECTION_NODES.receivables(today),
+    reminders: JOBB_SECTION_NODES.reminders(today),
+    events: JOBB_SECTION_NODES.events(today),
+    "leasing-managers": JOBB_SECTION_NODES["leasing-managers"](today),
+    "tenant-directory": JOBB_SECTION_NODES["tenant-directory"](today),
+    "procedure-notes": JOBB_SECTION_NODES["procedure-notes"](today),
+    "income-forecast": JOBB_SECTION_NODES["income-forecast"](today),
+  };
+
+  // Sikkerhetsnett hvis lagret aktiv fane av en eller annen grunn ikke finnes
+  // lenger (samme mønster som PrivatPanel.tsx) — faller tilbake til "I dag".
+  if (activeId !== "today" && !navItems.some((item) => item.id === activeId)) {
+    setActiveId("today");
+  }
+
+  return (
+    <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+      <div className="flex flex-col gap-2 md:w-56 md:shrink-0">
+        <SidebarNav
+          items={navItems}
+          activeId={activeId}
+          onSelect={handleSelect}
+          ariaLabel="Jobb-seksjoner"
+          reorderMode={reorderMode}
+          onReorder={setOrder}
+        />
+        <button
+          type="button"
+          onClick={() => setReorderMode((v) => !v)}
+          className="hidden self-start rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1 md:block"
+        >
+          {reorderMode ? "Lagre" : "Endre rekkefølge"}
+        </button>
+      </div>
+      <div key={activeId} ref={paneRef} tabIndex={-1} className="tab-fade min-w-0 flex-1 outline-none">
+        <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
+      </div>
+    </div>
   );
 }

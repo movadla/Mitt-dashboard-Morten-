@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
 import type { ProcedureNote } from "@/lib/procedureNotes";
 import { FileText, X } from "lucide-react";
 
@@ -183,7 +183,6 @@ function NoteRow({
 }
 
 export default function JobbProcedureNotesCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Prosedyrenotater", true);
   const { data, isLoading: loading, mutate: mutateNotes } = useSWR<{ notes: ProcedureNote[] }>("/api/procedure-notes", jsonFetcher);
   const notes = data?.notes ?? EMPTY_NOTES;
   const [showForm, setShowForm] = useState(false);
@@ -263,19 +262,16 @@ export default function JobbProcedureNotesCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-amber-400/60 p-4`}>
+    <div className="border-t-2 border-t-amber-400/60 p-4">
       <CardHeader
         title="Prosedyrenotater"
         subtitle={`${notes.length} notater`}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={() => setShowForm(true)}
         addLabel="Nytt notat"
         icon={FileText}
         iconColorClass="text-amber-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           <input
             type="text"
@@ -319,7 +315,6 @@ export default function JobbProcedureNotesCard() {
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette notatet «${confirmDelete.pending?.title ?? ""}»?`}

@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, SkeletonRows } from "./CardShell";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { SkeletonRows } from "./CardShell";
 import type { JobbReminder } from "@/lib/jobbReminders";
 import type { JobbEvent } from "@/lib/jobbEvents";
 import type { Task } from "@/lib/tasks";
+import type { NewsItem } from "@/lib/companyNews";
 import { localDateString } from "@/lib/payday";
 import { CALENDAR_EVENTS, CONTRACTS, EXPIRIES, GUARANTEES, formatDateDMY, formatKr } from "@/lib/widgets";
-import { AlertTriangle, Bell, Calendar, ClipboardList, PartyPopper } from "lucide-react";
+import { AlertTriangle, Bell, Calendar, ClipboardList, Mail, Newspaper, PartyPopper } from "lucide-react";
 
 function CategoryLabel({
   icon: Icon,
@@ -45,14 +48,18 @@ export default function JobbTodaySummary({
   tasks,
   onJumpToAsana,
   onJumpToTask,
+  onJumpToNews,
 }: {
   tasks: Task[];
   onJumpToAsana: () => void;
   onJumpToTask: (id: string) => void;
+  onJumpToNews: () => void;
 }) {
   const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [events, setEvents] = useState<JobbEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const { data: newsData } = useSWR<{ news: NewsItem[] }>("/api/company-news", jsonFetcher);
+  const latestNews = (newsData?.news ?? []).slice(0, 3);
 
   const load = useCallback(() => {
     Promise.allSettled([
@@ -78,6 +85,9 @@ export default function JobbTodaySummary({
   const todaysEvents = events.filter((e) => e.date === today);
 
   const asanaWithDueDate = tasks.filter((t) => t.source === "asana" && t.dueAt);
+  const viktigsteMailene = tasks.filter(
+    (t) => t.source === "outlook" && t.outlookCategory === "trenger-oppfolging" && !t.cc,
+  );
 
   const oppfolging: OppfolgingItem[] = [];
   for (const c of CONTRACTS) {
@@ -110,7 +120,7 @@ export default function JobbTodaySummary({
   }
 
   return (
-    <div className={`${CARD_SHELL} p-4`}>
+    <div className="p-4">
       <h2 className="mb-3 text-sm font-semibold text-ink-1">I dag</h2>
       {loading ? (
         <SkeletonRows count={3} className="h-6" />
@@ -184,6 +194,53 @@ export default function JobbTodaySummary({
                 </ul>
               </div>
             )}
+
+            <div className="py-2 last:pb-0">
+              <CategoryLabel icon={Mail} colorClass="text-source-outlook" label="Viktigste mailene" count={viktigsteMailene.length || undefined} />
+              {viktigsteMailene.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {viktigsteMailene.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => onJumpToTask(t.id)}
+                        className="text-left text-sm text-ink-1 hover:underline"
+                      >
+                        {t.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">Ingen mailer som krever svar akkurat nå.</p>
+              )}
+            </div>
+
+            <div className="py-2 last:pb-0">
+              <div className="flex items-center justify-between">
+                <CategoryLabel icon={Newspaper} colorClass="text-cyan-400" label="Mustad-nyheter" />
+                <button type="button" onClick={onJumpToNews} className="text-2xs font-medium text-ink-3 hover:text-ink-1">
+                  Se alle →
+                </button>
+              </div>
+              {latestNews.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {latestNews.map((n) => (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={onJumpToNews}
+                        className="w-full truncate text-left text-sm text-ink-1 hover:underline"
+                      >
+                        {n.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-3">Ingen nyheter registrert ennå.</p>
+              )}
+            </div>
           </div>
 
           <button

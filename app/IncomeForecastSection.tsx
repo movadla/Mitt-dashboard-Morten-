@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, TrendingUp, XCircle } from "lucide-react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
   INVOICED,
@@ -568,7 +568,6 @@ function ManualLineRow({
 }
 
 export default function IncomeForecastSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose", true);
   const [manualLines, setManualLines] = useState<ManualIncomeLine[]>([]);
   const [loadingManual, setLoadingManual] = useState(true);
   const [includeLowConfidence, setIncludeLowConfidence] = useState(true);
@@ -641,7 +640,7 @@ export default function IncomeForecastSection() {
   const lastUpdated = oldestSnapshotDate();
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-yellow-400/60 p-4`}>
+    <div className="border-t-2 border-t-yellow-400/60 p-4">
       <CardHeader
         title="Inntektsprognose 2026"
         subtitle={
@@ -650,13 +649,10 @@ export default function IncomeForecastSection() {
             {lastUpdated ? ` · sist oppdatert ${formatDateDMY(lastUpdated)}` : " · ingen data ennå"}
           </>
         }
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={TrendingUp}
         iconColorClass="text-yellow-400"
       />
-      {!collapsed && (
-        <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5">
           <p className="-mt-2 text-2xs text-ink-4">
             Øyeblikksbilde — avstemt manuelt mot Visma NXT og Fazile, oppdateres ved forespørsel. Ikke en live-integrasjon.
           </p>
@@ -714,7 +710,6 @@ export default function IncomeForecastSection() {
             )}
           </div>
         </div>
-      )}
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={(() => {

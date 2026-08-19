@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CARD_SHELL, CardHeader, usePersistedCollapse } from "./CardShell";
+import { CardHeader } from "./CardShell";
 import { TENANTS, type Tenant } from "@/lib/tenants";
 import { Search } from "lucide-react";
 
@@ -125,7 +125,6 @@ function TenantRow({ tenant }: { tenant: Tenant }) {
 }
 
 export default function JobbTenantDirectoryCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Leietakersøk", true);
   const [query, setQuery] = useState("");
 
   const results = useMemo(() => {
@@ -134,43 +133,39 @@ export default function JobbTenantDirectoryCard() {
   }, [query]);
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-sky-400/60 p-4`}>
+    <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Leietakersøk"
         subtitle={`${TENANTS.length} leietakere lagt inn`}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         icon={Search}
         iconColorClass="text-sky-400"
       />
-      {!collapsed && (
-        <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Søk på navn, kundenummer, org.nummer eller bygg..."
-            className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          {!query.trim() ? (
-            <p className="text-sm text-ink-3">
-              Skriv for å søke. Foreløpig er kun et utvalg leietakere lagt inn ({TENANTS.length} av 531 i Salesforce) —
-              flere legges til etter behov.
-            </p>
-          ) : results.length === 0 ? (
-            <p className="text-sm text-ink-3">
-              Ingen treff blant de {TENANTS.length} leietakerne som er lagt inn foreløpig. Si ifra hvis denne leietakeren
-              bør legges til.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {results.map((t) => (
-                <TenantRow key={t.id} tenant={t} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      <div className="flex flex-col gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Søk på navn, kundenummer, org.nummer eller bygg..."
+          className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
+        {!query.trim() ? (
+          <p className="text-sm text-ink-3">
+            Skriv for å søke. Foreløpig er kun et utvalg leietakere lagt inn ({TENANTS.length} av 531 i Salesforce) —
+            flere legges til etter behov.
+          </p>
+        ) : results.length === 0 ? (
+          <p className="text-sm text-ink-3">
+            Ingen treff blant de {TENANTS.length} leietakerne som er lagt inn foreløpig. Si ifra hvis denne leietakeren
+            bør legges til.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {results.map((t) => (
+              <TenantRow key={t.id} tenant={t} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CARD_SHELL, CardHeader, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
 import type { JobbEvent } from "@/lib/jobbEvents";
 import { formatDMY, localDateString, relativeDayLabel } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
@@ -115,7 +115,6 @@ function EventRow({
 }
 
 export default function JobbEventsSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Hendelser (Jobb)", true);
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: JobbEvent[] }>("/api/jobb-events", jsonFetcher);
   const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
@@ -198,19 +197,16 @@ export default function JobbEventsSection() {
   const rows = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-emerald-400/60 p-4`}>
+    <div className="border-t-2 border-t-emerald-400/60 p-4">
       <CardHeader
         title="Hendelser"
         subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].date)}` : "Ingen"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={() => setShowForm(true)}
         addLabel="Ny hendelse"
         icon={CalendarPlus}
         iconColorClass="text-emerald-400"
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
@@ -290,7 +286,6 @@ export default function JobbEventsSection() {
             </ul>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette hendelsen «${events.find((e) => e.id === confirmDelete.pending)?.title ?? ""}»?`}

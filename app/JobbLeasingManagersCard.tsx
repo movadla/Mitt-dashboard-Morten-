@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete } from "./CardShell";
 import type { LeasingManager } from "@/lib/leasingManagers";
 import { Users } from "lucide-react";
 
@@ -131,7 +131,6 @@ function ManagerRow({
 }
 
 export default function JobbLeasingManagersCard() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Utleieansvarlige", true);
   const [managers, setManagers] = useState<LeasingManager[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -186,40 +185,36 @@ export default function JobbLeasingManagersCard() {
   }
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-violet-400/60 p-4`}>
+    <div className="border-t-2 border-t-violet-400/60 p-4">
       <CardHeader
         title="Utleieansvarlige"
         subtitle={`${managers.length} personer`}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={() => setShowForm(true)}
         addLabel="Ny utleieansvarlig"
         icon={Users}
         iconColorClass="text-violet-400"
       />
-      {!collapsed && (
-        <div className="flex flex-col gap-2">
-          {loading ? (
-            <SkeletonRows count={2} />
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {managers.map((m) => (
-                <ManagerRow
-                  key={m.id}
-                  manager={m}
-                  editing={editingId === m.id}
-                  onStartEdit={setEditingId}
-                  onCancelEdit={() => setEditingId(null)}
-                  onSaveEdit={handleSaveEdit}
-                  onRemove={confirmDelete.request}
-                />
-              ))}
-            </div>
-          )}
+      <div className="flex flex-col gap-2">
+        {loading ? (
+          <SkeletonRows count={2} />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {managers.map((m) => (
+              <ManagerRow
+                key={m.id}
+                manager={m}
+                editing={editingId === m.id}
+                onStartEdit={setEditingId}
+                onCancelEdit={() => setEditingId(null)}
+                onSaveEdit={handleSaveEdit}
+                onRemove={confirmDelete.request}
+              />
+            ))}
+          </div>
+        )}
 
-          {showForm && <ManagerForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
-        </div>
-      )}
+        {showForm && <ManagerForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
+      </div>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette ${confirmDelete.pending?.name ?? ""} fra utleieansvarlige?`}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CARD_SHELL, CardHeader, CheckIcon, CollapsibleBody, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError, usePersistedCollapse } from "./CardShell";
+import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
 import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -263,7 +263,6 @@ function SortableReminderRow({
 }
 
 export default function JobbRemindersSection() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Påminnelser (Jobb)", true);
   const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -434,12 +433,10 @@ export default function JobbRemindersSection() {
     .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
   return (
-    <div className={`${CARD_SHELL} border-t-2 border-t-accent/60 p-4`}>
+    <div className="border-t-2 border-t-accent/60 p-4">
       <CardHeader
         title="Påminnelser"
         subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
         onAdd={() => {
           setDueDate(localDateString());
           setShowForm(true);
@@ -449,8 +446,7 @@ export default function JobbRemindersSection() {
         iconColorClass="text-accent"
         alwaysShowSubtitle
       />
-      <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
@@ -583,7 +579,6 @@ export default function JobbRemindersSection() {
             </>
           )}
         </div>
-      </CollapsibleBody>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={`Slette påminnelsen «${reminders.find((r) => r.id === confirmDelete.pending)?.text ?? ""}»?`}
