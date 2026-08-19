@@ -69,7 +69,7 @@ export async function GET() {
     .filter(e => e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
 
-  const data = { events };
+  const data = { events, fetchedAt: Date.now() };
   cache = { data, expires: Date.now() + 6 * 60 * 60 * 1000 };
   return Response.json(data);
 }

@@ -98,20 +98,6 @@ function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolea
           {ev.competition}
           {ev.venue ? ` · ${ev.venue}` : ""}
         </p>
-        {ev.category === "darts" && (
-          <a
-            href="https://www.flashscore.com/darts/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-2xs font-semibold active:opacity-60"
-            style={{ color: col }}
-          >
-            Dagens kamper
-            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-2.5 w-2.5">
-              <path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7M7 1h4v4M11 1 5.5 6.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </a>
-        )}
       </div>
       {ev.time && <span className="shrink-0 text-xs font-bold tabular-nums" style={{ color: col }}>{ev.time}</span>}
     </div>
@@ -321,8 +307,8 @@ export function SportSection({
   );
 }
 
-function WorldCupDayCard({ date, matches, defaultOpen }: { date: string; matches: SportEvent[]; defaultOpen: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+function WorldCupDayCard({ date, matches }: { date: string; matches: SportEvent[] }) {
+  const [open, setOpen] = useState(false);
   const d = daysUntil(date);
   const dateObj = new Date(date + "T12:00:00");
   const isToday = d === 0;
@@ -377,14 +363,20 @@ function WorldCupDayCard({ date, matches, defaultOpen }: { date: string; matches
 
 export function WorldCupSection({
   events,
+  loading = false,
+  fetchedAt,
   defaultExpanded = false,
 }: {
   events: SportEvent[];
+  loading?: boolean;
+  fetchedAt?: number | null;
   defaultExpanded?: boolean;
 }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("VM 2026", !defaultExpanded);
-  if (!events.length) return null;
+  const [showMore, setShowMore] = useState(false);
+  if (!events.length && !loading) return null;
 
+  const today = todayStr();
   const byDay = new Map<string, SportEvent[]>();
   for (const e of events) {
     let displayDate = e.date;
@@ -398,16 +390,51 @@ export function WorldCupSection({
     byDay.set(displayDate, arr);
   }
   const days = [...byDay.keys()].sort();
+  const todayMatches = byDay.get(today) ?? [];
+  const restDays = days.filter((d) => d !== today);
 
   return (
     <div className="p-4">
       <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={Trophy} />
       <CollapsibleBody collapsed={collapsed}>
-        <div className="flex flex-col gap-2">
-          {days.map((day, i) => (
-            <WorldCupDayCard key={day} date={day} matches={byDay.get(day)!} defaultOpen={i === 0} />
-          ))}
-        </div>
+        {loading && !events.length ? (
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2].map((n) => (
+              <div key={n} className="h-12 animate-pulse rounded-xl bg-surface-2" />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {todayMatches.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-line bg-surface-2">
+                {todayMatches.map((ev, i) => (
+                  <SportEventRow key={ev.id} ev={ev} border={i > 0} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-3">Ingen kamper i dag.</p>
+            )}
+            {restDays.length > 0 && (
+              <>
+                {showMore && (
+                  <div className="mt-1 flex flex-col gap-2">
+                    {restDays.map((day) => (
+                      <WorldCupDayCard key={day} date={day} matches={byDay.get(day)!} />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowMore((v) => !v)}
+                  className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                >
+                  {showMore ? "Vis mindre" : "Mer (resten av turneringen)"}
+                </button>
+              </>
+            )}
+            {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
+          </div>
+        )}
       </CollapsibleBody>
     </div>
   );

@@ -74,11 +74,15 @@ export default function PrivatPanel() {
     "/api/sports",
     jsonFetcher,
   );
-  const { data: worldCupData, isLoading: worldCupLoading } = useSWR<{ events: SportEvent[] }>("/api/worldcup", jsonFetcher);
+  const { data: worldCupData, isLoading: worldCupLoading } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>(
+    "/api/worldcup",
+    jsonFetcher,
+  );
   const fpl = fplData ?? null;
   const sports = sportsData?.events ?? [];
   const sportsFetchedAt = sportsData?.fetchedAt ?? null;
   const worldCup = worldCupData?.events ?? [];
+  const worldCupFetchedAt = worldCupData?.fetchedAt ?? null;
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   const [activeId, setActiveId] = useState("today");
@@ -143,7 +147,12 @@ export default function PrivatPanel() {
     ),
     worldcup:
       worldCup.length > 0 || worldCupLoading ? (
-        <WorldCupSection events={worldCup} defaultExpanded={activeId === "worldcup"} />
+        <WorldCupSection
+          events={worldCup}
+          loading={worldCupLoading}
+          fetchedAt={worldCupFetchedAt}
+          defaultExpanded={activeId === "worldcup"}
+        />
       ) : null,
     trening: <TreningSection defaultExpanded={activeId === "trening"} />,
     alfred: <AlfredSection defaultExpanded={activeId === "alfred"} />,
