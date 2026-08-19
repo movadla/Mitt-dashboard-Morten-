@@ -11,6 +11,10 @@ export function formatDateDMY(iso: string): string {
   return `${d}.${m}.${y}`;
 }
 
+export function formatUsd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
 /**
  * EKTE DATA fra Outlook-kalenderen din (hentet 2026-08-14 via mcp__claude_ai_Microsoft_365__outlook_calendar_search,
  * vindu 2026-08-14 -> 2027-08-14, 12 måneder frem). Inkluderer både faktiske møter med andre deltakere og dine egne

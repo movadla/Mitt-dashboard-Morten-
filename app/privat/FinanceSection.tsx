@@ -13,22 +13,19 @@ import {
   useMutationError,
   usePersistedCollapse,
 } from "../CardShell";
-import { formatDateDMY, formatKr } from "@/lib/widgets";
+import { formatDateDMY, formatKr, formatUsd } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
 import type { SalaryEntry } from "@/lib/salary";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import SwipeableRow from "./SwipeableRow";
 import { Wallet, X } from "lucide-react";
 
 const EMPTY_LOANS: Loan[] = [];
 const EMPTY_SAVINGS: SavingsAccount[] = [];
 const EMPTY_SALARY: SalaryEntry[] = [];
-
-function formatUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
 
 function AiUsageBox({
   usage,
@@ -339,6 +336,7 @@ function LoanRow({
 
   return (
     <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(loan.id)} leftLabel="Slett">
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(loan.id)} aria-label="Rediger lån" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
@@ -376,6 +374,7 @@ function LoanRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -497,6 +496,7 @@ function SavingsRow({
 
   return (
     <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(account.id)} leftLabel="Slett">
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(account.id)} aria-label="Rediger sparekonto" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
@@ -517,6 +517,7 @@ function SavingsRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -654,6 +655,7 @@ function SalaryRow({
 
   return (
     <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(entry.id)} leftLabel="Slett">
       <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
         <button type="button" onClick={() => onStartEdit(entry.id)} aria-label="Rediger lønn" className="min-w-0 flex-1 text-left">
           <div className="flex items-baseline justify-between gap-2">
@@ -675,6 +677,7 @@ function SalaryRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -935,6 +938,16 @@ export default function FinanceSection({ defaultExpanded = false }: { defaultExp
   const visibleSavings = savings.slice(0, visibleSavingsCount);
   const visibleSalary = salary.slice(0, visibleSalaryCount);
 
+  // "+"-knappen åpner Lån-skjemaet — den vanligste av de tre underseksjonene
+  // (og den eneste som vises i kortets eget sammendrag) — i stedet for at man
+  // må åpne kortet manuelt og lete opp riktig underseksjon selv, som var
+  // Økonomi sitt eneste avvik fra ett-klikks-legg-til-mønsteret resten av
+  // appen bruker.
+  function handleAddClick() {
+    if (collapsed) toggleCollapsed();
+    setShowLoanForm(true);
+  }
+
   return (
     <div className="border-t-2 border-t-source-outlook/60 p-4">
       <CardHeader
@@ -942,6 +955,8 @@ export default function FinanceSection({ defaultExpanded = false }: { defaultExp
         subtitle={loans.length > 0 ? formatKr(totalRemaining) : undefined}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        onAdd={handleAddClick}
+        addLabel="Nytt lån"
         icon={Wallet}
         iconColorClass="text-source-outlook"
       />

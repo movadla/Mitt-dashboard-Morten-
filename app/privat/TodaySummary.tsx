@@ -14,6 +14,7 @@ import type { WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString, weekdayDateLabel } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
+import { formatUsd } from "@/lib/widgets";
 import { vibrate } from "@/lib/haptics";
 import {
   Sun,
@@ -35,10 +36,6 @@ import {
   ChevronDown,
   Bot,
 } from "lucide-react";
-
-function formatUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
 
 const MAX_OFFSET = 365;
 const SWIPE_THRESHOLD = 60;
