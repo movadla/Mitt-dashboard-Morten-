@@ -101,6 +101,53 @@ function useElapsed(startedAt: string | undefined): number {
   return elapsed;
 }
 
+const DEFAULT_REST_SECONDS = 90;
+const REST_ADJUST_SECONDS = 15;
+
+// Enkel nedtellings-hviletidtaker mellom sett — samme "Date.now() kan ikke
+// avledes i render"-mønster som useElapsed over. Kun aktiv når `endsAt` er
+// satt, så vi unngår en 1x/sekund re-render av hele seksjonen når man ikke
+// hviler mellom sett.
+function useRestTimer() {
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [remainingMs, setRemainingMs] = useState(0);
+
+  useEffect(() => {
+    if (endsAt === null) return;
+    function tick() {
+      const rest = endsAt! - Date.now();
+      if (rest <= 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setRemainingMs(0);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setEndsAt(null);
+        vibrate([15, 40, 15]);
+        return;
+      }
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRemainingMs(rest);
+    }
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [endsAt]);
+
+  return {
+    active: endsAt !== null,
+    remainingMs,
+    start: (seconds: number) => setEndsAt(Date.now() + seconds * 1000),
+    adjust: (deltaSeconds: number) => setEndsAt((prev) => (prev === null ? null : Math.max(Date.now(), prev + deltaSeconds * 1000))),
+    stop: () => setEndsAt(null),
+  };
+}
+
+function formatRest(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function formatSessionDate(iso: string): string {
   return new Date(iso).toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
@@ -119,21 +166,26 @@ function roundKg(kg: number): number {
   return Math.round(kg * 2) / 2;
 }
 
-function setSummary(entry: WorkoutEntry): string {
-  return entry.sets
-    .map((s) => {
-      const parts: string[] = [];
-      if (s.kg != null && s.reps != null) parts.push(`${formatKg(s.kg)}kg×${s.reps}`);
-      else if (s.kg != null) parts.push(`${formatKg(s.kg)}kg`);
-      else if (s.reps != null) parts.push(`${s.reps} reps`);
-      if (s.minutes != null) parts.push(`${s.minutes} min`);
-      if (s.distanceKm != null) parts.push(`${formatKg(s.distanceKm)} km`);
-      if (s.kmt != null) parts.push(`${s.kmt} km/t`);
-      if (s.intensity) parts.push(INTENSITY_LABEL[s.intensity]);
-      return parts.join(" · ") || null;
-    })
-    .filter(Boolean)
-    .join(", ");
+function formatSetLog(s: SetLog): string | null {
+  const parts: string[] = [];
+  if (s.kg != null && s.reps != null) parts.push(`${formatKg(s.kg)}kg×${s.reps}`);
+  else if (s.kg != null) parts.push(`${formatKg(s.kg)}kg`);
+  else if (s.reps != null) parts.push(`${s.reps} reps`);
+  if (s.minutes != null) parts.push(`${s.minutes} min`);
+  if (s.distanceKm != null) parts.push(`${formatKg(s.distanceKm)} km`);
+  if (s.kmt != null) parts.push(`${s.kmt} km/t`);
+  if (s.intensity) parts.push(INTENSITY_LABEL[s.intensity]);
+  return parts.join(" · ") || null;
+}
+
+// `limit` viser kun de siste N settene (mest relevante for en rask
+// oversikt) i stedet for en stadig voksende tekstvegg for øvelser med
+// mange sett historisk — prefikset "…" signaliserer at det finnes flere
+// foran de viste.
+function setSummary(entry: WorkoutEntry, limit?: number): string {
+  const formatted = entry.sets.map(formatSetLog).filter((s): s is string => !!s);
+  if (!limit || formatted.length <= limit) return formatted.join(", ");
+  return `…${formatted.slice(-limit).join(", ")}`;
 }
 
 // Finner siste avsluttede økt som inneholder samme øvelse — "sessions" er
@@ -257,12 +309,14 @@ function StepperButton({ symbol, label, onClick }: { symbol: "+" | "−"; label:
 function SetRowShell({
   index,
   done,
+  previousLabel,
   onToggleDone,
   onRemove,
   children,
 }: {
   index: number;
   done: boolean;
+  previousLabel?: string;
   onToggleDone: () => void;
   onRemove: () => void;
   children: React.ReactNode;
@@ -275,9 +329,13 @@ function SetRowShell({
         }`}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-1.5">
             <DoneToggle done={done} onToggle={onToggleDone} size="sm" label={done ? "Merk sett som ikke fullført" : "Merk sett som fullført"} />
-            <span className="text-xs font-semibold tabular-nums text-ink-4">Sett {index + 1}</span>
+            <span className="shrink-0 text-xs font-semibold tabular-nums text-ink-4">Sett {index + 1}</span>
+            {/* "Spøkelses"-verdi fra forrige gang samme sett-indeks ble logget
+                — gir progresjon sett-for-sett, ikke bare et sammendrag øverst
+                i øvelsen. */}
+            {previousLabel && <span className="truncate text-2xs text-ink-4">Sist: {previousLabel}</span>}
           </div>
           <button
             type="button"
@@ -297,12 +355,16 @@ function SetRowShell({
 function StrengthSetRow({
   set,
   index,
+  previousLabel,
+  bodyweight = false,
   onUpdate,
   onToggleDone,
   onRemove,
 }: {
   set: SetLog;
   index: number;
+  previousLabel?: string;
+  bodyweight?: boolean;
   onUpdate: (updates: { kg: number | null; reps: number | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
@@ -339,22 +401,24 @@ function StrengthSetRow({
   }
 
   return (
-    <SetRowShell index={index} done={!!set.done} onToggleDone={onToggleDone} onRemove={onRemove}>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="flex items-center gap-1">
-          <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
-          <input
-            type="number"
-            step="0.5"
-            inputMode="decimal"
-            value={kg}
-            onChange={(e) => setKg(e.target.value)}
-            onBlur={() => commit(kg, reps)}
-            placeholder="Kg"
-            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
-          />
-          <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
-        </div>
+    <SetRowShell index={index} done={!!set.done} previousLabel={previousLabel} onToggleDone={onToggleDone} onRemove={onRemove}>
+      <div className={`grid gap-2 ${bodyweight ? "grid-cols-1" : "grid-cols-2"}`}>
+        {!bodyweight && (
+          <div className="flex items-center gap-1">
+            <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={kg}
+              onChange={(e) => setKg(e.target.value)}
+              onBlur={() => commit(kg, reps)}
+              placeholder="Kg"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
+            />
+            <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
+          </div>
+        )}
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser reps" onClick={() => adjustReps(-1)} />
           <input
@@ -376,12 +440,14 @@ function StrengthSetRow({
 function CardioSetRow({
   set,
   index,
+  previousLabel,
   onUpdate,
   onToggleDone,
   onRemove,
 }: {
   set: SetLog;
   index: number;
+  previousLabel?: string;
   onUpdate: (updates: { minutes: number | null; kmt: number | null; distanceKm: number | null; intensity: SetIntensity | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
@@ -428,7 +494,7 @@ function CardioSetRow({
   }
 
   return (
-    <SetRowShell index={index} done={!!set.done} onToggleDone={onToggleDone} onRemove={onRemove}>
+    <SetRowShell index={index} done={!!set.done} previousLabel={previousLabel} onToggleDone={onToggleDone} onRemove={onRemove}>
       <div className="grid grid-cols-2 gap-2">
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser minutter" onClick={() => adjustMinutes(-1)} />
@@ -511,6 +577,7 @@ function EntryRow({
   entry,
   lastEntry,
   history,
+  bodyweight = false,
   startExpanded = false,
   onAddSet,
   onUpdateSet,
@@ -523,6 +590,7 @@ function EntryRow({
   entry: WorkoutEntry;
   lastEntry: WorkoutEntry | null;
   history: ExerciseHistoryPoint[];
+  bodyweight?: boolean;
   startExpanded?: boolean;
   onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity }) => void;
   onUpdateSet: (
@@ -676,7 +744,7 @@ function EntryRow({
         </button>
       </div>
       {lastEntry && setSummary(lastEntry) && (
-        <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry)}</p>
+        <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry, 3)}</p>
       )}
       {history.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -693,12 +761,18 @@ function EntryRow({
       )}
       {entry.sets.length > 0 && (
         <div className="flex flex-col gap-2">
-          {entry.sets.map((s, i) =>
-            entry.category === "cardio" ? (
+          {entry.sets.map((s, i) => {
+            // Samme sett-indeks forrige gang øvelsen ble logget — vist som en
+            // dempet "spøkelses"-verdi rett ved dette settet, i tillegg til
+            // den sammenslåtte "Sist:"-linjen over. Gir progresjon sett-for-
+            // sett i stedet for bare et aggregert sammendrag.
+            const previousLabel = lastEntry?.sets[i] ? formatSetLog(lastEntry.sets[i]) ?? undefined : undefined;
+            return entry.category === "cardio" ? (
               <CardioSetRow
                 key={s.id}
                 set={s}
                 index={i}
+                previousLabel={previousLabel}
                 onUpdate={(updates) => onUpdateSet(s.id, updates)}
                 onToggleDone={() => onToggleSetDone(s.id, !s.done)}
                 onRemove={() => onRemoveSet(s.id)}
@@ -708,12 +782,14 @@ function EntryRow({
                 key={s.id}
                 set={s}
                 index={i}
+                previousLabel={previousLabel}
+                bodyweight={bodyweight}
                 onUpdate={(updates) => onUpdateSet(s.id, updates)}
                 onToggleDone={() => onToggleSetDone(s.id, !s.done)}
                 onRemove={() => onRemoveSet(s.id)}
               />
-            ),
-          )}
+            );
+          })}
         </div>
       )}
       <button
@@ -789,18 +865,19 @@ function ExerciseEditForm({
 }: {
   exercise: Exercise;
   onCancel: () => void;
-  onSave: (updates: { name: string; description?: string; category: ExerciseCategory }) => Promise<boolean>;
+  onSave: (updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean }) => Promise<boolean>;
 }) {
   const [name, setName] = useState(exercise.name);
   const [description, setDescription] = useState(exercise.description ?? "");
   const [category, setCategory] = useState<ExerciseCategory>(exercise.category);
+  const [bodyweight, setBodyweight] = useState(!!exercise.bodyweight);
   const [submitting, setSubmitting] = useState(false);
 
   async function save() {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await onSave({ name: name.trim(), description: description.trim() || undefined, category });
+      await onSave({ name: name.trim(), description: description.trim() || undefined, category, bodyweight: category === "styrke" && bodyweight });
     } finally {
       setSubmitting(false);
     }
@@ -818,6 +895,17 @@ function ExerciseEditForm({
         className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
       />
       <CategoryToggle value={category} onChange={setCategory} />
+      {category === "styrke" && (
+        <label className="flex items-center gap-2 text-xs text-ink-2">
+          <input
+            type="checkbox"
+            checked={bodyweight}
+            onChange={(e) => setBodyweight(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-line accent-accent-privat"
+          />
+          Kroppsvekt (skjul kg-felt)
+        </label>
+      )}
       <textarea
         value={description}
         onChange={(e) => setDescription(e.target.value)}
@@ -854,8 +942,8 @@ function ExercisePicker({
   exercises: Exercise[];
   recentExercises: Exercise[];
   onPick: (exercise: Exercise) => void;
-  onCreateAndPick: (name: string, description: string, category: ExerciseCategory) => Promise<boolean>;
-  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory }) => Promise<boolean>;
+  onCreateAndPick: (name: string, description: string, category: ExerciseCategory, bodyweight: boolean) => Promise<boolean>;
+  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean }) => Promise<boolean>;
   onDeleteExercise: (exercise: Exercise) => void;
   onClose: () => void;
 }) {
@@ -864,6 +952,7 @@ function ExercisePicker({
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newCategory, setNewCategory] = useState<ExerciseCategory>("styrke");
+  const [newBodyweight, setNewBodyweight] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -873,11 +962,12 @@ function ExercisePicker({
     if (!newName.trim() || creating) return;
     setCreating(true);
     try {
-      const ok = await onCreateAndPick(newName.trim(), newDescription.trim(), newCategory);
+      const ok = await onCreateAndPick(newName.trim(), newDescription.trim(), newCategory, newCategory === "styrke" && newBodyweight);
       if (ok) {
         setNewName("");
         setNewDescription("");
         setNewCategory("styrke");
+        setNewBodyweight(false);
         setShowNewForm(false);
       }
     } finally {
@@ -921,6 +1011,17 @@ function ExercisePicker({
             className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
           />
           <CategoryToggle value={newCategory} onChange={setNewCategory} />
+          {newCategory === "styrke" && (
+            <label className="flex items-center gap-2 text-xs text-ink-2">
+              <input
+                type="checkbox"
+                checked={newBodyweight}
+                onChange={(e) => setNewBodyweight(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-line accent-accent-privat"
+              />
+              Kroppsvekt (skjul kg-felt)
+            </label>
+          )}
           <textarea
             value={newDescription}
             onChange={(e) => setNewDescription(e.target.value)}
@@ -1256,6 +1357,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   const pastSessions = sessions.filter((s) => s.endedAt);
   const visibleHistory = pastSessions.slice(0, visibleHistoryCount);
   const elapsed = useElapsed(activeSession?.startedAt);
+  const restTimer = useRestTimer();
   const recentExercises = recentlyUsedExercises(exercises, sessions);
   // Sannsynligvis glemt å avslutte økten hvis den har vart urimelig lenge —
   // vi har sett dette skje i praksis under testing av denne seksjonen.
@@ -1391,13 +1493,18 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
     }
   }
 
-  async function handleCreateExerciseAndAdd(name: string, description: string, category: ExerciseCategory): Promise<boolean> {
+  async function handleCreateExerciseAndAdd(
+    name: string,
+    description: string,
+    category: ExerciseCategory,
+    bodyweight: boolean,
+  ): Promise<boolean> {
     if (!name.trim()) return false;
     try {
       const res = await fetch("/api/exercises", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: description || undefined, category }),
+        body: JSON.stringify({ name, description: description || undefined, category, bodyweight }),
       });
       if (!res.ok) {
         mutationError.show("Kunne ikke opprette øvelsen. Prøv igjen.");
@@ -1493,6 +1600,11 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
   async function handleToggleSetDone(entryId: string, setId: string, done: boolean) {
     if (!activeSession) return;
     vibrate(done ? 10 : 6);
+    // Hviletidtaker starter automatisk når et sett markeres fullført — ikke
+    // når det angres. Ingen tidtaker ved siste sett i øvelsen er heller
+    // ingen god idé i seg selv, men vi lar det være opp til brukeren å
+    // hoppe over den i stedet for å prøve å gjette "er dette siste sett".
+    if (done) restTimer.start(DEFAULT_REST_SECONDS);
     try {
       const res = await fetch(`/api/workouts/${activeSession.id}/entries/${entryId}/sets/${setId}`, {
         method: "PATCH",
@@ -1502,6 +1614,14 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
       if (!res.ok) throw new Error("toggle set failed");
       const updated: WorkoutSession = await res.json();
       mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+      // Synker øvelsen sin egen "ferdig"-tilstand mot settene sine — uten
+      // dette måtte man trykke av øvelsen manuelt i tillegg til hvert sett,
+      // selv om alle settene allerede var fullført.
+      const updatedEntry = updated.entries.find((e) => e.id === entryId);
+      if (updatedEntry && updatedEntry.sets.length > 0) {
+        const allDone = updatedEntry.sets.every((s) => s.done);
+        if (allDone !== !!updatedEntry.done) handleToggleEntryDone(entryId, allDone);
+      }
     } catch {
       mutationError.show("Kunne ikke oppdatere settet. Prøv igjen.");
     }
@@ -1554,7 +1674,10 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
     }
   }
 
-  async function handleSaveExercise(id: string, updates: { name: string; description?: string; category: ExerciseCategory }): Promise<boolean> {
+  async function handleSaveExercise(
+    id: string,
+    updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean },
+  ): Promise<boolean> {
     try {
       const res = await fetch(`/api/exercises/${id}`, {
         method: "PATCH",
@@ -1673,7 +1796,6 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
         onToggleCollapse={toggleCollapsed}
         icon={Dumbbell}
         iconColorClass="text-emerald-400"
-        alwaysShowSubtitle={!!activeSession}
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
@@ -1709,6 +1831,22 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                     <p className="text-2xs text-status-warning">
                       Denne økten har vart lenge — glemte du å avslutte den?
                     </p>
+                  )}
+                  {restTimer.active && (
+                    <div className="flex items-center gap-2 rounded-lg border border-accent-privat/40 bg-accent-privat/10 px-3 py-2">
+                      <span className="text-sm font-semibold tabular-nums text-accent-privat">Hviler {formatRest(restTimer.remainingMs)}</span>
+                      <div className="ml-auto flex items-center gap-1">
+                        <StepperButton symbol="−" label="15 sekunder mindre hvile" onClick={() => restTimer.adjust(-REST_ADJUST_SECONDS)} />
+                        <StepperButton symbol="+" label="15 sekunder mer hvile" onClick={() => restTimer.adjust(REST_ADJUST_SECONDS)} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={restTimer.stop}
+                        className="text-2xs font-medium text-ink-4 hover:text-ink-2"
+                      >
+                        Hopp over
+                      </button>
+                    </div>
                   )}
                   {showSaveRoutineForm && (
                     <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 p-2">
@@ -1750,6 +1888,7 @@ export default function TreningSection({ defaultExpanded = false }: { defaultExp
                               entry={entry}
                               lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
                               history={exerciseHistory(entry.exerciseId, sessions, activeSession.id)}
+                              bodyweight={exercises.find((ex) => ex.id === entry.exerciseId)?.bodyweight}
                               startExpanded={entry.id === justAddedEntryId}
                               onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
                               onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}

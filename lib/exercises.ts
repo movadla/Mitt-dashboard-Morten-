@@ -13,6 +13,10 @@ export interface Exercise {
   name: string;
   description?: string;
   category: ExerciseCategory;
+  // Kun relevant for category "styrke" — skjuler kg-feltet i settregistrering
+  // for kroppsvektøvelser (f.eks. hang ups, planke) der et vekt-felt uansett
+  // ikke gir mening.
+  bodyweight?: boolean;
   createdAt: string;
 }
 
@@ -20,12 +24,14 @@ export interface NewExerciseInput {
   name: string;
   description?: string;
   category?: ExerciseCategory;
+  bodyweight?: boolean;
 }
 
 export interface ExerciseUpdateInput {
   name?: string;
   description?: string | null;
   category?: ExerciseCategory;
+  bodyweight?: boolean;
 }
 
 const HASH_KEY = "privat:exercises";
@@ -61,6 +67,7 @@ export async function addExercise(input: NewExerciseInput): Promise<Exercise> {
     name: input.name.trim(),
     description: input.description?.trim() || undefined,
     category: input.category ?? "styrke",
+    bodyweight: input.bodyweight || undefined,
     createdAt: new Date().toISOString(),
   };
   await hsetJSON(HASH_KEY, exercise.id, exercise);
@@ -79,6 +86,7 @@ export async function updateExercise(id: string, updates: ExerciseUpdateInput): 
     name,
     description: updates.description !== undefined ? (updates.description?.trim() || undefined) : current.description,
     category: updates.category !== undefined ? updates.category : current.category,
+    bodyweight: updates.bodyweight !== undefined ? updates.bodyweight || undefined : current.bodyweight,
   };
   await hsetJSON(HASH_KEY, id, next);
   return next;
