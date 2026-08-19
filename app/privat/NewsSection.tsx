@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { CardHeader, CollapsibleBody, SkeletonRows, usePersistedCollapse } from "../CardShell";
 import type { NewsItem } from "@/lib/news";
+import { timeAgo } from "@/lib/timeAgo";
 import { Newspaper } from "lucide-react";
+
+// Nyheter kan bli utdaterte gjennom en lang åpen dashboard-økt uten et
+// periodisk refetch — 15 minutter er hyppig nok for nyhetsoppdateringer uten
+// å tynge VG sin RSS-feed unødig.
+const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 function timeLabel(pubDate?: string): string {
   if (!pubDate) return "";
@@ -62,27 +68,33 @@ export default function NewsSection({ defaultExpanded = false }: { defaultExpand
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/news")
       .then((r) => r.json())
-      .then((d) => setItems((d.items ?? []) as NewsItem[]))
+      .then((d) => {
+        setItems((d.items ?? []) as NewsItem[]);
+        setFetchedAt(Date.now());
+      })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     load();
+    const id = setInterval(load, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
   }, [load]);
 
   return (
-    <div className="border-t-2 border-t-white/60 p-4">
+    <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
         title="Nyheter"
         subtitle={items.length > 0 ? items[0].title : "VG.no"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Newspaper}
-        iconColorClass="text-white"
+        iconColorClass="text-orange-400"
       />
       <CollapsibleBody collapsed={collapsed}>
         <div className="flex flex-col gap-2">
@@ -102,6 +114,7 @@ export default function NewsSection({ defaultExpanded = false }: { defaultExpand
               ))}
             </ul>
           )}
+          {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
         </div>
       </CollapsibleBody>
     </div>

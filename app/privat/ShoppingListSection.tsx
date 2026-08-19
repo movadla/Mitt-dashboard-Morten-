@@ -724,7 +724,11 @@ export default function ShoppingListSection({ defaultExpanded = false }: { defau
                 >
                   {showDone ? "Vis mindre" : `Kjøpt (${done.length})`}
                 </button>
-                <button type="button" onClick={() => setConfirmClearOpen(true)} className="text-left text-xs font-medium text-ink-4 hover:text-ink-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmClearOpen(true)}
+                  className="ml-auto text-left text-2xs font-medium text-ink-4 hover:text-ink-2"
+                >
                   Tøm kjøpte
                 </button>
               </div>
