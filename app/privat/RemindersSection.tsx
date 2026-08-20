@@ -9,7 +9,7 @@ import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { Recurrence, Reminder, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
-import { localDateString, relativeDayLabel } from "@/lib/payday";
+import { addDaysIso, localDateString, relativeDayLabel } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
 import { Bell, GripVertical, X } from "lucide-react";
@@ -706,47 +706,74 @@ export default function RemindersSection() {
     confirmSubtaskDelete.request({ reminderId: reminder.id, subtaskId, preview });
   }
 
+  // Dra-og-slipp spenner over BÅDE i dag og i morgen (én sammenhengende
+  // liste, se render under) — slipper man en påminnelse over grensen til
+  // den andre dagens gruppe, flyttes fristen dit (én dag frem/tilbake), jf.
+  // tilbakemelding om at alle påminnelser skal kunne "flyttes ned en dag".
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    const todaysIds = reminders
-      .filter((r) => isDueToday(r, today))
-      .sort((a, b) => a.order - b.order)
-      .map((r) => r.id);
-    const oldIndex = todaysIds.indexOf(activeId);
-    const newIndex = todaysIds.indexOf(overId);
+    const todayIds = todays.map((r) => r.id);
+    const tomorrowIds = tomorrows.map((r) => r.id);
+    const combinedIds = [...todayIds, ...tomorrowIds];
+    const oldIndex = combinedIds.indexOf(activeId);
+    const newIndex = combinedIds.indexOf(overId);
     if (oldIndex === -1 || newIndex === -1) return;
 
-    const reordered = arrayMove(todaysIds, oldIndex, newIndex);
+    const reordered = arrayMove(combinedIds, oldIndex, newIndex);
+    const activeWasToday = todayIds.includes(activeId);
+    const overIsToday = todayIds.includes(overId);
+    const dayChanged = activeWasToday !== overIsToday;
+    const newDueDate = overIsToday ? today : tomorrow;
+
     const orderOf = new Map(reordered.map((id, i) => [id, i]));
     mutateReminders(
       (current) =>
-        current && { reminders: current.reminders.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r)) },
+        current && {
+          reminders: current.reminders.map((r) => {
+            if (!orderOf.has(r.id)) return r;
+            const order = orderOf.get(r.id)!;
+            return r.id === activeId && dayChanged ? { ...r, dueDate: newDueDate, order } : { ...r, order };
+          }),
+        },
       { revalidate: false },
     );
 
-    fetch("/api/reminders/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: reordered }),
-    })
+    const reorderCall = () =>
+      fetch("/api/reminders/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: reordered }),
+      });
+
+    const persist = dayChanged
+      ? fetch(`/api/reminders/${activeId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dueDate: newDueDate }),
+        }).then(reorderCall)
+      : reorderCall();
+
+    persist
       .then((res) => {
         if (!res.ok) throw new Error("reorder failed");
         window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
       })
       .catch(() => mutationError.show("Kunne ikke lagre ny rekkefølge."));
 
-    vibrate(10);
+    vibrate(dayChanged ? [10, 20] : 10);
   }
 
   const today = localDateString();
+  const tomorrow = addDaysIso(today, 1);
   const todays = reminders
     .filter((r) => isDueToday(r, today) || justToggled.has(r.id))
     .sort((a, b) => a.order - b.order);
-  const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done);
+  const tomorrows = reminders.filter((r) => !r.done && r.dueDate === tomorrow).sort((a, b) => a.order - b.order);
+  const rest = reminders.filter((r) => !isDueToday(r, today) && !r.done && r.dueDate !== tomorrow);
   // Avhukede påminnelser havner ikke lenger i "rest" — de får sin egen
   // seksjon her, slik at man kan angre (huke av igjen) i minst 24 timer
   // etter man trykket dem bort, jf. tilbakemelding. justToggled brukes kun
@@ -864,13 +891,47 @@ export default function RemindersSection() {
 
           {loading ? (
             <SkeletonRows count={2} />
-          ) : todays.length === 0 ? (
+          ) : todays.length === 0 && tomorrows.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={todays.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+              <SortableContext items={[...todays.map((r) => r.id), ...tomorrows.map((r) => r.id)]} strategy={verticalListSortingStrategy}>
                 <ul className="flex flex-col gap-1.5">
+                  <li>
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">I dag</p>
+                  </li>
+                  {todays.length === 0 && (
+                    <li>
+                      <p className="text-sm text-ink-3">Ingen påminnelser i dag.</p>
+                    </li>
+                  )}
                   {todays.map((r) => (
+                    <SortableReminderRow
+                      key={r.id}
+                      reminder={r}
+                      editing={editingId === r.id}
+                      onToggle={handleToggle}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                      comments={comments[commentKey("reminder", r.id)] ?? []}
+                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                      }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
+                    />
+                  ))}
+                  {tomorrows.length > 0 && (
+                    <li className="mt-1">
+                      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">I morgen</p>
+                    </li>
+                  )}
+                  {tomorrows.map((r) => (
                     <SortableReminderRow
                       key={r.id}
                       reminder={r}
