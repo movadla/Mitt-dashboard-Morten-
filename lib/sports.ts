@@ -206,15 +206,31 @@ async function fetchTsdbTeam(teamName: string, category: string, limit = 5): Pro
 // av football_eli), så disse må filtreres bort her for å unngå duplikater.
 const UEFA_CUP_PATTERN = /UEFA|Champions League|Europa League|Conference League/i;
 
+// TheSportsDBs gratis-tier svarer av og til med en feil eller tom respons under
+// samtidig last (7 klubber × 2 kall samtidig via Promise.allSettled i SOURCES) —
+// ett nytt forsøk etter en kort pause løser de fleste av disse i praksis.
+async function fetchTsdbWithRetry(url: string): Promise<Response | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, UA);
+      if (res.ok) return res;
+    } catch {
+      // nettverksfeil — prøv igjen under
+    }
+    if (attempt === 0) await new Promise(r => setTimeout(r, 400));
+  }
+  return null;
+}
+
 async function fetchTsdbTeamEuropean(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
-  const sRes = await fetch(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`, UA);
-  if (!sRes.ok) return [];
+  const sRes = await fetchTsdbWithRetry(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`);
+  if (!sRes) return [];
   const sJson = await sRes.json();
   const team: TsdbTeam | undefined = (sJson.teams ?? []).find((t: TsdbTeam) => t.strSport === "Soccer");
   if (!team) return [];
 
-  const eRes = await fetch(`${TSDB}/eventsnext.php?id=${team.idTeam}`, UA);
-  if (!eRes.ok) return [];
+  const eRes = await fetchTsdbWithRetry(`${TSDB}/eventsnext.php?id=${team.idTeam}`);
+  if (!eRes) return [];
   const eJson = await eRes.json();
   const today = localDateString();
   return ((eJson.events ?? []) as TsdbEvent[])

@@ -15,7 +15,7 @@ const MODE_STORAGE_KEY = "mitt-dashboard:mode:v1";
 // den tyngste bunten, og lastes derfor kun når den faktisk trengs, slik at
 // Jobb-fanen ikke må laste ned all den koden først.
 const PrivatPanel = dynamic(() => import("./privat/PrivatPanel"), {
-  loading: () => <div className="mt-4 mb-6"><SkeletonRows count={4} /></div>,
+  loading: () => <div className="mt-6 mb-6"><SkeletonRows count={4} /></div>,
 });
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -94,7 +94,7 @@ export default function Dashboard({
   return (
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-5xl md:px-8">
-        <div className="-mx-4 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8">
+        <div className="sticky top-0 z-40 -mx-4 bg-surface-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-2xl font-semibold tracking-tight text-ink-1">
               I dag
@@ -104,13 +104,13 @@ export default function Dashboard({
         </div>
 
         {mode === null ? (
-          <div className="mt-4"><SkeletonRows count={4} /></div>
+          <div className="mt-6"><SkeletonRows count={4} /></div>
         ) : mode === "jobb" ? (
-          <div key="jobb" className="tab-fade mt-4">
+          <div key="jobb" className="tab-fade mt-6">
             <JobbView tasks={tasks} today={today} now={now} />
           </div>
         ) : (
-          <div key="privat" className="tab-fade mt-4 mb-6 flex flex-col gap-3">
+          <div key="privat" className="tab-fade mt-6 mb-6 flex flex-col gap-3">
             <PrivatPanel />
           </div>
         )}
