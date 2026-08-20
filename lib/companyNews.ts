@@ -22,6 +22,26 @@ import { hgetallJSON, hsetJSON, hdel } from "./kv";
 //   økonomi, drift, utleie, marked, ledelse, HR
 // Vær raus med hva som telles som nyhet heller enn streng — målet er at
 // Morten skal få med seg ting han ellers ville måttet lete etter selv.
+//
+// KJENTE GJENTAKENDE KILDER — søk ALLTID opp disse spesifikt (avsender-/
+// kanalnavn), ikke bare generiske nettsøk/nøkkelord. Generiske søk (WebSearch,
+// SharePoint-fritekst) finner nesten aldri interne e-poster/Teams-tråder — det
+// var feilen 2026-08-19 som gjorde at en 2024-tall for CC Vest-omsetning stod
+// uimotsagt lenge etter at ferskere data fantes i innboksen:
+// - "Harald" / harald.t.nilsen@gmail.com (Harald T Nilsen, Handelsanalyse):
+//   sender MÅNEDLIG omsetningsrapport for CC Vest til Olav Line, Camilla Bang
+//   Hoff, Jeanette Andersson, Tone Engnes m.fl. — søk outlook_email_search
+//   med sender:"harald" hver runde, ikke bare webCC Vest-søk.
+// - "Mustad Felles"-kanalen i Teams: styremøter, allsamling, ansatte.
+// Legg til nye kjente avsendere/kanaler her når de dukker opp, slik at neste
+// research-runde vet å sjekke dem direkte i stedet for å gjette på nytt.
+//
+// SIST OPPDATERT vs. HENDELSESDATO: UI viser begge — `date` (se over) for når
+// hendelsen faktisk skjedde, og `createdAt` for når Claude la den inn her
+// (vises som "lagt inn i dashboardet Xt/Xd siden" og en samlet "sist
+// research-runde"-tekst i toppen av seksjonen). Bland ikke disse to — det er
+// nettopp forskjellen på dem som lar Morten vurdere hvor fersk informasjonen
+// faktisk er.
 export type NewsCategory =
   | "regulering"
   | "oppkjop-salg"

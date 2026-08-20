@@ -4,9 +4,10 @@ import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
-import type { NewsCategory, NewsImportance, NewsItem, NewsSourceType } from "@/lib/companyNews";
+import type { NewNewsItemInput, NewsCategory, NewsImportance, NewsItem, NewsSourceType } from "@/lib/companyNews";
 import { localDateString, relativeDayLabel } from "@/lib/payday";
 import { formatDateDMY } from "@/lib/widgets";
+import { timeAgo } from "@/lib/timeAgo";
 import { Cloud, FileText, Globe, Mail, MessageSquare, Newspaper, X } from "lucide-react";
 
 const CATEGORY_LABEL: Record<NewsCategory, string> = {
@@ -82,11 +83,14 @@ function NewsRow({
       </div>
       {expanded && (
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
-          <div className="flex items-center gap-1.5 text-2xs text-ink-4">
+          <div className="flex flex-wrap items-center gap-1.5 text-2xs text-ink-4">
             <span className="rounded-full bg-surface-3 px-1.5 py-0.5">{CATEGORY_LABEL[item.category]}</span>
             <span className="inline-flex items-center gap-1">
               <SourceIcon className="h-3 w-3" />
               {SOURCE_LABEL[item.sourceType]}
+            </span>
+            <span title={new Date(item.createdAt).toLocaleString("nb-NO")}>
+              · lagt inn i dashboardet {timeAgo(Date.parse(item.createdAt))}
             </span>
           </div>
           <p className="whitespace-pre-line text-sm text-ink-2">{item.fullText || item.summary}</p>
@@ -108,12 +112,122 @@ function NewsRow({
   );
 }
 
+function NewsForm({ onCancel, onSave }: { onCancel: () => void; onSave: (input: NewNewsItemInput) => Promise<boolean> }) {
+  const [title, setTitle] = useState("");
+  const [summary, setSummary] = useState("");
+  const [category, setCategory] = useState<NewsCategory>("annet");
+  const [sourceType, setSourceType] = useState<NewsSourceType>("annet");
+  const [sourceRef, setSourceRef] = useState("");
+  const [date, setDate] = useState(localDateString());
+  const [importance, setImportance] = useState<NewsImportance>("middels");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function save() {
+    if (!title.trim() || submitting) return;
+    setSubmitting(true);
+    const ok = await onSave({
+      title: title.trim(),
+      summary: summary.trim() || title.trim(),
+      category,
+      sourceType,
+      sourceRef: sourceRef.trim() || undefined,
+      date,
+      importance,
+    });
+    setSubmitting(false);
+    if (ok) {
+      setTitle("");
+      setSummary("");
+      setSourceRef("");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Tittel (den ene linjen som vises)"
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <textarea
+        value={summary}
+        onChange={(e) => setSummary(e.target.value)}
+        placeholder="Mer detaljer (valgfritt — vises når man trykker på nyheten)"
+        rows={2}
+        className="resize-none rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as NewsCategory)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {(Object.keys(CATEGORY_LABEL) as NewsCategory[]).map((c) => (
+            <option key={c} value={c}>
+              {CATEGORY_LABEL[c]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sourceType}
+          onChange={(e) => setSourceType(e.target.value as NewsSourceType)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          {(Object.keys(SOURCE_LABEL) as NewsSourceType[]).map((s) => (
+            <option key={s} value={s}>
+              {SOURCE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={importance}
+          onChange={(e) => setImportance(e.target.value as NewsImportance)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        >
+          <option value="hoy">Høy viktighet</option>
+          <option value="middels">Middels viktighet</option>
+          <option value="lav">Lav viktighet</option>
+        </select>
+      </div>
+      <input
+        type="text"
+        value={sourceRef}
+        onChange={(e) => setSourceRef(e.target.value)}
+        placeholder="Kilde (valgfritt, f.eks. «Hørt fra Christian i møte»)"
+        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!title.trim() || submitting}
+          className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function JobbCompanyNewsSection() {
   const { data, isLoading: loading, mutate: mutateNews } = useSWR<{ news: NewsItem[] }>("/api/company-news", jsonFetcher);
   const news = data?.news ?? [];
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(15);
   const [categoryFilter, setCategoryFilter] = useState<NewsCategory | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const confirmDelete = useConfirmDelete<NewsItem>();
   const mutationError = useMutationError();
 
@@ -121,6 +235,28 @@ export default function JobbCompanyNewsSection() {
   const filtered = categoryFilter ? news.filter((n) => n.category === categoryFilter) : news;
   const visible = filtered.slice(0, visibleCount);
   const usedCategories = [...new Set(news.map((n) => n.category))];
+  // "Sist research-runde" = nyeste createdAt (når Claude faktisk la inn noe),
+  // IKKE nyeste "date" (som kan være en gammel hendelse funnet nylig, eller
+  // motsatt en fersk hendelse lagt inn for lenge siden) — dette er hva som
+  // faktisk svarer på "hvor fersk er denne oversikten totalt sett".
+  const lastResearchAt = news.length > 0 ? Math.max(...news.map((n) => Date.parse(n.createdAt))) : null;
+
+  async function handleAdd(input: NewNewsItemInput): Promise<boolean> {
+    try {
+      const res = await fetch("/api/company-news", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [input] }) });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til nyheten. Prøv igjen.");
+        return false;
+      }
+      const { created } = await res.json();
+      mutateNews((current) => current && { news: [...current.news, ...created] }, { revalidate: false });
+      setShowForm(false);
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke legge til nyheten. Prøv igjen.");
+      return false;
+    }
+  }
 
   async function handleRemove(item: NewsItem) {
     let previous: NewsItem[] = [];
@@ -144,12 +280,19 @@ export default function JobbCompanyNewsSection() {
     <div className="border-t-2 border-t-cyan-400/60 p-4">
       <CardHeader
         title="Mustad-nyheter"
-        subtitle={news.length > 0 ? `${news.length} oppføringer` : "Ingen ennå"}
+        subtitle={
+          news.length > 0 && lastResearchAt !== null
+            ? `${news.length} oppføringer · sist research-runde ${timeAgo(lastResearchAt)}`
+            : "Ingen ennå"
+        }
         icon={Newspaper}
         iconColorClass="text-cyan-400"
+        onAdd={() => setShowForm(true)}
+        addLabel="Ny nyhet"
       />
       <div className="flex flex-col gap-2">
         <MutationError message={mutationError.message} />
+        {showForm && <NewsForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
         {usedCategories.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
             <button

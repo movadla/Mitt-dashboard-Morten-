@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
+import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, SuggestionList, useConfirmDelete, useMutationError } from "./CardShell";
 import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
+import type { Suggestion } from "@/lib/jobbSuggestions";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
@@ -281,12 +282,16 @@ export default function JobbRemindersSection() {
   const confirmDelete = useConfirmDelete<string>();
   const mutationError = useMutationError();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const load = useCallback(() => {
     fetch("/api/jobb-reminders")
       .then((r) => r.json())
       .then((d) => setReminders((d.reminders ?? []) as JobbReminder[]))
       .finally(() => setLoading(false));
+    fetch("/api/jobb-suggestions")
+      .then((r) => r.json())
+      .then((d) => setSuggestions(((d.suggestions ?? []) as Suggestion[]).filter((s) => s.target === "reminder")));
   }, []);
 
   useEffect(() => {
@@ -294,6 +299,27 @@ export default function JobbRemindersSection() {
     window.addEventListener("mitt-dashboard:jobb-refresh", load);
     return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
+
+  async function handleAcceptSuggestion(s: Suggestion) {
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    const res = await fetch("/api/jobb-reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: s.title, dueDate: s.date || undefined }),
+    });
+    if (res.ok) {
+      const created: JobbReminder = await res.json();
+      setReminders((prev) => [...prev, created].sort(sortReminders));
+    }
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+  }
+
+  async function handleDeclineSuggestion(s: Suggestion) {
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+  }
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -448,6 +474,7 @@ export default function JobbRemindersSection() {
       />
       <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
+          <SuggestionList suggestions={suggestions} onAccept={handleAcceptSuggestion} onDecline={handleDeclineSuggestion} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input

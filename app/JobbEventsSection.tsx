@@ -3,8 +3,9 @@
 import { Fragment, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, SuggestionList, useConfirmDelete, useMutationError } from "./CardShell";
 import type { JobbEvent } from "@/lib/jobbEvents";
+import type { Suggestion } from "@/lib/jobbSuggestions";
 import { formatDMY, localDateString, relativeDayLabel } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./privat/SwipeableRow";
@@ -125,6 +126,37 @@ export default function JobbEventsSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
   const mutationError = useMutationError();
+  const { data: suggestionData, mutate: mutateSuggestions } = useSWR<{ suggestions: Suggestion[] }>(
+    "/api/jobb-suggestions",
+    jsonFetcher,
+  );
+  const suggestions = (suggestionData?.suggestions ?? []).filter((s) => s.target === "event");
+
+  async function handleAcceptSuggestion(s: Suggestion) {
+    mutateSuggestions(
+      (current) => current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) },
+      { revalidate: false },
+    );
+    const res = await fetch("/api/jobb-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: s.title, date: s.date || localDateString(), note: s.note }),
+    });
+    if (res.ok) {
+      const created: JobbEvent = await res.json();
+      mutateEvents((current) => current && { events: [...current.events, created] }, { revalidate: false });
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    }
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+  }
+
+  async function handleDeclineSuggestion(s: Suggestion) {
+    mutateSuggestions(
+      (current) => current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) },
+      { revalidate: false },
+    );
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+  }
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -208,6 +240,7 @@ export default function JobbEventsSection() {
       />
       <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
+          <SuggestionList suggestions={suggestions} onAccept={handleAcceptSuggestion} onDecline={handleDeclineSuggestion} />
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input

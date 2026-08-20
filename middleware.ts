@@ -7,9 +7,10 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // api/backup, api/cron og api/company-news har sin egen autorisering (cookie
-  // ELLER CRON_SECRET) siden planlagte jobber/Claude-økter uten nettleser-cookie
-  // må kunne nå dem — se app/api/backup/route.ts, app/api/cron/receivables-
-  // snapshot/route.ts og app/api/company-news/route.ts.
-  matcher: ["/((?!login|api/auth|api/backup|api/cron|api/company-news|_next/static|_next/image|favicon.ico).*)"],
+  // api/backup, api/cron, api/company-news og api/jobb-suggestions har sin
+  // egen autorisering (cookie ELLER CRON_SECRET) siden planlagte jobber/
+  // Claude-økter uten nettleser-cookie må kunne nå dem — se
+  // app/api/backup/route.ts, app/api/cron/receivables-snapshot/route.ts,
+  // app/api/company-news/route.ts og app/api/jobb-suggestions/route.ts.
+  matcher: ["/((?!login|api/auth|api/backup|api/cron|api/company-news|api/jobb-suggestions|_next/static|_next/image|favicon.ico).*)"],
 };

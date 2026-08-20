@@ -39,6 +39,7 @@ import { computeAging, computeAutoRisk } from "@/lib/receivablesAging";
 import { getMainBuilding } from "@/lib/receivableBuilding";
 import type { ReceivableSnapshot } from "@/lib/receivablesSnapshots";
 import {
+  ArrowUpRight,
   Bell,
   CalendarClock,
   CalendarDays,
@@ -46,6 +47,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  Database,
   FileSignature,
   Home,
   Newspaper,
@@ -55,8 +57,9 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
+import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, SuggestionList, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
 import { SidebarNav, type NavItem } from "./SidebarNav";
+import type { Suggestion } from "@/lib/jobbSuggestions";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { relativeDayLabel } from "@/lib/payday";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
@@ -68,6 +71,7 @@ import JobbRemindersSection from "./JobbRemindersSection";
 import JobbEventsSection from "./JobbEventsSection";
 import JobbLookupCard from "./JobbLookupCard";
 import JobbCompanyNewsSection from "./JobbCompanyNewsSection";
+import JobbDataSourcesCard from "./JobbDataSourcesCard";
 
 type Filter = Source | "all";
 type SfBucket = "alle" | "faktura" | "kreditnota" | "garanti" | "annet";
@@ -1428,23 +1432,183 @@ function calendarDateBadge(dato: string, today: string): string {
   return "bg-surface-2 text-ink-3";
 }
 
+function addDaysISO(dateIso: string, days: number): string {
+  const d = new Date(dateIso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function CalendarCard({ today }: { today: string }) {
   const [visibleCount, setVisibleCount] = useState(6);
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, addNote, removeNote] = useCalendarNotes();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const confirmDeleteNote = useConfirmDelete<{ meetingId: string; index: number; preview: string }>();
-  const visible = CALENDAR_EVENTS.slice(0, visibleCount);
+  const [showHistory, setShowHistory] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = siste hele uke før inneværende uke
+
+  // Møter som allerede har skjedd skal ikke ligge åpent øverst i listen —
+  // kun kommende (inkl. i dag) vises som default. Historikk nås via egen
+  // "Vis tidligere hendelser"-knapp, bla uke for uke, i stedet.
+  const upcoming = CALENDAR_EVENTS.filter((m) => m.dato >= today);
+  const visible = upcoming.slice(0, visibleCount);
+
+  // Rullerende 7-dagers vinduer bakover fra i går (IKKE kalenderuker/mandag-
+  // justert) — det unngår et hull der de siste dagene av inneværende uke
+  // (som allerede er passert, men før "i dag") ellers ville falt mellom
+  // "kommende" (som starter nøyaktig på "i dag") og "forrige hele uke".
+  const historyWeekEnd = addDaysISO(today, -1 - 7 * weekOffset);
+  const historyWeekStart = addDaysISO(historyWeekEnd, -6);
+  const historyEvents = CALENDAR_EVENTS.filter((m) => m.dato >= historyWeekStart && m.dato <= historyWeekEnd);
+
+  // "calendar-note"-forslag fra Claude (research-runder) — et notat foreslått
+  // knyttet til et konkret møte i CALENDAR_EVENTS (meetingId).
+  const { data: suggestionData, mutate: mutateSuggestions } = useSWR<{ suggestions: Suggestion[] }>(
+    "/api/jobb-suggestions",
+    jsonFetcher,
+  );
+  const calendarSuggestions = (suggestionData?.suggestions ?? [])
+    .filter((s) => s.target === "calendar-note")
+    .map((s) => {
+      const meeting = CALENDAR_EVENTS.find((e) => e.id === s.meetingId);
+      const meetingLabel = meeting ? `${meeting.mote} (${formatDateDMY(meeting.dato)})` : "et møte";
+      return { ...s, sourceRef: `${s.sourceRef} · Gjelder ${meetingLabel}` };
+    });
+
+  async function handleAcceptCalendarSuggestion(s: Suggestion) {
+    mutateSuggestions(
+      (current) => current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) },
+      { revalidate: false },
+    );
+    if (s.meetingId) addNote(s.meetingId, s.title);
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+  }
+
+  async function handleDeclineCalendarSuggestion(s: Suggestion) {
+    mutateSuggestions(
+      (current) => current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) },
+      { revalidate: false },
+    );
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+  }
+
+  function renderRows(meetings: typeof CALENDAR_EVENTS) {
+    return meetings.map((m, i) => {
+      const isOpen = selected === m.id;
+      const prevDate = i > 0 ? meetings[i - 1].dato : null;
+      const showHeader = m.dato !== prevDate;
+      return (
+        <Fragment key={m.id}>
+          {showHeader && (
+            <tr className="border-t border-line">
+              <td colSpan={6} className="px-3 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                {relativeDayLabel(m.dato, today)}
+              </td>
+            </tr>
+          )}
+          <tr
+            onClick={() => setSelected(isOpen ? null : m.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelected(isOpen ? null : m.id);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-expanded={isOpen}
+            className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
+          >
+            <td className="whitespace-nowrap px-3 py-2">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 tabular-nums text-2xs font-medium ${calendarDateBadge(m.dato, today)}`}>
+                {formatDateDMY(m.dato)}
+              </span>
+            </td>
+            <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.start}</td>
+            <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.slutt}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-ink-1">{m.mote}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-ink-2">{m.beskrivelse}</td>
+            <td className="whitespace-nowrap px-3 py-2 text-ink-2">{m.sted}</td>
+          </tr>
+          {isOpen && (
+            <tr className="border-t border-line bg-surface-2">
+              <td colSpan={6} className="px-3 py-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-1 text-2xs font-medium text-ink-4">Info fra Outlook</p>
+                    <p className="whitespace-pre-line text-xs leading-relaxed text-ink-2">
+                      {m.merknad ?? "Ingen tilleggsinfo hentet fra Outlook."}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-2xs font-medium text-ink-4">Mine notater</p>
+                    <textarea
+                      value={drafts[m.id] ?? ""}
+                      onChange={(e) => setDrafts((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="Skriv et nytt notat om møtet …"
+                      rows={2}
+                      className="w-full resize-none rounded-lg border border-transparent bg-surface-1 p-2 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addNote(m.id, drafts[m.id] ?? "");
+                        setDrafts((prev) => ({ ...prev, [m.id]: "" }));
+                      }}
+                      className="mt-1.5 rounded-md bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 hover:text-ink-1"
+                    >
+                      Lagre
+                    </button>
+                    {(notes[m.id]?.length ?? 0) > 0 && (
+                      <ul className="mt-2 space-y-1.5">
+                        {notes[m.id].map((note, i) => (
+                          <li
+                            key={i}
+                            className="flex items-start justify-between gap-2 whitespace-pre-line rounded-lg bg-surface-1 p-2 text-xs leading-relaxed text-ink-2"
+                          >
+                            <span>{note}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmDeleteNote.request({ meetingId: m.id, index: i, preview: note });
+                              }}
+                              className="shrink-0 text-ink-4 hover:text-rose-400"
+                              aria-label="Slett notat"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          )}
+        </Fragment>
+      );
+    });
+  }
+
   return (
     <div className="border-t-2 border-t-indigo-400/60 p-4">
       <CardHeader
         title="Kalender"
-        subtitle={<><span className="font-medium tabular-nums text-ink-2">{CALENDAR_EVENTS.length}</span> kommende</>}
+        subtitle={<><span className="font-medium tabular-nums text-ink-2">{upcoming.length}</span> kommende</>}
         icon={CalendarDays}
         iconColorClass="text-indigo-400"
       />
-        {CALENDAR_EVENTS.length === 0 ? (
-          <p className="text-sm text-ink-3">Ingen møter i perioden.</p>
+        <SuggestionList
+          suggestions={calendarSuggestions}
+          onAccept={handleAcceptCalendarSuggestion}
+          onDecline={handleDeclineCalendarSuggestion}
+        />
+        {upcoming.length === 0 ? (
+          <p className="text-sm text-ink-3">Ingen kommende møter.</p>
         ) : (
           <>
             <div className="-mx-1 overflow-x-auto">
@@ -1459,120 +1623,74 @@ function CalendarCard({ today }: { today: string }) {
                     <th className="px-3 py-2 text-2xs font-medium">Sted</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {visible.map((m, i) => {
-                    const isOpen = selected === m.id;
-                    const prevDate = i > 0 ? visible[i - 1].dato : null;
-                    const showHeader = m.dato !== prevDate;
-                    return (
-                      <Fragment key={m.id}>
-                        {showHeader && (
-                          <tr className="border-t border-line">
-                            <td colSpan={6} className="px-3 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wide text-ink-4">
-                              {relativeDayLabel(m.dato, today)}
-                            </td>
-                          </tr>
-                        )}
-                        <tr
-                          onClick={() => setSelected(isOpen ? null : m.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelected(isOpen ? null : m.id);
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                          aria-expanded={isOpen}
-                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
-                        >
-                          <td className="whitespace-nowrap px-3 py-2">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 tabular-nums text-2xs font-medium ${calendarDateBadge(m.dato, today)}`}>
-                              {formatDateDMY(m.dato)}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.start}</td>
-                          <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.slutt}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-ink-1">{m.mote}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-ink-2">{m.beskrivelse}</td>
-                          <td className="whitespace-nowrap px-3 py-2 text-ink-2">{m.sted}</td>
-                        </tr>
-                        {isOpen && (
-                          <tr className="border-t border-line bg-surface-2">
-                            <td colSpan={6} className="px-3 py-3">
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <div>
-                                  <p className="mb-1 text-2xs font-medium text-ink-4">Info fra Outlook</p>
-                                  <p className="whitespace-pre-line text-xs leading-relaxed text-ink-2">
-                                    {m.merknad ?? "Ingen tilleggsinfo hentet fra Outlook."}
-                                  </p>
-                                </div>
-                                <div>
-                                  <p className="mb-1 text-2xs font-medium text-ink-4">Mine notater</p>
-                                  <textarea
-                                    value={drafts[m.id] ?? ""}
-                                    onChange={(e) => setDrafts((prev) => ({ ...prev, [m.id]: e.target.value }))}
-                                    onClick={(e) => e.stopPropagation()}
-                                    placeholder="Skriv et nytt notat om møtet …"
-                                    rows={2}
-                                    className="w-full resize-none rounded-lg border border-transparent bg-surface-1 p-2 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      addNote(m.id, drafts[m.id] ?? "");
-                                      setDrafts((prev) => ({ ...prev, [m.id]: "" }));
-                                    }}
-                                    className="mt-1.5 rounded-md bg-surface-3 px-2.5 py-1 text-2xs font-medium text-ink-2 hover:text-ink-1"
-                                  >
-                                    Lagre
-                                  </button>
-                                  {(notes[m.id]?.length ?? 0) > 0 && (
-                                    <ul className="mt-2 space-y-1.5">
-                                      {notes[m.id].map((note, i) => (
-                                        <li
-                                          key={i}
-                                          className="flex items-start justify-between gap-2 whitespace-pre-line rounded-lg bg-surface-1 p-2 text-xs leading-relaxed text-ink-2"
-                                        >
-                                          <span>{note}</span>
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              confirmDeleteNote.request({ meetingId: m.id, index: i, preview: note });
-                                            }}
-                                            className="shrink-0 text-ink-4 hover:text-rose-400"
-                                            aria-label="Slett notat"
-                                          >
-                                            <X className="h-3.5 w-3.5" />
-                                          </button>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
+                <tbody>{renderRows(visible)}</tbody>
               </table>
             </div>
-            {CALENDAR_EVENTS.length > visibleCount && (
+            {upcoming.length > visibleCount && (
               <button
                 type="button"
                 onClick={() => setVisibleCount((v) => v + 10)}
                 className="mt-3 text-xs font-medium text-ink-3 hover:text-ink-1"
               >
-                {`Mer (${CALENDAR_EVENTS.length - visibleCount})`}
+                {`Mer (${upcoming.length - visibleCount})`}
               </button>
             )}
           </>
         )}
+
+      <div className="mt-4 border-t border-line pt-3">
+        <button
+          type="button"
+          onClick={() => setShowHistory((v) => !v)}
+          className="text-xs font-medium text-ink-3 hover:text-ink-1"
+        >
+          {showHistory ? "Skjul tidligere hendelser" : "Vis tidligere hendelser"}
+        </button>
+        {showHistory && (
+          <div className="mt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setWeekOffset((v) => v + 1)}
+                className="rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+              >
+                ← Forrige uke
+              </button>
+              <span className="text-2xs font-medium tabular-nums text-ink-3">
+                {formatDateDMY(historyWeekStart)}–{formatDateDMY(historyWeekEnd)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setWeekOffset((v) => Math.max(0, v - 1))}
+                disabled={weekOffset === 0}
+                className="rounded-lg border border-line bg-surface-2 px-2.5 py-1 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1 disabled:opacity-40"
+              >
+                Neste uke →
+              </button>
+            </div>
+            {historyEvents.length === 0 ? (
+              <p className="text-sm text-ink-3">Ingen møter denne uken.</p>
+            ) : (
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[620px] text-sm">
+                  <thead>
+                    <tr className="text-left text-ink-4">
+                      <th className="px-3 py-2 text-2xs font-medium">Dato</th>
+                      <th className="px-3 py-2 text-2xs font-medium text-right">Start</th>
+                      <th className="px-3 py-2 text-2xs font-medium text-right">Slutt</th>
+                      <th className="px-3 py-2 text-2xs font-medium">Møte</th>
+                      <th className="px-3 py-2 text-2xs font-medium">Beskrivelse</th>
+                      <th className="px-3 py-2 text-2xs font-medium">Sted</th>
+                    </tr>
+                  </thead>
+                  <tbody>{renderRows(historyEvents)}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <ConfirmDialog
         open={confirmDeleteNote.isOpen}
         message={confirmDeleteNote.pending ? `Slette notatet «${confirmDeleteNote.pending.preview}»?` : ""}
@@ -1593,18 +1711,25 @@ function ContractRow({
   onAdd,
   onRequestDelete,
   onToggleRelevance,
+  onJumpToOppslag,
 }: {
   contract: Contract;
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onJumpToOppslag: (name: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.kunde}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-ink-2">
+          <div className="flex items-center gap-1">
+            <span className="truncate">{c.kunde}</span>
+            <OppslagLink name={c.kunde} onJump={onJumpToOppslag} />
+          </div>
+        </td>
         <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
         <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
         <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
@@ -1658,7 +1783,7 @@ function oneMonthBack(todayISO: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function ContractsCard({ today }: { today: string }) {
+function ContractsCard({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [visibleCount, setVisibleCount] = useState(10);
   const lastMonthCutoff = oneMonthBack(today);
@@ -1727,6 +1852,7 @@ function ContractsCard({ today }: { today: string }) {
                   onAdd={(tekst) => handleAdd(c.id, tekst)}
                   onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "contract", targetId: c.id, commentId, preview })}
                   onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(c.id, commentId, ikkeRelevant)}
+                  onJumpToOppslag={onJumpToOppslag}
                 />
               ))}
             </tbody>
@@ -1764,18 +1890,41 @@ function ContractsCard({ today }: { today: string }) {
   );
 }
 
+// Delt hoppeknapp brukt i Kontrakter/Utløp/Garantier/Kundefordringer for å
+// hoppe til Oppslag med leietakernavnet forhåndsutfylt i søket der — det
+// finnes ingen felles ID mellom Fazile/NXT/Asana/Salesforce å slå opp mot,
+// så navnesøk er den ærlige (og eneste praktiske) koblingen.
+function OppslagLink({ name, onJump }: { name: string; onJump: (name: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onJump(name);
+      }}
+      aria-label={`Søk «${name}» i Oppslag`}
+      title="Søk i Oppslag"
+      className="shrink-0 rounded p-0.5 text-ink-4 transition hover:text-accent"
+    >
+      <ArrowUpRight className="h-3 w-3" />
+    </button>
+  );
+}
+
 function ExpiryTenantRow({
   tenant,
   comments,
   onAdd,
   onRequestDelete,
   onToggleRelevance,
+  onJumpToOppslag,
 }: {
   tenant: ExpiringTenant;
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onJumpToOppslag: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -1786,11 +1935,12 @@ function ExpiryTenantRow({
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
         <td className="p-0">
+          <div className="flex min-w-0 items-center">
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="flex w-full min-w-0 items-center gap-2 px-2 py-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
           >
             <svg
               viewBox="0 0 16 16"
@@ -1805,6 +1955,8 @@ function ExpiryTenantRow({
             </svg>
             <span className="truncate text-ink-2">{tenant.leietaker}</span>
           </button>
+          <OppslagLink name={tenant.leietaker} onJump={onJumpToOppslag} />
+          </div>
         </td>
         <td className="whitespace-nowrap px-2 py-2 text-2xs text-ink-4">{tenant.bygg}</td>
         <td className="whitespace-nowrap px-2 py-2 tabular-nums text-ink-3">{tenant.lines.length}</td>
@@ -1864,7 +2016,7 @@ function ExpiryTenantRow({
   );
 }
 
-function ExpiryListCard() {
+function ExpiryListCard({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className="border-t-2 border-t-orange-400/60 p-4">
@@ -1901,6 +2053,7 @@ function ExpiryListCard() {
                         confirmDelete.request({ targetType: "expiry-tenant", targetId, commentId, preview })
                       }
                       onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("expiry-tenant", targetId, commentId, ikkeRelevant)}
+                      onJumpToOppslag={onJumpToOppslag}
                     />
                   );
                 })}
@@ -1933,12 +2086,14 @@ function GuaranteeRow({
   onAdd,
   onRequestDelete,
   onToggleRelevance,
+  onJumpToOppslag,
 }: {
   guarantee: Guarantee;
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onJumpToOppslag: (name: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   return (
@@ -1949,7 +2104,12 @@ function GuaranteeRow({
             {g.status}
           </span>
         </td>
-        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{g.leietaker}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">
+          <div className="flex items-center gap-1">
+            <span className="truncate">{g.leietaker}</span>
+            <OppslagLink name={g.leietaker} onJump={onJumpToOppslag} />
+          </div>
+        </td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{g.belop === null ? "—" : formatKr(g.belop)}</td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{formatDateDMY(g.frist)}</td>
         <td className="whitespace-nowrap px-3 py-2">
@@ -1967,7 +2127,7 @@ function GuaranteeRow({
   );
 }
 
-function GuaranteesCard() {
+function GuaranteesCard({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   return (
     <div className="border-t-2 border-t-teal-400/60 p-4">
@@ -1997,6 +2157,7 @@ function GuaranteesCard() {
                   onAdd={(tekst) => addComment("guarantee", g.id, tekst)}
                   onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
                   onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("guarantee", g.id, commentId, ikkeRelevant)}
+                  onJumpToOppslag={onJumpToOppslag}
                 />
               ))}
             </tbody>
@@ -2045,6 +2206,7 @@ function ReceivableRow({
   onAdd,
   onRequestDelete,
   onToggleRelevance,
+  onJumpToOppslag,
 }: {
   receivable: Receivable;
   today: string;
@@ -2054,6 +2216,7 @@ function ReceivableRow({
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onJumpToOppslag: (name: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -2069,15 +2232,18 @@ function ReceivableRow({
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
         <td className="max-w-0 px-2 py-1.5">
+          <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setDetailsOpen((v) => !v)}
             aria-expanded={detailsOpen}
-            className="flex w-full items-center gap-1.5 text-left text-ink-2 hover:text-ink-1"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-ink-2 hover:text-ink-1"
           >
             {underInkasso && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" title="Under inkasso" />}
             <span className="min-w-0 truncate">{r.leietaker}</span>
           </button>
+          <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
+          </div>
         </td>
         <td className="max-w-0 truncate px-2 py-1.5 text-2xs text-ink-3">
           {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
@@ -2294,7 +2460,7 @@ function ReceivablesSortHeader({
   );
 }
 
-function ReceivablesCard({ today }: { today: string }) {
+function ReceivablesCard({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
@@ -2460,6 +2626,7 @@ function ReceivablesCard({ today }: { today: string }) {
                     onAdd={(tekst) => addComment("receivable", r.id, tekst)}
                     onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "receivable", targetId: r.id, commentId, preview })}
                     onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("receivable", r.id, commentId, ikkeRelevant)}
+                    onJumpToOppslag={onJumpToOppslag}
                   />
                 ))}
               </tbody>
@@ -2561,6 +2728,7 @@ const DEFAULT_JOBB_SECTION_ORDER = [
   "oppslag",
   "income-forecast",
   "mustad-nyheter",
+  "data-sources",
 ];
 
 // Ikon/farge per kategori — samme verdier som hvert kort allerede sender til
@@ -2579,23 +2747,19 @@ const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColor
   oppslag: { label: "Oppslag", icon: Users, iconColorClass: "text-violet-400" },
   "income-forecast": { label: "Inntektsprognose", icon: TrendingUp, iconColorClass: "text-yellow-400" },
   "mustad-nyheter": { label: "Mustad-nyheter", icon: Newspaper, iconColorClass: "text-cyan-400" },
+  "data-sources": { label: "Datakilder", icon: Database, iconColorClass: "text-slate-400" },
 };
 
 // Rekkefølgen på fanene kan dras om (usePersistedOrder, samme mønster som Privat-fanen) —
 // derfor er dette en id → node-oppslagstabell istedenfor en hardkodet JSX-rekkefølge.
 // "today", "oppgaver" og "mustad-nyheter" bygges direkte i sectionNodes (de trenger
-// tilgang til lokal state/handlers i JobbView), resten er enkle, uavhengige kort.
-// "oppslag" slår sammen tidligere "Utleieansvarlige" og "Leietakersøk" — begge er
-// oppslag mot Salesforce-kontoer/personer, og hørte naturlig sammen som én fane.
+// tilgang til lokal state/handlers i JobbView), det samme gjelder nå "contracts",
+// "expiry", "guarantees", "receivables" og "oppslag" (de trenger onJumpToOppslag/
+// initialQuery) — se sectionNodes-objektet. Resten er enkle, uavhengige kort.
 const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
   calendar: (today) => <CalendarCard today={today} />,
-  contracts: (today) => <ContractsCard today={today} />,
-  expiry: () => <ExpiryListCard />,
-  guarantees: () => <GuaranteesCard />,
-  receivables: (today) => <ReceivablesCard today={today} />,
   reminders: () => <JobbRemindersSection />,
   events: () => <JobbEventsSection />,
-  oppslag: () => <JobbLookupCard />,
   "income-forecast": () => <IncomeForecastSection />,
 };
 
@@ -2627,6 +2791,15 @@ export default function JobbView({
   const dueRemindersCount = (reminderBadgeData?.reminders ?? []).filter(
     (r) => !r.done && (!r.dueDate || r.dueDate <= today),
   ).length;
+
+  // Kun for varselboblene på "Påminnelser"/"Hendelser"/"Kalender" i
+  // sidebaren — hver seksjon henter og eier selv sin fulle forslagsliste
+  // (samme SWR-nøkkel, så dette dobbeltbestiller ikke noe nettverkskall).
+  const { data: suggestionBadgeData } = useSWR<{ suggestions: Suggestion[] }>("/api/jobb-suggestions", jsonFetcher);
+  const suggestionCounts = { reminder: 0, event: 0, "calendar-note": 0, employee: 0 };
+  for (const s of suggestionBadgeData?.suggestions ?? []) {
+    suggestionCounts[s.target] = (suggestionCounts[s.target] ?? 0) + 1;
+  }
 
   // Sentral lytter for "jobb-refresh" (dispatchet av mutasjons-handlere i de
   // fulle kortene) — reveraliderer alle SWR-nøkler, samme mønster som
@@ -2679,6 +2852,12 @@ export default function JobbView({
   const toggleGroup = (g: string) =>
     setCollapsedGroups((prev) => { const s = new Set(prev); s.has(g) ? s.delete(g) : s.add(g); return s; });
   const [search, setSearch] = useState("");
+  const [oppslagQuery, setOppslagQuery] = useState("");
+
+  function jumpToOppslag(name: string) {
+    setOppslagQuery(name);
+    handleSelect("oppslag");
+  }
 
   useEffect(() => {
     try {
@@ -3188,9 +3367,30 @@ export default function JobbView({
     </div>
   );
 
+  // Samme "krever oppfølging"-kriterier som JobbTodaySummary sin oppfolging-
+  // liste bruker (utløp <10d ekskl. reforhandlet, garanti-frist ≤10d), pluss
+  // auto-risiko "høy" for kundefordringer (samme computeAutoRisk som
+  // ReceivablesCard selv viser — manuelle overstyringer telles ikke med her,
+  // badgen er en tilnærming, selve kortet er alltid det presise).
+  const expiryUrgentCount = EXPIRIES.filter((t) => {
+    const nearest = Math.min(...t.lines.map((l) => l.dagerTilUtlop));
+    return nearest < 10 && t.status !== "Reforhandlet";
+  }).length;
+  const guaranteeUrgentCount = GUARANTEES.filter((g) => {
+    const days = Math.round((Date.parse(g.frist) - Date.parse(today)) / (1000 * 60 * 60 * 24));
+    return days <= 10;
+  }).length;
+  const receivableHighRiskCount = RECEIVABLES.filter((r) => computeAutoRisk(r, today) === "hoy").length;
+
   const navBadges: Partial<Record<string, number>> = {
     oppgaver: counts.all,
-    reminders: dueRemindersCount,
+    reminders: dueRemindersCount + suggestionCounts.reminder,
+    events: suggestionCounts.event,
+    calendar: suggestionCounts["calendar-note"],
+    expiry: expiryUrgentCount,
+    guarantees: guaranteeUrgentCount,
+    receivables: receivableHighRiskCount,
+    oppslag: suggestionCounts.employee,
   };
   const navItems: NavItem[] = order
     .filter((id) => NAV_META[id] != null)
@@ -3203,18 +3403,22 @@ export default function JobbView({
         onJumpToAsana={() => jumpToOppgaver("asana")}
         onJumpToTask={(id) => jumpToCase(id)}
         onJumpToNews={() => handleSelect("mustad-nyheter")}
+        onJumpToContracts={() => handleSelect("contracts")}
+        onJumpToExpiry={() => handleSelect("expiry")}
+        onJumpToGuarantees={() => handleSelect("guarantees")}
       />
     ),
     oppgaver: oppgaverNode,
     "mustad-nyheter": <JobbCompanyNewsSection />,
+    "data-sources": <JobbDataSourcesCard />,
     calendar: JOBB_SECTION_NODES.calendar(today),
-    contracts: JOBB_SECTION_NODES.contracts(today),
-    expiry: JOBB_SECTION_NODES.expiry(today),
-    guarantees: JOBB_SECTION_NODES.guarantees(today),
-    receivables: JOBB_SECTION_NODES.receivables(today),
+    contracts: <ContractsCard today={today} onJumpToOppslag={jumpToOppslag} />,
+    expiry: <ExpiryListCard onJumpToOppslag={jumpToOppslag} />,
+    guarantees: <GuaranteesCard onJumpToOppslag={jumpToOppslag} />,
+    receivables: <ReceivablesCard today={today} onJumpToOppslag={jumpToOppslag} />,
     reminders: JOBB_SECTION_NODES.reminders(today),
     events: JOBB_SECTION_NODES.events(today),
-    oppslag: JOBB_SECTION_NODES.oppslag(today),
+    oppslag: <JobbLookupCard initialQuery={oppslagQuery} />,
     "income-forecast": JOBB_SECTION_NODES["income-forecast"](today),
   };
 

@@ -466,3 +466,49 @@ export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number
     </div>
   );
 }
+
+// Delt "forslag"-liste — Claude legger inn forslag til påminnelser/hendelser/
+// kalendernotater under en research-runde (lib/jobbSuggestions.ts), og
+// Morten godkjenner eller avslår hvert enkelt her, i toppen av seksjonen de
+// gjelder. Samme visuelle mønster (gul/varsel-aksent) brukt i alle tre
+// seksjoner (Påminnelser, Hendelser, Kalender) for gjenkjennelighet.
+export function SuggestionList<T extends { id: string; title: string; date?: string; sourceRef: string }>({
+  suggestions,
+  onAccept,
+  onDecline,
+}: {
+  suggestions: T[];
+  onAccept: (s: T) => void;
+  onDecline: (s: T) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-status-warning/30 bg-status-warning/[0.06] p-2.5">
+      <p className="text-2xs font-semibold uppercase tracking-wide text-status-warning">
+        {suggestions.length === 1 ? "1 forslag" : `${suggestions.length} forslag`}
+      </p>
+      {suggestions.map((s) => (
+        <div key={s.id} className="rounded-lg bg-surface-1 p-2">
+          <p className="text-sm text-ink-1">{s.title}</p>
+          <p className="mt-0.5 text-2xs text-ink-4">{s.sourceRef}</p>
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onAccept(s)}
+              className="rounded-md bg-status-positive/15 px-2 py-1 text-2xs font-semibold text-status-positive transition hover:bg-status-positive/25"
+            >
+              Godta
+            </button>
+            <button
+              type="button"
+              onClick={() => onDecline(s)}
+              className="rounded-md px-2 py-1 text-2xs font-medium text-ink-4 transition hover:text-ink-2"
+            >
+              Avslå
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

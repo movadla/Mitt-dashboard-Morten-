@@ -12,13 +12,6 @@ export interface CompanyInfoEntry {
   sourceRef?: string;
 }
 
-export interface Employee {
-  id: string;
-  name: string;
-  title: string | null;
-  department: string | null;
-}
-
 export const COMPANY_INFO: CompanyInfoEntry[] = [
   {
     id: "hist-1",
@@ -27,9 +20,4 @@ export const COMPANY_INFO: CompanyInfoEntry[] = [
     body: "Placeholder — se lib/companyInfo.local.ts for ekte innhold (kun lokalt, ikke committed).",
     updatedAt: "2026-08-19",
   },
-];
-
-export const EMPLOYEES: Employee[] = [
-  { id: "demo-1", name: "Ansatt 1", title: "Eksempeltittel", department: "Eksempelavdeling" },
-  { id: "demo-2", name: "Ansatt 2", title: null, department: "Eksempelavdeling" },
 ];

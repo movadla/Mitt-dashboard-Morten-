@@ -49,11 +49,17 @@ export default function JobbTodaySummary({
   onJumpToAsana,
   onJumpToTask,
   onJumpToNews,
+  onJumpToContracts,
+  onJumpToExpiry,
+  onJumpToGuarantees,
 }: {
   tasks: Task[];
   onJumpToAsana: () => void;
   onJumpToTask: (id: string) => void;
   onJumpToNews: () => void;
+  onJumpToContracts: () => void;
+  onJumpToExpiry: () => void;
+  onJumpToGuarantees: () => void;
 }) {
   const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [events, setEvents] = useState<JobbEvent[]>([]);
@@ -92,7 +98,11 @@ export default function JobbTodaySummary({
   const oppfolging: OppfolgingItem[] = [];
   for (const c of CONTRACTS) {
     if (c.signeringsdato === today) {
-      oppfolging.push({ key: `contract-${c.id}`, text: `Ny kontrakt signert i dag: ${c.kunde} (${formatKr(c.arsbelop)}/år)` });
+      oppfolging.push({
+        key: `contract-${c.id}`,
+        text: `Ny kontrakt signert i dag: ${c.kunde} (${formatKr(c.arsbelop)}/år)`,
+        onClick: onJumpToContracts,
+      });
     }
   }
   for (const t of EXPIRIES) {
@@ -101,6 +111,7 @@ export default function JobbTodaySummary({
       oppfolging.push({
         key: `expiry-${t.customerId}`,
         text: `${t.leietaker} — kontraktslinje utløper om ${nearest}d (${t.bygg})`,
+        onClick: onJumpToExpiry,
       });
     }
   }
@@ -110,6 +121,7 @@ export default function JobbTodaySummary({
       oppfolging.push({
         key: `guarantee-${g.id}`,
         text: `${g.leietaker} — garanti/depositum ${days < 0 ? "oversittet" : `frist om ${days}d`} (${formatDateDMY(g.frist)})`,
+        onClick: onJumpToGuarantees,
       });
     }
   }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete } from "./CardShell";
+import { CardHeader, ConfirmDialog, SkeletonRows, SuggestionList, useConfirmDelete } from "./CardShell";
 import type { LeasingManager } from "@/lib/leasingManagers";
+import type { Employee } from "@/lib/employees";
+import type { Suggestion } from "@/lib/jobbSuggestions";
 import { TENANTS, type Tenant } from "@/lib/tenants";
-import { COMPANY_INFO, EMPLOYEES, type CompanyInfoEntry } from "@/lib/companyInfo";
-import { Users } from "lucide-react";
+import { COMPANY_INFO, type CompanyInfoEntry } from "@/lib/companyInfo";
+import { Users, X } from "lucide-react";
 
 const MUSTAD_CATEGORY_LABEL: Record<CompanyInfoEntry["category"] | "ansatte", string> = {
   historie: "Historie",
@@ -19,7 +21,7 @@ function matchesCompanyInfo(entry: CompanyInfoEntry, q: string): boolean {
   return entry.title.toLowerCase().includes(q) || entry.body.toLowerCase().includes(q);
 }
 
-function matchesEmployee(e: { name: string; title: string | null; department: string | null }, q: string): boolean {
+function matchesEmployee(e: Employee, q: string): boolean {
   return (
     e.name.toLowerCase().includes(q) ||
     (e.title ?? "").toLowerCase().includes(q) ||
@@ -274,8 +276,8 @@ function ManagerRow({
 // Slått sammen fra tidligere "Utleieansvarlige" og "Leietakersøk" — begge er
 // oppslag mot personer/kontoer Mustad har i Salesforce, og hører naturlig
 // sammen som én "Oppslag"-fane i stedet for to separate.
-export default function JobbLookupCard() {
-  const [tenantQuery, setTenantQuery] = useState("");
+export default function JobbLookupCard({ initialQuery }: { initialQuery?: string }) {
+  const [tenantQuery, setTenantQuery] = useState(initialQuery ?? "");
   const [managers, setManagers] = useState<LeasingManager[]>([]);
   const [loadingManagers, setLoadingManagers] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -283,12 +285,23 @@ export default function JobbLookupCard() {
   const confirmDelete = useConfirmDelete<LeasingManager>();
   const [mustadQuery, setMustadQuery] = useState("");
   const [mustadCategory, setMustadCategory] = useState<CompanyInfoEntry["category"] | "ansatte" | "alle">("alle");
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const confirmDeleteEmployee = useConfirmDelete<Employee>();
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const load = useCallback(() => {
     fetch("/api/leasing-managers")
       .then((r) => r.json())
       .then((d) => setManagers((d.managers ?? []) as LeasingManager[]))
       .finally(() => setLoadingManagers(false));
+    fetch("/api/employees")
+      .then((r) => r.json())
+      .then((d) => setEmployees((d.employees ?? []) as Employee[]))
+      .finally(() => setLoadingEmployees(false));
+    fetch("/api/jobb-suggestions")
+      .then((r) => r.json())
+      .then((d) => setSuggestions(((d.suggestions ?? []) as Suggestion[]).filter((s) => s.target === "employee")));
   }, []);
 
   useEffect(() => {
@@ -296,6 +309,32 @@ export default function JobbLookupCard() {
     window.addEventListener("mitt-dashboard:jobb-refresh", load);
     return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
+
+  async function handleAcceptEmployeeSuggestion(s: Suggestion) {
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    const res = await fetch("/api/employees", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: s.title, title: s.note }),
+    });
+    if (res.ok) {
+      const created: Employee = await res.json();
+      setEmployees((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+  }
+
+  async function handleDeclineEmployeeSuggestion(s: Suggestion) {
+    setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+  }
+
+  async function handleRemoveEmployee(employee: Employee) {
+    setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
+    await fetch(`/api/employees/${employee.id}`, { method: "DELETE" });
+  }
 
   const tenantResults = useMemo(() => {
     if (!tenantQuery.trim()) return [];
@@ -307,7 +346,7 @@ export default function JobbLookupCard() {
     (e) => (mustadCategory === "alle" || mustadCategory === e.category) && (!mustadQ || matchesCompanyInfo(e, mustadQ)),
   );
   const showEmployees = mustadCategory === "ansatte" || (mustadCategory === "alle" && mustadQ.length > 0);
-  const employeeResults = showEmployees ? EMPLOYEES.filter((e) => !mustadQ || matchesEmployee(e, mustadQ)) : [];
+  const employeeResults = showEmployees ? employees.filter((e) => !mustadQ || matchesEmployee(e, mustadQ)) : [];
 
   async function handleAdd(input: { name: string; ansvar: string; email?: string }) {
     const res = await fetch("/api/leasing-managers", {
@@ -347,7 +386,7 @@ export default function JobbLookupCard() {
     <div className="border-t-2 border-t-violet-400/60 p-4">
       <CardHeader
         title="Oppslag"
-        subtitle={`${TENANTS.length} leietakere · ${managers.length} utleieansvarlige · ${EMPLOYEES.length} ansatte`}
+        subtitle={`${TENANTS.length} leietakere · ${managers.length} utleieansvarlige · ${employees.length} ansatte`}
         onAdd={() => setShowForm(true)}
         addLabel="Ny utleieansvarlig"
         icon={Users}
@@ -406,6 +445,11 @@ export default function JobbLookupCard() {
 
       <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4">
         <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Mustad — oppslagsverk</p>
+        <SuggestionList
+          suggestions={suggestions}
+          onAccept={handleAcceptEmployeeSuggestion}
+          onDecline={handleDeclineEmployeeSuggestion}
+        />
         <input
           type="text"
           value={mustadQuery}
@@ -457,14 +501,28 @@ export default function JobbLookupCard() {
                 )}
               </div>
             ))}
-            {employeeResults.map((e) => (
-              <div key={e.id} className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-                <p className="text-sm font-medium text-ink-1">{e.name}</p>
-                <p className="mt-0.5 text-2xs text-ink-4">
-                  {[e.title, e.department].filter(Boolean).join(" · ") || "—"}
-                </p>
-              </div>
-            ))}
+            {loadingEmployees && showEmployees ? (
+              <SkeletonRows count={1} />
+            ) : (
+              employeeResults.map((e) => (
+                <div key={e.id} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink-1">{e.name}</p>
+                    <p className="mt-0.5 text-2xs text-ink-4">
+                      {[e.title, e.department].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => confirmDeleteEmployee.request(e)}
+                    aria-label="Slett ansatt"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
@@ -476,6 +534,15 @@ export default function JobbLookupCard() {
         onConfirm={() => {
           if (confirmDelete.pending) handleRemove(confirmDelete.pending);
           confirmDelete.cancel();
+        }}
+      />
+      <ConfirmDialog
+        open={confirmDeleteEmployee.isOpen}
+        message={`Slette ${confirmDeleteEmployee.pending?.name ?? ""} fra ansatte-listen?`}
+        onCancel={confirmDeleteEmployee.cancel}
+        onConfirm={() => {
+          if (confirmDeleteEmployee.pending) handleRemoveEmployee(confirmDeleteEmployee.pending);
+          confirmDeleteEmployee.cancel();
         }}
       />
     </div>

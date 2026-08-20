@@ -13,6 +13,8 @@ import { getAllComments } from "./comments";
 import { getJobbReminders } from "./jobbReminders";
 import { getJobbEvents } from "./jobbEvents";
 import { getLeasingManagers } from "./leasingManagers";
+import { getEmployees } from "./employees";
+import { getSuggestions } from "./jobbSuggestions";
 import { getNotes } from "./notes";
 import { getQuickPicks } from "./shoppingQuickPicks";
 import { getExercises } from "./exercises";
@@ -45,6 +47,8 @@ export async function buildBackup() {
     jobbReminders,
     jobbEvents,
     leasingManagers,
+    employees,
+    jobbSuggestions,
     notes,
     shoppingQuickPicks,
     exercises,
@@ -68,6 +72,8 @@ export async function buildBackup() {
     getJobbReminders(),
     getJobbEvents(),
     getLeasingManagers(),
+    getEmployees(),
+    getSuggestions(),
     getNotes(),
     getQuickPicks(),
     getExercises(),
@@ -92,6 +98,8 @@ export async function buildBackup() {
     jobbReminders,
     jobbEvents,
     leasingManagers,
+    employees,
+    jobbSuggestions,
     notes,
     shoppingQuickPicks,
     exercises,
