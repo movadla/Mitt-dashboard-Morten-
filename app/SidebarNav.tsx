@@ -18,6 +18,20 @@ export interface NavItem {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   iconColorClass: string;
+  // Antall utestående ting i denne fanen (ugjorte oppgaver/påminnelser) —
+  // vises som en liten rød varselboble oppå ikonet, samme mønster som
+  // app-badges på iOS. 0/undefined viser ingen boble.
+  badge?: number;
+}
+
+// iOS-stil: viser eksakt tall opp til 99, ellers "99+".
+function BadgeDot({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="absolute -right-1 -top-1 z-10 grid h-4 min-w-4 place-items-center rounded-full bg-status-danger px-0.5 text-[9px] font-bold leading-none text-white ring-2 ring-surface-0">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
 }
 
 // Delt av desktop-rail og mobil-stripen under — samme avledning som CardHeader
@@ -64,11 +78,12 @@ function NavButton({
       }`}
     >
       <span
-        className={`grid shrink-0 place-items-center rounded-full ${iconChipClass(item.iconColorClass)} ${
+        className={`relative grid shrink-0 place-items-center rounded-full ${iconChipClass(item.iconColorClass)} ${
           dense ? "h-5 w-5" : "h-6 w-6"
         }`}
       >
         <Icon className={`${dense ? "h-3 w-3" : "h-3.5 w-3.5"} ${item.iconColorClass}`} />
+        <BadgeDot count={item.badge ?? 0} />
       </span>
       <span className="w-full truncate leading-tight">{item.label}</span>
     </button>

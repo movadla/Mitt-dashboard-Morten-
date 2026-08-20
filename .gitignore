@@ -62,5 +62,6 @@ lib/tasks.local.ts
 lib/widgets.local.ts
 lib/incomeForecast.local.ts
 lib/tenants.local.ts
+lib/companyInfo.local.ts
 
 .vercel

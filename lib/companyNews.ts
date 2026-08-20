@@ -6,6 +6,22 @@ import { hgetallJSON, hsetJSON, hdel } from "./kv";
 // app/api/company-news/route.ts for hvordan disse skrives inn) og som
 // dashboardet deretter viser og lar Morten bla tilbake i historikk på —
 // samme dato-nøklede Redis-hash-mønster som lib/receivablesSnapshots.ts.
+//
+// `date` = datoen NYHETEN GJELDER/BLE PUBLISERT (den faktiske hendelsen),
+// IKKE datoen Claude fant den i en research-økt — bruk den ekte hendelses-
+// datoen selv om det er lenge siden (se "date": "2024-09-02"-eksempelet for
+// styreleder-bytte), slik at historikk-navigeringen faktisk stemmer.
+//
+// Hva regnes som en nyhet (redaksjonelle kriterier fra Morten, 2026-08-19):
+// alt som kan interessere ham i hans rolle og handler om Mustad. Eksempler:
+// - Teams: noen skriver at man er i sluttforhandlinger med en stor kunde
+// - En faktisk innflyttingsdato inntreffer (f.eks. en ny leietaker flytter inn)
+// - Mustad Felles-kanalen i Teams: styremøter, allsamling, noe om ansatte
+//   (nyansettelser, noen slutter, forfremmelser)
+// - Reguleringsplan, oppkjøp/salg, nye større kontrakter, omsetning på CC,
+//   økonomi, drift, utleie, marked, ledelse, HR
+// Vær raus med hva som telles som nyhet heller enn streng — målet er at
+// Morten skal få med seg ting han ellers ville måttet lete etter selv.
 export type NewsCategory =
   | "regulering"
   | "oppkjop-salg"

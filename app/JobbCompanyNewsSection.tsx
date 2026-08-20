@@ -6,6 +6,7 @@ import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "./CardShell";
 import type { NewsCategory, NewsImportance, NewsItem, NewsSourceType } from "@/lib/companyNews";
 import { localDateString, relativeDayLabel } from "@/lib/payday";
+import { formatDateDMY } from "@/lib/widgets";
 import { Cloud, FileText, Globe, Mail, MessageSquare, Newspaper, X } from "lucide-react";
 
 const CATEGORY_LABEL: Record<NewsCategory, string> = {
@@ -64,20 +65,11 @@ function NewsRow({
   const SourceIcon = SOURCE_ICON[item.sourceType];
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <div className="flex items-start gap-2">
-        <button type="button" onClick={onToggle} aria-expanded={expanded} className="min-w-0 flex-1 text-left">
-          <div className="flex items-center gap-1.5">
-            <ImportanceDot importance={item.importance} />
-            <p className="min-w-0 truncate text-sm font-medium text-ink-1">{item.title}</p>
-          </div>
-          <p className={`mt-0.5 text-2xs text-ink-4 ${expanded ? "" : "truncate"}`}>{item.summary}</p>
-          <div className="mt-1 flex items-center gap-1.5 text-2xs text-ink-4">
-            <span className="rounded-full bg-surface-3 px-1.5 py-0.5">{CATEGORY_LABEL[item.category]}</span>
-            <span className="inline-flex items-center gap-1">
-              <SourceIcon className="h-3 w-3" />
-              {SOURCE_LABEL[item.sourceType]}
-            </span>
-          </div>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <ImportanceDot importance={item.importance} />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{item.title}</span>
+          <span className="shrink-0 text-2xs tabular-nums text-ink-4">{formatDateDMY(item.date)}</span>
         </button>
         <button
           type="button"
@@ -90,6 +82,13 @@ function NewsRow({
       </div>
       {expanded && (
         <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
+          <div className="flex items-center gap-1.5 text-2xs text-ink-4">
+            <span className="rounded-full bg-surface-3 px-1.5 py-0.5">{CATEGORY_LABEL[item.category]}</span>
+            <span className="inline-flex items-center gap-1">
+              <SourceIcon className="h-3 w-3" />
+              {SOURCE_LABEL[item.sourceType]}
+            </span>
+          </div>
           <p className="whitespace-pre-line text-sm text-ink-2">{item.fullText || item.summary}</p>
           {item.sourceRef && (
             <p className="text-2xs text-ink-4">

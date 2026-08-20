@@ -17,6 +17,7 @@ import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
+import { localDateString } from "@/lib/payday";
 import {
   Home,
   Bell,
@@ -83,6 +84,16 @@ export default function PrivatPanel() {
   const sportsFetchedAt = sportsData?.fetchedAt ?? null;
   const worldCup = worldCupData?.events ?? [];
   const worldCupFetchedAt = worldCupData?.fetchedAt ?? null;
+  // Kun for varselboblen på "Påminnelser" i sidebaren — RemindersSection eier
+  // selv sin fulle liste uavhengig av dette.
+  const { data: reminderBadgeData } = useSWR<{ reminders: { done: boolean; dueDate?: string }[] }>(
+    "/api/reminders",
+    jsonFetcher,
+  );
+  const today = localDateString();
+  const dueRemindersCount = (reminderBadgeData?.reminders ?? []).filter(
+    (r) => !r.done && (!r.dueDate || r.dueDate <= today),
+  ).length;
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   const [activeId, setActiveId] = useState("today");
@@ -161,13 +172,16 @@ export default function PrivatPanel() {
   // mens dataen hentes. Her regnes kun det første som "skjul fra nav".
   const worldcupVisible = worldCup.length > 0 || worldCupLoading;
   const fplVisible = fplLoading || (!!fpl && fpl.active && !!fpl.gw?.deadline);
+  const navBadges: Partial<Record<string, number>> = {
+    reminders: dueRemindersCount,
+  };
   const navItems: NavItem[] = order
     .filter((id) => {
       if (id === "worldcup") return worldcupVisible;
       if (id === "fpl") return fplVisible;
       return NAV_META[id] != null;
     })
-    .map((id) => ({ id, ...NAV_META[id] }));
+    .map((id) => ({ id, ...NAV_META[id], badge: navBadges[id] }));
 
   // Sikkerhetsnett: hvis den aktive kategorien forsvinner midt i økten (VM-
   // vinduet stenger, FPL-sesongen blir inaktiv), faller visningen tilbake

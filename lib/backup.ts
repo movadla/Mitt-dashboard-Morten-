@@ -13,7 +13,6 @@ import { getAllComments } from "./comments";
 import { getJobbReminders } from "./jobbReminders";
 import { getJobbEvents } from "./jobbEvents";
 import { getLeasingManagers } from "./leasingManagers";
-import { getProcedureNotes } from "./procedureNotes";
 import { getNotes } from "./notes";
 import { getQuickPicks } from "./shoppingQuickPicks";
 import { getExercises } from "./exercises";
@@ -46,7 +45,6 @@ export async function buildBackup() {
     jobbReminders,
     jobbEvents,
     leasingManagers,
-    procedureNotes,
     notes,
     shoppingQuickPicks,
     exercises,
@@ -70,7 +68,6 @@ export async function buildBackup() {
     getJobbReminders(),
     getJobbEvents(),
     getLeasingManagers(),
-    getProcedureNotes(),
     getNotes(),
     getQuickPicks(),
     getExercises(),
@@ -95,7 +92,6 @@ export async function buildBackup() {
     jobbReminders,
     jobbEvents,
     leasingManagers,
-    procedureNotes,
     notes,
     shoppingQuickPicks,
     exercises,

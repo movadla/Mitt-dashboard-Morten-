@@ -12,3 +12,4 @@ swap("tasks");
 swap("widgets");
 swap("incomeForecast");
 swap("tenants");
+swap("companyInfo");

@@ -47,11 +47,9 @@ import {
   ChevronUp,
   ClipboardList,
   FileSignature,
-  FileText,
   Home,
   Newspaper,
   Receipt,
-  Search,
   ShieldCheck,
   TrendingUp,
   Users,
@@ -59,16 +57,16 @@ import {
 } from "lucide-react";
 import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
 import { SidebarNav, type NavItem } from "./SidebarNav";
+import { jsonFetcher } from "@/lib/swrFetcher";
 import { relativeDayLabel } from "@/lib/payday";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
+import useSWR, { mutate } from "swr";
 import IncomeForecastSection from "./IncomeForecastSection";
 import JobbTodaySummary from "./JobbTodaySummary";
 import JobbRemindersSection from "./JobbRemindersSection";
 import JobbEventsSection from "./JobbEventsSection";
-import JobbLeasingManagersCard from "./JobbLeasingManagersCard";
-import JobbTenantDirectoryCard from "./JobbTenantDirectoryCard";
-import JobbProcedureNotesCard from "./JobbProcedureNotesCard";
+import JobbLookupCard from "./JobbLookupCard";
 import JobbCompanyNewsSection from "./JobbCompanyNewsSection";
 
 type Filter = Source | "all";
@@ -2549,7 +2547,7 @@ function ReceivablesCard({ today }: { today: string }) {
   );
 }
 
-const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v2";
+const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v3";
 const DEFAULT_JOBB_SECTION_ORDER = [
   "today",
   "oppgaver",
@@ -2560,9 +2558,7 @@ const DEFAULT_JOBB_SECTION_ORDER = [
   "receivables",
   "reminders",
   "events",
-  "leasing-managers",
-  "tenant-directory",
-  "procedure-notes",
+  "oppslag",
   "income-forecast",
   "mustad-nyheter",
 ];
@@ -2580,9 +2576,7 @@ const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColor
   receivables: { label: "Kundefordringer", icon: Receipt, iconColorClass: "text-fuchsia-400" },
   reminders: { label: "Påminnelser", icon: Bell, iconColorClass: "text-accent" },
   events: { label: "Hendelser", icon: CalendarPlus, iconColorClass: "text-emerald-400" },
-  "leasing-managers": { label: "Utleieansvarlige", icon: Users, iconColorClass: "text-violet-400" },
-  "tenant-directory": { label: "Leietakersøk", icon: Search, iconColorClass: "text-sky-400" },
-  "procedure-notes": { label: "Prosedyrenotater", icon: FileText, iconColorClass: "text-amber-400" },
+  oppslag: { label: "Oppslag", icon: Users, iconColorClass: "text-violet-400" },
   "income-forecast": { label: "Inntektsprognose", icon: TrendingUp, iconColorClass: "text-yellow-400" },
   "mustad-nyheter": { label: "Mustad-nyheter", icon: Newspaper, iconColorClass: "text-cyan-400" },
 };
@@ -2591,6 +2585,8 @@ const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColor
 // derfor er dette en id → node-oppslagstabell istedenfor en hardkodet JSX-rekkefølge.
 // "today", "oppgaver" og "mustad-nyheter" bygges direkte i sectionNodes (de trenger
 // tilgang til lokal state/handlers i JobbView), resten er enkle, uavhengige kort.
+// "oppslag" slår sammen tidligere "Utleieansvarlige" og "Leietakersøk" — begge er
+// oppslag mot Salesforce-kontoer/personer, og hørte naturlig sammen som én fane.
 const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
   calendar: (today) => <CalendarCard today={today} />,
   contracts: (today) => <ContractsCard today={today} />,
@@ -2599,9 +2595,7 @@ const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
   receivables: (today) => <ReceivablesCard today={today} />,
   reminders: () => <JobbRemindersSection />,
   events: () => <JobbEventsSection />,
-  "leasing-managers": () => <JobbLeasingManagersCard />,
-  "tenant-directory": () => <JobbTenantDirectoryCard />,
-  "procedure-notes": () => <JobbProcedureNotesCard />,
+  oppslag: () => <JobbLookupCard />,
   "income-forecast": () => <IncomeForecastSection />,
 };
 
@@ -2623,6 +2617,27 @@ export default function JobbView({
   const hasNavigatedRef = useRef(false);
   const skipFocusMoveRef = useRef(false);
   const highlightTimerRef = useRef<number | null>(null);
+
+  // Kun for varselboblen på "Påminnelser" i sidebaren — selve kortet
+  // (JobbRemindersSection) henter og eier sin egen fulle liste uavhengig.
+  const { data: reminderBadgeData } = useSWR<{ reminders: { done: boolean; dueDate?: string }[] }>(
+    "/api/jobb-reminders",
+    jsonFetcher,
+  );
+  const dueRemindersCount = (reminderBadgeData?.reminders ?? []).filter(
+    (r) => !r.done && (!r.dueDate || r.dueDate <= today),
+  ).length;
+
+  // Sentral lytter for "jobb-refresh" (dispatchet av mutasjons-handlere i de
+  // fulle kortene) — reveraliderer alle SWR-nøkler, samme mønster som
+  // PrivatPanel.tsx bruker for "privat-refresh".
+  useEffect(() => {
+    function handler() {
+      mutate(() => true);
+    }
+    window.addEventListener("mitt-dashboard:jobb-refresh", handler);
+    return () => window.removeEventListener("mitt-dashboard:jobb-refresh", handler);
+  }, []);
 
   // Samme fokus-flytting ved fanebytte som Privat-fanen (se PrivatPanel.tsx) —
   // hoppes over ved første montering og ved piltast-navigasjon.
@@ -3173,9 +3188,13 @@ export default function JobbView({
     </div>
   );
 
+  const navBadges: Partial<Record<string, number>> = {
+    oppgaver: counts.all,
+    reminders: dueRemindersCount,
+  };
   const navItems: NavItem[] = order
     .filter((id) => NAV_META[id] != null)
-    .map((id) => ({ id, ...NAV_META[id] }));
+    .map((id) => ({ id, ...NAV_META[id], badge: navBadges[id] }));
 
   const sectionNodes: Record<string, React.ReactNode> = {
     today: (
@@ -3195,9 +3214,7 @@ export default function JobbView({
     receivables: JOBB_SECTION_NODES.receivables(today),
     reminders: JOBB_SECTION_NODES.reminders(today),
     events: JOBB_SECTION_NODES.events(today),
-    "leasing-managers": JOBB_SECTION_NODES["leasing-managers"](today),
-    "tenant-directory": JOBB_SECTION_NODES["tenant-directory"](today),
-    "procedure-notes": JOBB_SECTION_NODES["procedure-notes"](today),
+    oppslag: JOBB_SECTION_NODES.oppslag(today),
     "income-forecast": JOBB_SECTION_NODES["income-forecast"](today),
   };
 
