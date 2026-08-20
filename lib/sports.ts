@@ -232,8 +232,10 @@ async function fetchTsdbTeamEuropean(teamName: string, category: string, limit =
 }
 
 // Klubber som jevnlig kvalifiserer til europeisk klubbfotball — løs liste,
-// kan trenge justering fra sesong til sesong (se Morten).
-const NORWEGIAN_EUROPEAN_CLUBS = ["Viking", "Bodø/Glimt", "Molde", "Rosenborg", "Brann"];
+// kan trenge justering fra sesong til sesong (se Morten). Viking har alltid
+// prioritet i visningen (se HIGHLIGHT_CATEGORIES/splitDayEvents i
+// SportSection.tsx) selv når flere av disse spiller samme dag.
+const NORWEGIAN_EUROPEAN_CLUBS = ["Viking", "Bodø/Glimt", "Molde", "Rosenborg", "Brann", "Tromsø", "Lillestrøm"];
 
 // ── Golf majors (static calendar) ────────────────────────────────────────────
 function getGolfMajors(): SportEvent[] {

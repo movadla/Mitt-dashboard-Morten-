@@ -3404,8 +3404,6 @@ export default function JobbView({
         onJumpToTask={(id) => jumpToCase(id)}
         onJumpToNews={() => handleSelect("mustad-nyheter")}
         onJumpToContracts={() => handleSelect("contracts")}
-        onJumpToExpiry={() => handleSelect("expiry")}
-        onJumpToGuarantees={() => handleSelect("guarantees")}
       />
     ),
     oppgaver: oppgaverNode,

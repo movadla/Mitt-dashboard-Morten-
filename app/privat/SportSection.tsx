@@ -146,9 +146,28 @@ function LeagueSubsection({ cat, matches }: { cat: string; matches: SportEvent[]
 // Skiller en dags kamper i tre: fremhevede enkeltkamper (Viking/Man Utd/Norge
 // + andre ikke-liga-sporter), og fulle liga-runder gruppert per turnering
 // (dedupet mot de fremhevede, samme mønster som backend-dedupen i lib/sports.ts).
+//
+// "Norsk lag i Europa" (football_no_uefa) kan ha flere kamper samme dag (en
+// hel runde med norske Europa-/Conference League-lag) — da vises kun ÉN åpent
+// (Viking om de spiller, ellers den første), og resten legges i en egen
+// drilldown (gjenbruker LeagueSubsection, samme visuelle mønster som en
+// liga-runde) i stedet for å liste alle enkeltvis.
 function splitDayEvents(dayEvts: SportEvent[]) {
-  const highlightEvts = dayEvts.filter((e) => HIGHLIGHT_CATEGORIES.has(e.category));
-  const highlightNames = new Set(highlightEvts.map((e) => e.name.toLowerCase()));
+  const allHighlights = dayEvts.filter((e) => HIGHLIGHT_CATEGORIES.has(e.category));
+  const euroEvts = allHighlights.filter((e) => e.category === "football_no_uefa");
+  const otherHighlights = allHighlights.filter((e) => e.category !== "football_no_uefa");
+
+  let shownEuro: SportEvent[] = [];
+  let euroDrilldown: SportEvent[] = [];
+  if (euroEvts.length > 0) {
+    const vikingIdx = euroEvts.findIndex((e) => e.name.toLowerCase().includes("viking"));
+    const primaryIdx = vikingIdx !== -1 ? vikingIdx : 0;
+    shownEuro = [euroEvts[primaryIdx]];
+    euroDrilldown = euroEvts.filter((_, i) => i !== primaryIdx);
+  }
+
+  const highlightEvts = [...otherHighlights, ...shownEuro];
+  const highlightNames = new Set(allHighlights.map((e) => e.name.toLowerCase()));
   const otherEvts = dayEvts.filter((e) => !HIGHLIGHT_CATEGORIES.has(e.category) && !LEAGUE_CATS.has(e.category));
   const leagueGroups = [...LEAGUE_CATS]
     .map((cat) => ({
@@ -156,14 +175,14 @@ function splitDayEvents(dayEvts: SportEvent[]) {
       matches: dayEvts.filter((e) => e.category === cat && !highlightNames.has(e.name.toLowerCase())),
     }))
     .filter((g) => g.matches.length > 0);
-  return { highlightEvts, otherEvts, leagueGroups };
+  return { highlightEvts, otherEvts, leagueGroups, euroDrilldown };
 }
 
 function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent[] }) {
   const [open, setOpen] = useState(false);
 
   const dayEvts = allEvents.filter((e) => e.date === date);
-  const { highlightEvts, otherEvts, leagueGroups } = splitDayEvents(dayEvts);
+  const { highlightEvts, otherEvts, leagueGroups, euroDrilldown } = splitDayEvents(dayEvts);
 
   const hasEvents = dayEvts.length > 0;
   const d = daysUntil(date);
@@ -221,6 +240,7 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
             {leagueGroups.map((g) => (
               <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
             ))}
+            {euroDrilldown.length > 0 && <LeagueSubsection cat="football_no_uefa" matches={euroDrilldown} />}
           </div>
         </div>
       </div>
@@ -240,7 +260,12 @@ export function SportSection({
   const [showWeek, setShowWeek] = useState(false);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
-  const { highlightEvts: todayHighlights, otherEvts: todayOthers, leagueGroups: todayLeagueGroups } = splitDayEvents(todayEvents);
+  const {
+    highlightEvts: todayHighlights,
+    otherEvts: todayOthers,
+    leagueGroups: todayLeagueGroups,
+    euroDrilldown: todayEuroDrilldown,
+  } = splitDayEvents(todayEvents);
   const restDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() + i);
@@ -271,6 +296,9 @@ export function SportSection({
                 {todayLeagueGroups.map((g) => (
                   <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
                 ))}
+                {todayEuroDrilldown.length > 0 && (
+                  <LeagueSubsection cat="football_no_uefa" matches={todayEuroDrilldown} />
+                )}
               </div>
             ) : (
               <p className="text-sm text-ink-3">Ingen kamper i dag.</p>

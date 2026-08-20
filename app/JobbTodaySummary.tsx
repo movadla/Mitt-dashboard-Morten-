@@ -9,7 +9,7 @@ import type { JobbEvent } from "@/lib/jobbEvents";
 import type { Task } from "@/lib/tasks";
 import type { NewsItem } from "@/lib/companyNews";
 import { localDateString } from "@/lib/payday";
-import { CALENDAR_EVENTS, CONTRACTS, EXPIRIES, GUARANTEES, formatDateDMY, formatKr } from "@/lib/widgets";
+import { CALENDAR_EVENTS, CONTRACTS, formatKr } from "@/lib/widgets";
 import { AlertTriangle, Bell, Calendar, ClipboardList, Mail, Newspaper, PartyPopper } from "lucide-react";
 
 function CategoryLabel({
@@ -32,12 +32,6 @@ function CategoryLabel({
   );
 }
 
-function daysUntil(dateIso: string, fromIso: string): number {
-  const target = new Date(dateIso + "T00:00:00Z").getTime();
-  const from = new Date(fromIso + "T00:00:00Z").getTime();
-  return Math.round((target - from) / (1000 * 60 * 60 * 24));
-}
-
 interface OppfolgingItem {
   key: string;
   text: string;
@@ -50,22 +44,25 @@ export default function JobbTodaySummary({
   onJumpToTask,
   onJumpToNews,
   onJumpToContracts,
-  onJumpToExpiry,
-  onJumpToGuarantees,
 }: {
   tasks: Task[];
   onJumpToAsana: () => void;
   onJumpToTask: (id: string) => void;
   onJumpToNews: () => void;
   onJumpToContracts: () => void;
-  onJumpToExpiry: () => void;
-  onJumpToGuarantees: () => void;
 }) {
   const [reminders, setReminders] = useState<JobbReminder[]>([]);
   const [events, setEvents] = useState<JobbEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: newsData } = useSWR<{ news: NewsItem[] }>("/api/company-news", jsonFetcher);
-  const latestNews = (newsData?.news ?? []).slice(0, 3);
+  // "I dag"-forhåndsvisningen skal kun vise viktig/relevant og fersk nyheter
+  // (ikke "lav" viktighet, ikke eldre enn en uke) — selve Mustad-nyheter-fanen
+  // viser fortsatt ALT, uendret (se JobbCompanyNewsSection.tsx).
+  const oneWeekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const allNews = newsData?.news ?? [];
+  const relevantNews = allNews
+    .filter((n) => n.importance !== "lav" && Date.parse(n.date) >= oneWeekAgoMs)
+    .slice(0, 3);
 
   const load = useCallback(() => {
     Promise.allSettled([
@@ -102,26 +99,6 @@ export default function JobbTodaySummary({
         key: `contract-${c.id}`,
         text: `Ny kontrakt signert i dag: ${c.kunde} (${formatKr(c.arsbelop)}/år)`,
         onClick: onJumpToContracts,
-      });
-    }
-  }
-  for (const t of EXPIRIES) {
-    const nearest = Math.min(...t.lines.map((l) => l.dagerTilUtlop));
-    if (nearest < 10 && t.status !== "Reforhandlet") {
-      oppfolging.push({
-        key: `expiry-${t.customerId}`,
-        text: `${t.leietaker} — kontraktslinje utløper om ${nearest}d (${t.bygg})`,
-        onClick: onJumpToExpiry,
-      });
-    }
-  }
-  for (const g of GUARANTEES) {
-    const days = daysUntil(g.frist, today);
-    if (days <= 10) {
-      oppfolging.push({
-        key: `guarantee-${g.id}`,
-        text: `${g.leietaker} — garanti/depositum ${days < 0 ? "oversittet" : `frist om ${days}d`} (${formatDateDMY(g.frist)})`,
-        onClick: onJumpToGuarantees,
       });
     }
   }
@@ -235,9 +212,9 @@ export default function JobbTodaySummary({
                   Se alle →
                 </button>
               </div>
-              {latestNews.length > 0 ? (
+              {relevantNews.length > 0 ? (
                 <ul className="flex flex-col gap-1">
-                  {latestNews.map((n) => (
+                  {relevantNews.map((n) => (
                     <li key={n.id}>
                       <button
                         type="button"
@@ -250,7 +227,9 @@ export default function JobbTodaySummary({
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-ink-3">Ingen nyheter registrert ennå.</p>
+                <p className="text-sm text-ink-3">
+                  {allNews.length > 0 ? "Ingen viktige nyheter siste uken." : "Ingen nyheter registrert ennå."}
+                </p>
               )}
             </div>
           </div>

@@ -135,15 +135,17 @@ function ReminderLine({
   );
 }
 
-// Samlelinje for en full liga-runde (Eliteserien/PL/FA Cup/Champions League) —
-// viser kun antall kamper, med drill-down på klikk i stedet for å liste alle
-// enkeltvis og oversvømme "I dag".
+// Samlelinje for en full liga-runde (Eliteserien/PL/FA Cup/Champions League)
+// eller andre grupperte kamper — viser kun antall kamper, med drill-down på
+// klikk i stedet for å liste alle enkeltvis og oversvømme "I dag". `label`
+// er den FULLE synlige teksten (ikke bare turneringsnavnet) siden ikke alle
+// bruksområder er en "X-runde" (se "Norske lag i Europa"-bruken).
 function SportRoundLine({ label, matches }: { label: string; matches: SportEvent[] }) {
   const [open, setOpen] = useState(false);
   return (
     <li className="text-sm text-ink-1">
       <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-1.5 text-left">
-        <span className="min-w-0 flex-1 truncate">{label}-runde</span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
         <span className="shrink-0 text-2xs tabular-nums text-ink-4">{matches.length} kamper</span>
         <ChevronDown className={`h-3 w-3 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
@@ -434,12 +436,25 @@ export default function TodaySummary() {
   // markert highlight, og fulle liga-runder (Eliteserien/PL/FA Cup/Champions
   // League) vises IKKE enkeltvis her — de samles i en klikkbar "X-runde"-linje
   // (se SportRoundLine) i stedet for å oversvømme "I dag" med alle kampene.
-  const sportsOnViewed = sports.filter(
-    (s) =>
-      s.date === viewedDate &&
-      !LEAGUE_ROUND_CATEGORIES.has(s.category) &&
-      (s.category !== "personal" || s.highlight),
-  );
+  // "Norsk lag i Europa" kan ha flere kamper samme dag (en hel Europa-/
+  // Conference League-runde med flere norske lag) — samme "flom"-problem som
+  // liga-rundene, løst likt: Viking vises alltid åpent (ellers den første),
+  // resten samles i en egen drilldown-linje i stedet for å listes enkeltvis.
+  const euroOnViewed = sports.filter((s) => s.date === viewedDate && s.category === "football_no_uefa");
+  const euroPrimaryIdx = euroOnViewed.length > 0
+    ? Math.max(0, euroOnViewed.findIndex((e) => e.name.toLowerCase().includes("viking")))
+    : -1;
+  const euroShown = euroPrimaryIdx >= 0 ? [euroOnViewed[euroPrimaryIdx]] : [];
+  const euroDrilldownOnViewed = euroOnViewed.filter((_, i) => i !== euroPrimaryIdx);
+  const sportsOnViewed = sports
+    .filter(
+      (s) =>
+        s.date === viewedDate &&
+        !LEAGUE_ROUND_CATEGORIES.has(s.category) &&
+        s.category !== "football_no_uefa" &&
+        (s.category !== "personal" || s.highlight),
+    )
+    .concat(euroShown);
   const sportRoundsOnViewed = [...LEAGUE_ROUND_CATEGORIES]
     .map((cat) => ({ cat, matches: sports.filter((s) => s.date === viewedDate && s.category === cat) }))
     .filter((g) => g.matches.length > 0);
@@ -630,7 +645,7 @@ export default function TodaySummary() {
                 </CategoryRow>
               </div>
 
-              {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0) && (
+              {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0 || euroDrilldownOnViewed.length > 0) && (
                 <div className="py-2 last:pb-0">
                   <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
                     <ul className="flex flex-col gap-1">
@@ -641,8 +656,11 @@ export default function TodaySummary() {
                         </li>
                       ))}
                       {sportRoundsOnViewed.map((g) => (
-                        <SportRoundLine key={g.cat} label={LEAGUE_ROUND_LABELS[g.cat] ?? g.cat} matches={g.matches} />
+                        <SportRoundLine key={g.cat} label={`${LEAGUE_ROUND_LABELS[g.cat] ?? g.cat}-runde`} matches={g.matches} />
                       ))}
+                      {euroDrilldownOnViewed.length > 0 && (
+                        <SportRoundLine label="Flere norske lag i Europa" matches={euroDrilldownOnViewed} />
+                      )}
                     </ul>
                   </CategoryRow>
                 </div>
