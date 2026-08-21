@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
@@ -41,6 +45,36 @@
   /* Privat-fanens egen aksent (varm, adskilt fra Jobb sin blå --color-accent)
      — en liten fargekode-ledetråd for hvilken fane man er i, uavhengig av toppbryteren. */
   --color-accent-privat: #f59e0b;
+
+  /* shadcn/ui-tokens — brukes av komponenter fra `npx shadcn add ...`
+     (components/ui/*), mappet til de eksisterende --color-*-tokens over i
+     stedet for shadcn sin egen standardpalett, slik at nye shadcn-
+     komponenter automatisk matcher appens mørke glassdesign uten egen
+     omskriving. Se DESIGN.md for hvilke tokens som betyr hva. */
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 html,
@@ -101,6 +135,29 @@ body {
   --ds-wc: #eab308;
   --font-inter: var(--font-geist-sans);
   --font-grotesk: var(--font-geist-sans);
+
+  /* shadcn/ui-tokens mappet til appens egne dark-glass-farger (ikke shadcn
+     sin lyse standardpalett) — appen har ingen lys/mørk-toggle, så det
+     finnes bevisst ingen egen `.dark`-blokk her. */
+  --background: var(--color-surface-0);
+  --foreground: var(--color-ink-1);
+  --card: var(--color-surface-1);
+  --card-foreground: var(--color-ink-1);
+  --popover: var(--color-surface-2);
+  --popover-foreground: var(--color-ink-1);
+  --primary: var(--color-accent);
+  --primary-foreground: var(--color-ink-1);
+  --secondary: var(--color-surface-2);
+  --secondary-foreground: var(--color-ink-1);
+  --muted: var(--color-surface-2);
+  --muted-foreground: var(--color-ink-3);
+  --accent: var(--color-surface-3);
+  --accent-foreground: var(--color-ink-1);
+  --destructive: var(--color-status-danger);
+  --border: var(--color-line);
+  --input: var(--color-line);
+  --ring: var(--color-accent);
+  --radius: 0.75rem;
 }
 
 .font-display {
@@ -205,4 +262,10 @@ body {
 }
 .day-slide-in-left {
   animation: day-slide-in-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 }

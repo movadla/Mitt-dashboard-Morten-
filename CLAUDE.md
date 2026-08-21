@@ -1,1 +1,3 @@
 @AGENTS.md
+@ANONYMISERING.md
+@DESIGN.md

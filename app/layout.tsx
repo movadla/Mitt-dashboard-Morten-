@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./ServiceWorkerRegister";
 import OfflineBanner from "./OfflineBanner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,7 +51,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <OfflineBanner />
         <ServiceWorkerRegister />
-        {children}
+        <TooltipProvider delay={300}>{children}</TooltipProvider>
       </body>
     </html>
   );
