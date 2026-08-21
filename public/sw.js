@@ -1,4 +1,4 @@
-const CACHE_NAME = "mitt-dashboard-v1";
+const CACHE_NAME = "mitt-dashboard-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -42,7 +42,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // App-skall/statiske filer: cache først, hent på nytt i bakgrunnen.
+  // Sidenavigasjon (HTML/RSC): nettverk først. Innloggingsstatus (PIN-cookie)
+  // kan ha endret seg akkurat nå — cache først ville av og til vist en gammel
+  // mellomlagret side (f.eks. innloggingsskjermen) på nytt rett etter en
+  // vellykket PIN-innlogging, som så ut som at innloggingen ikke tok. Cache
+  // brukes fortsatt som fallback ved faktisk frakobling.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return res;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  // Statiske filer (JS/CSS/bilder): cache først, hent på nytt i bakgrunnen.
   event.respondWith(
     caches.match(request).then((cached) => {
       const fetchPromise = fetch(request)

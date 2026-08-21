@@ -74,11 +74,12 @@ export default function Dashboard({
     try {
       const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
       // localStorage kan ikke leses under SSR/første render uten hydrerings-
-      // avvik — dette MÅ skje i en effekt, ikke avledes i render.
+      // avvik — dette MÅ skje i en effekt, ikke avledes i render. Privat er
+      // standard ved tom localStorage (Morten sin primære fane).
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMode(stored === "privat" ? "privat" : "jobb");
+      setMode(stored === "jobb" ? "jobb" : "privat");
     } catch {
-      setMode("jobb");
+      setMode("privat");
     }
   }, []);
 
@@ -95,10 +96,7 @@ export default function Dashboard({
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-5xl md:px-8">
         <div className="sticky top-0 z-40 -mx-4 bg-surface-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-ink-1">
-              I dag
-            </h1>
+          <div className="flex items-center justify-end gap-3">
             {mode && <ModeToggle mode={mode} onChange={setMode} />}
           </div>
         </div>
