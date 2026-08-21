@@ -31,6 +31,16 @@ export function addDaysIso(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+// Mandag-søndag-uken en dato faller i — delt av Kalender/Hendelser for å
+// klassifisere kommende rader i "denne uken"/"neste uke"/"fremover"-bøtter.
+export function weekRangeContaining(dateIso: string): { start: string; end: string } {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const isoDow = dt.getUTCDay() === 0 ? 7 : dt.getUTCDay(); // 1=mandag..7=søndag
+  const start = addDaysIso(dateIso, 1 - isoDow);
+  return { start, end: addDaysIso(start, 6) };
+}
+
 export type EventCategory = "bursdag" | "permisjon" | "bolig" | "annet";
 export type LifeEventRecurrence = "none" | "weekly" | "monthly" | "yearly";
 

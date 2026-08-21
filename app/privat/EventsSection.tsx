@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
@@ -9,7 +9,7 @@ import { PartyPopper, X } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { EventCategory, LifeEvent, LifeEventRecurrence } from "@/lib/payday";
-import { formatDMY, localDateString, nextOccurrence, nextPaydayFrom, relativeDayLabel } from "@/lib/payday";
+import { addDaysIso, formatDMY, localDateString, nextOccurrence, nextPaydayFrom, relativeDayLabel, weekRangeContaining } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./SwipeableRow";
 
@@ -141,6 +141,7 @@ function EventNotes({
 function EventRow({
   row,
   editing,
+  dayLabel,
   onRemove,
   onStartEdit,
   onCancelEdit,
@@ -152,6 +153,7 @@ function EventRow({
 }: {
   row: Row;
   editing: boolean;
+  dayLabel?: string;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -181,7 +183,10 @@ function EventRow({
       >
         <div className="flex items-center gap-2">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
-          <p className={`min-w-0 truncate text-sm ${row.event ? "font-medium text-ink-1" : "text-ink-2"}`}>{row.title}</p>
+          <p className={`min-w-0 truncate text-sm ${row.event ? "font-medium text-ink-1" : "text-ink-2"}`}>
+            {dayLabel && <span className="font-normal text-ink-4">{dayLabel} · </span>}
+            {row.title}
+          </p>
         </div>
         <p className="mt-0.5 pl-3.5 text-2xs text-ink-4">
           {meta.label}
@@ -334,7 +339,14 @@ export default function EventsSection() {
     setShowForm(true);
   }
 
-  const visibleRows = rows.slice(0, visibleCount);
+  // Samme tre-bøtte-inndeling som Kalender — mer fokus på det som er nært
+  // i tid, mindre fremtredende lenger frem.
+  const { end: thisWeekEnd } = weekRangeContaining(today);
+  const { end: nextWeekEnd } = weekRangeContaining(addDaysIso(thisWeekEnd, 1));
+  const thisWeekRows = rows.filter((r) => r.occurrence <= thisWeekEnd);
+  const nextWeekRows = rows.filter((r) => r.occurrence > thisWeekEnd && r.occurrence <= nextWeekEnd);
+  const laterRows = rows.filter((r) => r.occurrence > nextWeekEnd);
+  const visibleLaterRows = laterRows.slice(0, visibleCount);
 
   return (
     <div className="border-t-2 border-t-accent-privat/60 p-4">
@@ -421,23 +433,19 @@ export default function EventsSection() {
 
           {loading ? (
             <SkeletonRows count={2} />
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>
           ) : (
             <>
-              <ul className="flex flex-col gap-1.5">
-                {visibleRows.map((row, i) => {
-                  const prevDate = i > 0 ? visibleRows[i - 1].occurrence : null;
-                  const showHeader = row.occurrence !== prevDate;
-                  return (
-                    <Fragment key={row.key}>
-                      {showHeader && (
-                        <li className="mt-2 first:mt-0">
-                          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
-                            {relativeDayLabel(row.occurrence, today)}
-                          </p>
-                        </li>
-                      )}
+              {thisWeekRows.length > 0 && (
+                <div>
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-2">Denne uken</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {thisWeekRows.map((row) => (
                       <EventRow
+                        key={row.key}
                         row={row}
+                        dayLabel={relativeDayLabel(row.occurrence, today)}
                         editing={editingId === row.key}
                         onRemove={confirmDelete.request}
                         onStartEdit={setEditingId}
@@ -453,18 +461,76 @@ export default function EventsSection() {
                           row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
                         }
                       />
-                    </Fragment>
-                  );
-                })}
-              </ul>
-              {rows.length > visibleCount && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((v) => v + 10)}
-                  className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
-                >
-                  {`Mer (${rows.length - visibleCount})`}
-                </button>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {nextWeekRows.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-3">Neste uke</p>
+                  <ul className="flex flex-col gap-1.5 opacity-90">
+                    {nextWeekRows.map((row) => (
+                      <EventRow
+                        key={row.key}
+                        row={row}
+                        dayLabel={relativeDayLabel(row.occurrence, today)}
+                        editing={editingId === row.key}
+                        onRemove={confirmDelete.request}
+                        onStartEdit={setEditingId}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={handleSaveEdit}
+                        comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
+                        onAddComment={(tekst) => (row.event ? addComment("life-event", row.event.id, tekst) : Promise.resolve(false))}
+                        onDeleteComment={(commentId, preview) =>
+                          row.event &&
+                          confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
+                        }
+                        onToggleCommentRelevance={(commentId, ikkeRelevant) =>
+                          row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
+                        }
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {laterRows.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">Fremover</p>
+                  <ul className="flex flex-col gap-1.5 opacity-75">
+                    {visibleLaterRows.map((row) => (
+                      <EventRow
+                        key={row.key}
+                        row={row}
+                        dayLabel={relativeDayLabel(row.occurrence, today)}
+                        editing={editingId === row.key}
+                        onRemove={confirmDelete.request}
+                        onStartEdit={setEditingId}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={handleSaveEdit}
+                        comments={row.event ? comments[commentKey("life-event", row.event.id)] ?? [] : []}
+                        onAddComment={(tekst) => (row.event ? addComment("life-event", row.event.id, tekst) : Promise.resolve(false))}
+                        onDeleteComment={(commentId, preview) =>
+                          row.event &&
+                          confirmCommentDelete.request({ targetType: "life-event", targetId: row.event.id, commentId, preview })
+                        }
+                        onToggleCommentRelevance={(commentId, ikkeRelevant) =>
+                          row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
+                        }
+                      />
+                    ))}
+                  </ul>
+                  {laterRows.length > visibleCount && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((v) => v + 10)}
+                      className="mt-1 self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                    >
+                      {`Mer (${laterRows.length - visibleCount})`}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           )}

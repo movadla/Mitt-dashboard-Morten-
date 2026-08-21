@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
@@ -9,7 +9,7 @@ import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { vibrate } from "@/lib/haptics";
-import { localDateString, relativeDayLabel } from "@/lib/payday";
+import { addDaysIso, localDateString, relativeDayLabel, weekRangeContaining } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
 import { Calendar, X } from "lucide-react";
 
@@ -115,6 +115,7 @@ function EventNotes({
 function EventRow({
   event,
   editing,
+  dayLabel,
   onRemove,
   onStartEdit,
   onCancelEdit,
@@ -126,6 +127,9 @@ function EventRow({
 }: {
   event: PrivatCalendarEvent;
   editing: boolean;
+  // Dag+hendelse på samme linje (f.eks. "I dag ·"/"Fre 21.08 ·") i stedet
+  // for en egen overskriftslinje per dato — se runde 2 sin uke-inndeling.
+  dayLabel?: string;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -158,7 +162,10 @@ function EventRow({
             aria-label="Rediger hendelse"
             className="min-w-0 flex-1 text-left"
           >
-            <p className="min-w-0 truncate text-sm font-medium text-ink-1">{event.title}</p>
+            <p className="min-w-0 truncate text-sm font-medium text-ink-1">
+              {dayLabel && <span className="font-normal text-ink-4">{dayLabel} · </span>}
+              {event.title}
+            </p>
             {hasMeta && (
               <p className="mt-0.5 text-2xs text-ink-4">
                 {event.startTime ? event.startTime : ""}
@@ -293,9 +300,14 @@ export default function CalendarSection() {
 
   const today = localDateString();
   const upcoming = events.filter((e) => e.date >= today);
-  const todays = upcoming.filter((e) => e.date === today);
-  const rest = upcoming.filter((e) => e.date !== today);
-  const visibleRest = rest.slice(0, visibleCount);
+  // Tre bøtter i stedet for bare "i dag"/"resten" — mer fokus på det som
+  // faktisk er nært i tid, mindre fremtredende lenger frem.
+  const { end: thisWeekEnd } = weekRangeContaining(today);
+  const { end: nextWeekEnd } = weekRangeContaining(addDaysIso(thisWeekEnd, 1));
+  const thisWeek = upcoming.filter((e) => e.date <= thisWeekEnd);
+  const nextWeek = upcoming.filter((e) => e.date > thisWeekEnd && e.date <= nextWeekEnd);
+  const later = upcoming.filter((e) => e.date > nextWeekEnd);
+  const visibleLater = later.slice(0, visibleCount);
 
   function handleAddClick() {
     setShowForm(true);
@@ -305,7 +317,7 @@ export default function CalendarSection() {
     <div className="border-t-2 border-t-source-teams/60 p-4">
       <CardHeader
         title="Kalender"
-        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        subtitle={thisWeek.length > 0 ? `${thisWeek.length} denne uken` : undefined}
         onAdd={handleAddClick}
         addLabel="Ny kalenderhendelse"
         icon={Calendar}
@@ -374,47 +386,19 @@ export default function CalendarSection() {
 
           {loading ? (
             <SkeletonRows count={2} />
-          ) : todays.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen hendelser i dag.</p>
+          ) : upcoming.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
-              {todays.map((e) => (
-                <EventRow
-                  key={e.id}
-                  event={e}
-                  editing={editingId === e.id}
-                  onRemove={confirmDelete.request}
-                  onStartEdit={setEditingId}
-                  onCancelEdit={() => setEditingId(null)}
-                  onSaveEdit={handleSaveEdit}
-                  comments={comments[commentKey("calendar-event", e.id)] ?? []}
-                  onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
-                  onDeleteComment={(commentId, preview) =>
-                    confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
-                  }
-                  onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
-                />
-              ))}
-            </ul>
-          )}
-
-          {rest.length > 0 && (
             <>
-              <ul className="mt-1 flex flex-col gap-1.5">
-                {visibleRest.map((e, i) => {
-                  const prevDate = i > 0 ? visibleRest[i - 1].date : null;
-                  const showHeader = e.date !== prevDate;
-                  return (
-                    <Fragment key={e.id}>
-                      {showHeader && (
-                        <li className="mt-2 first:mt-0">
-                          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
-                            {relativeDayLabel(e.date, today)}
-                          </p>
-                        </li>
-                      )}
+              {thisWeek.length > 0 && (
+                <div>
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-2">Denne uken</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {thisWeek.map((e) => (
                       <EventRow
+                        key={e.id}
                         event={e}
+                        dayLabel={relativeDayLabel(e.date, today)}
                         editing={editingId === e.id}
                         onRemove={confirmDelete.request}
                         onStartEdit={setEditingId}
@@ -427,18 +411,70 @@ export default function CalendarSection() {
                         }
                         onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
                       />
-                    </Fragment>
-                  );
-                })}
-              </ul>
-              {rest.length > visibleCount && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((v) => v + 10)}
-                  className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
-                >
-                  {`Mer (${rest.length - visibleCount})`}
-                </button>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {nextWeek.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-3">Neste uke</p>
+                  <ul className="flex flex-col gap-1.5 opacity-90">
+                    {nextWeek.map((e) => (
+                      <EventRow
+                        key={e.id}
+                        event={e}
+                        dayLabel={relativeDayLabel(e.date, today)}
+                        editing={editingId === e.id}
+                        onRemove={confirmDelete.request}
+                        onStartEdit={setEditingId}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={handleSaveEdit}
+                        comments={comments[commentKey("calendar-event", e.id)] ?? []}
+                        onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
+                        onDeleteComment={(commentId, preview) =>
+                          confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
+                        }
+                        onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {later.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">Fremover</p>
+                  <ul className="flex flex-col gap-1.5 opacity-75">
+                    {visibleLater.map((e) => (
+                      <EventRow
+                        key={e.id}
+                        event={e}
+                        dayLabel={relativeDayLabel(e.date, today)}
+                        editing={editingId === e.id}
+                        onRemove={confirmDelete.request}
+                        onStartEdit={setEditingId}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={handleSaveEdit}
+                        comments={comments[commentKey("calendar-event", e.id)] ?? []}
+                        onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
+                        onDeleteComment={(commentId, preview) =>
+                          confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
+                        }
+                        onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                      />
+                    ))}
+                  </ul>
+                  {later.length > visibleCount && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((v) => v + 10)}
+                      className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
+                    >
+                      {`Mer (${later.length - visibleCount})`}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           )}
