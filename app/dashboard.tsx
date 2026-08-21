@@ -95,7 +95,7 @@ export default function Dashboard({
   return (
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-5xl md:px-8">
-        <div className="sticky top-0 z-40 -mx-4 bg-surface-0 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)] md:-mx-8 md:px-8">
+        <div className="sticky top-0 z-40 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)]">
           <div className="flex items-center justify-end gap-3">
             {mode && <ModeToggle mode={mode} onChange={setMode} />}
           </div>
