@@ -424,6 +424,8 @@ function ReminderRow({
 function SortableReminderRow({
   reminder,
   editing,
+  reorderMode,
+  dimmed = false,
   onToggle,
   onRemove,
   onStartEdit,
@@ -436,7 +438,7 @@ function SortableReminderRow({
   onAddSubtask,
   onToggleSubtask,
   onRemoveSubtask,
-}: { reminder: Reminder; editing: boolean } & RowCallbacks & RowCommentProps & RowSubtaskProps) {
+}: { reminder: Reminder; editing: boolean; reorderMode: boolean; dimmed?: boolean } & RowCallbacks & RowCommentProps & RowSubtaskProps) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reminder.id,
   });
@@ -464,19 +466,21 @@ function SortableReminderRow({
   }
 
   return (
-    <li ref={setNodeRef} style={style} className="flex flex-col">
+    <li ref={setNodeRef} style={style} className={`flex flex-col ${dimmed ? "opacity-70" : ""}`}>
       <div className="flex items-stretch gap-1">
-        <button
-          type="button"
-          ref={setActivatorNodeRef}
-          {...attributes}
-          {...listeners}
-          aria-label="Endre rekkefølge"
-          className="grid shrink-0 cursor-grab place-items-center px-1 text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
-          style={{ touchAction: "none" }}
-        >
-          <GripVertical className="h-5 w-5" />
-        </button>
+        {reorderMode && (
+          <button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            aria-label="Endre rekkefølge"
+            className="grid shrink-0 cursor-grab place-items-center px-1 text-ink-4 transition hover:text-ink-2 active:cursor-grabbing"
+            style={{ touchAction: "none" }}
+          >
+            <GripVertical className="h-5 w-5" />
+          </button>
+        )}
         <div className="min-w-0 flex-1">
           <SwipeableRow
             onSwipeRight={() => onToggle(reminder.id)}
@@ -513,6 +517,10 @@ export default function RemindersSection() {
     jsonFetcher,
   );
   const reminders = data?.reminders ?? [];
+  // Lokal state — nullstilles automatisk hver gang seksjonen forlates og
+  // gjeninntas (kun aktiv Privat-seksjon er montert), ingen egen
+  // reset-logikk nødvendig for "må trykkes på nytt hver gang".
+  const [reorderMode, setReorderMode] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false);
   // "now" leses fra state (ikke Date.now() direkte i render, som React
@@ -804,7 +812,19 @@ export default function RemindersSection() {
     <div className="border-t-2 border-t-accent-privat/60 p-4">
       <CardHeader
         title="Påminnelser"
-        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        subtitle={
+          <button
+            type="button"
+            onClick={() => setReorderMode((v) => !v)}
+            className={`rounded-lg border px-2 py-1 text-2xs font-semibold uppercase transition ${
+              reorderMode
+                ? "border-accent-privat/40 bg-accent-privat/15 text-accent-privat"
+                : "border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
+            }`}
+          >
+            {reorderMode ? "Ferdig" : "Endre rekkefølge"}
+          </button>
+        }
         onAdd={handleAddClick}
         addLabel="Ny påminnelse"
         icon={Bell}
@@ -898,7 +918,7 @@ export default function RemindersSection() {
               <SortableContext items={[...todays.map((r) => r.id), ...tomorrows.map((r) => r.id)]} strategy={verticalListSortingStrategy}>
                 <ul className="flex flex-col gap-1.5">
                   <li>
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">I dag</p>
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-2">I dag</p>
                   </li>
                   {todays.length === 0 && (
                     <li>
@@ -910,6 +930,7 @@ export default function RemindersSection() {
                       key={r.id}
                       reminder={r}
                       editing={editingId === r.id}
+                      reorderMode={reorderMode}
                       onToggle={handleToggle}
                       onRemove={confirmDelete.request}
                       onStartEdit={setEditingId}
@@ -936,6 +957,8 @@ export default function RemindersSection() {
                       key={r.id}
                       reminder={r}
                       editing={editingId === r.id}
+                      reorderMode={reorderMode}
+                      dimmed
                       onToggle={handleToggle}
                       onRemove={confirmDelete.request}
                       onStartEdit={setEditingId}

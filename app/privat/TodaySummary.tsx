@@ -281,6 +281,9 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   }, []);
 
   const [weatherExpanded, setWeatherExpanded] = useState(false);
+  // Frittstående — IKKE del av dag-navigeringen (viewedOffset går kun
+  // fremover, kan ikke brukes til å vise gårsdagens utfyllingsform).
+  const [fillingYesterday, setFillingYesterday] = useState(false);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -509,13 +512,16 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   // fra kl. 21:00, før noe er lagret. Ingen tom-plassholder for tidligere
   // dager uten oppføring — jf. "skal ikke ta mye plass".
   const showEveningLog = eveningLogEntryOnViewed !== null || (isToday && nowHour >= 21);
+  const yesterday = addDaysIso(realToday, -1);
+  const yesterdayEntry = eveningLogEntries.find((e) => e.date === yesterday) ?? null;
+  const showYesterdayWarning = isToday && !yesterdayEntry;
 
-  async function handleSaveEveningLog(categories: string[], notes: string) {
+  async function handleSaveEveningLog(date: string, categories: string[], notes: string) {
     try {
       const res = await fetch("/api/evening-log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: viewedDate, categories, notes }),
+        body: JSON.stringify({ date, categories, notes }),
       });
       if (!res.ok) throw new Error("save evening log failed");
       const saved: EveningLogEntry = await res.json();
@@ -524,6 +530,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
         { revalidate: false },
       );
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      setFillingYesterday(false);
     } catch {
       mutationError.show("Kunne ikke lagre kveldsloggen. Prøv igjen.");
     }
@@ -624,6 +631,32 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               </div>
             )}
 
+            {showYesterdayWarning && (
+              <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
+                <CategoryRow icon={Moon} colorClass="text-status-danger" label="Kveldslogg">
+                  {fillingYesterday ? (
+                    <EveningCheckIn
+                      date={yesterday}
+                      entry={null}
+                      pastEntries={eveningLogEntries.filter((e) => e.date !== yesterday)}
+                      onSave={(cats, notes) => handleSaveEveningLog(yesterday, cats, notes)}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-status-danger">Du fylte ikke ut kveldsloggen i går ({weekdayDateLabel(yesterday)}).</p>
+                      <button
+                        type="button"
+                        onClick={() => setFillingYesterday(true)}
+                        className="shrink-0 rounded-lg bg-status-danger/15 px-2.5 py-1 text-2xs font-semibold uppercase text-status-danger transition hover:bg-status-danger/25"
+                      >
+                        Fyll ut nå
+                      </button>
+                    </div>
+                  )}
+                </CategoryRow>
+              </div>
+            )}
+
             {/* Kategoriene under deles av én flat liste med tynne skillelinjer
                 (divide-y) i stedet for hver sin fargede ramme+tint-boks — ikonets
                 farge (colorClass) er allerede signalet for hvilken kategori det
@@ -634,6 +667,17 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
             <div className="flex flex-col divide-y divide-line">
               <div className="pb-2 first:pt-0">
                 <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser" onJump={() => onJump("reminders")}>
+                  {!addingReminder && (
+                    <div className="mb-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setAddingReminder(true)}
+                        className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                      >
+                        Ny+
+                      </button>
+                    </div>
+                  )}
                   <MutationError message={mutationError.message} />
                   {reminderRows.length > 0 ? (
                     <ul className="flex flex-col gap-1">
@@ -653,7 +697,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                   ) : (
                     <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
                   )}
-                  {addingReminder ? (
+                  {addingReminder && (
                     <div className="mt-1.5 flex items-center gap-2">
                       <input
                         type="text"
@@ -682,14 +726,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                         Legg til
                       </button>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setAddingReminder(true)}
-                      className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                    >
-                      + Ny påminnelse
-                    </button>
                   )}
                 </CategoryRow>
               </div>
@@ -767,7 +803,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                       date={viewedDate}
                       entry={eveningLogEntryOnViewed}
                       pastEntries={eveningLogEntries.filter((e) => e.date !== viewedDate)}
-                      onSave={handleSaveEveningLog}
+                      onSave={(cats, notes) => handleSaveEveningLog(viewedDate, cats, notes)}
                     />
                   </CategoryRow>
                 </div>
