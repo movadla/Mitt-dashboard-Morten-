@@ -60,7 +60,9 @@ import {
 import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, SuggestionList, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
 import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
+import type { JobbTaskState } from "@/lib/jobbTaskState";
 import { jsonFetcher } from "@/lib/swrFetcher";
+import { setAppBadgeCount } from "@/lib/appBadge";
 import { relativeDayLabel } from "@/lib/payday";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
@@ -90,9 +92,6 @@ const OUTLOOK_BUCKET_LABEL: Record<OutlookBucket, string> = {
   "til-info": "Til info",
 };
 
-const DONE_STORAGE_KEY = "mitt-dashboard:done:v1";
-const PRIORITY_OVERRIDES_KEY = "mitt-dashboard:priority-overrides:v1";
-const SNOOZED_KEY = "mitt-dashboard:snoozed:v1";
 const LONG_PRESS_MS = 600;
 
 type SourceAccent = {
@@ -734,7 +733,7 @@ function TaskCard({
   return (
     <li
       id={`task-${task.id}`}
-      className={`group rounded-2xl border border-line p-3 shadow-md shadow-black/15 transition ${
+      className={`group rounded-2xl border border-line p-3 shadow-md shadow-black/15 transition hover:border-r-line-strong hover:border-b-line-strong hover:border-l-line-strong ${
         needsAction ? "bg-surface-2 border-line-strong" : "bg-surface-1"
       } ${isDone || dimmed ? "opacity-50" : ""} ${highlighted ? "ring-2 ring-accent" : ""}`}
     >
@@ -746,7 +745,7 @@ function TaskCard({
           className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
             isDone
               ? "bg-emerald-500 ring-emerald-500"
-              : "bg-transparent ring-line-strong hover:ring-line-strong"
+              : "bg-transparent ring-line-strong hover:ring-ink-3"
           }`}
         >
           {isDone && (
@@ -1546,6 +1545,9 @@ function CalendarCard({ today }: { today: string }) {
                       value={drafts[m.id] ?? ""}
                       onChange={(e) => setDrafts((prev) => ({ ...prev, [m.id]: e.target.value }))}
                       onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") e.currentTarget.blur();
+                      }}
                       placeholder="Skriv et nytt notat om møtet …"
                       rows={2}
                       className="w-full resize-none rounded-lg border border-transparent bg-surface-1 p-2 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
@@ -2859,75 +2861,32 @@ export default function JobbView({
     handleSelect("oppslag");
   }
 
+  // Server-lagret (Redis) i stedet for localStorage — "ferdig"/prioritet/
+  // snooze skal overleve enhetsbytte (telefon <-> laptop), ikke låses til
+  // nettleseren man satt i da man merket noe.
+  const { data: taskStateData } = useSWR<JobbTaskState>("/api/jobb-task-state", jsonFetcher);
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(DONE_STORAGE_KEY);
-      if (stored) {
-        const ids: unknown = JSON.parse(stored);
-        if (Array.isArray(ids)) {
-          // localStorage kan ikke leses under SSR/første render uten hydrerings-
-          // avvik — dette MÅ skje i en effekt, ikke avledes i render.
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDone(new Set(ids.filter((x): x is string => typeof x === "string")));
-        }
-      }
-    } catch {
-      /* ignore corrupt storage */
-    }
-    try {
-      const stored = window.localStorage.getItem(PRIORITY_OVERRIDES_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as unknown;
-        if (parsed && typeof parsed === "object") {
-          setPriorityOverrides(parsed as Record<string, Priority>);
-        }
-      }
-    } catch {
-      /* ignore corrupt storage */
-    }
-    try {
-      const stored = window.localStorage.getItem(SNOOZED_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as unknown;
-        if (parsed && typeof parsed === "object") {
-          setSnoozed(parsed as Record<string, string>);
-        }
-      }
-    } catch {
-      /* ignore corrupt storage */
-    }
+    if (!taskStateData || hydrated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDone(new Set(taskStateData.done));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPriorityOverrides(taskStateData.priorityOverrides as Record<string, Priority>);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSnoozed(taskStateData.snoozed);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true);
-  }, []);
+  }, [taskStateData, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(DONE_STORAGE_KEY, JSON.stringify([...done]));
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [done, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(
-        PRIORITY_OVERRIDES_KEY,
-        JSON.stringify(priorityOverrides),
-      );
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [priorityOverrides, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      window.localStorage.setItem(SNOOZED_KEY, JSON.stringify(snoozed));
-    } catch {
-      /* ignore quota errors */
-    }
-  }, [snoozed, hydrated]);
+    fetch("/api/jobb-task-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ done: [...done], priorityOverrides, snoozed }),
+    }).catch(() => {
+      /* ignorer forbigående nettverksfeil — tilstanden er fortsatt korrekt lokalt */
+    });
+  }, [done, priorityOverrides, snoozed, hydrated]);
 
   function isSnoozed(task: Task): boolean {
     const since = snoozed[task.id];
@@ -3140,6 +3099,9 @@ export default function JobbView({
               aria-label="Søk i oppgaver"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setSearch("");
+              }}
               className="w-32 rounded-full border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong focus:w-44 transition-all duration-200"
             />
           </div>
@@ -3275,7 +3237,7 @@ export default function JobbView({
 
       {visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-ink-3">
-          Ingen oppgaver her. Nyt stillheten.
+          Ingen oppgaver her.
         </div>
       ) : (
         (() => {
@@ -3381,6 +3343,14 @@ export default function JobbView({
     return days <= 10;
   }).length;
   const receivableHighRiskCount = RECEIVABLES.filter((r) => computeAutoRisk(r, today) === "hoy").length;
+
+  // iOS-appens badge-tall speilet kun påminnelser fra Privat uansett hvilken
+  // fane man faktisk stod i — nå setter Jobb sitt eget "krever oppfølging"-
+  // tall når Jobb er den aktive/monterte fanen (samme delte helper som
+  // Privat sin TodaySummary bruker, se lib/appBadge.ts).
+  useEffect(() => {
+    setAppBadgeCount(expiryUrgentCount + guaranteeUrgentCount + receivableHighRiskCount);
+  }, [expiryUrgentCount, guaranteeUrgentCount, receivableHighRiskCount]);
 
   const navBadges: Partial<Record<string, number>> = {
     oppgaver: counts.all,

@@ -17,6 +17,7 @@ import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
+import PrivatSearch from "./PrivatSearch";
 import { localDateString } from "@/lib/payday";
 import {
   Home,
@@ -53,7 +54,7 @@ const DEFAULT_NAV_ORDER = [
 // Ikon/farge per kategori — samme verdier som hver seksjon selv sender til
 // CardHeader internt, gjenbrukt her uendret slik at nav-elementet matcher
 // seksjonens egen identitet.
-const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColorClass: string }> = {
+export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColorClass: string }> = {
   today: { label: "I dag", icon: Home, iconColorClass: "text-accent-privat" },
   reminders: { label: "Påminnelser", icon: Bell, iconColorClass: "text-accent-privat" },
   calendar: { label: "Kalender", icon: Calendar, iconColorClass: "text-source-teams" },
@@ -94,6 +95,12 @@ export default function PrivatPanel() {
   const dueRemindersCount = (reminderBadgeData?.reminders ?? []).filter(
     (r) => !r.done && (!r.dueDate || r.dueDate <= today),
   ).length;
+  // Samme gjenbruk-av-SWR-nøkkel-mønster som over — kun for varselboblene,
+  // seksjonene selv eier sin egen fulle liste uavhengig av dette.
+  const { data: shoppingBadgeData } = useSWR<{ items: { done: boolean }[] }>("/api/shopping", jsonFetcher);
+  const pendingShoppingCount = (shoppingBadgeData?.items ?? []).filter((i) => !i.done).length;
+  const { data: calendarBadgeData } = useSWR<{ events: { date: string }[] }>("/api/privat-calendar", jsonFetcher);
+  const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today).length;
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   const [activeId, setActiveId] = useState("today");
@@ -142,7 +149,7 @@ export default function PrivatPanel() {
   // kortet (se navItems under, som skiller "skjult av forretningslogikk"
   // fra "fortsatt under lasting").
   const sectionNodes: Record<string, React.ReactNode> = {
-    today: <TodaySummary />,
+    today: <TodaySummary onJump={handleSelect} />,
     reminders: <RemindersSection />,
     calendar: <CalendarSection />,
     events: <EventsSection />,
@@ -174,6 +181,8 @@ export default function PrivatPanel() {
   const fplVisible = fplLoading || (!!fpl && fpl.active && !!fpl.gw?.deadline);
   const navBadges: Partial<Record<string, number>> = {
     reminders: dueRemindersCount,
+    shopping: pendingShoppingCount,
+    calendar: todaysCalendarCount,
   };
   const navItems: NavItem[] = order
     .filter((id) => {
@@ -195,6 +204,7 @@ export default function PrivatPanel() {
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
       <div className="flex flex-col gap-2 md:w-56 md:shrink-0">
+        <PrivatSearch onJump={handleSelect} />
         <SidebarNav
           items={navItems}
           activeId={activeId}

@@ -8,6 +8,8 @@ import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
 import type { EveningLogEntry } from "@/lib/eveningLog";
 import EveningCheckIn from "./EveningCheckIn";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { setAppBadgeCount } from "@/lib/appBadge";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
@@ -58,17 +60,41 @@ function CategoryRow({
   icon: Icon,
   colorClass,
   label,
+  onJump,
   children,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   colorClass: string;
   label: string;
+  // Når satt: ikonet/etiketten blir en knapp som hopper til den fulle
+  // seksjonen — en rad i "I dag" skal ikke være en blindvei.
+  onJump?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2" title={label}>
-      <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} />
-      <span className="sr-only">{label}</span>
+    <div className="flex items-start gap-2" title={onJump ? undefined : label}>
+      {onJump ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                onClick={onJump}
+                aria-label={`Gå til ${label}`}
+                className="mt-0.5 grid h-6 w-6 shrink-0 -translate-x-1 place-items-center rounded-full transition hover:bg-surface-2"
+              >
+                <Icon className={`h-4 w-4 ${colorClass}`} />
+              </button>
+            }
+          />
+          <TooltipContent>Gå til {label}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <>
+          <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${colorClass}`} />
+          <span className="sr-only">{label}</span>
+        </>
+      )}
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
@@ -178,15 +204,6 @@ function SportRoundLine({ label, matches }: { label: string; matches: SportEvent
 // (ukedag, så dato), uansett hvilken dag som vises, slik at teksten ikke
 // bytter form/plassering når man blar mellom dager med pil-navigeringen.
 // "Tilbake til i dag"-knappen dekker signalet om at man ser en annen dag.
-function setBadgeCount(count: number) {
-  if (typeof navigator === "undefined") return;
-  const nav = navigator as Navigator & {
-    setAppBadge?: (n?: number) => Promise<void>;
-    clearAppBadge?: () => Promise<void>;
-  };
-  if (count > 0) nav.setAppBadge?.(count).catch(() => {});
-  else nav.clearAppBadge?.().catch(() => {});
-}
 
 function baseSymbol(s: string): string {
   return s.replace(/_day|_night|_polartwilight/, "");
@@ -227,7 +244,7 @@ function hourLabel(iso: string): string {
   return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function TodaySummary() {
+export default function TodaySummary({ onJump }: { onJump: (id: string) => void }) {
   // Delt SWR-cache (samme nøkkel/URL brukt av de fulle kortene, f.eks.
   // RemindersSection) — deduperer kallene istedenfor at "I dag"-boksen og
   // det fulle kortet henter akkurat det samme to ganger ved hver visning.
@@ -514,7 +531,7 @@ export default function TodaySummary() {
 
   useEffect(() => {
     if (loading) return;
-    setBadgeCount(overdueReal.length + dueTodayReal.length);
+    setAppBadgeCount(overdueReal.length + dueTodayReal.length);
   }, [loading, overdueReal.length, dueTodayReal.length]);
 
   const slideClass = slideDirection === "forward" ? "day-slide-in-right" : slideDirection === "backward" ? "day-slide-in-left" : "";
@@ -616,7 +633,7 @@ export default function TodaySummary() {
                 viktigste kategoriene er tomme. */}
             <div className="flex flex-col divide-y divide-line">
               <div className="pb-2 first:pt-0">
-                <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser">
+                <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser" onJump={() => onJump("reminders")}>
                   <MutationError message={mutationError.message} />
                   {reminderRows.length > 0 ? (
                     <ul className="flex flex-col gap-1">
@@ -678,7 +695,7 @@ export default function TodaySummary() {
               </div>
 
               <div className="py-2">
-                <CategoryRow icon={Calendar} colorClass="text-source-teams" label="Kalender">
+                <CategoryRow icon={Calendar} colorClass="text-source-teams" label="Kalender" onJump={() => onJump("calendar")}>
                   {eventsOnViewed.length > 0 ? (
                     <ul className="flex flex-col gap-1">
                       {eventsOnViewed.map((e) => (
@@ -696,7 +713,7 @@ export default function TodaySummary() {
 
               {(sportsOnViewed.length > 0 || sportRoundsOnViewed.length > 0 || euroDrilldownOnViewed.length > 0) && (
                 <div className="py-2 last:pb-0">
-                  <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport">
+                  <CategoryRow icon={Trophy} colorClass="text-accent" label="Sport" onJump={() => onJump("sport")}>
                     <ul className="flex flex-col gap-1">
                       {sportsOnViewed.map((s) => (
                         <li key={s.id} className="flex items-baseline justify-between gap-2 text-sm text-ink-1">
@@ -717,7 +734,7 @@ export default function TodaySummary() {
 
               {fplDeadlineOnViewed && (
                 <div className="py-2 last:pb-0">
-                  <CategoryRow icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League">
+                  <CategoryRow icon={Shirt} colorClass="text-status-action" label="Fantasy Premier League" onJump={() => onJump("fpl")}>
                     <p className="text-sm text-ink-1">
                       Deadline kl.{" "}
                       <span className="tabular-nums">
@@ -730,7 +747,7 @@ export default function TodaySummary() {
 
               {(paydayOnViewed || lifeEventsOnViewed.length > 0) && (
                 <div className="py-2 last:pb-0">
-                  <CategoryRow icon={PartyPopper} colorClass="text-status-warning" label="Hendelser">
+                  <CategoryRow icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" onJump={() => onJump("events")}>
                     <ul className="flex flex-col gap-1">
                       {paydayOnViewed && <li className="text-sm text-ink-1">Lønningsdag</li>}
                       {lifeEventsOnViewed.map((e) => (

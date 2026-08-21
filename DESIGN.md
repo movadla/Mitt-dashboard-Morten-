@@ -64,7 +64,9 @@ valg for sine mønstre.
   automatisk, uten egen omskriving.
 - **`TooltipProvider`** ligger allerede i `app/layout.tsx` (rundt hele
   appen) — bruk `Tooltip`/`TooltipTrigger`/`TooltipContent` direkte uten
-  ekstra oppsett.
+  ekstra oppsett. Faktisk brukt i produksjon på hopp-til-seksjon-knappene
+  i `TodaySummary.tsx` sin `CategoryRow` — se den for eksempel på
+  `render`-mønsteret i praksis.
 - **Ikonbibliotek**: `lucide-react`, samme som resten av appen allerede
   bruker — ingen duplikat.
 

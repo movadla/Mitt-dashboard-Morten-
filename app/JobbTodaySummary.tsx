@@ -10,6 +10,7 @@ import type { Task } from "@/lib/tasks";
 import type { NewsItem } from "@/lib/companyNews";
 import { localDateString } from "@/lib/payday";
 import { CALENDAR_EVENTS, CONTRACTS, formatKr } from "@/lib/widgets";
+import { timeAgo } from "@/lib/timeAgo";
 import { AlertTriangle, Bell, Calendar, ClipboardList, Mail, Newspaper, PartyPopper } from "lucide-react";
 
 function CategoryLabel({
@@ -55,6 +56,19 @@ export default function JobbTodaySummary({
   const [events, setEvents] = useState<JobbEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: newsData } = useSWR<{ news: NewsItem[] }>("/api/company-news", jsonFetcher);
+  // Jobb-fanen henter fra fire eksterne systemer (Salesforce/Asana/Outlook/
+  // Teams) uten noe ferskhet-signal noe sted — i motsetning til Sport, som
+  // viser "oppdatert Xm siden" for data som er langt mindre kritisk om den
+  // er noen timer gammel. Gjenbruker samme /api/data-sources-tidsstempler
+  // som Datakilder-siden allerede viser, men her: den ELDSTE (mest utdaterte)
+  // kilden, siden det er den som faktisk representerer risikoen.
+  const { data: dataSourcesData } = useSWR<{ sources: { id: string; label: string; lastModified: string | null }[] }>(
+    "/api/data-sources",
+    jsonFetcher,
+  );
+  const oldestSource = [...(dataSourcesData?.sources ?? [])]
+    .filter((s) => s.lastModified)
+    .sort((a, b) => Date.parse(a.lastModified!) - Date.parse(b.lastModified!))[0];
   // "I dag"-forhåndsvisningen skal kun vise viktig/relevant og fersk nyheter
   // (ikke "lav" viktighet, ikke eldre enn en uke) — selve Mustad-nyheter-fanen
   // viser fortsatt ALT, uendret (se JobbCompanyNewsSection.tsx).
@@ -233,6 +247,12 @@ export default function JobbTodaySummary({
               )}
             </div>
           </div>
+
+          {oldestSource && (
+            <p className="text-2xs text-ink-4">
+              Eldste datakilde: {oldestSource.label} — oppdatert {timeAgo(Date.parse(oldestSource.lastModified!))}
+            </p>
+          )}
 
           <button
             type="button"
