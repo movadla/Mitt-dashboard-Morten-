@@ -179,7 +179,8 @@ function splitDayEvents(dayEvts: SportEvent[]) {
 }
 
 function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent[] }) {
-  const [open, setOpen] = useState(false);
+  // Åpen fra start — resten av uken skal vises uten et ekstra klikk.
+  const [open, setOpen] = useState(true);
 
   const dayEvts = allEvents.filter((e) => e.date === date);
   const { highlightEvts, otherEvts, leagueGroups, euroDrilldown } = splitDayEvents(dayEvts);
@@ -257,7 +258,8 @@ export function SportSection({
   loading: boolean;
   fetchedAt?: number | null;
 }) {
-  const [showWeek, setShowWeek] = useState(false);
+  // Åpen fra start — resten av uken skal vises uten et ekstra klikk.
+  const [showWeek, setShowWeek] = useState(true);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
   const {

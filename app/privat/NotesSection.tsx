@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import type { Note } from "@/lib/notes";
-import { Pin, StickyNote, X } from "lucide-react";
+import { ChevronUp, Pin, StickyNote, X } from "lucide-react";
 
 // Stabil referanse for "ingen data ennå" — unngår at `notes` blir en ny
 // array-instans hver render (som ville trigget useMemo("filtered") unødig).
@@ -164,15 +164,17 @@ function NoteAppendForm({ onCancel, onSave }: { onCancel: () => void; onSave: (e
   );
 }
 
-// Ett klikk på raden går rett til redigering (samme mønster som
-// Kalender/Hendelser) — kun første linje vises lukket, og selve
-// redigeringsfeltet viser hele teksten, så det dekker "les hele notatet"-
-// behovet uten et eget mellomsteg. "+ Legg til tekst" er en sekundær snarvei
-// fra redigeringsvisningen for å slippe å skrive alt på nytt når man bare vil
-// føye på noe til slutt.
+// Tre tilstander: lukket (kun første linje) -> utvidet (hele teksten,
+// ikke redigerbar - dekker "les hele notatet") -> redigering (klikk INNI
+// den utvidede teksten). Kollapser tilbake med chevronen ved tidsstempelet.
+// "+ Legg til tekst" er en sekundær snarvei fra redigeringsvisningen for å
+// slippe å skrive alt på nytt når man bare vil føye på noe til slutt.
 function NoteRow({
   note,
+  expanded,
   editing,
+  onExpand,
+  onCollapse,
   onStartEdit,
   onCancelEdit,
   onRemove,
@@ -181,7 +183,10 @@ function NoteRow({
   onTogglePin,
 }: {
   note: Note;
+  expanded: boolean;
   editing: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onRemove: (note: Note) => void;
@@ -202,10 +207,31 @@ function NoteRow({
   return (
     <div className={`rounded-xl border px-3 py-2 ${note.pinned ? "border-amber-400/50 bg-amber-400/8" : "border-line bg-surface-2"}`}>
       <div className="flex items-start gap-2">
-        <button type="button" onClick={onStartEdit} aria-expanded={editing} className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-medium text-ink-1">{firstLine(note.text)}</p>
-          <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>
-        </button>
+        {expanded ? (
+          <div className="min-w-0 flex-1">
+            {!editing && (
+              <button type="button" onClick={onStartEdit} aria-label="Rediger notat" className="block w-full text-left">
+                <p className="whitespace-pre-line text-sm font-medium text-ink-1">{note.text}</p>
+              </button>
+            )}
+            <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-4">
+              {formatDateTime(note.createdAt)}
+              <button
+                type="button"
+                onClick={onCollapse}
+                aria-label="Skjul notat"
+                className="grid h-4 w-4 place-items-center rounded-full transition hover:text-ink-2"
+              >
+                <ChevronUp className="h-3 w-3" />
+              </button>
+            </p>
+          </div>
+        ) : (
+          <button type="button" onClick={onExpand} aria-expanded={false} className="min-w-0 flex-1 text-left">
+            <p className="truncate text-sm font-medium text-ink-1">{firstLine(note.text)}</p>
+            <p className="mt-0.5 text-2xs text-ink-4">{formatDateTime(note.createdAt)}</p>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onTogglePin(note)}
@@ -261,6 +287,7 @@ export default function NotesSection() {
   const notes = data?.notes ?? EMPTY_NOTES;
   const [showForm, setShowForm] = useState(false);
   const [query, setQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(10);
   const confirmDelete = useConfirmDelete<Note>();
@@ -398,7 +425,13 @@ export default function NotesSection() {
                   <NoteRow
                     key={n.id}
                     note={n}
+                    expanded={expandedId === n.id}
                     editing={editingId === n.id}
+                    onExpand={() => setExpandedId(n.id)}
+                    onCollapse={() => {
+                      setExpandedId(null);
+                      setEditingId(null);
+                    }}
                     onStartEdit={() => setEditingId(n.id)}
                     onCancelEdit={() => setEditingId(null)}
                     onRemove={confirmDelete.request}
