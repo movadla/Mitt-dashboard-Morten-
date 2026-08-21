@@ -236,25 +236,6 @@ interface ExerciseHistoryPoint {
   maxKg: number;
 }
 
-// De sist brukte øvelsene (nyeste økt først, uansett pågående/avsluttet) —
-// vist som hurtigvalg over søkefeltet i øvelsesvelgeren, samme mønster som
-// hurtigvalg på handlelisten, slik at man slipper å søke opp de samme faste
-// øvelsene hver økt.
-function recentlyUsedExercises(exercises: Exercise[], sessions: WorkoutSession[], limit = 6): Exercise[] {
-  const seen = new Set<string>();
-  const result: Exercise[] = [];
-  for (const s of sessions) {
-    for (const e of s.entries) {
-      if (seen.has(e.exerciseId)) continue;
-      seen.add(e.exerciseId);
-      const exercise = exercises.find((ex) => ex.id === e.exerciseId);
-      if (exercise) result.push(exercise);
-      if (result.length >= limit) return result;
-    }
-  }
-  return result;
-}
-
 // Høyeste vekt logget per avsluttet økt for en øvelse, kronologisk (eldst
 // først) — "sessions" er nyest-først server-side, så vi snur rekkefølgen.
 function exerciseHistory(exerciseId: string, sessions: WorkoutSession[], excludeSessionId?: string): ExerciseHistoryPoint[] {
@@ -823,14 +804,25 @@ function EntryRow({
           })}
         </div>
       )}
-      <button
-        type="button"
-        onClick={handleAddSetClick}
-        className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-      >
-        + Nytt sett
-      </button>
-      {showMore ? (
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handleAddSetClick}
+          className="rounded-lg border border-accent-privat/40 bg-accent-privat/10 px-3 py-1.5 text-xs font-semibold text-accent-privat transition hover:border-accent-privat/60 hover:bg-accent-privat/15"
+        >
+          + Nytt sett
+        </button>
+        {!showMore && (
+          <button
+            type="button"
+            onClick={() => setShowMore(true)}
+            className="shrink-0 rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+          >
+            {entry.category === "cardio" ? "+ Notat" : "+ Minutter/notat"}
+          </button>
+        )}
+      </div>
+      {showMore && (
         <div className="grid grid-cols-2 gap-2">
           {entry.category !== "cardio" && (
             <input
@@ -854,14 +846,6 @@ function EntryRow({
             }`}
           />
         </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowMore(true)}
-          className="self-start text-2xs font-medium text-ink-4 hover:text-ink-2"
-        >
-          {entry.category === "cardio" ? "+ Notat" : "+ Minutter/notat"}
-        </button>
       )}
     </li>
   );
@@ -963,7 +947,6 @@ function ExerciseEditForm({
 
 function ExercisePicker({
   exercises,
-  recentExercises,
   onPick,
   onCreateAndPick,
   onSaveExercise,
@@ -971,7 +954,6 @@ function ExercisePicker({
   onClose,
 }: {
   exercises: Exercise[];
-  recentExercises: Exercise[];
   onPick: (exercise: Exercise) => void;
   onCreateAndPick: (name: string, description: string, category: ExerciseCategory, bodyweight: boolean) => Promise<boolean>;
   onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean }) => Promise<boolean>;
@@ -1075,23 +1057,6 @@ function ExercisePicker({
           </div>
         </div>
       )}
-      {!query.trim() && recentExercises.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Nylig brukt</p>
-          <div className="flex flex-wrap gap-1.5">
-            {recentExercises.map((ex) => (
-              <button
-                key={ex.id}
-                type="button"
-                onClick={() => onPick(ex)}
-                className="rounded-full border border-line bg-surface-1 px-3 py-1.5 text-xs font-medium text-ink-1 transition hover:border-line-strong hover:bg-surface-3 active:opacity-70"
-              >
-                {ex.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
       {filtered.length > 0 && (
         <ul className="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
           {filtered.map((ex) =>
@@ -1117,7 +1082,6 @@ function ExercisePicker({
                       })()}
                     </span>
                     <p className="truncate text-sm font-medium text-ink-1">{ex.name}</p>
-                    <span className="shrink-0 text-2xs text-ink-4">{CATEGORY_LABEL[ex.category]}</span>
                   </div>
                   {ex.description && <p className="truncate text-2xs text-ink-4">{ex.description}</p>}
                 </button>
@@ -1485,7 +1449,6 @@ export default function TreningSection() {
   const selectedDateSessions = selectedCalendarDate ? (sessionsByDate.get(selectedCalendarDate) ?? []) : [];
   const elapsed = useElapsed(activeSession?.startedAt);
   const restTimer = useRestTimer();
-  const recentExercises = recentlyUsedExercises(exercises, sessions);
   // Sannsynligvis glemt å avslutte økten hvis den har vart urimelig lenge —
   // vi har sett dette skje i praksis under testing av denne seksjonen.
   const isLongSession = !!activeSession && elapsed > 3 * 60 * 60 * 1000;
@@ -2028,7 +1991,6 @@ export default function TreningSection() {
                   {showPicker ? (
                     <ExercisePicker
                       exercises={exercises}
-                      recentExercises={recentExercises}
                       onPick={(ex) => handleAddEntry(ex)}
                       onCreateAndPick={handleCreateExerciseAndAdd}
                       onSaveExercise={handleSaveExercise}
