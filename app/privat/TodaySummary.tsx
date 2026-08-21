@@ -6,6 +6,8 @@ import { CheckIcon, MutationError, SkeletonRows, useMutationError } from "../Car
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
+import type { EveningLogEntry } from "@/lib/eveningLog";
+import EveningCheckIn from "./EveningCheckIn";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
@@ -35,10 +37,19 @@ import {
   ChevronRight,
   ChevronDown,
   Bot,
+  Moon,
 } from "lucide-react";
 
 const MAX_OFFSET = 365;
 const SWIPE_THRESHOLD = 60;
+
+// Time på dagen i Oslo-tid (0-23), uavhengig av enhetens egen tidssone —
+// styrer når kveldsloggen dukker opp (fra kl. 21:00). Intl med hourCycle
+// "h23" i stedet for locale-string-parsing for å unngå tvetydig AM/PM/
+// kl.-formatering på tvers av nettlesere.
+function osloHour(): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+}
 
 // Kategori-ikonet ligger til venstre for teksten, på linje med den (ikke som
 // en egen rad over) — men beholder en skjult tekst for skjermlesere og en
@@ -227,6 +238,10 @@ export default function TodaySummary() {
   const { data: weatherRaw } = useSWR<WeatherData | { error: string }>("/api/weather", jsonFetcher);
   const { data: eventsData } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const { data: aiUsageRaw } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
+  const { data: eveningLogData, mutate: mutateEveningLog } = useSWR<{ entries: EveningLogEntry[] }>(
+    "/api/evening-log",
+    jsonFetcher,
+  );
 
   const reminders = remindersData?.reminders ?? [];
   const events = calendarData?.events ?? [];
@@ -235,9 +250,18 @@ export default function TodaySummary() {
   const weather = weatherRaw && !("error" in weatherRaw) ? weatherRaw : null;
   const lifeEvents = eventsData?.events ?? [];
   const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
+  const eveningLogEntries = eveningLogData?.entries ?? [];
   const loading = [remindersData, calendarData, sportsData, fplRaw, weatherRaw, eventsData, aiUsageRaw].some(
     (d) => d === undefined,
   );
+
+  // Kveldsloggen skal dukke opp live kl. 21:00 uten at man må laste siden på
+  // nytt — et minutt-tick er nok presisjon for det, ingen sekund-oppdatering.
+  const [nowHour, setNowHour] = useState(osloHour);
+  useEffect(() => {
+    const id = setInterval(() => setNowHour(osloHour()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const [weatherExpanded, setWeatherExpanded] = useState(false);
   const [viewedOffset, setViewedOffset] = useState(0);
@@ -462,6 +486,31 @@ export default function TodaySummary() {
     fpl?.active && fpl.gw?.deadline && toOsloDateString(new Date(fpl.gw.deadline)) === viewedDate ? fpl.gw.deadline : null;
   const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
   const paydayOnViewed = isPaydayToday(viewedDate);
+  const eveningLogEntryOnViewed = eveningLogEntries.find((e) => e.date === viewedDate) ?? null;
+  // Vises kun: (a) en allerede lagret kveld, uansett dag — det er dette som
+  // gir "bla i historikk" gratis via de samme pil-knappene, eller (b) i dag
+  // fra kl. 21:00, før noe er lagret. Ingen tom-plassholder for tidligere
+  // dager uten oppføring — jf. "skal ikke ta mye plass".
+  const showEveningLog = eveningLogEntryOnViewed !== null || (isToday && nowHour >= 21);
+
+  async function handleSaveEveningLog(categories: string[], notes: string) {
+    try {
+      const res = await fetch("/api/evening-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: viewedDate, categories, notes }),
+      });
+      if (!res.ok) throw new Error("save evening log failed");
+      const saved: EveningLogEntry = await res.json();
+      mutateEveningLog(
+        (current) => current && { entries: [...current.entries.filter((e) => e.date !== saved.date), saved] },
+        { revalidate: false },
+      );
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre kveldsloggen. Prøv igjen.");
+    }
+  }
 
   useEffect(() => {
     if (loading) return;
@@ -690,6 +739,19 @@ export default function TodaySummary() {
                         </li>
                       ))}
                     </ul>
+                  </CategoryRow>
+                </div>
+              )}
+
+              {showEveningLog && (
+                <div className="py-2 last:pb-0">
+                  <CategoryRow icon={Moon} colorClass="text-indigo-400" label="Kveldslogg">
+                    <EveningCheckIn
+                      date={viewedDate}
+                      entry={eveningLogEntryOnViewed}
+                      pastEntries={eveningLogEntries.filter((e) => e.date !== viewedDate)}
+                      onSave={handleSaveEveningLog}
+                    />
                   </CategoryRow>
                 </div>
               )}
