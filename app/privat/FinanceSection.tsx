@@ -15,6 +15,7 @@ import { formatDateDMY, formatKr, formatUsd } from "@/lib/widgets";
 import type { Loan } from "@/lib/loans";
 import type { SavingsAccount } from "@/lib/savings";
 import type { SalaryEntry } from "@/lib/salary";
+import type { AccountingEntry, AccountingEntryType } from "@/lib/accounting";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
@@ -24,6 +25,7 @@ import { Wallet, X } from "lucide-react";
 const EMPTY_LOANS: Loan[] = [];
 const EMPTY_SAVINGS: SavingsAccount[] = [];
 const EMPTY_SALARY: SalaryEntry[] = [];
+const EMPTY_ACCOUNTING: AccountingEntry[] = [];
 
 function AiUsageBox({
   usage,
@@ -680,26 +682,190 @@ function SalaryRow({
   );
 }
 
+type AccountingFormValues = { description: string; amount: string; date: string; note: string };
+
+function emptyAccountingForm(): AccountingFormValues {
+  return { description: "", amount: "", date: localDateString(), note: "" };
+}
+
+function accountingToForm(entry: AccountingEntry): AccountingFormValues {
+  return { description: entry.description, amount: String(entry.amount), date: entry.date, note: entry.note ?? "" };
+}
+
+function accountingToPayload(type: AccountingEntryType, form: AccountingFormValues) {
+  return {
+    type,
+    description: form.description.trim(),
+    amount: Number(form.amount.replace(",", ".")),
+    date: form.date,
+    note: form.note.trim() || null,
+  };
+}
+
+// Delt av både Inntekter- og Utgifter-listen (samme felter, kun `type`
+// skiller dem) — samme skjema-/rad-mønster som Sparing/Lønn over.
+function AccountingForm({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: AccountingFormValues;
+  onCancel: () => void;
+  onSave: (form: AccountingFormValues) => Promise<boolean>;
+}) {
+  const [form, setForm] = useState(initial);
+  const [submitting, setSubmitting] = useState(false);
+  const valid = form.description.trim() && form.amount.trim() && form.date;
+
+  function set<K extends keyof AccountingFormValues>(key: K, value: string) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  async function save() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      <input
+        type="text"
+        value={form.description}
+        onChange={(e) => set("description", e.target.value)}
+        placeholder="Beskrivelse"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="number"
+          value={form.amount}
+          onChange={(e) => set("amount", e.target.value)}
+          placeholder="Beløp (kr)"
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
+        <input
+          type="date"
+          value={form.date}
+          onChange={(e) => set("date", e.target.value)}
+          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+        />
+      </div>
+      <input
+        type="text"
+        value={form.note}
+        onChange={(e) => set("note", e.target.value)}
+        placeholder="Notat (valgfritt)"
+        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!valid || submitting}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AccountingRow({
+  entry,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onRemove,
+}: {
+  entry: AccountingEntry;
+  editing: boolean;
+  onStartEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string, form: AccountingFormValues) => Promise<boolean>;
+  onRemove: (id: string) => void;
+}) {
+  if (editing) {
+    return (
+      <li>
+        <AccountingForm initial={accountingToForm(entry)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(entry.id, form)} />
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(entry.id)} leftLabel="Slett">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <button type="button" onClick={() => onStartEdit(entry.id)} aria-label="Rediger post" className="min-w-0 flex-1 text-left">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="truncate text-sm font-medium text-ink-1">{entry.description}</p>
+              <p className={`shrink-0 text-sm font-semibold tabular-nums ${entry.type === "inntekt" ? "text-status-positive" : "text-ink-1"}`}>
+                {entry.type === "inntekt" ? "+" : "−"}
+                {formatKr(entry.amount)}
+              </p>
+            </div>
+            <p className="mt-0.5 text-2xs text-ink-4">
+              {formatDateDMY(entry.date)}
+              {entry.note ? ` · ${entry.note}` : ""}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(entry.id)}
+            aria-label="Slett post"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </SwipeableRow>
+    </li>
+  );
+}
+
 export default function FinanceSection() {
   const { data: loansData, isLoading: loansLoading, mutate: mutateLoans } = useSWR<{ loans: Loan[] }>("/api/loans", jsonFetcher);
   const { data: savingsData, isLoading: savingsLoading, mutate: mutateSavings } = useSWR<{ savings: SavingsAccount[] }>("/api/savings", jsonFetcher);
   const { data: salaryData, isLoading: salaryLoading, mutate: mutateSalary } = useSWR<{ salary: SalaryEntry[] }>("/api/salary", jsonFetcher);
   const { data: aiUsageRaw, mutate: mutateAiUsage } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
+  const { data: accountingData, isLoading: accountingLoading, mutate: mutateAccounting } = useSWR<{ entries: AccountingEntry[] }>(
+    "/api/accounting",
+    jsonFetcher,
+  );
   const loans = loansData?.loans ?? EMPTY_LOANS;
   const savings = savingsData?.savings ?? EMPTY_SAVINGS;
   const salary = salaryData?.salary ?? EMPTY_SALARY;
+  const accounting = accountingData?.entries ?? EMPTY_ACCOUNTING;
+  const income = accounting.filter((e) => e.type === "inntekt");
+  const expenses = accounting.filter((e) => e.type === "utgift");
   const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
-  const loading = loansLoading || savingsLoading || salaryLoading;
+  const loading = loansLoading || savingsLoading || salaryLoading || accountingLoading;
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [showSavingsForm, setShowSavingsForm] = useState(false);
   const [showSalaryForm, setShowSalaryForm] = useState(false);
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [visibleLoanCount, setVisibleLoanCount] = useState(10);
   const [visibleSavingsCount, setVisibleSavingsCount] = useState(10);
   const [visibleSalaryCount, setVisibleSalaryCount] = useState(10);
-  const confirmDelete = useConfirmDelete<{ type: "loan" | "savings" | "salary"; id: string }>();
+  const [visibleIncomeCount, setVisibleIncomeCount] = useState(10);
+  const [visibleExpenseCount, setVisibleExpenseCount] = useState(10);
+  const confirmDelete = useConfirmDelete<{ type: "loan" | "savings" | "salary" | "accounting"; id: string }>();
   const mutationError = useMutationError();
 
   async function handleAddLoan(form: LoanFormValues): Promise<boolean> {
@@ -913,6 +1079,76 @@ export default function FinanceSection() {
     }
   }
 
+  // Delt av Inntekter og Utgifter — samme CRUD, kun `type` skiller dem.
+  async function handleAddAccounting(type: AccountingEntryType, form: AccountingFormValues): Promise<boolean> {
+    try {
+      const res = await fetch("/api/accounting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accountingToPayload(type, form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke legge til posten. Prøv igjen.");
+        return false;
+      }
+      const created: AccountingEntry = await res.json();
+      mutateAccounting((current) => current && { entries: [created, ...current.entries] }, { revalidate: false });
+      if (type === "inntekt") setShowIncomeForm(false);
+      else setShowExpenseForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke legge til posten. Prøv igjen.");
+      return false;
+    }
+  }
+
+  async function handleSaveAccountingEdit(type: AccountingEntryType, id: string, form: AccountingFormValues): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/accounting/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accountingToPayload(type, form)),
+      });
+      if (!res.ok) {
+        mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+        return false;
+      }
+      const updated: AccountingEntry = await res.json();
+      mutateAccounting(
+        (current) => current && { entries: current.entries.map((e) => (e.id === id ? updated : e)) },
+        { revalidate: false },
+      );
+      if (type === "inntekt") setEditingIncomeId(null);
+      else setEditingExpenseId(null);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+      return true;
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
+      return false;
+    }
+  }
+
+  async function handleRemoveAccounting(id: string) {
+    let previous: AccountingEntry[] = [];
+    mutateAccounting(
+      (current) => {
+        previous = current?.entries ?? [];
+        return current && { entries: current.entries.filter((e) => e.id !== id) };
+      },
+      { revalidate: false },
+    );
+    vibrate([10, 30, 10]);
+    try {
+      const res = await fetch(`/api/accounting/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateAccounting({ entries: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke slette posten. Prøv igjen.");
+    }
+  }
+
   async function handleSaveBalance(amount: number): Promise<boolean> {
     try {
       const res = await fetch("/api/ai-usage", {
@@ -934,6 +1170,8 @@ export default function FinanceSection() {
   const visibleLoans = loans.slice(0, visibleLoanCount);
   const visibleSavings = savings.slice(0, visibleSavingsCount);
   const visibleSalary = salary.slice(0, visibleSalaryCount);
+  const visibleIncome = income.slice(0, visibleIncomeCount);
+  const visibleExpenses = expenses.slice(0, visibleExpenseCount);
 
   // "+"-knappen åpner Lån-skjemaet — den vanligste av de tre underseksjonene
   // (og den eneste som vises i kortets eget sammendrag) — i stedet for at man
@@ -960,133 +1198,248 @@ export default function FinanceSection() {
             <SkeletonRows count={3} />
           ) : (
             <>
-              <div className="flex flex-col gap-1.5">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lån</p>
-                {showLoanForm ? (
-                  <LoanForm initial={EMPTY_FORM} onCancel={() => setShowLoanForm(false)} onSave={handleAddLoan} />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowLoanForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                  >
-                    <span className="text-base leading-none">+</span> Nytt lån
-                  </button>
-                )}
-                {loans.length === 0 ? (
-                  <p className="text-sm text-ink-3">Ingen lån lagt inn ennå.</p>
-                ) : (
-                  <>
-                    <ul className="flex flex-col gap-1.5">
-                      {visibleLoans.map((l) => (
-                        <LoanRow
-                          key={l.id}
-                          loan={l}
-                          editing={editingLoanId === l.id}
-                          onStartEdit={setEditingLoanId}
-                          onCancelEdit={() => setEditingLoanId(null)}
-                          onSaveEdit={handleSaveLoanEdit}
-                          onRemove={(id) => confirmDelete.request({ type: "loan", id })}
-                        />
-                      ))}
-                    </ul>
-                    {loans.length > visibleLoanCount && (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleLoanCount((v) => v + 10)}
-                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
-                      >
-                        {`Mer (${loans.length - visibleLoanCount})`}
-                      </button>
-                    )}
-                  </>
-                )}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-2">Eiendeler</p>
+                  <div className="h-px flex-1 bg-line" />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Sparing</p>
+                  {showSavingsForm ? (
+                    <SavingsForm initial={EMPTY_SAVINGS_FORM} onCancel={() => setShowSavingsForm(false)} onSave={handleAddSavings} />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowSavingsForm(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Ny sparekonto
+                    </button>
+                  )}
+                  {savings.length === 0 ? (
+                    <p className="text-sm text-ink-3">Ingen sparing lagt inn ennå.</p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleSavings.map((s) => (
+                          <SavingsRow
+                            key={s.id}
+                            account={s}
+                            editing={editingSavingsId === s.id}
+                            onStartEdit={setEditingSavingsId}
+                            onCancelEdit={() => setEditingSavingsId(null)}
+                            onSaveEdit={handleSaveSavingsEdit}
+                            onRemove={(id) => confirmDelete.request({ type: "savings", id })}
+                          />
+                        ))}
+                      </ul>
+                      {savings.length > visibleSavingsCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleSavingsCount((v) => v + 10)}
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                        >
+                          {`Mer (${savings.length - visibleSavingsCount})`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Sparing</p>
-                {showSavingsForm ? (
-                  <SavingsForm initial={EMPTY_SAVINGS_FORM} onCancel={() => setShowSavingsForm(false)} onSave={handleAddSavings} />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowSavingsForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                  >
-                    <span className="text-base leading-none">+</span> Ny sparekonto
-                  </button>
-                )}
-                {savings.length === 0 ? (
-                  <p className="text-sm text-ink-3">Ingen sparing lagt inn ennå.</p>
-                ) : (
-                  <>
-                    <ul className="flex flex-col gap-1.5">
-                      {visibleSavings.map((s) => (
-                        <SavingsRow
-                          key={s.id}
-                          account={s}
-                          editing={editingSavingsId === s.id}
-                          onStartEdit={setEditingSavingsId}
-                          onCancelEdit={() => setEditingSavingsId(null)}
-                          onSaveEdit={handleSaveSavingsEdit}
-                          onRemove={(id) => confirmDelete.request({ type: "savings", id })}
-                        />
-                      ))}
-                    </ul>
-                    {savings.length > visibleSavingsCount && (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleSavingsCount((v) => v + 10)}
-                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
-                      >
-                        {`Mer (${savings.length - visibleSavingsCount})`}
-                      </button>
-                    )}
-                  </>
-                )}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-2">Gjeld</p>
+                  <div className="h-px flex-1 bg-line" />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lån</p>
+                  {showLoanForm ? (
+                    <LoanForm initial={EMPTY_FORM} onCancel={() => setShowLoanForm(false)} onSave={handleAddLoan} />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowLoanForm(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Nytt lån
+                    </button>
+                  )}
+                  {loans.length === 0 ? (
+                    <p className="text-sm text-ink-3">Ingen lån lagt inn ennå.</p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleLoans.map((l) => (
+                          <LoanRow
+                            key={l.id}
+                            loan={l}
+                            editing={editingLoanId === l.id}
+                            onStartEdit={setEditingLoanId}
+                            onCancelEdit={() => setEditingLoanId(null)}
+                            onSaveEdit={handleSaveLoanEdit}
+                            onRemove={(id) => confirmDelete.request({ type: "loan", id })}
+                          />
+                        ))}
+                      </ul>
+                      {loans.length > visibleLoanCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleLoanCount((v) => v + 10)}
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                        >
+                          {`Mer (${loans.length - visibleLoanCount})`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lønn</p>
-                {showSalaryForm ? (
-                  <SalaryForm initial={EMPTY_SALARY_FORM} onCancel={() => setShowSalaryForm(false)} onSave={handleAddSalary} />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowSalaryForm(true)}
-                    className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                  >
-                    <span className="text-base leading-none">+</span> Ny lønnsoppføring
-                  </button>
-                )}
-                {salary.length === 0 ? (
-                  <p className="text-sm text-ink-3">Ingen lønn lagt inn ennå.</p>
-                ) : (
-                  <>
-                    <ul className="flex flex-col gap-1.5">
-                      {visibleSalary.map((s) => (
-                        <SalaryRow
-                          key={s.id}
-                          entry={s}
-                          editing={editingSalaryId === s.id}
-                          onStartEdit={setEditingSalaryId}
-                          onCancelEdit={() => setEditingSalaryId(null)}
-                          onSaveEdit={handleSaveSalaryEdit}
-                          onRemove={(id) => confirmDelete.request({ type: "salary", id })}
-                        />
-                      ))}
-                    </ul>
-                    {salary.length > visibleSalaryCount && (
-                      <button
-                        type="button"
-                        onClick={() => setVisibleSalaryCount((v) => v + 10)}
-                        className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
-                      >
-                        {`Mer (${salary.length - visibleSalaryCount})`}
-                      </button>
-                    )}
-                  </>
-                )}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-2">Regnskap</p>
+                  <div className="h-px flex-1 bg-line" />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lønn</p>
+                  {showSalaryForm ? (
+                    <SalaryForm initial={EMPTY_SALARY_FORM} onCancel={() => setShowSalaryForm(false)} onSave={handleAddSalary} />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowSalaryForm(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Ny lønnsoppføring
+                    </button>
+                  )}
+                  {salary.length === 0 ? (
+                    <p className="text-sm text-ink-3">Ingen lønn lagt inn ennå.</p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleSalary.map((s) => (
+                          <SalaryRow
+                            key={s.id}
+                            entry={s}
+                            editing={editingSalaryId === s.id}
+                            onStartEdit={setEditingSalaryId}
+                            onCancelEdit={() => setEditingSalaryId(null)}
+                            onSaveEdit={handleSaveSalaryEdit}
+                            onRemove={(id) => confirmDelete.request({ type: "salary", id })}
+                          />
+                        ))}
+                      </ul>
+                      {salary.length > visibleSalaryCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleSalaryCount((v) => v + 10)}
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                        >
+                          {`Mer (${salary.length - visibleSalaryCount})`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Inntekter</p>
+                  {showIncomeForm ? (
+                    <AccountingForm
+                      initial={emptyAccountingForm()}
+                      onCancel={() => setShowIncomeForm(false)}
+                      onSave={(form) => handleAddAccounting("inntekt", form)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowIncomeForm(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Ny inntekt
+                    </button>
+                  )}
+                  {income.length === 0 ? (
+                    <p className="text-sm text-ink-3">Ingen inntekter lagt inn ennå.</p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleIncome.map((e) => (
+                          <AccountingRow
+                            key={e.id}
+                            entry={e}
+                            editing={editingIncomeId === e.id}
+                            onStartEdit={setEditingIncomeId}
+                            onCancelEdit={() => setEditingIncomeId(null)}
+                            onSaveEdit={(id, form) => handleSaveAccountingEdit("inntekt", id, form)}
+                            onRemove={(id) => confirmDelete.request({ type: "accounting", id })}
+                          />
+                        ))}
+                      </ul>
+                      {income.length > visibleIncomeCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleIncomeCount((v) => v + 10)}
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                        >
+                          {`Mer (${income.length - visibleIncomeCount})`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Utgifter</p>
+                  {showExpenseForm ? (
+                    <AccountingForm
+                      initial={emptyAccountingForm()}
+                      onCancel={() => setShowExpenseForm(false)}
+                      onSave={(form) => handleAddAccounting("utgift", form)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowExpenseForm(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Ny utgift
+                    </button>
+                  )}
+                  {expenses.length === 0 ? (
+                    <p className="text-sm text-ink-3">Ingen utgifter lagt inn ennå.</p>
+                  ) : (
+                    <>
+                      <ul className="flex flex-col gap-1.5">
+                        {visibleExpenses.map((e) => (
+                          <AccountingRow
+                            key={e.id}
+                            entry={e}
+                            editing={editingExpenseId === e.id}
+                            onStartEdit={setEditingExpenseId}
+                            onCancelEdit={() => setEditingExpenseId(null)}
+                            onSaveEdit={(id, form) => handleSaveAccountingEdit("utgift", id, form)}
+                            onRemove={(id) => confirmDelete.request({ type: "accounting", id })}
+                          />
+                        ))}
+                      </ul>
+                      {expenses.length > visibleExpenseCount && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleExpenseCount((v) => v + 10)}
+                          className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+                        >
+                          {`Mer (${expenses.length - visibleExpenseCount})`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -1108,7 +1461,11 @@ export default function FinanceSection() {
           if (pending.type === "loan") return `Slette lånet «${loans.find((l) => l.id === pending.id)?.name ?? ""}»?`;
           if (pending.type === "savings")
             return `Slette sparekontoen «${savings.find((s) => s.id === pending.id)?.name ?? ""}»?`;
-          return `Slette lønnsoppføringen for «${salary.find((s) => s.id === pending.id)?.person ?? ""}»?`;
+          if (pending.type === "salary")
+            return `Slette lønnsoppføringen for «${salary.find((s) => s.id === pending.id)?.person ?? ""}»?`;
+          const entry = accounting.find((e) => e.id === pending.id);
+          const label = entry?.type === "utgift" ? "utgiften" : "inntekten";
+          return `Slette ${label} «${entry?.description ?? ""}»?`;
         })()}
         onCancel={confirmDelete.cancel}
         onConfirm={() => {
@@ -1116,7 +1473,8 @@ export default function FinanceSection() {
           if (!pending) return;
           if (pending.type === "loan") handleRemoveLoan(pending.id);
           else if (pending.type === "savings") handleRemoveSavings(pending.id);
-          else handleRemoveSalary(pending.id);
+          else if (pending.type === "salary") handleRemoveSalary(pending.id);
+          else handleRemoveAccounting(pending.id);
           confirmDelete.cancel();
         }}
       />
