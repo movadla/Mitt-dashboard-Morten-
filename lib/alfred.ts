@@ -16,6 +16,10 @@ export interface AlfredProfile {
   permisjonNotat: string;
   barnehageNotat: string;
   barnesikringNotat: string;
+  // Base64 data-URI, skalert/komprimert klientside (maks ~480x480, JPEG)
+  // før opplasting — ingen fillagring-infrastruktur i appen i dag, se
+  // AlfredPhoto i AlfredSection.tsx.
+  photo?: string;
 }
 
 export interface GrowthEntry {

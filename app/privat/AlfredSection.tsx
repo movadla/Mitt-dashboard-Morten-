@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CardHeader,
   CollapsibleBody,
@@ -622,6 +622,79 @@ function FreeNoteList({
   );
 }
 
+// Skalerer/komprimerer bildet i nettleseren FØR opplasting, slik at
+// Redis-feltet forblir lite (typisk noen titalls KB) — appen har ingen
+// fillagring, kun base64-i-Redis for dette (jf. Morten, "ingen nye
+// avhengigheter").
+function resizeImageFile(file: File, maxSize = 480, quality = 0.8): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Kunne ikke lese filen"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Kunne ikke lese bildet"));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Kunne ikke tegne bildet"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Sirkulær profilbilde-ramme øverst i kortet — klikk trigger filvalg
+// (usynlig <input type="file">), viser et nøytralt ikon når intet bilde
+// er satt ennå.
+function AlfredPhoto({ photo, onSave }: { photo?: string; onSave: (dataUri: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const dataUri = await resizeImageFile(file);
+      onSave(dataUri);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        aria-label={photo ? "Endre bilde av Alfred" : "Legg til bilde av Alfred"}
+        className="relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 transition hover:border-line-strong"
+      >
+        {photo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photo} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <Bot className="h-6 w-6 text-ink-4" />
+        )}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      {uploading && <p className="text-2xs text-ink-4">Laster opp...</p>}
+    </div>
+  );
+}
+
 export default function AlfredSection() {
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
@@ -853,6 +926,8 @@ export default function AlfredSection() {
             <SkeletonRows count={3} />
           ) : (
             <>
+              {profile && <AlfredPhoto photo={profile.photo} onSave={(dataUri) => saveProfile({ photo: dataUri })} />}
+
               {profile && (
                 <AlfredSubSection title="Grunninfo" storageKey="Alfred - Grunninfo">
                   <GrunninfoBox profile={profile} onSave={saveProfile} />
