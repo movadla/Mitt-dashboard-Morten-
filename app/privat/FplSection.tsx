@@ -213,6 +213,16 @@ function LeaguesPanel({
         {team.gwHistory && team.gwHistory.length >= 2 && (
           <RankSparkline history={team.gwHistory} color={th.accent} />
         )}
+        {teamKey === "boko" && (
+          <a href="https://boko-haramsdale.vercel.app" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] ml-1"
+            style={{ color: `${th.accentM}0.4)` }}>
+            Boko
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-2.5 h-2.5">
+              <path d="M5 2H2a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V7M7 1h4v4M11 1 5.5 6.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </a>
+        )}
         <a href={teamUrl} target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.12em] ml-1"
           style={{ color: `${th.accentM}0.4)` }}>
