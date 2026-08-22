@@ -16,7 +16,6 @@ export interface AlfredProfile {
   permisjonNotat: string;
   barnehageNotat: string;
   barnesikringNotat: string;
-  vekstNotat: string;
 }
 
 export interface GrowthEntry {
@@ -49,11 +48,22 @@ export interface PlayIdea {
   label: string;
 }
 
+// Fritekstnotater Morten selv skriver — ikke å forveksle med de faste
+// *Notat-feltene på AlfredProfile (én tekst per navngitt kategori). Disse er
+// en fri, tidsstemplet liste man kan legge til, redigere og slette fra.
+export interface AlfredFreeNote {
+  id: string;
+  text: string;
+  createdAt: string; // ISO datetime
+  updatedAt?: string; // ISO datetime — satt kun ved redigering
+}
+
 const PROFILE_KEY = "privat:alfred:profile";
 const PROFILE_FIELD = "main";
 const GROWTH_KEY = "privat:alfred:growth";
 const MILESTONE_KEY = "privat:alfred:milestones";
 const PLAY_KEY = "privat:alfred:play";
+const FREE_NOTE_KEY = "privat:alfred:freenotes";
 
 // Forhåndsutfylt med Mortens egen liste — kun brukt til å "frø" hashen første
 // gang noen henter den (samme mønster som defaultverdiene i updateAlfredProfile).
@@ -115,7 +125,6 @@ export async function updateAlfredProfile(updates: Partial<AlfredProfile>): Prom
     permisjonNotat: "",
     barnehageNotat: "",
     barnesikringNotat: "",
-    vekstNotat: "",
   };
   const next: AlfredProfile = { ...current, ...updates };
   await hsetJSON(PROFILE_KEY, PROFILE_FIELD, next);
@@ -218,4 +227,33 @@ export async function addPlayIdea(label: string): Promise<PlayIdea> {
 
 export async function deletePlayIdea(id: string): Promise<void> {
   await hdel(PLAY_KEY, id);
+}
+
+function sortFreeNotes(notes: AlfredFreeNote[]): AlfredFreeNote[] {
+  return [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getAlfredFreeNotes(): Promise<AlfredFreeNote[]> {
+  const map = await hgetallJSON<AlfredFreeNote>(FREE_NOTE_KEY);
+  return sortFreeNotes(Object.values(map));
+}
+
+export async function addAlfredFreeNote(text: string): Promise<AlfredFreeNote> {
+  if (!text.trim()) throw new Error("Notat mangler tekst");
+  const note: AlfredFreeNote = { id: randomUUID(), text: text.trim(), createdAt: new Date().toISOString() };
+  await hsetJSON(FREE_NOTE_KEY, note.id, note);
+  return note;
+}
+
+export async function editAlfredFreeNote(id: string, text: string): Promise<AlfredFreeNote | null> {
+  if (!text.trim()) throw new Error("Notat mangler tekst");
+  const current = await hgetJSON<AlfredFreeNote>(FREE_NOTE_KEY, id);
+  if (!current) return null;
+  const next: AlfredFreeNote = { ...current, text: text.trim(), updatedAt: new Date().toISOString() };
+  await hsetJSON(FREE_NOTE_KEY, id, next);
+  return next;
+}
+
+export async function deleteAlfredFreeNote(id: string): Promise<void> {
+  await hdel(FREE_NOTE_KEY, id);
 }

@@ -11,10 +11,20 @@ import {
   useMutationError,
   usePersistedCollapse,
 } from "../CardShell";
-import type { AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
+import type { AlfredFreeNote, AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import { Bot, X } from "lucide-react";
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("nb-NO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 const CATEGORY_LABEL: Record<MilestoneCategory, string> = {
   motorikk: "Motorisk utvikling",
@@ -360,51 +370,6 @@ function PlayList({
   );
 }
 
-function WeightChart({ entries }: { entries: GrowthEntry[] }) {
-  if (entries.length < 2) return null;
-
-  const width = 280;
-  const height = 84;
-  const padX = 4;
-  const padTop = 10;
-  const padBottom = 18;
-
-  const dates = entries.map((e) => new Date(e.date + "T00:00:00Z").getTime());
-  const weights = entries.map((e) => e.weightKg);
-  const minDate = Math.min(...dates);
-  const maxDate = Math.max(...dates);
-  const minW = Math.min(...weights);
-  const maxW = Math.max(...weights);
-  const spanDate = maxDate - minDate || 1;
-  const spanW = maxW - minW || 1;
-
-  const x = (i: number) => padX + ((dates[i] - minDate) / spanDate) * (width - padX * 2);
-  const y = (i: number) => height - padBottom - ((weights[i] - minW) / spanW) * (height - padTop - padBottom);
-
-  const points = entries.map((_, i) => `${x(i).toFixed(1)},${y(i).toFixed(1)}`).join(" ");
-
-  return (
-    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-accent-privat" role="img" aria-label="Vekt over tid">
-        <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {entries.map((e, i) => (
-          <circle key={e.id} cx={x(i)} cy={y(i)} r="2.5" fill="currentColor" />
-        ))}
-        <text x={padX} y={height - 4} className="fill-ink-4" fontSize="8">
-          {formatDMY(entries[0].date)}
-        </text>
-        <text x={width - padX} y={height - 4} textAnchor="end" className="fill-ink-4" fontSize="8">
-          {formatDMY(entries[entries.length - 1].date)}
-        </text>
-      </svg>
-      <div className="mt-0.5 flex justify-between text-2xs text-ink-4">
-        <span>Lavest: {minW.toLocaleString("nb-NO")} kg</span>
-        <span>Høyest: {maxW.toLocaleString("nb-NO")} kg</span>
-      </div>
-    </div>
-  );
-}
-
 function GrowthSection({
   entries,
   onAdd,
@@ -441,7 +406,6 @@ function GrowthSection({
           </p>
         )}
       </div>
-      <WeightChart entries={entries} />
       {entries.length > 0 && (
         <ul className="flex flex-col gap-1">
           {[...entries].reverse().map((e) => (
@@ -518,12 +482,153 @@ function GrowthSection({
   );
 }
 
+// Egne fritekstnotater — dato+klokkeslett-stemplet, kan redigeres og
+// slettes, i motsetning til de faste *Notat-feltene over (én tekst per
+// navngitt kategori). Klikk-for-å-redigere-følelsen speiler EditableNote,
+// men her er det en liste av flere separate notater.
+function FreeNoteRow({
+  note,
+  onSave,
+  onRemove,
+}: {
+  note: AlfredFreeNote;
+  onSave: (id: string, text: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(note.text);
+
+  function startEditing() {
+    setText(note.text);
+    setEditing(true);
+  }
+
+  if (editing) {
+    return (
+      <li className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setEditing(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+            Avbryt
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!text.trim()) return;
+              onSave(note.id, text.trim());
+              setEditing(false);
+            }}
+            disabled={!text.trim()}
+            className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          >
+            Lagre
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <button type="button" onClick={startEditing} className="min-w-0 flex-1 text-left">
+        <p className="whitespace-pre-line text-sm text-ink-1">{note.text}</p>
+        <p className="mt-0.5 text-2xs text-ink-4">
+          {formatDateTime(note.updatedAt ?? note.createdAt)}
+          {note.updatedAt ? " (redigert)" : ""}
+        </p>
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(note.id)}
+        aria-label="Slett notat"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </li>
+  );
+}
+
+function FreeNoteList({
+  notes,
+  onAdd,
+  onSave,
+  onRemove,
+}: {
+  notes: AlfredFreeNote[];
+  onAdd: (text: string) => void;
+  onSave: (id: string, text: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+
+  function submit() {
+    if (!text.trim()) return;
+    onAdd(text.trim());
+    setText("");
+    setAdding(false);
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {notes.length > 0 && (
+        <ul className="flex flex-col gap-1.5">
+          {notes.map((note) => (
+            <FreeNoteRow key={note.id} note={note} onSave={onSave} onRemove={onRemove} />
+          ))}
+        </ul>
+      )}
+      {adding ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+          <textarea
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            placeholder="Skriv notat..."
+            className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          />
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setAdding(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+              Avbryt
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!text.trim()}
+              className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+            >
+              Lagre
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+        >
+          <span className="text-base leading-none">+</span> Nytt notat
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function AlfredSection() {
   const [profile, setProfile] = useState<AlfredProfile | null>(null);
   const [growth, setGrowth] = useState<GrowthEntry[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [playIdeas, setPlayIdeas] = useState<PlayIdea[]>([]);
-  const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone" | "playIdea"; id: string }>();
+  const [freeNotes, setFreeNotes] = useState<AlfredFreeNote[]>([]);
+  const confirmDelete = useConfirmDelete<{ type: "growth" | "milestone" | "playIdea" | "freeNote"; id: string }>();
   const mutationError = useMutationError();
   const [loading, setLoading] = useState(true);
 
@@ -533,12 +638,14 @@ export default function AlfredSection() {
       fetch("/api/alfred/growth").then((r) => r.json()),
       fetch("/api/alfred/milestones").then((r) => r.json()),
       fetch("/api/alfred/play").then((r) => r.json()),
+      fetch("/api/alfred/free-notes").then((r) => r.json()),
     ])
-      .then(([p, g, m, pl]) => {
+      .then(([p, g, m, pl, fn]) => {
         setProfile(p.profile ?? null);
         setGrowth((g.entries ?? []) as GrowthEntry[]);
         setMilestones((m.milestones ?? []) as Milestone[]);
         setPlayIdeas((pl.ideas ?? []) as PlayIdea[]);
+        setFreeNotes((fn.notes ?? []) as AlfredFreeNote[]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -593,6 +700,54 @@ export default function AlfredSection() {
     } catch {
       setGrowth(previous);
       mutationError.show("Kunne ikke slette målingen. Prøv igjen.");
+    }
+  }
+
+  async function addFreeNote(text: string) {
+    try {
+      const res = await fetch("/api/alfred/free-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("add failed");
+      const created: AlfredFreeNote = await res.json();
+      setFreeNotes((prev) => [created, ...prev]);
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til notatet. Prøv igjen.");
+    }
+  }
+
+  async function saveFreeNote(id: string, text: string) {
+    try {
+      const res = await fetch(`/api/alfred/free-notes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      const updated: AlfredFreeNote = await res.json();
+      setFreeNotes((prev) => prev.map((n) => (n.id === id ? updated : n)));
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre notatet. Prøv igjen.");
+    }
+  }
+
+  async function removeFreeNote(id: string) {
+    let previous: AlfredFreeNote[] = [];
+    setFreeNotes((prev) => {
+      previous = prev;
+      return prev.filter((n) => n.id !== id);
+    });
+    try {
+      const res = await fetch(`/api/alfred/free-notes/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      setFreeNotes(previous);
+      mutationError.show("Kunne ikke slette notatet. Prøv igjen.");
     }
   }
 
@@ -706,7 +861,6 @@ export default function AlfredSection() {
 
               <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst">
                 <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
-                {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
               </AlfredSubSection>
 
               <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler">
@@ -734,6 +888,12 @@ export default function AlfredSection() {
                   <EditableNote label="Permisjon" value={profile.permisjonNotat} onSave={(v) => saveProfile({ permisjonNotat: v })} />
                   <EditableNote label="Barnehage" value={profile.barnehageNotat} onSave={(v) => saveProfile({ barnehageNotat: v })} />
                   <EditableNote label="Barnesikring" value={profile.barnesikringNotat} onSave={(v) => saveProfile({ barnesikringNotat: v })} />
+                  <FreeNoteList
+                    notes={freeNotes}
+                    onAdd={addFreeNote}
+                    onSave={saveFreeNote}
+                    onRemove={(id) => confirmDelete.request({ type: "freeNote", id })}
+                  />
                 </AlfredSubSection>
               )}
             </>
@@ -749,6 +909,7 @@ export default function AlfredSection() {
             return `Slette vekstmålingen fra ${entry ? formatDMY(entry.date) : "denne datoen"}?`;
           }
           if (pending.type === "milestone") return `Slette milepælen «${milestones.find((m) => m.id === pending.id)?.label ?? ""}»?`;
+          if (pending.type === "freeNote") return "Slette dette notatet?";
           return `Slette lekidéen «${playIdeas.find((p) => p.id === pending.id)?.label ?? ""}»?`;
         })()}
         onCancel={confirmDelete.cancel}
@@ -757,6 +918,7 @@ export default function AlfredSection() {
           if (!pending) return;
           if (pending.type === "growth") removeGrowth(pending.id);
           else if (pending.type === "milestone") removeMilestone(pending.id);
+          else if (pending.type === "freeNote") removeFreeNote(pending.id);
           else removePlayIdea(pending.id);
           confirmDelete.cancel();
         }}

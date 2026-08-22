@@ -142,7 +142,6 @@ const ALFRED_NOTE_FIELDS = [
   "permisjonNotat",
   "barnehageNotat",
   "barnesikringNotat",
-  "vekstNotat",
 ] as const;
 
 const UPDATE_ALFRED_NOTE_TOOL: Anthropic.Tool = {
@@ -159,8 +158,7 @@ const UPDATE_ALFRED_NOTE_TOOL: Anthropic.Tool = {
         enum: [...ALFRED_NOTE_FIELDS],
         description:
           "motorikkNotat=motorisk utvikling, helseNotat=helse, matOgSovnNotat=mat og søvn, " +
-          "permisjonNotat=permisjon, barnehageNotat=barnehage, barnesikringNotat=barnesikring, " +
-          "vekstNotat=notat til vekstkurven.",
+          "permisjonNotat=permisjon, barnehageNotat=barnehage, barnesikringNotat=barnesikring.",
       },
       text: { type: "string", description: "Den fullstendige, oppdaterte teksten for feltet." },
     },
