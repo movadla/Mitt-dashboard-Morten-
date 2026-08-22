@@ -260,6 +260,10 @@ export function SportSection({
 }) {
   // Åpen fra start — resten av uken skal vises uten et ekstra klikk.
   const [showWeek, setShowWeek] = useState(true);
+  // Egen andre disclosure — to uker til utover den første, holdt separat fra
+  // showWeek slik at man kan se resten av uken uten å drukne i tre uker med
+  // dagkort med det samme.
+  const [showMoreWeeks, setShowMoreWeeks] = useState(false);
   const today = todayStr();
   const todayEvents = events.filter((e) => e.date === today);
   const {
@@ -268,11 +272,17 @@ export function SportSection({
     leagueGroups: todayLeagueGroups,
     euroDrilldown: todayEuroDrilldown,
   } = splitDayEvents(todayEvents);
-  const restDays = Array.from({ length: 7 }, (_, i) => {
+  function dayOffset(n: number): string {
     const d = new Date();
-    d.setDate(d.getDate() + i);
+    d.setDate(d.getDate() + n);
     return toOsloDateString(d);
-  }).filter((day) => day !== today && events.some((e) => e.date === day));
+  }
+  const restDays = Array.from({ length: 7 }, (_, i) => dayOffset(i)).filter(
+    (day) => day !== today && events.some((e) => e.date === day),
+  );
+  const moreWeeksDays = Array.from({ length: 14 }, (_, i) => dayOffset(i + 7)).filter((day) =>
+    events.some((e) => e.date === day),
+  );
 
   return (
     <div className="border-t-2 border-t-accent/60 p-4">
@@ -320,6 +330,24 @@ export function SportSection({
                   className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
                 >
                   {showWeek ? "Vis mindre" : "Mer (resten av uken)"}
+                </button>
+              </>
+            )}
+            {showWeek && moreWeeksDays.length > 0 && (
+              <>
+                {showMoreWeeks && (
+                  <div className="mt-1 flex flex-col gap-2">
+                    {moreWeeksDays.map((day) => (
+                      <SportDayCard key={day} date={day} allEvents={events} />
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowMoreWeeks((v) => !v)}
+                  className="mt-1 text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                >
+                  {showMoreWeeks ? "Vis mindre" : "Vis flere uker"}
                 </button>
               </>
             )}

@@ -90,7 +90,12 @@ async function fetchESPN(
   const upcomingDates: string[] = (todayBoard.leagues?.[0]?.calendar ?? [] as string[])
     .map((d: string) => d.slice(0, 10).replace(/-/g, ""))
     .filter((d: string) => d > todayCompact)
-    .slice(0, teamFilter ? 10 : 7);   // narrower window for full-league fetches
+    // Full-liga-runder (ingen teamFilter) trengte tidligere kun 7 dager frem
+    // fordi UI-et var hardkodet til én ukes vindu — nå som SportSection kan
+    // vise flere uker (se "Vis flere uker"), må dette vinduet strekke seg
+    // like langt, ellers blir de nye dagkortene tomme selv om ligaen faktisk
+    // spiller runder lenger frem.
+    .slice(0, teamFilter ? 10 : 21);
 
   const boards = await Promise.allSettled([
     Promise.resolve(todayBoard),
