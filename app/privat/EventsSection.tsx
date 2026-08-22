@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
@@ -125,15 +125,24 @@ function EventNotes({
   onAdd,
   onDelete,
   onToggleRelevance,
+  onCreateReminder,
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onCreateReminder: (comment: Comment) => void;
 }) {
   return (
     <div className="mt-1.5 border-l-2 border-line py-0.5 pl-3">
-      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+      <CommentThreadBody
+        comments={comments}
+        onAdd={onAdd}
+        onDelete={onDelete}
+        onToggleRelevance={onToggleRelevance}
+        onCreateReminder={onCreateReminder}
+        accentClassName="bg-accent-privat hover:bg-accent-privat/85"
+      />
     </div>
   );
 }
@@ -142,6 +151,8 @@ function EventRow({
   row,
   editing,
   dayLabel,
+  highlighted,
+  setRowRef,
   onRemove,
   onStartEdit,
   onCancelEdit,
@@ -150,10 +161,14 @@ function EventRow({
   onAddComment,
   onDeleteComment,
   onToggleCommentRelevance,
+  onCreateReminder,
 }: {
   row: Row;
   editing: boolean;
   dayLabel?: string;
+  // Kort visuell markering (~2-3 sek) etter hopp fra en lenket påminnelse.
+  highlighted?: boolean;
+  setRowRef?: (id: string, el: HTMLLIElement | null) => void;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -165,6 +180,7 @@ function EventRow({
   onAddComment: (tekst: string) => Promise<boolean>;
   onDeleteComment: (commentId: string, preview: string) => void;
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onCreateReminder: (comment: Comment) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -174,7 +190,7 @@ function EventRow({
 
   const meta = CATEGORY_META[row.category];
   const content = (
-    <div className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2">
+    <div className={`flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2 transition ${highlighted ? "ring-2 ring-accent-privat" : ""}`}>
       <button
         type="button"
         onClick={() => row.event && onStartEdit(row.event.id)}
@@ -212,16 +228,32 @@ function EventRow({
   if (!row.event) return <li>{content}</li>;
 
   return (
-    <li>
+    <li ref={setRowRef ? (el) => setRowRef(row.event!.id, el) : undefined}>
       <SwipeableRow onSwipeLeft={() => onRemove(row.event!.id)} leftLabel="Slett">
         {content}
       </SwipeableRow>
-      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
+      {notesOpen && (
+        <EventNotes
+          comments={comments}
+          onAdd={onAddComment}
+          onDelete={onDeleteComment}
+          onToggleRelevance={onToggleCommentRelevance}
+          onCreateReminder={onCreateReminder}
+        />
+      )}
     </li>
   );
 }
 
-export default function EventsSection() {
+export default function EventsSection({
+  highlightEventId,
+  onHighlightHandled,
+}: {
+  // Satt av PrivatPanel når man hopper hit fra en påminnelse lenket til en
+  // hendelse — skroller til og fremhever raden midlertidig.
+  highlightEventId?: string | null;
+  onHighlightHandled?: () => void;
+} = {}) {
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const events = data?.events ?? [];
   const [showForm, setShowForm] = useState(false);
@@ -236,6 +268,30 @@ export default function EventsSection() {
   const confirmDelete = useConfirmDelete<string>();
   const mutationError = useMutationError();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  function setRowRef(id: string, el: HTMLLIElement | null) {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }
+
+  async function handleCreateReminderFromComment(comment: Comment, event: LifeEvent) {
+    try {
+      const res = await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: comment.tekst,
+          linkedTo: { targetType: "life-event", targetId: event.id, label: event.title },
+        }),
+      });
+      if (!res.ok) throw new Error("create reminder failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lage påminnelse fra kommentaren. Prøv igjen.");
+    }
+  }
 
   async function handleAdd() {
     if (!title.trim() || !date || submitting) return;
@@ -347,6 +403,28 @@ export default function EventsSection() {
   const nextWeekRows = rows.filter((r) => r.occurrence > thisWeekEnd && r.occurrence <= nextWeekEnd);
   const laterRows = rows.filter((r) => r.occurrence > nextWeekEnd);
   const visibleLaterRows = laterRows.slice(0, visibleCount);
+
+  // Skroller til og fremhever raden når man hopper hit fra en lenket
+  // påminnelse — samme mønster som CalendarSection.
+  useEffect(() => {
+    if (!highlightEventId) return;
+    const laterIdx = laterRows.findIndex((r) => r.event?.id === highlightEventId);
+    if (laterIdx !== -1 && laterIdx >= visibleCount) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVisibleCount(laterIdx + 1);
+      return;
+    }
+    const node = rowRefs.current.get(highlightEventId);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(highlightEventId);
+    const t = setTimeout(() => {
+      setHighlightedId(null);
+      onHighlightHandled?.();
+    }, 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightEventId, visibleCount, laterRows.length]);
 
   return (
     <div className="border-t-2 border-t-accent-privat/60 p-4">
@@ -460,6 +538,9 @@ export default function EventsSection() {
                         onToggleCommentRelevance={(commentId, ikkeRelevant) =>
                           row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
                         }
+                        onCreateReminder={(comment) => row.event && handleCreateReminderFromComment(comment, row.event)}
+                        highlighted={!!row.event && highlightedId === row.event.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>
@@ -489,6 +570,9 @@ export default function EventsSection() {
                         onToggleCommentRelevance={(commentId, ikkeRelevant) =>
                           row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
                         }
+                        onCreateReminder={(comment) => row.event && handleCreateReminderFromComment(comment, row.event)}
+                        highlighted={!!row.event && highlightedId === row.event.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>
@@ -518,6 +602,9 @@ export default function EventsSection() {
                         onToggleCommentRelevance={(commentId, ikkeRelevant) =>
                           row.event && toggleRelevance("life-event", row.event.id, commentId, ikkeRelevant)
                         }
+                        onCreateReminder={(comment) => row.event && handleCreateReminderFromComment(comment, row.event)}
+                        highlighted={!!row.event && highlightedId === row.event.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>

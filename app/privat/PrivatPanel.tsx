@@ -19,6 +19,7 @@ import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "
 import { SidebarNav, type NavItem } from "../SidebarNav";
 import PrivatSearch from "./PrivatSearch";
 import { localDateString } from "@/lib/payday";
+import type { ReminderLink } from "@/lib/reminders";
 import {
   Home,
   Bell,
@@ -107,6 +108,10 @@ export default function PrivatPanel() {
   const paneRef = useRef<HTMLDivElement>(null);
   const hasNavigatedRef = useRef(false);
   const skipFocusMoveRef = useRef(false);
+  // Satt når man klikker en påminnelses "Fra kalender/hendelser: ..."-lenke —
+  // bytter fane OG sender med hvilken rad Kalender/Hendelser skal skrolle
+  // til og fremheve.
+  const [highlightTarget, setHighlightTarget] = useState<ReminderLink | null>(null);
 
   // Éncentralisert lytter for det gamle "privat-refresh"-eventet (fortsatt
   // dispatchet av alle mutasjons-handlere i de fulle kortene) — reveraliderer
@@ -144,15 +149,30 @@ export default function PrivatPanel() {
     setActiveId(id);
   }
 
+  function handleJumpToLinked(link: ReminderLink) {
+    setHighlightTarget(link);
+    handleSelect(link.targetType === "calendar-event" ? "calendar" : "events");
+  }
+
   // null her betyr "ingen kort å vise akkurat nå" (f.eks. tomt VM-program,
   // FPL inaktiv) — da hopper vi over navigasjonselementet også, ikke bare
   // kortet (se navItems under, som skiller "skjult av forretningslogikk"
   // fra "fortsatt under lasting").
   const sectionNodes: Record<string, React.ReactNode> = {
     today: <TodaySummary onJump={handleSelect} />,
-    reminders: <RemindersSection />,
-    calendar: <CalendarSection />,
-    events: <EventsSection />,
+    reminders: <RemindersSection onJumpToLinked={handleJumpToLinked} />,
+    calendar: (
+      <CalendarSection
+        highlightEventId={highlightTarget?.targetType === "calendar-event" ? highlightTarget.targetId : null}
+        onHighlightHandled={() => setHighlightTarget(null)}
+      />
+    ),
+    events: (
+      <EventsSection
+        highlightEventId={highlightTarget?.targetType === "life-event" ? highlightTarget.targetId : null}
+        onHighlightHandled={() => setHighlightTarget(null)}
+      />
+    ),
     notes: <NotesSection />,
     finance: <FinanceSection />,
     sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />,

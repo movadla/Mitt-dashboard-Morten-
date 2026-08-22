@@ -7,12 +7,12 @@ import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useC
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
-import type { Recurrence, Reminder, Subtask } from "@/lib/reminders";
+import type { Recurrence, Reminder, ReminderLink, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { addDaysIso, localDateString, relativeDayLabel } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
-import { Bell, GripVertical, X } from "lucide-react";
+import { ArrowUpRight, Bell, GripVertical, X } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -172,6 +172,7 @@ function ReminderRowContent({
   commentCount,
   notesOpen,
   onToggleNotes,
+  onJumpToLinked,
 }: {
   reminder: Reminder;
   onToggle: (id: string) => void;
@@ -180,10 +181,12 @@ function ReminderRowContent({
   commentCount: number;
   notesOpen: boolean;
   onToggleNotes: () => void;
+  onJumpToLinked?: (link: ReminderLink) => void;
 }) {
   const subtasks = reminder.subtasks ?? [];
   const subtasksDone = subtasks.filter((s) => s.done).length;
   return (
+    <div className="flex flex-col gap-1">
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button
         type="button"
@@ -237,6 +240,17 @@ function ReminderRowContent({
       >
         <X className="h-4 w-4" />
       </button>
+    </div>
+    {reminder.linkedTo && onJumpToLinked && (
+      <button
+        type="button"
+        onClick={() => onJumpToLinked(reminder.linkedTo!)}
+        className="ml-9 flex items-center gap-1 self-start text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
+      >
+        <ArrowUpRight className="h-3 w-3" />
+        {`Fra ${reminder.linkedTo.targetType === "calendar-event" ? "kalender" : "hendelser"}: ${reminder.linkedTo.label}`}
+      </button>
+    )}
     </div>
   );
 }
@@ -348,6 +362,7 @@ type RowCallbacks = {
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
+  onJumpToLinked?: (link: ReminderLink) => void;
 };
 
 type RowCommentProps = {
@@ -371,6 +386,7 @@ function ReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  onJumpToLinked,
   comments,
   onAddComment,
   onDeleteComment,
@@ -412,6 +428,7 @@ function ReminderRow({
           commentCount={comments.length}
           notesOpen={notesOpen}
           onToggleNotes={() => setNotesOpen((v) => !v)}
+          onJumpToLinked={onJumpToLinked}
         />
       </SwipeableRow>
       {notesOpen && <ReminderNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
@@ -431,6 +448,7 @@ function SortableReminderRow({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  onJumpToLinked,
   comments,
   onAddComment,
   onDeleteComment,
@@ -496,6 +514,7 @@ function SortableReminderRow({
               commentCount={comments.length}
               notesOpen={notesOpen}
               onToggleNotes={() => setNotesOpen((v) => !v)}
+              onJumpToLinked={onJumpToLinked}
             />
           </SwipeableRow>
         </div>
@@ -509,7 +528,13 @@ function SortableReminderRow({
   );
 }
 
-export default function RemindersSection() {
+export default function RemindersSection({
+  onJumpToLinked,
+}: {
+  // Satt av PrivatPanel — kalles når man klikker en påminnelses "Fra
+  // kalender/hendelser: ..."-lenke, og bytter fane + fremhever kildens rad.
+  onJumpToLinked?: (link: ReminderLink) => void;
+} = {}) {
   // Delt SWR-nøkkel med TodaySummary — begge leser/skriver samme cache-oppføring
   // istedenfor å holde hver sin kopi og hente uavhengig av hverandre.
   const { data, isLoading: loading, mutate: mutateReminders } = useSWR<{ reminders: Reminder[] }>(
@@ -936,6 +961,7 @@ export default function RemindersSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      onJumpToLinked={onJumpToLinked}
                       comments={comments[commentKey("reminder", r.id)] ?? []}
                       onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
                       onDeleteComment={(commentId, preview) =>
@@ -964,6 +990,7 @@ export default function RemindersSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      onJumpToLinked={onJumpToLinked}
                       comments={comments[commentKey("reminder", r.id)] ?? []}
                       onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
                       onDeleteComment={(commentId, preview) =>
@@ -1004,6 +1031,7 @@ export default function RemindersSection() {
                           onStartEdit={setEditingId}
                           onCancelEdit={() => setEditingId(null)}
                           onSaveEdit={handleSaveEdit}
+                          onJumpToLinked={onJumpToLinked}
                           comments={comments[commentKey("reminder", r.id)] ?? []}
                           onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
                           onDeleteComment={(commentId, preview) =>
@@ -1043,6 +1071,7 @@ export default function RemindersSection() {
                       onStartEdit={setEditingId}
                       onCancelEdit={() => setEditingId(null)}
                       onSaveEdit={handleSaveEdit}
+                      onJumpToLinked={onJumpToLinked}
                       comments={comments[commentKey("reminder", r.id)] ?? []}
                       onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
                       onDeleteComment={(commentId, preview) =>

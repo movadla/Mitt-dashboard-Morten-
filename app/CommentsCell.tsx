@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MessageSquare, X } from "lucide-react";
+import { Bell, MessageSquare, X } from "lucide-react";
 import type { Comment } from "@/lib/comments";
 
 function formatDateTime(iso: string): string {
@@ -58,12 +58,18 @@ export function CommentThreadBody({
   onAdd,
   onDelete,
   onToggleRelevance,
+  onCreateReminder,
   accentClassName = "bg-accent hover:bg-accent/85",
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  // Valgfri — kun Kalender/Hendelser sender denne inn for å la en kommentar
+  // bli opphav til en påminnelse som lenker tilbake. Usatt = ingen knapp,
+  // så eksisterende bruk (Jobb-kommentarer, påminnelse-egne kommentarer)
+  // er upåvirket.
+  onCreateReminder?: (comment: Comment) => void;
   accentClassName?: string;
 }) {
   const [draft, setDraft] = useState("");
@@ -106,14 +112,27 @@ export function CommentThreadBody({
                     </label>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onDelete(c.id, c.tekst)}
-                  aria-label="Slett kommentar"
-                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {onCreateReminder && (
+                    <button
+                      type="button"
+                      onClick={() => onCreateReminder(c)}
+                      aria-label="Lag påminnelse fra kommentar"
+                      title="Lag påminnelse"
+                      className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-accent-privat"
+                    >
+                      <Bell className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onDelete(c.id, c.tekst)}
+                    aria-label="Slett kommentar"
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </li>
             ))}
         </ul>

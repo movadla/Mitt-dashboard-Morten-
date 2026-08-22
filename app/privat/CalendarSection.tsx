@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
@@ -99,15 +99,24 @@ function EventNotes({
   onAdd,
   onDelete,
   onToggleRelevance,
+  onCreateReminder,
 }: {
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onDelete: (commentId: string, preview: string) => void;
   onToggleRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onCreateReminder: (comment: Comment) => void;
 }) {
   return (
     <div className="mt-1.5 border-l-2 border-line py-0.5 pl-3">
-      <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onDelete} onToggleRelevance={onToggleRelevance} accentClassName="bg-accent-privat hover:bg-accent-privat/85" />
+      <CommentThreadBody
+        comments={comments}
+        onAdd={onAdd}
+        onDelete={onDelete}
+        onToggleRelevance={onToggleRelevance}
+        onCreateReminder={onCreateReminder}
+        accentClassName="bg-accent-privat hover:bg-accent-privat/85"
+      />
     </div>
   );
 }
@@ -116,6 +125,8 @@ function EventRow({
   event,
   editing,
   dayLabel,
+  highlighted,
+  setRowRef,
   onRemove,
   onStartEdit,
   onCancelEdit,
@@ -124,12 +135,17 @@ function EventRow({
   onAddComment,
   onDeleteComment,
   onToggleCommentRelevance,
+  onCreateReminder,
 }: {
   event: PrivatCalendarEvent;
   editing: boolean;
   // Dag+hendelse på samme linje (f.eks. "I dag ·"/"Fre 21.08 ·") i stedet
   // for en egen overskriftslinje per dato — se runde 2 sin uke-inndeling.
   dayLabel?: string;
+  // Kort visuell markering (~2-3 sek) etter at man har hoppet hit fra en
+  // lenket påminnelse i Påminnelser — se PrivatPanel sin highlightTarget.
+  highlighted?: boolean;
+  setRowRef?: (id: string, el: HTMLLIElement | null) => void;
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -141,6 +157,7 @@ function EventRow({
   onAddComment: (tekst: string) => Promise<boolean>;
   onDeleteComment: (commentId: string, preview: string) => void;
   onToggleCommentRelevance: (commentId: string, ikkeRelevant: boolean) => void;
+  onCreateReminder: (comment: Comment) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -153,9 +170,13 @@ function EventRow({
   const hasSubMeta = event.location || event.note;
 
   return (
-    <li>
+    <li ref={setRowRef ? (el) => setRowRef(event.id, el) : undefined}>
       <SwipeableRow onSwipeLeft={() => onRemove(event.id)} leftLabel="Slett">
-        <div className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2">
+        <div
+          className={`flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2 transition ${
+            highlighted ? "ring-2 ring-accent-privat" : ""
+          }`}
+        >
           <button
             type="button"
             onClick={() => onStartEdit(event.id)}
@@ -190,12 +211,28 @@ function EventRow({
           </button>
         </div>
       </SwipeableRow>
-      {notesOpen && <EventNotes comments={comments} onAdd={onAddComment} onDelete={onDeleteComment} onToggleRelevance={onToggleCommentRelevance} />}
+      {notesOpen && (
+        <EventNotes
+          comments={comments}
+          onAdd={onAddComment}
+          onDelete={onDeleteComment}
+          onToggleRelevance={onToggleCommentRelevance}
+          onCreateReminder={onCreateReminder}
+        />
+      )}
     </li>
   );
 }
 
-export default function CalendarSection() {
+export default function CalendarSection({
+  highlightEventId,
+  onHighlightHandled,
+}: {
+  // Satt av PrivatPanel når man hopper hit fra en påminnelse lenket til en
+  // kalenderhendelse — skroller til og fremhever raden midlertidig.
+  highlightEventId?: string | null;
+  onHighlightHandled?: () => void;
+} = {}) {
   const { data, isLoading: loading, mutate: mutateEvents } = useSWR<{ events: PrivatCalendarEvent[] }>(
     "/api/privat-calendar",
     jsonFetcher,
@@ -213,6 +250,30 @@ export default function CalendarSection() {
   const mutationError = useMutationError();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
   const [visibleCount, setVisibleCount] = useState(10);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  function setRowRef(id: string, el: HTMLLIElement | null) {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }
+
+  async function handleCreateReminderFromComment(comment: Comment, event: PrivatCalendarEvent) {
+    try {
+      const res = await fetch("/api/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: comment.tekst,
+          linkedTo: { targetType: "calendar-event", targetId: event.id, label: event.title },
+        }),
+      });
+      if (!res.ok) throw new Error("create reminder failed");
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lage påminnelse fra kommentaren. Prøv igjen.");
+    }
+  }
 
   function sortEvents(list: PrivatCalendarEvent[]): PrivatCalendarEvent[] {
     return [...list].sort((a, b) => a.date.localeCompare(b.date) || (a.startTime ?? "").localeCompare(b.startTime ?? ""));
@@ -312,6 +373,30 @@ export default function CalendarSection() {
   const nextWeek = upcoming.filter((e) => e.date > thisWeekEnd && e.date <= nextWeekEnd);
   const later = upcoming.filter((e) => e.date > nextWeekEnd);
   const visibleLater = later.slice(0, visibleCount);
+
+  // Skroller til og fremhever raden når man hopper hit fra en lenket
+  // påminnelse. Hvis raden ligger bak "Fremover"-paginering, bumpes
+  // visibleCount først — effekten kjører på nytt (visibleCount er en
+  // dependency) og finner da raden i DOM-en.
+  useEffect(() => {
+    if (!highlightEventId) return;
+    const laterIdx = later.findIndex((e) => e.id === highlightEventId);
+    if (laterIdx !== -1 && laterIdx >= visibleCount) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVisibleCount(laterIdx + 1);
+      return;
+    }
+    const node = rowRefs.current.get(highlightEventId);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(highlightEventId);
+    const t = setTimeout(() => {
+      setHighlightedId(null);
+      onHighlightHandled?.();
+    }, 2500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightEventId, visibleCount, later.length]);
 
   function handleAddClick() {
     setShowForm(true);
@@ -414,6 +499,9 @@ export default function CalendarSection() {
                           confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
                         }
                         onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                        onCreateReminder={(comment) => handleCreateReminderFromComment(comment, e)}
+                        highlighted={highlightedId === e.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>
@@ -440,6 +528,9 @@ export default function CalendarSection() {
                           confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
                         }
                         onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                        onCreateReminder={(comment) => handleCreateReminderFromComment(comment, e)}
+                        highlighted={highlightedId === e.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>
@@ -466,6 +557,9 @@ export default function CalendarSection() {
                           confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
                         }
                         onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                        onCreateReminder={(comment) => handleCreateReminderFromComment(comment, e)}
+                        highlighted={highlightedId === e.id}
+                        setRowRef={setRowRef}
                       />
                     ))}
                   </ul>

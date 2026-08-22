@@ -9,6 +9,22 @@ export interface Subtask {
   done: boolean;
 }
 
+// Hvilken kommentar-trådtype påminnelsen ble opprettet fra — samme union
+// som CommentTargetType i lib/comments.ts, men holdt som en egen (smalere)
+// type her for å unngå at reminders.ts må importere hele comments-modulen
+// for kun to strengverdier.
+export type ReminderLinkTargetType = "calendar-event" | "life-event";
+
+export interface ReminderLink {
+  targetType: ReminderLinkTargetType;
+  targetId: string;
+  // Øyeblikksbilde av hendelsens tittel ved opprettelsestidspunktet — IKKE
+  // et live oppslag. Synkroniseres ikke om hendelsen senere omdøpes, men
+  // holder RemindersSection fri for å måtte hente kalender-/hendelsesdata
+  // den ellers ikke bruker, bare for å vise en lenke-etikett.
+  label: string;
+}
+
 export interface Reminder {
   id: string;
   text: string;
@@ -19,6 +35,7 @@ export interface Reminder {
   completedAt?: string; // ISO datetime — satt når done settes til true, brukes for "angre"-vinduet
   order: number; // manuell prioritet i "i dag"-lista, lavest først
   subtasks?: Subtask[];
+  linkedTo?: ReminderLink;
 }
 
 export interface NewReminderInput {
@@ -26,6 +43,7 @@ export interface NewReminderInput {
   dueDate?: string;
   dueTime?: string;
   recurrence?: Recurrence;
+  linkedTo?: ReminderLink;
 }
 
 export interface ReminderUpdateInput {
@@ -104,6 +122,7 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     recurrence: input.recurrence ?? "none",
     done: false,
     order,
+    linkedTo: input.linkedTo,
   };
   await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
