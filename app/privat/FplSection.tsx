@@ -5,10 +5,21 @@ import useSWR from "swr";
 import Image from "next/image";
 import TeamPitch from "./TeamPitch";
 import type { FplData, FplTeam, TeamKey } from "@/lib/fpl";
-import { CardHeader } from "../CardShell";
+import type { FplNote } from "@/lib/fplNotes";
+import { CardHeader, ConfirmDialog, useConfirmDelete } from "../CardShell";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { timeAgo } from "@/lib/timeAgo";
-import { Shirt } from "lucide-react";
+import { Shirt, X } from "lucide-react";
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("nb-NO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export type { FplData } from "@/lib/fpl";
 
@@ -103,6 +114,177 @@ const TEAM_THEME = {
     panelLeftBorder: "#22c55e",
   },
 } as const;
+
+// Fritekstnotater for saker som dukker opp i løpet av sesongen og skal
+// diskuteres på Boko Haramsdale sitt årsmøte — kun vist under Boko-panelet,
+// ikke Fisak. Samme dato/tid-stemplet rediger/slett-mønster som AlfredFreeNote
+// (app/privat/AlfredSection.tsx), men styrt med FPL-panelets egne mørke
+// grønn-tema-farger i stedet for appens vanlige CardShell-tokens.
+function BokoNotes() {
+  const { data, mutate } = useSWR<{ notes: FplNote[] }>("/api/fpl/notes", jsonFetcher);
+  const notes = data?.notes ?? [];
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const confirmDelete = useConfirmDelete<string>();
+  const th = TEAM_THEME.boko;
+
+  async function submitAdd() {
+    if (!draft.trim()) return;
+    const res = await fetch("/api/fpl/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: draft.trim() }),
+    });
+    if (res.ok) {
+      const created: FplNote = await res.json();
+      mutate((cur) => cur && { notes: [created, ...cur.notes] }, { revalidate: false });
+      setDraft("");
+      setAdding(false);
+    }
+  }
+
+  async function submitEdit(id: string) {
+    if (!editDraft.trim()) return;
+    const res = await fetch(`/api/fpl/notes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: editDraft.trim() }),
+    });
+    if (res.ok) {
+      const updated: FplNote = await res.json();
+      mutate((cur) => cur && { notes: cur.notes.map((n) => (n.id === id ? updated : n)) }, { revalidate: false });
+      setEditingId(null);
+    }
+  }
+
+  async function remove(id: string) {
+    mutate((cur) => cur && { notes: cur.notes.filter((n) => n.id !== id) }, { revalidate: false });
+    await fetch(`/api/fpl/notes/${id}`, { method: "DELETE" });
+  }
+
+  return (
+    <div className="px-3 pb-4" style={{ background: "rgba(0,0,0,0.20)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <p className="pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: th.accent }}>
+        Notater til årsmøtet
+      </p>
+      {notes.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1.5">
+          {notes.map((note) =>
+            editingId === note.id ? (
+              <div key={note.id} className="flex flex-col gap-1.5 rounded-lg p-2" style={{ background: "rgba(0,0,0,0.28)" }}>
+                <textarea
+                  autoFocus
+                  value={editDraft}
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  rows={2}
+                  className="rounded-md px-2 py-1.5 text-[12px] text-white/85 outline-none"
+                  style={{ background: "rgba(255,255,255,0.06)" }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    className="text-[10px] font-semibold uppercase"
+                    style={{ color: "rgba(255,255,255,0.4)" }}
+                  >
+                    Avbryt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => submitEdit(note.id)}
+                    disabled={!editDraft.trim()}
+                    className="ml-auto rounded-md px-2.5 py-1 text-[10px] font-bold uppercase disabled:opacity-40"
+                    style={{ background: th.topBar, color: "#04140b" }}
+                  >
+                    Lagre
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div key={note.id} className="flex items-start gap-2 rounded-lg p-2" style={{ background: "rgba(0,0,0,0.28)" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingId(note.id);
+                    setEditDraft(note.text);
+                  }}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <p className="whitespace-pre-line text-[12px] text-white/85">{note.text}</p>
+                  <p className="mt-0.5 text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    {formatDateTime(note.updatedAt ?? note.createdAt)}
+                    {note.updatedAt ? " (redigert)" : ""}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmDelete.request(note.id)}
+                  aria-label="Slett notat"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-full"
+                  style={{ color: "rgba(255,255,255,0.35)" }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ),
+          )}
+        </div>
+      )}
+      {adding ? (
+        <div className="flex flex-col gap-1.5 rounded-lg p-2" style={{ background: "rgba(0,0,0,0.28)" }}>
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            placeholder="Skriv notat..."
+            className="rounded-md px-2 py-1.5 text-[12px] text-white/85 placeholder-white/30 outline-none"
+            style={{ background: "rgba(255,255,255,0.06)" }}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="text-[10px] font-semibold uppercase"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              Avbryt
+            </button>
+            <button
+              type="button"
+              onClick={submitAdd}
+              disabled={!draft.trim()}
+              className="ml-auto rounded-md px-2.5 py-1 text-[10px] font-bold uppercase disabled:opacity-40"
+              style={{ background: th.topBar, color: "#04140b" }}
+            >
+              Lagre
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px]"
+          style={{ border: "1px dashed rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.45)" }}
+        >
+          <span className="text-sm leading-none">+</span> Nytt notat
+        </button>
+      )}
+      <ConfirmDialog
+        open={confirmDelete.isOpen}
+        message="Slette dette notatet?"
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => {
+          if (confirmDelete.pending) remove(confirmDelete.pending);
+          confirmDelete.cancel();
+        }}
+      />
+    </div>
+  );
+}
 
 function MiniLeaderboard({
   entries, myRank, myTotal, teamName, accent, accentM,
@@ -521,6 +703,7 @@ export function FplHero({ fpl }: { fpl: FplData }) {
               accent={TEAM_THEME[expandedTeam].accent}
             />
           </div>
+          {expandedTeam === "boko" && <BokoNotes />}
         </div>
       )}
     </div>
