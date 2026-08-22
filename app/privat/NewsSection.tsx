@@ -8,8 +8,20 @@ import { Newspaper } from "lucide-react";
 
 // Nyheter kan bli utdaterte gjennom en lang åpen dashboard-økt uten et
 // periodisk refetch — 15 minutter er hyppig nok for nyhetsoppdateringer uten
-// å tynge VG sin RSS-feed unødig.
+// å tynge kildenes RSS-feeds unødig.
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+
+// Egen fargepalett per kategori — samme mønster som SPORT_COLOR i
+// SportSection.tsx (dedikert konstant-map, ikke en gjenbruk av det
+// reserverte semantiske paletten i globals.css).
+const CATEGORY_COLOR: Record<string, string> = {
+  Nyheter: "#64748b",
+  Sport: "#2563eb",
+  Underholdning: "#db2777",
+  Økonomi: "#0e9e79",
+  Utenriks: "#d97706",
+  Annet: "#6b7280",
+};
 
 function timeLabel(pubDate?: string): string {
   if (!pubDate) return "";
@@ -20,15 +32,40 @@ function timeLabel(pubDate?: string): string {
 
 function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boolean; onToggle: () => void }) {
   const displayTitle = item.aiTitle ?? item.title;
+  const categoryColor = item.category ? (CATEGORY_COLOR[item.category] ?? CATEGORY_COLOR.Annet) : undefined;
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-start gap-2 text-left">
+      <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-start gap-2.5 text-left">
+        {item.image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+        )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-ink-1">{displayTitle}</p>
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {item.category ? `${item.category}` : ""}
-            {item.category && timeLabel(item.pubDate) ? " · " : ""}
-            {timeLabel(item.pubDate)}
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm text-ink-1">{displayTitle}</p>
+            {item.importance === "høy" && (
+              <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
+                Viktig for deg
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-4">
+            <span className="shrink-0 font-medium text-ink-3">{item.source}</span>
+            {item.category && (
+              <>
+                <span>·</span>
+                <span className="inline-flex items-center gap-1">
+                  {categoryColor && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor }} />}
+                  {item.category}
+                </span>
+              </>
+            )}
+            {timeLabel(item.pubDate) && (
+              <>
+                <span>·</span>
+                <span>{timeLabel(item.pubDate)}</span>
+              </>
+            )}
           </p>
         </div>
         <svg
@@ -99,7 +136,7 @@ export default function NewsSection() {
     <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
         title="Nyheter"
-        subtitle={items.length > 0 ? (items[0].aiTitle ?? items[0].title) : "VG.no"}
+        subtitle={items.length > 0 ? (items[0].aiTitle ?? items[0].title) : "Flere kilder"}
         icon={Newspaper}
         iconColorClass="text-orange-400"
       />

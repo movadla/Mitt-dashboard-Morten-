@@ -7,19 +7,36 @@ export interface NewsItem {
   title: string;
   link: string;
   description?: string;
+  // Normalisert kategori — AI-klassifisert (se summarizeText), faller tilbake
+  // til en enkel kilde-avledet gjetning hvis AI-kallet feiler for saken.
   category?: string;
   pubDate?: string;
-  // Claude-tolket tittel/sammendrag av selve artikkelen — se summarizeArticle.
+  image?: string;
+  source: string; // "VG" | "TV2" | "Dagbladet" | "Nettavisen"
+  importance?: "lav" | "medium" | "høy";
+  // Claude-tolket tittel/sammendrag av selve artikkelen — se summarizeText.
   // Usatt hvis AI-kallet feilet eller ANTHROPIC_API_KEY ikke er satt; UI-en
   // faller da tilbake til title/description.
   aiTitle?: string;
   summaryBullets?: string[];
 }
 
-const CACHE_KEY = "cache:news:vg-forside";
+// Interne felt kun brukt under innsamling — aldri en del av det som caches/
+// returneres (strippes i processCandidate).
+interface Candidate extends NewsItem {
+  // Nettavisen har HELE artikkelen embedded i RSS-responsen
+  // (<content:encoded>) — ingen egen artikkel-henting nødvendig for den kilden.
+  prefetchedText?: string;
+  // Avgjort ved parsing for kilder der vi ikke gjør et eget sidekall (Nettavisen).
+  isVideo?: boolean;
+}
+
+const CACHE_KEY = "cache:news:aggregert";
 const CACHE_TTL_SECONDS = 15 * 60;
-const FEED_URL = "https://www.vg.no/rss/feed";
 const MODEL = "claude-haiku-4-5";
+const TOP_N = 10;
+const BATCH_SIZE = 5;
+const UA = { headers: { "User-Agent": "Mozilla/5.0 (mitt-dashboard privat nyhetsboks)" } };
 
 function decodeEntities(s: string): string {
   return s
@@ -29,21 +46,82 @@ function decodeEntities(s: string): string {
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    // Generiske numeriske/hex-entities — Dagbladet sine enclosure-URL-er
+    // bruker &#x2F; (/) og &#x3D; (=) i stedet for de navngitte over.
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(parseInt(dec, 10)))
     .trim();
 }
 
 function extractTag(block: string, tag: string): string | undefined {
-  const match = block.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+  const match = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`));
   if (!match) return undefined;
   const raw = match[1].replace(/^<!\[CDATA\[([\s\S]*?)\]\]>$/, "$1");
   const decoded = decodeEntities(raw);
   return decoded || undefined;
 }
 
-function parseFeed(xml: string): NewsItem[] {
-  const items: NewsItem[] = [];
-  const itemBlocks = xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
-  for (const block of itemBlocks) {
+function extractAttr(block: string, tag: string, attr: string): string | undefined {
+  const tagMatch = block.match(new RegExp(`<${tag}[^>]*/?>`, "i"));
+  if (!tagMatch) return undefined;
+  const attrMatch = tagMatch[0].match(new RegExp(`${attr}="([^"]*)"`, "i"));
+  return attrMatch ? decodeEntities(attrMatch[1]) : undefined;
+}
+
+// Feilaktige/støy-titler observert i praksis — foreløpig kun fra VG sin
+// kronologiske firehose (måltikker/bildetekster), men sjekket generisk mot
+// alle kilder som et billig sikkerhetsnett.
+const NOISE_TITLE_PATTERNS = [/^se\b/i, /^her (ser|er)\b/i, /^scoring for\b/i, /^\d+-\d+:/];
+
+function isNoiseItem(item: NewsItem): boolean {
+  return NOISE_TITLE_PATTERNS.some((p) => p.test(item.title)) || item.link.includes("/video/");
+}
+
+const CATEGORY_OPTIONS = ["Nyheter", "Sport", "Underholdning", "Økonomi", "Utenriks", "Annet"] as const;
+type Category = (typeof CATEGORY_OPTIONS)[number];
+
+// Enkel, billig kategori-gjetning fra URL-stien — brukt som fallback for
+// kilder uten egen kategori-tag (Dagbladet/Nettavisen), og hvis AI-kallet
+// feiler for en sak fra hvilken som helst kilde.
+function categoryFromPath(url: string): Category {
+  try {
+    const seg = new URL(url).pathname.split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+    const map: Record<string, Category> = {
+      nyheter: "Nyheter",
+      sport: "Sport",
+      kjendis: "Underholdning",
+      underholdning: "Underholdning",
+      okonomi: "Økonomi",
+      "norsk-debatt": "Nyheter",
+      meninger: "Nyheter",
+      utenriks: "Utenriks",
+    };
+    return map[seg] ?? "Annet";
+  } catch {
+    return "Annet";
+  }
+}
+
+// ── Kilde-parsere ────────────────────────────────────────────────────────────
+
+async function fetchXml(url: string): Promise<string> {
+  const res = await fetch(url, UA);
+  if (!res.ok) throw new Error(`Feed-feil (${url}): ${res.status}`);
+  return res.text();
+}
+
+function itemBlocks(xml: string): string[] {
+  return xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
+}
+
+// VG sin RSS ("Siste nytt fra VG") er en kronologisk firehose på tvers av
+// alle kategorier (Nyheter/Sport/E24/...) og returnerer i praksis alltid kun
+// de ~10 siste publiseringene totalt — ofte dominert av Sport sin
+// minutt-for-minutt-tikker. Har likevel et ekte, unikt bilde per sak
+// (<enclosure url>), verifisert 22.08.2026.
+function parseVg(xml: string): Candidate[] {
+  const items: Candidate[] = [];
+  for (const block of itemBlocks(xml)) {
     const title = extractTag(block, "title");
     const link = extractTag(block, "link");
     if (!title || !link) continue;
@@ -51,115 +129,170 @@ function parseFeed(xml: string): NewsItem[] {
       title,
       link,
       description: extractTag(block, "description"),
-      category: extractTag(block, "category"),
+      category: extractTag(block, "category") ?? "Nyheter",
       pubDate: extractTag(block, "pubDate"),
+      image: extractAttr(block, "enclosure", "url"),
+      source: "VG",
     });
   }
   return items;
 }
 
-// VG sin RSS-feed (https://www.vg.no/rss/feed, "Siste nytt fra VG") har ingen
-// strukturert video-markør (samme <enclosure type="img/jpg"> på alle saker) OG
-// er IKKE en kuratert "toppsaker"-feed — det er en kronologisk firehose på
-// tvers av alle kategorier (Nyheter/Sport/E24/...), der Sport sin
-// minutt-for-minutt kamptikker ("Scoring for X", "1-3: X, Y") drukner ut
-// faktiske toppsaker. Prøvd flere alternative VG-endepunkter (rss/feed/forsiden,
-// rss/forsiden, ?section=forsiden) — alle enten 404 eller identisk innhold, så
-// dette er eneste tilgjengelige kilde. Filtrert bort her ved tittelmønster
-// (eneste signal RSS-en gir):
-// - "Se ..." (høydepunkter/klipp), "Her ser/er ..." (bilde-/videobildetekster)
-// - "Scoring for X" og "T-T: X, Y" (fotball-måltikker, ikke egne artikler)
-const NOISE_TITLE_PATTERNS = [
-  /^se\b/i,
-  /^her (ser|er)\b/i,
-  /^scoring for\b/i,
-  /^\d+-\d+:/,
+// TV2 (Labrador CMS) — rene, veldrevne kategori-feeds, ekte bilde per sak,
+// egen <category domain="section">-tag per sak.
+function parseTv2(xml: string, fallbackCategory: Category): Candidate[] {
+  const items: Candidate[] = [];
+  for (const block of itemBlocks(xml)) {
+    const title = extractTag(block, "title");
+    const link = extractTag(block, "link");
+    if (!title || !link) continue;
+    const sectionMatch = block.match(/<category domain="section">([\s\S]*?)<\/category>/);
+    items.push({
+      title,
+      link,
+      description: extractTag(block, "description"),
+      category: sectionMatch ? decodeEntities(sectionMatch[1]) : fallbackCategory,
+      pubDate: extractTag(block, "pubDate"),
+      image: extractAttr(block, "enclosure", "url"),
+      source: "TV2",
+    });
+  }
+  return items;
+}
+
+// Dagbladet (samme Labrador-plattform som TV2) — kun /rss/nyheter fungerte av
+// flere forsøkte URL-mønstre, ingen egen kategori-tag → avledet fra URL-sti.
+function parseDagbladet(xml: string): Candidate[] {
+  const items: Candidate[] = [];
+  for (const block of itemBlocks(xml)) {
+    const title = extractTag(block, "title");
+    const link = extractTag(block, "link");
+    if (!title || !link) continue;
+    items.push({
+      title,
+      link,
+      description: extractTag(block, "description"),
+      category: categoryFromPath(link),
+      pubDate: extractTag(block, "pubDate"),
+      image: extractAttr(block, "enclosure", "url"),
+      source: "Dagbladet",
+    });
+  }
+  return items;
+}
+
+function isVideoHtml(html: string): boolean {
+  const ogType = html.match(/<meta[^>]*property="og:type"[^>]*content="([^"]*)"/i)?.[1] ?? "";
+  if (ogType.toLowerCase().startsWith("video")) return true;
+  return /<meta[^>]*property="og:site_name"[^>]*content="VGTV"/i.test(html);
+}
+
+// Nettavisen sin rich-rss har HELE artikkelen (inkl. bilder, og-metadata)
+// embedded direkte i <content:encoded> — ingen egen artikkel-henting
+// nødvendig, verken for tekst, bilde eller video-avgjørelse.
+function parseNettavisen(xml: string): Candidate[] {
+  const items: Candidate[] = [];
+  for (const block of itemBlocks(xml)) {
+    const title = extractTag(block, "title");
+    const link = extractTag(block, "link");
+    if (!title || !link) continue;
+    const html = extractTag(block, "content:encoded") ?? "";
+    // <enclosure url="..."> ligger på selve <item>-nivået (utenfor content:
+    // encoded) og er til stede på så godt som alle saker — foretrekkes fremfor
+    // et embedded <img> i artikkelteksten, som mangler på rene tekst-/
+    // debattsaker uten eget bilde tidlig i brødteksten.
+    const enclosureUrl = extractAttr(block, "enclosure", "url");
+    const embeddedImg = html.match(/<img[^>]*src="([^"]*)"/i)?.[1];
+    const image = enclosureUrl ?? (embeddedImg ? decodeEntities(embeddedImg) : undefined);
+    items.push({
+      title,
+      link,
+      description: extractTag(block, "description"),
+      category: categoryFromPath(link),
+      pubDate: extractTag(block, "pubDate"),
+      image,
+      source: "Nettavisen",
+      prefetchedText: stripHtmlToText(html),
+      isVideo: isVideoHtml(html),
+    });
+  }
+  return items;
+}
+
+const SOURCES: Array<{ name: string; fetch: () => Promise<Candidate[]> }> = [
+  { name: "VG", fetch: () => fetchXml("https://www.vg.no/rss/feed").then(parseVg) },
+  { name: "TV2 nyheter", fetch: () => fetchXml("https://www.tv2.no/rss/nyheter").then((xml) => parseTv2(xml, "Nyheter")) },
+  { name: "TV2 sport", fetch: () => fetchXml("https://www.tv2.no/rss/sport").then((xml) => parseTv2(xml, "Sport")) },
+  {
+    name: "TV2 underholdning",
+    fetch: () => fetchXml("https://www.tv2.no/rss/underholdning").then((xml) => parseTv2(xml, "Underholdning")),
+  },
+  { name: "Dagbladet", fetch: () => fetchXml("https://www.dagbladet.no/rss/nyheter").then(parseDagbladet) },
+  { name: "Nettavisen", fetch: () => fetchXml("https://www.nettavisen.no/service/rich-rss").then(parseNettavisen) },
 ];
 
-function isNoiseItem(item: NewsItem): boolean {
-  return NOISE_TITLE_PATTERNS.some((p) => p.test(item.title)) || item.link.includes("/video/");
-}
+// ── Artikkeltekst + AI-tolkning ──────────────────────────────────────────────
 
-const TOP_N = 3;
-// Bredere vindu enn TOP_N slik at vi kan PRIORITERE "Nyheter"-kategorien i
-// stedet for bare å ta de kronologisk første — VGs faktiske forside-toppsaker
-// er nesten alltid "Nyheter", mens E24/Sport ofte trenger seg forbi dem rent
-// kronologisk (verifisert manuelt mot vg.no sin forside 22.08.2026).
-const RAW_WINDOW = 20;
-
-// Prioriterer "Nyheter"-kategorien først (i sin opprinnelige, kronologiske
-// rekkefølge), deretter andre kategorier — hele vinduet, IKKE kuttet til
-// TOP_N ennå, siden getNews under må kunne hoppe over VGTV-videosaker (som
-// ikke har tekst å tolke) og likevel fylle opp TOP_N reelle saker.
-function prioritizeStories(items: NewsItem[]): NewsItem[] {
-  const nyheter = items.filter((i) => i.category === "Nyheter");
-  const rest = items.filter((i) => i.category !== "Nyheter");
-  return [...nyheter, ...rest];
-}
-
-// Strip HTML til ren tekst — samme regex-baserte tilnærming som resten av
-// filen (ingen HTML-parser-bibliotek i prosjektet). Grovt, men holder for å
-// gi Claude nok kontekst til å tolke artikkelen; navigasjons-/reklametekst
-// som slipper gjennom instrueres modellen selv til å ignorere.
+// Strip HTML til ren tekst — regex-basert (ingen HTML-parser-bibliotek i
+// prosjektet). Grovt, men holder for å gi Claude nok kontekst; navigasjons-/
+// reklametekst som slipper gjennom instrueres modellen selv til å ignorere.
 function stripHtmlToText(html: string): string {
-  const withoutBoilerplate = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ");
+  const withoutBoilerplate = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ");
   const text = decodeEntities(withoutBoilerplate.replace(/<[^>]+>/g, " "));
   return text.replace(/\s+/g, " ").trim().slice(0, 6000);
 }
 
-interface AiNewsResult {
-  title: string;
-  bullets: string[];
-}
-
-interface ArticlePage {
-  text: string;
-  // VGTV-videosaker ("i/<id>/..."-lenker kan pekere til rene videoinnslag,
-  // ikke tekstartikler) rendres klientside og har INGEN artikkeltekst i
-  // rå HTML-en (kun "You need to enable JavaScript to run this app.") —
-  // verifisert manuelt 22.08.2026. Disse må hoppes over og erstattes med
-  // neste kandidat, ikke bare falle tilbake til VGs originaltittel, siden
-  // de sjelden er reelle toppsaker i utgangspunktet.
-  isVideo: boolean;
-}
-
-// Henter selve artikkelsiden. Returnerer null ved fetch-feil.
-async function fetchArticlePage(link: string): Promise<ArticlePage | null> {
+async function fetchArticlePage(link: string): Promise<{ text: string; isVideo: boolean } | null> {
   try {
-    const res = await fetch(link, { headers: { "User-Agent": "Mozilla/5.0 (mitt-dashboard privat nyhetsboks)" } });
+    const res = await fetch(link, UA);
     if (!res.ok) return null;
     const html = await res.text();
-    const isVideo = /property="og:type"\s+content="video/i.test(html) || /property="og:site_name"\s+content="VGTV"/i.test(html);
-    return { text: stripHtmlToText(html), isVideo };
+    return { text: stripHtmlToText(html), isVideo: isVideoHtml(html) };
   } catch {
     return null;
   }
 }
 
-// Ber Claude Haiku om en tolket tittel (ikke VGs egen) + punktvis
-// sammendrag av allerede hentet artikkeltekst. Returnerer null ved ethvert
-// feilsteg (manglende API-nøkkel, uparsérbart svar) — kalleren faller da
-// tilbake til dagens oppførsel for den enkelte saken, aldri en hard feil.
-async function summarizeText(item: NewsItem, text: string): Promise<AiNewsResult | null> {
+interface AiNewsResult {
+  title: string;
+  bullets: string[];
+  category: Category;
+  importance: "lav" | "medium" | "høy";
+}
+
+// Kort, statisk personalisering — brukt til å vurdere relevans FOR MORTEN
+// spesifikt, ikke generell nyhetsverdi. Holdt bevisst enkel (jobb/familie/
+// interesser), ikke koblet til live data fra resten av appen.
+const PERSONA_CONTEXT =
+  "Personen dette vurderes for: Morten, jobber med eiendomsforvaltning (Mustad Eiendom) i Oslo-området, " +
+  "har en liten sønn, og er interessert i fotball/Fantasy Premier League og dart.";
+
+// Ber Claude Haiku om en tolket tittel (ikke kildens egen) + punktvis
+// sammendrag + normalisert kategori + personlig viktighetsvurdering, alt i
+// ÉTT kall. Returnerer null ved ethvert feilsteg — kalleren faller da
+// tilbake til den rå saken (kilde-tittel, kilde-avledet kategori-gjetning,
+// ingen sammendrag/viktighet), aldri en hard feil for hele boksen.
+async function summarizeText(item: { title: string }, text: string): Promise<AiNewsResult | null> {
   if (!process.env.ANTHROPIC_API_KEY || !text) return null;
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 400,
+      max_tokens: 500,
       system:
-        'Du hjelper til med å tolke norske nyhetsartikler til en kortfattet, nøytral tittel og et punktvis sammendrag. Svar KUN med gyldig JSON på formen {"title": string, "bullets": string[]} — ingen annen tekst før eller etter.',
+        'Du hjelper til med å tolke norske nyhetsartikler. Svar KUN med gyldig JSON på formen ' +
+        '{"title": string, "bullets": string[], "category": string, "importance": string} — ingen annen tekst før eller etter. ' +
+        `"category" MÅ være nøyaktig én av: ${CATEGORY_OPTIONS.join(", ")}. ` +
+        `"importance" MÅ være nøyaktig én av: lav, medium, høy. ${PERSONA_CONTEXT} Vurder "importance" som relevans for AKKURAT DENNE PERSONEN spesifikt, ikke generell nyhetsverdi.`,
       messages: [
         {
           role: "user",
-          content: `Artikkelens originaltittel (VGs egen, ikke nødvendigvis den beste beskrivelsen): "${item.title}"
+          content: `Artikkelens originaltittel: "${item.title}"
 
 Artikkeltekst (kan inneholde noe navigasjons-/reklametekst fra siden rundt selve artikkelen — ignorer det som klart ikke er brødteksten):
 ${text}
 
-Gi en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i saken — ikke nødvendigvis lik VGs originaltittel — og 3-5 punkter som sammendrag av de viktigste faktaene.`,
+Gi: 1) en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i saken, 2) 3-5 punkter som sammendrag av de viktigste faktaene, 3) kategori, 4) viktighet for personen beskrevet over.`,
         },
       ],
     });
@@ -171,45 +304,101 @@ Gi en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i saken 
       .join("");
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return null;
-    const parsed = JSON.parse(match[0]) as { title?: unknown; bullets?: unknown };
+    const parsed = JSON.parse(match[0]) as { title?: unknown; bullets?: unknown; category?: unknown; importance?: unknown };
     if (typeof parsed.title !== "string" || !Array.isArray(parsed.bullets)) return null;
     const bullets = parsed.bullets.filter((b): b is string => typeof b === "string");
     if (!bullets.length) return null;
-    return { title: parsed.title, bullets };
+    const category: Category =
+      typeof parsed.category === "string" && (CATEGORY_OPTIONS as readonly string[]).includes(parsed.category)
+        ? (parsed.category as Category)
+        : "Annet";
+    const importance: AiNewsResult["importance"] =
+      parsed.importance === "lav" || parsed.importance === "medium" || parsed.importance === "høy" ? parsed.importance : "medium";
+    return { title: parsed.title, bullets, category, importance };
   } catch {
     return null;
   }
+}
+
+// ── Duplikat-sjekk på tvers av kilder ────────────────────────────────────────
+
+// Enkel, "godt nok"-deduplisering: normaliserer tittel til et sett av
+// betydningsfulle ord (4+ bokstaver, uten diakritiske tegn), sammenligner
+// overlapp mot allerede valgte saker. Fanger opp "samme sak, ulik overskrift
+// hos to aviser" i de fleste tilfeller — ikke ekte NLP-basert.
+function significantWords(title: string): Set<string> {
+  const normalized = title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9\s]/gi, " ");
+  return new Set(normalized.split(/\s+/).filter((w) => w.length >= 4));
+}
+
+function isDuplicateTitle(words: Set<string>, seen: Set<string>[]): boolean {
+  if (words.size === 0) return false;
+  for (const other of seen) {
+    if (other.size === 0) continue;
+    let overlap = 0;
+    for (const w of words) if (other.has(w)) overlap++;
+    if (overlap / Math.min(words.size, other.size) >= 0.5) return true;
+  }
+  return false;
+}
+
+// ── Kandidat-prosessering ────────────────────────────────────────────────────
+
+// Returnerer null hvis saken skal HOPPES OVER (video — telles ikke som en
+// fylt plass). Ellers den ferdige (evt. AI-berikede) saken.
+async function processCandidate(candidate: Candidate): Promise<NewsItem | null> {
+  const { prefetchedText, isVideo: precomputedIsVideo, ...base } = candidate;
+
+  let text = prefetchedText;
+  let isVideo = !!precomputedIsVideo;
+  if (text === undefined) {
+    const page = await fetchArticlePage(candidate.link);
+    if (page) {
+      text = page.text;
+      isVideo = page.isVideo;
+    }
+  }
+  if (isVideo) return null;
+  if (!text) return base;
+
+  const ai = await summarizeText(base, text);
+  if (!ai) return base;
+  return { ...base, aiTitle: ai.title, summaryBullets: ai.bullets, category: ai.category, importance: ai.importance };
 }
 
 export async function getNews(): Promise<NewsItem[]> {
   const cached = await getJSON<NewsItem[]>(CACHE_KEY);
   if (cached) return cached;
 
-  const res = await fetch(FEED_URL, { headers: { "User-Agent": "Mozilla/5.0 (mitt-dashboard privat nyhetsboks)" } });
-  if (!res.ok) throw new Error(`VG RSS feil: ${res.status}`);
-  const xml = await res.text();
-  const filtered = parseFeed(xml)
-    .filter((item) => !isNoiseItem(item))
-    .slice(0, RAW_WINDOW);
-  const candidates = prioritizeStories(filtered);
+  const results = await Promise.allSettled(SOURCES.map((s) => s.fetch()));
+  const all = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
-  // Går gjennom kandidatene i prioritert rekkefølge og fyller opp TOP_N
-  // REELLE saker — VGTV-videosaker hoppes over og erstattes av neste
-  // kandidat i stedet for å telle som en fylt plass. Den dyre AI-tolkningen
-  // kjører maks én gang per cache-TTL (15 min) uansett hvor mange ganger
-  // siden lastes, siden hele det ferdig-bearbeidede resultatet caches
-  // sammen med resten av nyhetsdataen under.
+  const candidates = all
+    .filter((item) => !isNoiseItem(item))
+    .sort((a, b) => new Date(b.pubDate ?? 0).getTime() - new Date(a.pubDate ?? 0).getTime());
+
+  // Prosesseres i samtidige bolker i stedet for én om gangen — vi må typisk
+  // prøve 15-20 kandidater (noen skrelles bort som video/duplikat) for å
+  // fylle TOP_N reelle saker, og et rent sekvensielt løp (artikkel-henting +
+  // Claude-kall per kandidat) ville gjort en enkelt cache-miss-forespørsel
+  // for treg.
   const enriched: NewsItem[] = [];
-  for (const item of candidates) {
-    if (enriched.length >= TOP_N) break;
-    const page = await fetchArticlePage(item.link);
-    if (page?.isVideo) continue;
-    if (!page) {
+  const seenWords: Set<string>[] = [];
+  for (let i = 0; i < candidates.length && enriched.length < TOP_N; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const processed = await Promise.all(batch.map(processCandidate));
+    for (const item of processed) {
+      if (enriched.length >= TOP_N) break;
+      if (!item) continue; // video
+      const words = significantWords(item.aiTitle ?? item.title);
+      if (isDuplicateTitle(words, seenWords)) continue;
+      seenWords.push(words);
       enriched.push(item);
-      continue;
     }
-    const ai = await summarizeText(item, page.text);
-    enriched.push(ai ? { ...item, aiTitle: ai.title, summaryBullets: ai.bullets } : item);
   }
 
   await setJSON(CACHE_KEY, enriched, CACHE_TTL_SECONDS);
