@@ -19,11 +19,12 @@ function timeLabel(pubDate?: string): string {
 }
 
 function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boolean; onToggle: () => void }) {
+  const displayTitle = item.aiTitle ?? item.title;
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-start gap-2 text-left">
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-ink-1">{item.title}</p>
+          <p className="text-sm text-ink-1">{displayTitle}</p>
           <p className="mt-0.5 text-2xs text-ink-4">
             {item.category ? `${item.category}` : ""}
             {item.category && timeLabel(item.pubDate) ? " · " : ""}
@@ -44,7 +45,16 @@ function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boole
       </button>
       {expanded && (
         <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
-          {item.description ? (
+          {item.summaryBullets && item.summaryBullets.length > 0 ? (
+            <ul className="flex flex-col gap-1">
+              {item.summaryBullets.map((bullet, i) => (
+                <li key={i} className="flex gap-1.5 text-sm text-ink-2">
+                  <span className="text-ink-4">•</span>
+                  <span>{bullet}</span>
+                </li>
+              ))}
+            </ul>
+          ) : item.description ? (
             <p className="text-sm text-ink-2">{item.description}</p>
           ) : (
             <p className="text-sm text-ink-4">Ingen sammendrag tilgjengelig.</p>
@@ -89,7 +99,7 @@ export default function NewsSection() {
     <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
         title="Nyheter"
-        subtitle={items.length > 0 ? items[0].title : "VG.no"}
+        subtitle={items.length > 0 ? (items[0].aiTitle ?? items[0].title) : "VG.no"}
         icon={Newspaper}
         iconColorClass="text-orange-400"
       />
