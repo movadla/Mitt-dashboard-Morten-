@@ -19,7 +19,7 @@ import { Bot, X } from "lucide-react";
 const CATEGORY_LABEL: Record<MilestoneCategory, string> = {
   motorikk: "Motorisk utvikling",
   barnehage: "Barnehageplan",
-  fokus: "Kommende fokus",
+  fokus: "Fremtidige milepæler",
 };
 
 const CATEGORY_ORDER: MilestoneCategory[] = ["motorikk", "barnehage", "fokus"];
@@ -142,20 +142,15 @@ function AlfredSubSection({
   );
 }
 
+// Forenklet til kun fødselsdato (jf. Morten) — name/birthPlace/parents/
+// address er BEHOLDT i AlfredProfile-typen og Redis-dataen (skjules, slettes
+// ikke), i tilfelle de skulle bli relevante igjen senere.
 function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (updates: Partial<AlfredProfile>) => void }) {
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(profile.name);
   const [born, setBorn] = useState(profile.born);
-  const [birthPlace, setBirthPlace] = useState(profile.birthPlace);
-  const [parents, setParents] = useState(profile.parents);
-  const [address, setAddress] = useState(profile.address);
 
   function startEditing() {
-    setName(profile.name);
     setBorn(profile.born);
-    setBirthPlace(profile.birthPlace);
-    setParents(profile.parents);
-    setAddress(profile.address);
     setEditing(true);
   }
 
@@ -163,40 +158,10 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
         <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Navn"
-          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="date"
-            value={born}
-            onChange={(e) => setBorn(e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-          <input
-            type="text"
-            value={birthPlace}
-            onChange={(e) => setBirthPlace(e.target.value)}
-            placeholder="Fødested"
-            className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-        </div>
-        <input
-          type="text"
-          value={parents}
-          onChange={(e) => setParents(e.target.value)}
-          placeholder="Foreldre"
-          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Adresse"
-          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+          type="date"
+          value={born}
+          onChange={(e) => setBorn(e.target.value)}
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
         />
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => setEditing(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
@@ -205,7 +170,7 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
           <button
             type="button"
             onClick={() => {
-              onSave({ name, born, birthPlace, parents, address });
+              onSave({ born });
               setEditing(false);
             }}
             className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
@@ -218,19 +183,8 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
   }
 
   return (
-    <button
-      type="button"
-      onClick={startEditing}
-      className="flex flex-col gap-1 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left"
-    >
-      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Grunninfo</p>
-      {profile.name && <p className="text-sm font-medium text-ink-1">{profile.name}</p>}
-      <p className="text-sm text-ink-1">
-        Født {profile.born ? formatDMY(profile.born) : "—"}
-        {profile.birthPlace ? `, ${profile.birthPlace}` : ""}
-      </p>
-      <p className="text-sm text-ink-2">{profile.parents}</p>
-      <p className="text-sm text-ink-2">{profile.address}</p>
+    <button type="button" onClick={startEditing} className="flex flex-col gap-1 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left">
+      <p className="text-sm text-ink-1">Født {profile.born ? formatDMY(profile.born) : "—"}</p>
     </button>
   );
 }
@@ -253,7 +207,10 @@ function MilestoneRow({ item, onToggle, onRemove }: { item: Milestone; onToggle:
           </svg>
         )}
       </button>
-      <p className={`min-w-0 flex-1 text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{item.label}</p>
+      <div className="min-w-0 flex-1">
+        <p className={`text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{item.label}</p>
+        {item.done && item.achievedDate && <p className="mt-0.5 text-2xs text-ink-4">{formatDMY(item.achievedDate)}</p>}
+      </div>
       <button
         type="button"
         onClick={() => onRemove(item.id)}
@@ -741,14 +698,18 @@ export default function AlfredSection() {
             <SkeletonRows count={3} />
           ) : (
             <>
-              {profile && <GrunninfoBox profile={profile} onSave={saveProfile} />}
+              {profile && (
+                <AlfredSubSection title="Grunninfo" storageKey="Alfred - Grunninfo">
+                  <GrunninfoBox profile={profile} onSave={saveProfile} />
+                </AlfredSubSection>
+              )}
 
-              <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst" defaultCollapsed={false}>
+              <AlfredSubSection title="Vekst" storageKey="Alfred - Vekst">
                 <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
                 {profile?.vekstNotat && <EditableNote label="Vekstkurve" value={profile.vekstNotat} onSave={(v) => saveProfile({ vekstNotat: v })} />}
               </AlfredSubSection>
 
-              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler" defaultCollapsed={false}>
+              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler">
                 {CATEGORY_ORDER.map((category) => (
                   <MilestoneGroup
                     key={category}

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
+import { localDateString } from "./payday";
 
 // Bevisst utelatt: fødselsnummer. Ikke nødvendig for ukentlig utviklingsoppfølging,
 // og bør ikke ligge i flere systemer enn strengt tatt nødvendig.
@@ -40,6 +41,7 @@ export interface Milestone {
   category: MilestoneCategory;
   label: string;
   done: boolean;
+  achievedDate?: string; // "YYYY-MM-DD" — satt når done settes til true, fjernet ved re-åpning
 }
 
 export interface PlayIdea {
@@ -58,6 +60,43 @@ const PLAY_KEY = "privat:alfred:play";
 // Etter første henting er Redis alene sannheten; å fjerne alle punktene senere
 // gir en tom liste, ikke en ny runde med disse forslagene.
 const DEFAULT_PLAY_IDEAS = ["Bære på nakken", "Spille musikk", "Balkong og se på biler", "Se i speil", "Gå med vogn"];
+
+// Generøs, standard liste over kommende MOTORISKE milepæler — frøes inn i
+// "fokus"-kategorien (vist i UI som "Fremtidige milepæler") første gang den
+// er tom, samme mønster som DEFAULT_PLAY_IDEAS over. Bevisst "heller for
+// mange enn for få" (jf. Morten) — dekker grovt sett 1-4 år, ikke kalibrert
+// til nøyaktig alder siden det ikke er kjent her.
+const DEFAULT_FUTURE_MILESTONES = [
+  "Går oppreist alene",
+  "Går baklengs",
+  "Løper",
+  "Klatrer opp i møbler",
+  "Går opp trapp med støtte",
+  "Går ned trapp med støtte",
+  "Går opp trapp uten støtte, ett trinn i gangen",
+  "Går ned trapp med alternerende fot",
+  "Sparker en ball",
+  "Kaster en ball",
+  "Fanger en ball",
+  "Hopper med begge ben samtidig",
+  "Står på ett ben et par sekunder",
+  "Balanserer på ett ben lenger enn 5 sekunder",
+  "Hinker på ett ben",
+  "Trår trehjulssykkel",
+  "Sykler med pedaler og støttehjul",
+  "Sykler uten støttehjul",
+  "Går på line/balansebom",
+  "Klatrer i klatrestativ",
+  "Bygger tårn av klosser",
+  "Tegner rette streker",
+  "Tegner en sirkel",
+  "Klipper med saks",
+  "Knapper/kneppe klær selv",
+  "Tar av seg sko/sokker selv",
+  "Trer perler på snor",
+  "Vasker hender selv",
+  "Pusser tenner med hjelp",
+];
 
 export async function getAlfredProfile(): Promise<AlfredProfile | null> {
   return hgetJSON<AlfredProfile>(PROFILE_KEY, PROFILE_FIELD);
@@ -119,7 +158,26 @@ function sortMilestones(items: Milestone[]): Milestone[] {
 
 export async function getMilestones(): Promise<Milestone[]> {
   const map = await hgetallJSON<Milestone>(MILESTONE_KEY);
-  return sortMilestones(Object.values(map));
+  const existing = Object.values(map);
+
+  // "fokus"-kategorien kan allerede ha egne, personlig tilpassede punkter
+  // (f.eks. lagt inn via chatboten) — de skal IKKE overskrives/dupliseres.
+  // Sjekker derfor mot selve label-settet i stedet for "er kategorien tom",
+  // slik at frøingen kun skjer én gang selv om det allerede finnes andre
+  // fokus-punkter, og legger seg TIL i tillegg til dem, ikke i stedet for.
+  const seededLabels = new Set(DEFAULT_FUTURE_MILESTONES);
+  if (!existing.some((m) => m.category === "fokus" && seededLabels.has(m.label))) {
+    const seeded: Milestone[] = DEFAULT_FUTURE_MILESTONES.map((label) => ({
+      id: randomUUID(),
+      category: "fokus",
+      label,
+      done: false,
+    }));
+    await Promise.all(seeded.map((m) => hsetJSON(MILESTONE_KEY, m.id, m)));
+    return sortMilestones([...existing, ...seeded]);
+  }
+
+  return sortMilestones(existing);
 }
 
 export async function addMilestone(category: MilestoneCategory, label: string, done = false): Promise<Milestone> {
@@ -132,7 +190,8 @@ export async function addMilestone(category: MilestoneCategory, label: string, d
 export async function toggleMilestone(id: string): Promise<Milestone | null> {
   const current = await hgetJSON<Milestone>(MILESTONE_KEY, id);
   if (!current) return null;
-  const next: Milestone = { ...current, done: !current.done };
+  const willBeDone = !current.done;
+  const next: Milestone = { ...current, done: willBeDone, achievedDate: willBeDone ? localDateString() : undefined };
   await hsetJSON(MILESTONE_KEY, id, next);
   return next;
 }

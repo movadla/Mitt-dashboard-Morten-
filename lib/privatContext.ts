@@ -173,10 +173,25 @@ export async function buildPrivatContext(): Promise<string> {
     );
   }
   if (milestonesResult.status === "fulfilled" && milestonesResult.value.length > 0) {
-    const open = milestonesResult.value.filter((m) => !m.done);
-    const done = milestonesResult.value.filter((m) => m.done);
+    const items = milestonesResult.value;
+    const done = items.filter((m) => m.done);
+    const openRest = items.filter((m) => !m.done && m.category !== "fokus");
+    const openFuture = items.filter((m) => !m.done && m.category === "fokus");
     if (done.length > 0) lines.push(`Allerede oppnådd: ${done.map((m) => m.label).join("; ")}.`);
-    if (open.length > 0) lines.push(`Gjenstår/kommende fokus: ${open.map((m) => m.label).join("; ")}.`);
+    if (openRest.length > 0) lines.push(`Gjenstår: ${openRest.map((m) => m.label).join("; ")}.`);
+    // "Fremtidige milepæler" er en generøst frøet liste (~28 punkter) — bare
+    // en kort forhåndsvisning tas med her, ikke hele lista, for å unngå å
+    // blåse opp AI-kontekst-vinduet med hvert eneste chat-kall.
+    if (openFuture.length > 0) {
+      const PREVIEW = 8;
+      const preview = openFuture.slice(0, PREVIEW).map((m) => m.label).join("; ");
+      const restCount = openFuture.length - PREVIEW;
+      lines.push(
+        `Fremtidige milepæler (neste ${Math.min(PREVIEW, openFuture.length)} av ${openFuture.length}): ${preview}${
+          restCount > 0 ? ` (+ ${restCount} til)` : ""
+        }.`,
+      );
+    }
   }
   if (
     (alfredProfileResult.status !== "fulfilled" || !alfredProfileResult.value) &&

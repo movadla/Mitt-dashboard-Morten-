@@ -125,7 +125,7 @@ const DELETE_NOTE_TOOL: Anthropic.Tool = {
 const TOGGLE_MILESTONE_TOOL: Anthropic.Tool = {
   name: "toggle_milestone",
   description:
-    "Huk et sjekklistepunkt for Alfred av eller på (motorisk utvikling, barnehageplan eller kommende fokus). Identifiser med et utdrag av teksten.",
+    "Huk et sjekklistepunkt for Alfred av eller på (motorisk utvikling, barnehageplan eller fremtidige milepæler). Identifiser med et utdrag av teksten.",
   input_schema: {
     type: "object",
     properties: {
