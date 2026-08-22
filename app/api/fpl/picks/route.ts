@@ -123,8 +123,21 @@ export async function GET(req: NextRequest) {
     const gwAverage = bootstrap.events.find(e => e.id === gw)?.average_entry_score ?? null;
     const leagueRanks = entryData?.leagues?.classic?.map(l => ({ id: l.id, rank: l.entry_rank })) ?? [];
 
+    // liveGwPoints over summerer kun startoppstillingen slik den var satt opp —
+    // uten FPL sin auto-innbytter-logikk (en spiller med 0 minutter erstattes
+    // automatisk av en kvalifisert benkspiller i den offisielle poengsummen).
+    // Så lenge runden pågår er dette "godt nok" for et live-følge-med-tall, men
+    // når alle kampene i runden er FERDIGSPILT finnes det et eksakt offisielt
+    // tall (summary_event_points) — bruk det i stedet, slik at "Totalt" og
+    // "GW"-poengene alltid stemmer overens for en avsluttet runde.
+    const gwFixtures = fixtureData.filter(f => f.event === gw);
+    const gwFullyFinished = gwFixtures.length > 0 && gwFixtures.every(f => f.finished);
+    const finalGwPoints = gwFullyFinished && entryData?.summary_event_points != null
+      ? entryData.summary_event_points
+      : liveGwPoints;
+
     return Response.json({
-      gw, managerId, players, hasLivePlayers, liveGwPoints, playingCount,
+      gw, managerId, players, hasLivePlayers, liveGwPoints: finalGwPoints, playingCount,
       overallRank: entryData?.summary_overall_rank ?? null,
       gwRank:      entryData?.summary_event_rank   ?? null,
       gwAverage,
