@@ -150,7 +150,7 @@ function EventRow({
     );
   }
 
-  const hasMeta = event.startTime || event.endTime || event.location || event.note;
+  const hasSubMeta = event.location || event.note;
 
   return (
     <li>
@@ -160,20 +160,24 @@ function EventRow({
             type="button"
             onClick={() => onStartEdit(event.id)}
             aria-label="Rediger hendelse"
-            className="min-w-0 flex-1 text-left"
+            className="flex min-w-0 flex-1 items-start gap-3 text-left"
           >
-            <p className="min-w-0 truncate text-sm font-medium text-ink-1">
-              {dayLabel && <span className="font-normal text-ink-4">{dayLabel} · </span>}
-              {event.title}
-            </p>
-            {hasMeta && (
-              <p className="mt-0.5 text-2xs text-ink-4">
-                {event.startTime ? event.startTime : ""}
-                {event.endTime ? `–${event.endTime}` : ""}
-                {event.location ? ` · ${event.location}` : ""}
-                {event.note ? ` — ${event.note}` : ""}
-              </p>
-            )}
+            {/* Fast bredde slik at alle titler starter på samme x-posisjon
+                uansett dag-tekstens lengde ("I dag" vs. "Fre 21.08 · 14:00"). */}
+            <div className="w-28 shrink-0 pt-0.5 text-2xs font-semibold tabular-nums text-ink-2">
+              {dayLabel}
+              {event.startTime ? ` · ${event.startTime}` : ""}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="min-w-0 truncate text-sm font-medium text-ink-1">{event.title}</p>
+              {hasSubMeta && (
+                <p className="mt-0.5 text-2xs text-ink-4">
+                  {event.location ? event.location : ""}
+                  {event.location && event.note ? " — " : ""}
+                  {event.note ? event.note : ""}
+                </p>
+              )}
+            </div>
           </button>
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
           <button
