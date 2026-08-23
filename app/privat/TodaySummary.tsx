@@ -6,8 +6,7 @@ import { CheckIcon, MutationError, SkeletonRows, useMutationError } from "../Car
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
-import type { EveningLogEntry } from "@/lib/eveningLog";
-import EveningCheckIn from "./EveningCheckIn";
+import type { DiaryEntry } from "@/lib/diary";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { setAppBadgeCount } from "@/lib/appBadge";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -255,10 +254,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const { data: weatherRaw } = useSWR<WeatherData | { error: string }>("/api/weather", jsonFetcher);
   const { data: eventsData } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const { data: aiUsageRaw } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
-  const { data: eveningLogData, mutate: mutateEveningLog } = useSWR<{ entries: EveningLogEntry[] }>(
-    "/api/evening-log",
-    jsonFetcher,
-  );
+  const { data: diaryData } = useSWR<{ entries: DiaryEntry[] }>("/api/diary", jsonFetcher);
 
   const reminders = remindersData?.reminders ?? [];
   const events = calendarData?.events ?? [];
@@ -267,7 +263,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const weather = weatherRaw && !("error" in weatherRaw) ? weatherRaw : null;
   const lifeEvents = eventsData?.events ?? [];
   const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
-  const eveningLogEntries = eveningLogData?.entries ?? [];
+  const diaryEntries = diaryData?.entries ?? [];
   const loading = [remindersData, calendarData, sportsData, fplRaw, weatherRaw, eventsData, aiUsageRaw].some(
     (d) => d === undefined,
   );
@@ -281,9 +277,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   }, []);
 
   const [weatherExpanded, setWeatherExpanded] = useState(false);
-  // Frittstående — IKKE del av dag-navigeringen (viewedOffset går kun
-  // fremover, kan ikke brukes til å vise gårsdagens utfyllingsform).
-  const [fillingYesterday, setFillingYesterday] = useState(false);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -506,35 +499,18 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
     fpl?.active && fpl.gw?.deadline && toOsloDateString(new Date(fpl.gw.deadline)) === viewedDate ? fpl.gw.deadline : null;
   const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
   const paydayOnViewed = isPaydayToday(viewedDate);
-  const eveningLogEntryOnViewed = eveningLogEntries.find((e) => e.date === viewedDate) ?? null;
-  // Vises kun: (a) en allerede lagret kveld, uansett dag — det er dette som
-  // gir "bla i historikk" gratis via de samme pil-knappene, eller (b) i dag
-  // fra kl. 21:00, før noe er lagret. Ingen tom-plassholder for tidligere
-  // dager uten oppføring — jf. "skal ikke ta mye plass".
-  const showEveningLog = eveningLogEntryOnViewed !== null || (isToday && nowHour >= 21);
+  // Kort nudge i stedet for embedded utfylling — selve utfyllingen skjer nå
+  // kun inne i Dagbok-fanen (app/privat/DiarySection.tsx). Vises fra kl.
+  // 21:00 hvis dagens dagbok ikke er fylt ut ennå, ELLER uansett klokkeslett
+  // hvis gårsdagen mangler — forsvinner helt når begge er i orden, jf.
+  // tidligere tilbakemelding om at den ikke skal mase etter at man er ferdig.
   const yesterday = addDaysIso(realToday, -1);
-  const yesterdayEntry = eveningLogEntries.find((e) => e.date === yesterday) ?? null;
-  const showYesterdayWarning = isToday && !yesterdayEntry;
-
-  async function handleSaveEveningLog(date: string, categories: string[], notes: string) {
-    try {
-      const res = await fetch("/api/evening-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, categories, notes }),
-      });
-      if (!res.ok) throw new Error("save evening log failed");
-      const saved: EveningLogEntry = await res.json();
-      mutateEveningLog(
-        (current) => current && { entries: [...current.entries.filter((e) => e.date !== saved.date), saved] },
-        { revalidate: false },
-      );
-      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
-      setFillingYesterday(false);
-    } catch {
-      mutationError.show("Kunne ikke lagre kveldsloggen. Prøv igjen.");
-    }
-  }
+  const yesterdayDiaryEntry = diaryEntries.find((e) => e.date === yesterday) ?? null;
+  const todayDiaryEntry = diaryEntries.find((e) => e.date === realToday) ?? null;
+  const showDiaryNudge = isToday && (!yesterdayDiaryEntry || (nowHour >= 21 && !todayDiaryEntry));
+  const diaryNudgeText = !yesterdayDiaryEntry
+    ? `Du fylte ikke ut dagboken i går (${weekdayDateLabel(yesterday)}).`
+    : "Husk å fylle ut dagboken for i dag.";
 
   useEffect(() => {
     if (loading) return;
@@ -631,28 +607,10 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               </div>
             )}
 
-            {showYesterdayWarning && (
-              <div className="rounded-lg border border-status-danger/40 bg-status-danger/8 px-3 py-1.5">
-                <CategoryRow icon={Moon} colorClass="text-status-danger" label="Kveldslogg">
-                  {fillingYesterday ? (
-                    <EveningCheckIn
-                      date={yesterday}
-                      entry={null}
-                      pastEntries={eveningLogEntries.filter((e) => e.date !== yesterday)}
-                      onSave={(cats, notes) => handleSaveEveningLog(yesterday, cats, notes)}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-status-danger">Du fylte ikke ut kveldsloggen i går ({weekdayDateLabel(yesterday)}).</p>
-                      <button
-                        type="button"
-                        onClick={() => setFillingYesterday(true)}
-                        className="shrink-0 rounded-lg bg-status-danger/15 px-2.5 py-1 text-2xs font-semibold uppercase text-status-danger transition hover:bg-status-danger/25"
-                      >
-                        Fyll ut nå
-                      </button>
-                    </div>
-                  )}
+            {showDiaryNudge && (
+              <div className="rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
+                <CategoryRow icon={Moon} colorClass="text-status-warning" label="Dagbok" onJump={() => onJump("diary")}>
+                  <p className="text-sm text-status-warning">{diaryNudgeText}</p>
                 </CategoryRow>
               </div>
             )}
@@ -792,19 +750,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                         </li>
                       ))}
                     </ul>
-                  </CategoryRow>
-                </div>
-              )}
-
-              {showEveningLog && (
-                <div className="py-2 last:pb-0">
-                  <CategoryRow icon={Moon} colorClass="text-indigo-400" label="Kveldslogg">
-                    <EveningCheckIn
-                      date={viewedDate}
-                      entry={eveningLogEntryOnViewed}
-                      pastEntries={eveningLogEntries.filter((e) => e.date !== viewedDate)}
-                      onSave={(cats, notes) => handleSaveEveningLog(viewedDate, cats, notes)}
-                    />
                   </CategoryRow>
                 </div>
               )}

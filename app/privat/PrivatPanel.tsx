@@ -16,6 +16,7 @@ import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
 import ProjectsSection from "./ProjectsSection";
+import DiarySection from "./DiarySection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
 import PrivatSearch from "./PrivatSearch";
@@ -35,6 +36,7 @@ import {
   Newspaper,
   Shirt,
   FolderKanban,
+  Moon,
 } from "lucide-react";
 
 const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
@@ -44,6 +46,7 @@ const DEFAULT_NAV_ORDER = [
   "calendar",
   "events",
   "notes",
+  "diary",
   "projects",
   "finance",
   "sport",
@@ -65,6 +68,7 @@ export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; ic
   events: { label: "Hendelser", icon: PartyPopper, iconColorClass: "text-accent-privat" },
   notes: { label: "Notater", icon: StickyNote, iconColorClass: "text-amber-400" },
   projects: { label: "Prosjekter", icon: FolderKanban, iconColorClass: "text-indigo-400" },
+  diary: { label: "Dagbok", icon: Moon, iconColorClass: "text-violet-400" },
   finance: { label: "Økonomi", icon: Wallet, iconColorClass: "text-source-outlook" },
   sport: { label: "Sport", icon: Trophy, iconColorClass: "text-accent" },
   worldcup: { label: "VM", icon: Trophy, iconColorClass: "text-accent" },
@@ -178,6 +182,7 @@ export default function PrivatPanel() {
       />
     ),
     notes: <NotesSection />,
+    diary: <DiarySection />,
     projects: <ProjectsSection />,
     finance: <FinanceSection />,
     sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />,
