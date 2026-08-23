@@ -215,6 +215,7 @@ export function CardHeader({
   icon: Icon,
   iconColorClass = "text-ink-3",
   alwaysShowSubtitle = false,
+  extraAction,
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -228,6 +229,11 @@ export function CardHeader({
   // (tall, status osv.). Sett denne når subtitle er en aktiv frist/nedtelling
   // (f.eks. FPL-deadline) som er nyttig å se selv når kortet er lukket.
   alwaysShowSubtitle?: boolean;
+  // Generisk andre-handling-knapp ved siden av "+"-knappen — for sjeldne
+  // tilfeller der en seksjon trenger mer enn "legg til" i toppen (f.eks.
+  // Dagbok sitt innstillingshjul). Valgfri, ingen effekt på eksisterende
+  // bruksseder som ikke setter den.
+  extraAction?: { icon: React.ComponentType<{ className?: string }>; onClick: () => void; label: string };
 }) {
   const showSubtitle = subtitle && (alwaysShowSubtitle || !collapsed);
   // Avledet fra iconColorClass ("text-X" -> "bg-X/10") — gir ikonet en rund
@@ -282,26 +288,47 @@ export function CardHeader({
     </button>
   );
 
+  const extraActionButton = extraAction && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        extraAction.onClick();
+      }}
+      aria-label={extraAction.label}
+      title={extraAction.label}
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-3 transition hover:bg-surface-2 hover:text-ink-1"
+    >
+      <extraAction.icon className="h-4 w-4" />
+    </button>
+  );
+
   if (!onToggleCollapse) {
     return (
       <div className="mb-2 flex items-center justify-between gap-2">
         {inner}
-        {addButton}
+        <div className="flex shrink-0 items-center gap-1">
+          {extraActionButton}
+          {addButton}
+        </div>
       </div>
     );
   }
 
   if (!onAdd) {
     return (
-      <button
-        type="button"
-        onClick={onToggleCollapse}
-        aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
-        aria-expanded={!collapsed}
-        className="-mx-1 mb-2 flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
-      >
-        {inner}
-      </button>
+      <div className="-mx-1 mb-2 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-label={collapsed ? `Vis ${title}` : `Skjul ${title}`}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-left transition hover:bg-surface-2/60 active:opacity-80"
+        >
+          {inner}
+        </button>
+        {extraActionButton}
+      </div>
     );
   }
 
@@ -316,6 +343,7 @@ export function CardHeader({
       >
         {inner}
       </button>
+      {extraActionButton}
       {addButton}
     </div>
   );
