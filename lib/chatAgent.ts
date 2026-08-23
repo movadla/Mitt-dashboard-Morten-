@@ -12,6 +12,8 @@ import {
   deleteCustomSportEvent,
   getCustomSportEvents,
 } from "@/lib/customSports";
+import { addShoppingItem } from "@/lib/shoppingList";
+import { recordQuickPickUsage } from "@/lib/shoppingQuickPicks";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
 import { recordUsage } from "@/lib/aiUsage";
@@ -246,6 +248,39 @@ const DELETE_SPORT_EVENT_TOOL: Anthropic.Tool = {
   },
 };
 
+const ADD_SHOPPING_ITEM_TOOL: Anthropic.Tool = {
+  name: "add_shopping_item",
+  description: "Legg til en ny vare i Handleliste-seksjonen i Privat-fanen.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Navnet på varen, f.eks. 'Melk' eller 'Bleier str. 4'." },
+      section: {
+        type: "string",
+        enum: [
+          "frukt-gront",
+          "frysevarer",
+          "palegg",
+          "meieriprodukter",
+          "drikke",
+          "snacks",
+          "torrvarer",
+          "baby",
+          "elektro",
+          "snop",
+          "annet",
+        ],
+        description:
+          "Butikkseksjon — velg den som passer best: frukt-gront=Frukt & grønt, frysevarer=Frysevarer, " +
+          "palegg=Pålegg, meieriprodukter=Meieriprodukter, drikke=Drikke, snacks=Snacks, torrvarer=Tørrvarer, " +
+          "baby=Baby, elektro=Elektro, snop=Snop, annet=Annet (brukes hvis ingen andre passer).",
+      },
+      quantity: { type: "string", description: "Mengde/antall, f.eks. '2 stk' eller '1 liter'. Valgfritt." },
+    },
+    required: ["name", "section"],
+  },
+};
+
 function findOneMatch<T>(items: T[], getText: (item: T) => string, query: string, kind: string): T {
   const q = query.toLowerCase();
   const matches = items.filter((item) => getText(item).toLowerCase().includes(q));
@@ -312,6 +347,18 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     const created = await addCustomSportEventsBulk(events);
     return { ok: true, count: created.length };
   }
+  if (name === "add_shopping_item") {
+    const { name: itemName, section, quantity } = input as {
+      name: string;
+      section: Parameters<typeof addShoppingItem>[0]["section"];
+      quantity?: string;
+    };
+    const item = await addShoppingItem({ name: itemName, section, quantity });
+    // Samme oppførsel som når en vare legges til fra UI (skrevet eller plukket
+    // fra hurtigvalg) — holder hurtigvalg-katalogen i sync uansett innfallsvei.
+    await recordQuickPickUsage(itemName, section);
+    return item;
+  }
   if (name === "delete_sport_event") {
     const { nameMatch } = input as { nameMatch: string };
     const event = findOneMatch(await getCustomSportEvents(), (e) => e.name, nameMatch, "egendefinerte sportshendelser");
@@ -368,7 +415,8 @@ export async function runChatTurn(
     "kildene) — bruk add_sport_events_bulk (ikke gjentatte add_sport_event-kall) når brukeren limer inn " +
     "et helt program med mange kamper på én gang, og sett highlight=true kun på et fåtall hendelser " +
     "brukeren faktisk peker ut som viktige (ellers oversvømmer et fullt program 'I dag' med alt som skjer " +
-    "en gitt dag). Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
+    "en gitt dag), og legge til nye varer i Handleliste-seksjonen (add_shopping_item — velg butikkseksjon " +
+    "ut fra hva slags vare det er). Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
     "(for bulk: hvor mange som ble lagt til). Hvis et verktøy feiler fordi flere eller ingen elementer " +
     "matcher, forklar det kort til brukeren i stedet for å gjette.\n\n" +
     buildDashboardContext() +
@@ -398,7 +446,8 @@ export async function runChatTurn(
     ADD_ALFRED_GROWTH_ENTRY_TOOL,
     ADD_SPORT_EVENT_TOOL,
     ADD_SPORT_EVENTS_BULK_TOOL,
-    { ...DELETE_SPORT_EVENT_TOOL, cache_control: { type: "ephemeral" } },
+    DELETE_SPORT_EVENT_TOOL,
+    { ...ADD_SHOPPING_ITEM_TOOL, cache_control: { type: "ephemeral" } },
   ];
   const convo: Anthropic.MessageParam[] = [...messages];
   let changed = false;
