@@ -16,6 +16,7 @@ import {
   type RenewalCertainty,
 } from "@/lib/incomeForecast";
 import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
+import type { RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import { computeForecastRollup, type ForecastRollup, type PartTotals } from "@/lib/incomeForecastCompute";
 import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
 import { vibrate } from "@/lib/haptics";
@@ -318,6 +319,157 @@ function BookedTenantsBlock() {
               <div className="flex flex-col gap-1.5">
                 {visible.map((t) => (
                   <BookedTenantRow key={t.navn} tenant={t} />
+                ))}
+              </div>
+              {filtered.length > visible.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 30)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot["tenants"][number] }) {
+  const [open, setOpen] = useState(false);
+  const sumLines = tenant.lines.reduce((s, l) => s + l.gjenstaende, 0);
+  const avstemmer = Math.abs(sumLines - tenant.totalBelop) < 1;
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2 text-ink-1">
+          <svg
+            viewBox="0 0 16 16"
+            className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+          <span className="truncate text-sm">{tenant.navn}</span>
+          <span className="shrink-0 text-2xs text-ink-4">
+            {tenant.lines.length} {tenant.lines.length === 1 ? "linje" : "linjer"}
+          </span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(tenant.totalBelop)}</span>
+      </button>
+      {open && (
+        <div className="border-t border-line px-3 pb-3 pt-1">
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="text-left text-ink-4">
+                  <th className="px-2 py-1.5 text-2xs font-medium">Bygg</th>
+                  <th className="px-2 py-1.5 text-2xs font-medium">Leietype</th>
+                  <th className="px-2 py-1.5 text-2xs font-medium">Beskrivelse</th>
+                  <th className="px-2 py-1.5 text-right text-2xs font-medium">Gjenstår</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tenant.lines.map((l, i) => (
+                  <tr key={i} className="border-t border-line">
+                    <td className="px-2 py-1.5 text-ink-2">{l.bygg}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-ink-3">{l.linjetype}</td>
+                    <td className="px-2 py-1.5 text-ink-3">{l.beskrivelse}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-ink-2">{formatKr(l.gjenstaende)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={`mt-2 text-2xs ${avstemmer ? "text-status-positive" : "text-status-danger"}`}>
+            {avstemmer
+              ? `Avstemt: sum av linjene stemmer med totalen (${formatKr(sumLines)})`
+              : `Avvik: sum av linjene (${formatKr(sumLines)}) matcher IKKE totalen (${formatKr(tenant.totalBelop)})`}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RemainingTenantsFullBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Gjenstår per leietaker (Fazile)", true);
+  const [snapshot, setSnapshot] = useState<RemainingTenantsSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/remaining-tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!snapshot) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return snapshot.tenants;
+    return snapshot.tenants.filter((t) => t.navn.toLowerCase().includes(q));
+  }, [snapshot, search]);
+
+  const visible = filtered.slice(0, visibleCount);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Gjenstår per leietaker (Fazile)"
+        subtitle={snapshot ? `${formatKr(snapshot.totalBelop)} · ${snapshot.antallLeietakere} leietakere` : "Laster…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={Users}
+        iconColorClass="text-accent"
+      />
+      {!collapsed && (
+        <>
+          <p className="mb-2 text-2xs text-ink-4">
+            Kilde: Fazile rent_roll — alle 55 eiendommer, aktive kontraktslinjer{" "}
+            {snapshot ? `${formatDateDMY(snapshot.periodeFra)}–${formatDateDMY(snapshot.periodeTil)}` : ""}{" "}
+            pro-ratert (årsbeløp × gjenværende dager / dager i året). Full leietaker-detalj — erstatter ikke &quot;Gjenstår å
+            fakturere&quot; over, som fortsatt brukes i selve prognosetotalen.
+          </p>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(30);
+              }}
+              placeholder="Søk leietaker…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : !snapshot || filtered.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen leietakere funnet.</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                {visible.map((t) => (
+                  <RemainingTenantsFullRow key={t.navn} tenant={t} />
                 ))}
               </div>
               {filtered.length > visible.length && (
@@ -941,6 +1093,7 @@ export default function IncomeForecastSection() {
           <BookedAccountRangeBlock />
           <BookedTenantsBlock />
           <RemainingBlock />
+          <RemainingTenantsFullBlock />
           <ManualNxtBlock />
 
           <div className="flex flex-col gap-1.5">

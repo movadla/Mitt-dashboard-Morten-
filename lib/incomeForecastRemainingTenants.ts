@@ -1,41 +1,42 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson } from "./tenantAnonymize";
 
-export interface BookedTenantLine {
-  selskap: string;
-  accountNo: number;
+export interface RemainingTenantLine {
+  eiendom: string;
   bygg: string;
-  belop: number;
+  linjetype: string;
+  beskrivelse: string;
+  gjenstaende: number;
 }
 
-export interface BookedTenant {
+export interface RemainingTenant {
   navn: string;
   totalBelop: number;
-  lines: BookedTenantLine[];
+  lines: RemainingTenantLine[];
 }
 
-export interface BookedTenantsSnapshot {
+export interface RemainingTenantsSnapshot {
   sistOppdatert: string;
   ar: number;
-  kontoFra: number;
-  kontoTil: number;
+  periodeFra: string;
+  periodeTil: string;
   totalBelop: number;
   antallLeietakere: number;
-  tenants: BookedTenant[];
+  tenants: RemainingTenant[];
 }
 
-const HASH_KEY = "jobb:inntektsprognose-bokfort-leietakere";
+const HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const FIELD = "snapshot";
 
-function anonymizeSnapshot(snapshot: BookedTenantsSnapshot): BookedTenantsSnapshot {
+function anonymizeSnapshot(snapshot: RemainingTenantsSnapshot): RemainingTenantsSnapshot {
   return {
     ...snapshot,
     tenants: snapshot.tenants.map((t) => ({ ...t, navn: anonymizeIfPerson(t.navn) })),
   };
 }
 
-export async function getBookedTenantsSnapshot(): Promise<BookedTenantsSnapshot | null> {
-  const snapshot = await hgetJSON<BookedTenantsSnapshot>(HASH_KEY, FIELD);
+export async function getRemainingTenantsSnapshot(): Promise<RemainingTenantsSnapshot | null> {
+  const snapshot = await hgetJSON<RemainingTenantsSnapshot>(HASH_KEY, FIELD);
   if (!snapshot) return null;
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden
   // (kun demokunder tillatt) mot SAMME Redis - anonymiser derfor privatpersoner i farten
