@@ -32,14 +32,21 @@
 // Reforhandlede linjer får ekstraI2026=0 - den nye kontrakten er allerede en egen
 // linje i Fazile og dermed allerede talt med i prognosetotalen.
 //
+// EIERANDEL (rettet 2026-08-24): kontraktsutlop-verktøyet auto-halverer IKKE for
+// Strandveien 4-8/10/Lilleakerveien 20-22, i motsetning til rent_roll/leietakerliste
+// (bekreftet: `eierandel`-feltet i rådata er 1 for ALLE rader). Fant 4 linjer (2
+// leietakere på Strandveien 4-8) som IKKE var halvert - overstatte totalArsleie/
+// reell eksponering med ca. 272 663 kr og ekstraI2026 med ca. 48 256 kr før denne fiksen.
+// Halveres nå PER LINJE via den delte lib/data/ownership-shares.json (samme kilde som
+// build-nxt-budget.js), FØR gruppering til kontrakt-nivå.
+//
 // Kjør: node scripts/build-contract-expiry-2026.js
 
 const fs = require("fs");
 const path = require("path");
-const Redis = require(path.join(__dirname, "..", "node_modules", "ioredis"));
+const { loadEnvLocal, pushToRedis, loadOwnershipShares, andelForBygg } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "kontraktsutlop-raw-full.json");
-const ENV_LOCAL = path.join(__dirname, "..", ".env.local");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-kontraktsutlop-2026";
 const REDIS_FIELD = "snapshot";
 const AR = 2026;
@@ -52,23 +59,21 @@ function ekstraI2026ForLinje(linjeSlutt, totalArsleie, reforhandlet) {
   return (totalArsleie / 365) * dagerEtter;
 }
 
-function loadEnvLocal() {
-  if (!fs.existsSync(ENV_LOCAL)) return;
-  for (const line of fs.readFileSync(ENV_LOCAL, "utf8").split("\n")) {
-    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
-  }
-}
-
 function main() {
   loadEnvLocal();
   const raw = JSON.parse(fs.readFileSync(RAW_FILE, "utf8"));
+  const shares = loadOwnershipShares();
   const rows = (raw.rows || []).filter(
     (r) => r.linje_slutt >= `${AR}-01-01` && r.linje_slutt <= `${AR}-12-31` && r.total_arsleie > 0,
   );
 
+  let antallEierandelKorrigert = 0;
   const groups = new Map();
   for (const r of rows) {
+    const andel = r.bygg ? andelForBygg(r.bygg, shares) : 1;
+    if (andel !== 1) antallEierandelKorrigert++;
+    const totalArsleie = r.total_arsleie * andel;
+
     const key = `${r.leietaker}||${r.kontraktsnokkel}`;
     if (!groups.has(key)) {
       groups.set(key, {
@@ -85,7 +90,7 @@ function main() {
       });
     }
     const g = groups.get(key);
-    g.totalArsleie += r.total_arsleie;
+    g.totalArsleie += totalArsleie;
     if (r.bygg && r.bygg !== "(ukjent bygg)") g.byggSet.add(r.bygg);
     if (r.linje_slutt < g.minSlutt) g.minSlutt = r.linje_slutt;
     if (r.linje_slutt > g.maxSlutt) g.maxSlutt = r.linje_slutt;
@@ -93,16 +98,19 @@ function main() {
       g.status = "reforhandlet";
       g.nyKontraktsnokkel = r.ny_kontraktsnokkel;
     }
-    const ekstraLinje = ekstraI2026ForLinje(r.linje_slutt, r.total_arsleie, r.reforhandlet);
+    const ekstraLinje = ekstraI2026ForLinje(r.linje_slutt, totalArsleie, r.reforhandlet);
     g.ekstraI2026 += ekstraLinje;
     g.lines.push({
       linjenokkel: r.linjenokkel,
       linjeBeskrivelse: r.linje_beskrivelse,
       arealtype: r.arealtype,
       linjeSlutt: r.linje_slutt,
-      totalArsleie: r.total_arsleie,
+      totalArsleie,
       ekstraI2026: Math.round(ekstraLinje * 100) / 100,
     });
+  }
+  if (antallEierandelKorrigert > 0) {
+    console.log(`Eierandel-korrigert: ${antallEierandelKorrigert} linjer halvert (Strandveien 4-8/10, Lilleakerveien 20/22).`);
   }
 
   const contracts = [...groups.values()]
@@ -162,23 +170,7 @@ function main() {
   console.log(`  Åpen (reell eksponering): ${snapshot.antallApen} stk, ${snapshot.reellEksponeringArsleie} kr`);
   console.log(`  Ekstra i 2026 hvis alle åpne fornyes: ${snapshot.totalEkstraI2026} (${ekstraI2026PerLeietaker.length} leietakere)`);
 
-  if (!process.env.REDIS_URL) {
-    console.log("REDIS_URL ikke satt - hopper over Redis-push.");
-    fs.writeFileSync(path.join(__dirname, "refresh-data", "kontraktsutlop-2026-snapshot.json"), JSON.stringify(snapshot, null, 2));
-    return;
-  }
-  const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 3 });
-  redis
-    .hset(REDIS_HASH_KEY, REDIS_FIELD, JSON.stringify(snapshot))
-    .then(() => {
-      console.log(`Lagret i Redis under ${REDIS_HASH_KEY} / ${REDIS_FIELD}`);
-      redis.disconnect();
-    })
-    .catch((err) => {
-      console.error("Feil ved lagring i Redis:", err);
-      redis.disconnect();
-      process.exit(1);
-    });
+  return pushToRedis(REDIS_HASH_KEY, REDIS_FIELD, snapshot, "kontraktsutlop-2026-snapshot.json");
 }
 
 main();

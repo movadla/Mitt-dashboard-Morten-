@@ -1,0 +1,46 @@
+{
+  "sistOppdatert": "2026-08-24",
+  "notat": "Kanonisk bygg-navn = Fazile sin seksjon-streng (primærkilde for areal/leietaker-data). 'alias' er kjente, bekreftede alternative navn brukt av andre kilder (NXT orgUnit3 m.fl.) for SAMME fysiske bygg - ALDRI gjett en ny en uten å kryssjekke leietakerlisten/beløp på begge sider, se scripts/build-remaining-summary.js sin opprinnelige BUILDING_ALIASES-kommentar for hvordan de 10 første ble bekreftet. Kjør scripts/check-building-registry.js etter hver ny rådata-refresh for å finne ukjente bygg-navn automatisk.",
+  "kanoniskeByggMerknad": "Full liste over Fazile sine seksjon-navn, hentet via leietakerliste (group_by=arealtype, kun_aktive_linjer=true default) 2026-08-24 + 'Strandveien Garasjeanlegg' lagt til manuelt (fantes i arealoversikt/ledige-arealer-uttrekket men IKKE i leietakerliste-uttrekket - sannsynlig forklaring: 100% ledig seksjon uten noen aktiv kontraktslinje, faller derfor utenfor et 'kun aktive linjer'-filter. Ikke en feil, men en dekningsbegrensning å være obs på ved fremtidige leietakerliste-baserte kryssjekker).",
+  "kanoniskeBygg": [
+    "Arnstein Arnebergsvei 4", "Boliger B2", "Boliger B3", "Carl Lundgrensvei Uteparkering",
+    "Gamle Drammensvei 10", "Holmenveien 16", "Lilleakerveien 10", "Lilleakerveien 10 Uteparkering",
+    "Lilleakerveien 14", "Lilleakerveien 14 Uteparkering", "Lilleakerveien 16", "Lilleakerveien 16 Skoda",
+    "Lilleakerveien 16 Uteparkering", "Lilleakerveien 18", "Lilleakerveien 19", "Lilleakerveien 2 Garasje",
+    "Lilleakerveien 20 Audi", "Lilleakerveien 20-22 Uteparkering", "Lilleakerveien 22 VW",
+    "Lilleakerveien 24C", "Lilleakerveien 26", "Lilleakerveien 29", "Lilleakerveien 2A",
+    "Lilleakerveien 2B", "Lilleakerveien 2C", "Lilleakerveien 2CDAB Uteparkering", "Lilleakerveien 2D",
+    "Lilleakerveien 2E", "Lilleakerveien 2F", "Lilleakerveien 2G Uteparkering", "Lilleakerveien 30",
+    "Lilleakerveien 31", "Lilleakerveien 31 Uteparkering", "Lilleakerveien 32B", "Lilleakerveien 4A",
+    "Lilleakerveien 4A Uteparkering", "Lilleakerveien 4C", "Lilleakerveien 4CDEF Uteparkering",
+    "Lilleakerveien 4D", "Lilleakerveien 4E", "Lilleakerveien 6", "Lilleakerveien 6 P-hus",
+    "Lilleakerveien 6 Uteparkering", "Lilleakerveien 6D Hus 3", "Lilleakerveien 8",
+    "Lilleakerveien 8 Uteparkering", "Mustadkroken", "Mustads vei 10 Fåbro gård",
+    "Mustads vei 12 Hagebyen", "Mustadsvei 1", "P-Bro Uteparkering", "P-Bro mellom LV8 og LV4",
+    "Sponhoggveien 2", "Strandveien 10", "Strandveien 4-8", "Strandveien Garasjeanlegg",
+    "Strandveien Uteparkering", "Vollsveien 13-17-19 Uteparkering", "Vollsveien 13B",
+    "Vollsveien 13C", "Vollsveien 13D", "Vollsveien 13D Uteparkering", "Vollsveien 13E",
+    "Vollsveien 13F", "Vollsveien 13H", "Vollsveien 17", "Vollsveien 17-19-21 Uteparkering",
+    "Vollsveien 19", "Vollsveien 21"
+  ],
+  "buildings": [
+    { "kanoniskNavn": "Arnstein Arnebergsvei 4", "alias": ["Arnstein Arnebergs vei 4"] },
+    { "kanoniskNavn": "Mustadsvei 1", "alias": ["Mustads vei 1"] },
+    { "kanoniskNavn": "Lilleakerveien 16", "alias": ["CC Vest Senter"] },
+    { "kanoniskNavn": "Lilleakerveien 16 Skoda", "alias": ["Lilleakerveien 16 Bilforretning"] },
+    { "kanoniskNavn": "Lilleakerveien 20 Audi", "alias": ["Lilleakerveien 20"] },
+    { "kanoniskNavn": "Lilleakerveien 22 VW", "alias": ["Lilleakerveien 22"] },
+    { "kanoniskNavn": "Lilleakerveien 2 Garasje", "alias": ["Lilleakerveien 2 - Garasje"] },
+    { "kanoniskNavn": "Lilleakerveien 6D Hus 3", "alias": ["Lilleakerveien 6D"] },
+    { "kanoniskNavn": "P-Bro Uteparkering", "alias": ["P-Bro mellom LV8 og LV4"] },
+    { "kanoniskNavn": "Mustads vei 10 Fåbro gård", "alias": ["Mustads vei 10"] },
+    { "kanoniskNavn": "Mustads vei 12 Hagebyen", "alias": ["Mustads vei 12"] }
+  ],
+  "ikkeFysiskeBygg": [
+    { "navn": "Adm Drift", "kilde": "NXT-budsjett", "notat": "Administrativ kostnadsplass i NXT, ikke en fysisk seksjon i Fazile - forventet, ikke en feil." },
+    { "navn": "Adm felles", "kilde": "NXT-budsjett/bokført", "notat": "Administrativ kostnadsplass i NXT, ikke en fysisk seksjon i Fazile - forventet, ikke en feil." }
+  ],
+  "uavklart": [
+    { "navn": "Vollsveien 13G", "kilde": "NXT-budsjett", "belop2026": 284494.2, "notat": "Ingen bekreftet Fazile-motpart funnet 2026-08-24 - kan være en NXT-intern kostnadsplass, eller en reell seksjon under et annet navn. IKKE gjettet, flagget for Morten." }
+  ]
+}

@@ -19,11 +19,9 @@
 
 const fs = require("fs");
 const path = require("path");
-const Redis = require(path.join(__dirname, "..", "node_modules", "ioredis"));
 
 const FAZILE_DIR = path.join(__dirname, "refresh-data", "fazile-remaining-tenants");
 const NXT_BOOKED_SNAPSHOT = path.join(__dirname, "refresh-data", "booked-tenants-snapshot.json");
-const ENV_LOCAL = path.join(__dirname, "..", ".env.local");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REDIS_FIELD = "snapshot";
 
@@ -58,13 +56,7 @@ const BUILDING_ALIASES = {
   "mustads vei 12 hagebyen": "Mustads vei 12",
 };
 
-function loadEnvLocal() {
-  if (!fs.existsSync(ENV_LOCAL)) return;
-  for (const line of fs.readFileSync(ENV_LOCAL, "utf8").split("\n")) {
-    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
-  }
-}
+const { loadEnvLocal, pushToRedis } = require("./lib/refresh-helpers");
 
 function normalizeName(name) {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -363,23 +355,7 @@ function main() {
   console.log(`  antallInternMustad: ${countInternMustad},`);
   console.log(`Redis-snapshot: ${tenantList.length} leietakere, totalt ${snapshot.totalBelop} kr`);
 
-  if (!process.env.REDIS_URL) {
-    console.log("REDIS_URL ikke satt - hopper over Redis-push.");
-    fs.writeFileSync(path.join(__dirname, "refresh-data", "remaining-tenants-snapshot.json"), JSON.stringify(snapshot, null, 2));
-    return;
-  }
-
-  const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 3 });
-  redis
-    .hset(REDIS_HASH_KEY, REDIS_FIELD, JSON.stringify(snapshot))
-    .then(() => {
-      console.log(`Lagret i Redis under ${REDIS_HASH_KEY} / ${REDIS_FIELD}`);
-      redis.disconnect();
-    })
-    .catch((err) => {
-      console.error("Redis-feil:", err);
-      process.exit(1);
-    });
+  return pushToRedis(REDIS_HASH_KEY, REDIS_FIELD, snapshot, "remaining-tenants-snapshot.json");
 }
 
 main();

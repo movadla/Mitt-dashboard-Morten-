@@ -7,6 +7,7 @@ import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
   BOOKED_3600_3699,
   INVOICED,
+  LEIETYPE_BREAKDOWN,
   MANUAL_NXT,
   OWNERSHIP_SHARE_RULES,
   RECONCILIATION,
@@ -16,6 +17,10 @@ import {
 import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
+import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
+import type { NxtBudgetSnapshot } from "@/lib/nxtBudget";
+import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
+import type { TenantSignal, TenantSignalType } from "@/lib/tenantSignals";
 import { computeForecastRollup, type ForecastRollup, type PartTotals } from "@/lib/incomeForecastCompute";
 import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
 import { vibrate } from "@/lib/haptics";
@@ -190,6 +195,142 @@ function BookedAccountRangeBlock() {
   );
 }
 
+function NxtBudgetCompanyRow({ company }: { company: NxtBudgetSnapshot["perSelskap"][number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td colSpan={2} className="p-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2 text-left"
+          >
+            <span className="flex min-w-0 items-center gap-2 text-ink-2">
+              <svg
+                viewBox="0 0 16 16"
+                className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+              <span className="truncate">{company.selskap}</span>
+              <span className="shrink-0 text-2xs text-ink-4">
+                ({company.bygg.length} bygg{company.eierandel < 1 ? `, ${Math.round(company.eierandel * 100)}% eierandel` : ""})
+              </span>
+            </span>
+            <span className="whitespace-nowrap tabular-nums font-medium text-ink-1">{formatKr(company.belop)}</span>
+          </button>
+        </td>
+      </tr>
+      {open &&
+        company.bygg.map((b) => (
+          <tr key={b.bygg} className="border-t border-line bg-surface-2/40">
+            <td className="px-3 py-1.5 pl-9 text-sm text-ink-2">{b.bygg}</td>
+            <td className="px-3 py-1.5 text-right text-sm tabular-nums text-ink-2">{formatKr(b.belop)}</td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
+function NxtBudgetBlock({ rollup }: { rollup: ForecastRollup }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Budsjett NXT konto 3600-3699", true);
+  const [snapshot, setSnapshot] = useState<NxtBudgetSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showPerBygg, setShowPerBygg] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/nxt-budget")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Budsjett 2026 (NXT, konto 3600-3699)"
+        subtitle={snapshot ? formatKr(snapshot.totalBelop) : "…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <>
+          {loading ? (
+            <SkeletonRows count={3} />
+          ) : !snapshot ? (
+            <p className="text-sm text-ink-3">Ingen budsjettdata funnet.</p>
+          ) : (
+            <>
+              <p className="mb-2 text-2xs text-ink-4">
+                Kilde: Visma NXT budget/budgetLine (budsjett {snapshot.budgetNo}), samme kontogruppe som &quot;Bokført
+                totalt&quot; over. Eierandel-korrigert for Fåbro Eiendom AS/Strandveien 10/Strandveien 4-8. {snapshot.perSelskap.length}{" "}
+                selskaper har budsjett i denne kontogruppen — {snapshot.selskaperUtenBudsjett.length} andre (rene drift-/
+                prosjektselskaper) har ingen.
+              </p>
+              <div className="mb-2 rounded-lg border border-line bg-surface-2 px-2.5 py-1.5">
+                <p className="text-2xs text-ink-4">
+                  Avvik mot prognose (Bokført + Gjenstår ={" "}
+                  <span className="font-medium text-ink-2">{formatKr(rollup.totalt)}</span>):{" "}
+                  <span className={`font-semibold tabular-nums ${rollup.totalt - snapshot.totalBelop < 0 ? "text-status-danger" : "text-status-positive"}`}>
+                    {formatKr(rollup.totalt - snapshot.totalBelop)}
+                  </span>{" "}
+                  ({(((rollup.totalt - snapshot.totalBelop) / snapshot.totalBelop) * 100).toLocaleString("nb-NO", { maximumFractionDigits: 1 })} %)
+                </p>
+              </div>
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[380px] text-sm">
+                  <thead>
+                    <tr className="text-left text-ink-4">
+                      <th className="px-3 py-2 text-2xs font-medium">Selskap</th>
+                      <th className="px-3 py-2 text-right text-2xs font-medium">Budsjett</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {snapshot.perSelskap.map((c) => (
+                      <NxtBudgetCompanyRow key={c.selskap} company={c} />
+                    ))}
+                    <tr className="border-t border-line-strong font-semibold">
+                      <td className="px-3 py-2 text-ink-1">Totalt</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(snapshot.totalBelop)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPerBygg((v) => !v)}
+                className="mt-2 text-2xs font-medium text-accent hover:text-accent/80"
+              >
+                {showPerBygg ? "Skjul pr. bygg (tvers av selskap)" : "Vis pr. bygg (tvers av selskap)"}
+              </button>
+              {showPerBygg && (
+                <div className="mt-2 flex flex-col gap-1">
+                  {snapshot.perBygg.map((b) => (
+                    <div key={b.bygg} className="flex items-center justify-between gap-2 border-t border-line py-1 text-sm">
+                      <span className="text-ink-2">{b.bygg}</span>
+                      <span className="tabular-nums text-ink-2">{formatKr(b.belop)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BookedTenantRow({ tenant }: { tenant: BookedTenantsSnapshot["tenants"][number] }) {
   const [open, setOpen] = useState(false);
   const sumLines = tenant.lines.reduce((s, l) => s + l.belop, 0);
@@ -283,7 +424,7 @@ function BookedTenantsBlock() {
   const visible = filtered.slice(0, visibleCount);
 
   return (
-    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+    <div id="drilldown-bokfort" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Bokført per leietaker"
         subtitle={snapshot ? `${formatKr(snapshot.totalBelop)} · ${snapshot.antallLeietakere} leietakere` : "Laster…"}
@@ -543,7 +684,7 @@ function RemainingBlock() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Gjenstår å fakturere", true);
   const total = REMAINING.totalDelA + REMAINING.totalDelB;
   return (
-    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+    <div id="drilldown-gjenstar" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Gjenstår å fakturere"
         subtitle={formatKr(total)}
@@ -566,6 +707,197 @@ function RemainingBlock() {
             &quot;Leieforhold til gjennomgang&quot; under for full liste (kan eksporteres til Excel).
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+function LeietypeBreakdownBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Full 2026-verdi per leietype", true);
+  const rows = useMemo(
+    () => Object.entries(LEIETYPE_BREAKDOWN.perLeietype).sort((a, b) => b[1] - a[1]),
+    [],
+  );
+  const max = rows.length > 0 ? Math.max(...rows.map(([, v]) => Math.abs(v))) : 1;
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Full 2026-verdi per leietype"
+        subtitle={formatKr(LEIETYPE_BREAKDOWN.totalArsleie)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <div className="flex flex-col gap-2">
+          <p className="text-2xs text-ink-4">
+            Drilldown for &quot;Gjenstår å fakturere&quot;, hentet direkte fra Fazile (leietakerliste, gruppert på leietype,
+            {" "}
+            {LEIETYPE_BREAKDOWN.antallLinjer} aktive kontraktslinjer, {formatDateDMY(LEIETYPE_BREAKDOWN.sistOppdatert)}).
+            MERK: dette er BREDERE enn selve gjenstår-tallet over — det inkluderer alle kostnadstyper (felleskostnader,
+            energi, markedsføringsbidrag osv.), mens &quot;Gjenstår å fakturere&quot; kun teller ren husleie/parkering. Til
+            orientering, ikke en nedbryting av det tallet.
+          </p>
+          <div className="flex flex-col gap-1">
+            {rows.map(([leietype, belop]) => (
+              <div key={leietype} className="flex items-center gap-2">
+                <span className="w-36 shrink-0 truncate text-2xs text-ink-3">{leietype}</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+                  <div
+                    className={`h-full rounded-full ${belop < 0 ? "bg-status-danger/70" : "bg-accent/70"}`}
+                    style={{ width: `${Math.min(100, (Math.abs(belop) / max) * 100)}%` }}
+                  />
+                </div>
+                <span className="w-24 shrink-0 text-right text-2xs tabular-nums text-ink-2">{formatKr(belop)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VacantAreasBuildingRow({ building }: { building: VacantAreasSnapshot["bygg"][number] }) {
+  const [open, setOpen] = useState(false);
+  const types = useMemo(() => Object.entries(building.perArealtype).sort((a, b) => b[1] - a[1]), [building]);
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate text-sm text-ink-1">{building.bygg}</span>
+          <span className="text-2xs text-ink-4">{building.antall} arealer</span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">
+          {building.totalKvm.toLocaleString("nb-NO")} kvm
+        </span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-0.5 border-t border-line px-3 py-2">
+          {types.map(([type, kvm]) => (
+            <p key={type} className="flex justify-between text-2xs text-ink-4">
+              <span>{type}</span>
+              <span className="tabular-nums text-ink-2">{kvm.toLocaleString("nb-NO")} kvm</span>
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VacantAreasBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige arealer", true);
+  const [snapshot, setSnapshot] = useState<VacantAreasSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(15);
+  const [utleieSignaler, setUtleieSignaler] = useState<TenantSignal[]>([]);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/vacant-areas")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+    fetch("/api/income-forecast/tenant-signals")
+      .then((r) => r.json())
+      .then((data) => setUtleieSignaler(((data.signals ?? []) as TenantSignal[]).filter((s) => s.type === "utleie")))
+      .catch(() => {});
+  }, []);
+
+  function handleUtleieSignalUpdated(next: TenantSignal) {
+    setUtleieSignaler((prev) => {
+      const idx = prev.findIndex((s) => s.id === next.id);
+      if (idx === -1) return [...prev, next];
+      const copy = [...prev];
+      copy[idx] = next;
+      return copy;
+    });
+  }
+
+  const arealtypeRows = useMemo(() => (snapshot ? Object.entries(snapshot.perArealtype).sort((a, b) => b[1] - a[1]) : []), [snapshot]);
+  const maxType = arealtypeRows.length > 0 ? arealtypeRows[0][1] : 1;
+  const visibleBygg = snapshot ? snapshot.bygg.slice(0, visibleCount) : [];
+
+  return (
+    <div id="drilldown-ledige-lokaler" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Ledige arealer"
+        subtitle={snapshot ? `${snapshot.totalLedigKvm.toLocaleString("nb-NO")} kvm` : "…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <>
+          {loading ? (
+            <SkeletonRows count={3} />
+          ) : !snapshot ? (
+            <p className="text-sm text-ink-3">Ingen arealdata funnet.</p>
+          ) : (
+            <>
+              <p className="mb-2 text-2xs text-ink-4">
+                Kilde: Fazile arealoversikt, status Ledig, hele porteføljen ({snapshot.sistOppdatert}).{" "}
+                {snapshot.antallArealer} ledige arealer i {snapshot.antallBygg} bygg, eksklusivt kvm (ikke inkl.
+                fellesareal-andel). Datagrunnlag for &quot;Potensiell inntekt: ledige lokaler&quot;-boksen over — ingen
+                kvm-pris er lagt inn ennå, så den boksen forblir et manuelt anslag til videre.
+              </p>
+              {utleieSignaler.length > 0 && (
+                <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3">
+                  <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                    Aktive utleieprosjekter i Salesforce (sannsynlighet for utleie)
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {utleieSignaler.map((s) => (
+                      <div key={s.id} className="rounded-lg border border-line bg-surface-1 p-2">
+                        <p className="text-sm text-ink-1">{s.navn}</p>
+                        <SignalEditor
+                          id={s.id}
+                          type="utleie"
+                          signal={s}
+                          fallbackNavn={s.navn}
+                          fallbackBygg={s.bygg}
+                          onUpdated={handleUtleieSignalUpdated}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="mb-3 flex flex-col gap-1">
+                {arealtypeRows.map(([type, kvm]) => (
+                  <div key={type} className="flex items-center gap-2">
+                    <span className="w-32 shrink-0 truncate text-2xs text-ink-3">{type}</span>
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+                      <div className="h-full rounded-full bg-status-warning/70" style={{ width: `${Math.min(100, (kvm / maxType) * 100)}%` }} />
+                    </div>
+                    <span className="w-20 shrink-0 text-right text-2xs tabular-nums text-ink-2">{kvm.toLocaleString("nb-NO")} kvm</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {visibleBygg.map((b) => (
+                  <VacantAreasBuildingRow key={b.bygg} building={b} />
+                ))}
+              </div>
+              {snapshot.bygg.length > visibleBygg.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 15)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(15, snapshot.bygg.length - visibleBygg.length)} til ({snapshot.bygg.length - visibleBygg.length} gjenstår)
+                </button>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -737,7 +1069,105 @@ function LeieforholdReviewBlock() {
   );
 }
 
-function ContractExpiryRow({ contract }: { contract: ContractExpiry2026Snapshot["contracts"][number] }) {
+function SignalEditor({
+  id,
+  type,
+  signal,
+  fallbackNavn,
+  fallbackBygg,
+  onUpdated,
+}: {
+  id: string;
+  type: TenantSignalType;
+  signal: TenantSignal | undefined;
+  fallbackNavn: string;
+  fallbackBygg: string;
+  onUpdated: (next: TenantSignal) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [prosent, setProsent] = useState(String(signal?.sannsynlighetProsent ?? 0));
+  const [notat, setNotat] = useState(signal?.notat ?? "");
+  const [saving, setSaving] = useState(false);
+
+  if (!signal && !editing) {
+    return (
+      <button type="button" onClick={() => setEditing(true)} className="text-2xs font-medium text-accent hover:text-accent/80">
+        Sett sannsynlighet
+      </button>
+    );
+  }
+
+  async function handleSave() {
+    const parsed = Number(prosent);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
+    setSaving(true);
+    const res = await fetch("/api/income-forecast/tenant-signals", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, sannsynlighetProsent: parsed, notat, type, navn: fallbackNavn, bygg: fallbackBygg }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      onUpdated(await res.json());
+      setEditing(false);
+    }
+  }
+
+  if (editing || !signal) {
+    return (
+      <div className="mt-1.5 rounded-lg border border-line-strong bg-surface-1 p-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={prosent}
+            onChange={(e) => setProsent(e.target.value)}
+            className="w-16 rounded-lg border border-line bg-surface-2 px-2 py-1 text-sm tabular-nums text-ink-1 outline-none"
+          />
+          <span className="text-2xs text-ink-4">% sannsynlighet</span>
+        </div>
+        <textarea
+          value={notat}
+          onChange={(e) => setNotat(e.target.value)}
+          placeholder="Notat/kilde…"
+          rows={2}
+          className="mt-1.5 w-full rounded-lg border border-line bg-surface-2 px-2 py-1 text-2xs text-ink-2 outline-none"
+        />
+        <div className="mt-1.5 flex gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-accent px-2.5 py-1 text-2xs font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Lagrer…" : "Lagre"}
+          </button>
+          <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-line px-2.5 py-1 text-2xs font-medium text-ink-3">
+            Avbryt
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" onClick={() => setEditing(true)} className="mt-1 block text-left">
+      <span className="text-2xs font-medium text-ink-2">{signal.sannsynlighetProsent}% sannsynlighet</span>
+      <span className="ml-1.5 text-2xs text-ink-4">({signal.kilde})</span>
+      {signal.notat && <p className="text-2xs text-ink-4">{signal.notat}</p>}
+    </button>
+  );
+}
+
+function ContractExpiryRow({
+  contract,
+  signal,
+  onSignalUpdated,
+}: {
+  contract: ContractExpiry2026Snapshot["contracts"][number];
+  signal: TenantSignal | undefined;
+  onSignalUpdated: (next: TenantSignal) => void;
+}) {
   const [open, setOpen] = useState(false);
   const utlop = contract.minSlutt === contract.maxSlutt ? formatDateDMY(contract.maxSlutt) : `${formatDateDMY(contract.minSlutt)}–${formatDateDMY(contract.maxSlutt)}`;
   return (
@@ -754,6 +1184,7 @@ function ContractExpiryRow({ contract }: { contract: ContractExpiry2026Snapshot[
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${CONTRACT_EXPIRY_STATUS_STYLE[contract.status as ContractExpiryStatus]}`}>
               {CONTRACT_EXPIRY_STATUS_LABEL[contract.status as ContractExpiryStatus]}
             </span>
+            {signal && <span className="shrink-0 text-2xs text-ink-4">{signal.sannsynlighetProsent}%</span>}
           </span>
           <span className="truncate text-2xs text-ink-4">
             {contract.bygg} · Utløp {utlop}
@@ -785,6 +1216,14 @@ function ContractExpiryRow({ contract }: { contract: ContractExpiry2026Snapshot[
               </p>
             ))}
           </div>
+          <SignalEditor
+            id={contract.kontraktsnokkel}
+            type="reforhandling"
+            signal={signal}
+            fallbackNavn={contract.leietaker}
+            fallbackBygg={contract.bygg}
+            onUpdated={onSignalUpdated}
+          />
         </div>
       )}
     </div>
@@ -817,24 +1256,23 @@ function EkstraLeietakerRow({ row }: { row: ContractExpiry2026Snapshot["ekstraI2
   );
 }
 
-function ContractExpiry2026Block() {
+function ContractExpiry2026Block({
+  snapshot,
+  loading,
+  signals,
+  onSignalUpdated,
+}: {
+  snapshot: ContractExpiry2026Snapshot | null;
+  loading: boolean;
+  signals: TenantSignal[];
+  onSignalUpdated: (next: TenantSignal) => void;
+}) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter som utløper i 2026", true);
-  const [snapshot, setSnapshot] = useState<ContractExpiry2026Snapshot | null>(null);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(30);
   const [showEkstra, setShowEkstra] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/income-forecast/contract-expiry-2026")
-      .then((r) => r.json())
-      .then((data) => {
-        setSnapshot(data.snapshot ?? null);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const signalsById = useMemo(() => new Map(signals.map((s) => [s.id, s])), [signals]);
 
   const filtered = useMemo(() => {
     if (!snapshot) return [];
@@ -849,7 +1287,7 @@ function ContractExpiry2026Block() {
   const visible = filtered.slice(0, visibleCount);
 
   return (
-    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+    <div id="drilldown-reforhandling" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Kontrakter som utløper i 2026"
         subtitle={snapshot ? formatKr(snapshot.totalArsleie) : "…"}
@@ -935,7 +1373,12 @@ function ContractExpiry2026Block() {
             <>
               <div className="flex flex-col gap-1.5">
                 {visible.map((c) => (
-                  <ContractExpiryRow key={`${c.leietaker}||${c.kontraktsnokkel}`} contract={c} />
+                  <ContractExpiryRow
+                    key={`${c.leietaker}||${c.kontraktsnokkel}`}
+                    contract={c}
+                    signal={signalsById.get(c.kontraktsnokkel)}
+                    onSignalUpdated={onSignalUpdated}
+                  />
                 ))}
               </div>
               {filtered.length > visible.length && (
@@ -1027,6 +1470,193 @@ function ReconciliationPanel() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const POTENTIAL_CATEGORY_LABEL: Record<PotentialIncomeCategoryKey, string> = {
+  omsetningsavregning: "Potensiell inntekt: omsetningsavregning",
+  "ledige-lokaler": "Potensiell inntekt: ledige lokaler",
+  annet: "Potensiell inntekt: annet",
+};
+
+function SummaryTile({
+  label,
+  belop,
+  jumpToId,
+  emphasize,
+}: {
+  label: string;
+  belop: number;
+  jumpToId?: string;
+  emphasize?: boolean;
+}) {
+  const content = (
+    <>
+      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
+      <p className={`mt-1 tabular-nums text-ink-1 ${emphasize ? "text-xl font-bold" : "text-lg font-semibold"}`}>
+        {formatKr(belop)}
+      </p>
+    </>
+  );
+  const className = `rounded-xl border px-3 py-2.5 text-left transition ${
+    emphasize ? "border-2 border-line-strong bg-surface-2" : "border-line bg-surface-2 hover:border-line-strong"
+  }`;
+  if (!jumpToId) {
+    return <div className={className}>{content}</div>;
+  }
+  return (
+    <a href={`#${jumpToId}`} className={className}>
+      {content}
+      <p className="mt-1 text-2xs text-accent">Se detalj ↓</p>
+    </a>
+  );
+}
+
+function PotentialCategoryTile({
+  category,
+  onUpdated,
+}: {
+  category: PotentialIncomeSnapshot["categories"][number];
+  onUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [belop, setBelop] = useState(String(category.belop));
+  const [notat, setNotat] = useState(category.notat);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    const parsed = Number(belop.replace(/\s/g, "").replace(",", "."));
+    if (!Number.isFinite(parsed)) return;
+    setSaving(true);
+    const res = await fetch("/api/income-forecast/potential", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: category.key, belop: parsed, notat }),
+    });
+    setSaving(false);
+    if (res.ok) {
+      const updated = await res.json();
+      onUpdated(updated);
+      setEditing(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border border-line-strong bg-surface-2 px-3 py-2.5">
+        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{POTENTIAL_CATEGORY_LABEL[category.key]}</p>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={belop}
+          onChange={(e) => setBelop(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-line bg-surface-1 px-2 py-1 text-sm tabular-nums text-ink-1 outline-none"
+        />
+        <textarea
+          value={notat}
+          onChange={(e) => setNotat(e.target.value)}
+          rows={2}
+          className="mt-1.5 w-full rounded-lg border border-line bg-surface-1 px-2 py-1 text-2xs text-ink-2 outline-none"
+        />
+        <div className="mt-1.5 flex gap-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-accent px-2.5 py-1 text-2xs font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Lagrer…" : "Lagre"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="rounded-lg border border-line px-2.5 py-1 text-2xs font-medium text-ink-3"
+          >
+            Avbryt
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 transition hover:border-line-strong">
+      <button type="button" onClick={() => setEditing(true)} className="w-full text-left">
+        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{POTENTIAL_CATEGORY_LABEL[category.key]}</p>
+        <p className="mt-1 text-lg font-semibold tabular-nums text-ink-1">{formatKr(category.belop)}</p>
+        <p className="mt-0.5 truncate text-2xs text-ink-4">{category.notat}</p>
+      </button>
+      {category.key === "ledige-lokaler" && (
+        <a href="#drilldown-ledige-lokaler" className="mt-1 inline-block text-2xs text-accent hover:text-accent/80">
+          Se ledige arealer ↓
+        </a>
+      )}
+    </div>
+  );
+}
+
+function TopSummaryBlock({
+  rollup,
+  contractExpiry2026,
+  potential,
+  onPotentialUpdated,
+  tenantSignals,
+}: {
+  rollup: ForecastRollup;
+  contractExpiry2026: ContractExpiry2026Snapshot | null;
+  potential: PotentialIncomeSnapshot | null;
+  onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
+  tenantSignals: TenantSignal[];
+}) {
+  const bokfort =
+    rollup.delA.fakturertHittil +
+    rollup.delB.fakturertHittil +
+    rollup.delA.manueltNxtHittil +
+    rollup.delB.manueltNxtHittil +
+    rollup.delA.manuelleLinjer +
+    rollup.delB.manuelleLinjer;
+  const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
+  const reforhandlingFull = contractExpiry2026?.totalEkstraI2026 ?? 0;
+
+  // Sannsynlighetsvektet forventningsverdi (Morten, 2026-08-24) i stedet for full verdi -
+  // leieforhold uten satt sannsynlighet telles med 0 %, ikke full verdi, til Morten har
+  // vurdert dem (se lib/tenantSignals.ts).
+  const signalsById = useMemo(() => new Map(tenantSignals.map((s) => [s.id, s])), [tenantSignals]);
+  const reforhandlingVektet = useMemo(() => {
+    if (!contractExpiry2026) return 0;
+    return contractExpiry2026.contracts.reduce((sum, c) => {
+      if (c.ekstraI2026 <= 0) return sum;
+      const signal = signalsById.get(c.kontraktsnokkel);
+      const sannsynlighet = signal ? signal.sannsynlighetProsent / 100 : 0;
+      return sum + c.ekstraI2026 * sannsynlighet;
+    }, 0);
+  }, [contractExpiry2026, signalsById]);
+  const snittSannsynlighet = reforhandlingFull > 0 ? (reforhandlingVektet / reforhandlingFull) * 100 : 0;
+
+  const potentialSum = potential ? potential.categories.reduce((s, c) => s + c.belop, 0) : 0;
+  const total = rollup.totalt + reforhandlingVektet + potentialSum;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <SummaryTile label="Bokført" belop={bokfort} jumpToId="drilldown-bokfort" />
+        <SummaryTile label="Gjenstår å fakturere" belop={gjenstar} jumpToId="drilldown-gjenstar" />
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <SummaryTile label="Potensiell inntekt: reforhandling" belop={reforhandlingVektet} jumpToId="drilldown-reforhandling" />
+        {potential?.categories.map((c) => (
+          <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} />
+        ))}
+      </div>
+      <SummaryTile label="Inntektsprognose 2026" belop={total} emphasize />
+      <p className="text-2xs text-ink-4">
+        Bokført + Gjenstår er den delen som er avstemt mot NXT/Fazile (samme tall som lenger ned på siden). De fire
+        potensial-boksene er ikke med i det tallet. Reforhandling er sannsynlighetsvektet:{" "}
+        {formatKr(reforhandlingFull)} full verdi × snitt-sannsynlighet {snittSannsynlighet.toLocaleString("nb-NO", { maximumFractionDigits: 0 })}
+        {" "}% = {formatKr(reforhandlingVektet)} (juster sannsynlighet pr leieforhold i kontraktsutløp-fanen under). De tre
+        andre potensial-boksene er manuelle anslag du kan redigere (klikk boksen) inntil de kobles til ekte datakilder.
+      </p>
     </div>
   );
 }
@@ -1329,6 +1959,45 @@ export default function IncomeForecastSection() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [editingManualId, setEditingManualId] = useState<string | null>(null);
   const confirmDelete = useConfirmDelete<string>();
+  const [contractExpiry2026, setContractExpiry2026] = useState<ContractExpiry2026Snapshot | null>(null);
+  const [loadingContractExpiry2026, setLoadingContractExpiry2026] = useState(true);
+  const [potential, setPotential] = useState<PotentialIncomeSnapshot | null>(null);
+  const [tenantSignals, setTenantSignals] = useState<TenantSignal[]>([]);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/contract-expiry-2026")
+      .then((r) => r.json())
+      .then((data) => {
+        setContractExpiry2026(data.snapshot ?? null);
+        setLoadingContractExpiry2026(false);
+      })
+      .catch(() => setLoadingContractExpiry2026(false));
+    fetch("/api/income-forecast/potential")
+      .then((r) => r.json())
+      .then((data) => setPotential(data.snapshot ?? null))
+      .catch(() => {});
+    fetch("/api/income-forecast/tenant-signals")
+      .then((r) => r.json())
+      .then((data) => setTenantSignals(data.signals ?? []))
+      .catch(() => {});
+  }, []);
+
+  function handlePotentialUpdated(next: PotentialIncomeSnapshot["categories"][number]) {
+    setPotential((prev) => {
+      if (!prev) return prev;
+      return { categories: prev.categories.map((c) => (c.key === next.key ? next : c)) };
+    });
+  }
+
+  function handleSignalUpdated(next: TenantSignal) {
+    setTenantSignals((prev) => {
+      const idx = prev.findIndex((s) => s.id === next.id);
+      if (idx === -1) return [...prev, next];
+      const copy = [...prev];
+      copy[idx] = next;
+      return copy;
+    });
+  }
 
   const load = useCallback(() => {
     fetch("/api/income-forecast/manual-lines")
@@ -1412,6 +2081,14 @@ export default function IncomeForecastSection() {
             Øyeblikksbilde — avstemt manuelt mot Visma NXT og Fazile, oppdateres ved forespørsel. Ikke en live-integrasjon.
           </p>
 
+          <TopSummaryBlock
+            rollup={rollup}
+            contractExpiry2026={contractExpiry2026}
+            potential={potential}
+            onPotentialUpdated={handlePotentialUpdated}
+            tenantSignals={tenantSignals}
+          />
+
           <ForecastSummaryBlock rollup={rollup} />
 
           <OwnershipShareBlock />
@@ -1423,11 +2100,19 @@ export default function IncomeForecastSection() {
 
           <InvoicedBlock />
           <BookedAccountRangeBlock />
+          <NxtBudgetBlock rollup={rollup} />
           <BookedTenantsBlock />
           <RemainingBlock />
+          <LeietypeBreakdownBlock />
+          <VacantAreasBlock />
           <RemainingTenantsFullBlock />
           <LeieforholdReviewBlock />
-          <ContractExpiry2026Block />
+          <ContractExpiry2026Block
+            snapshot={contractExpiry2026}
+            loading={loadingContractExpiry2026}
+            signals={tenantSignals}
+            onSignalUpdated={handleSignalUpdated}
+          />
           <ManualNxtBlock />
 
           <div className="flex flex-col gap-1.5">

@@ -1,0 +1,15 @@
+{
+  "sistOppdatert": "2026-08-24",
+  "notat": "Fra Morten (2026-08-24): disse byggene/selskapene er deleid/sameie - kun Mustads eierandel av inntekten skal telle i prognosen. Delt kilde brukt av BÅDE app-koden (via lib/ownershipShares.ts) OG scripts/build-*.js (direkte require) - en usynkronisert eierandel-liste per script forårsaket en reell feil i ContractExpiry2026 2026-08-24 (2 leietakere ved Strandveien 4-8 ble ikke halvert). To nivåer: 'buildings' (bygg-navn-nøkkel, for Fazile-side scripts uten selskaps-dimensjon) og 'selskaper' (selskaps-navn-nøkkel, for NXT-side scripts der selskapet er kjent og HELE selskapets omsetning er verifisert å knytte seg til eierandel-bygget - se BOOKED_3600_3699 sin kommentar i lib/incomeForecast.local.ts for verifiseringen). 'selskaper' må sjekkes FØR 'buildings' der begge er tilgjengelig, siden en generisk bygg-etikett som 'Adm felles' brukes av FLERE selskaper med ULIK eierandel.",
+  "buildings": [
+    { "bygg": "Strandveien 4-8", "andel": 0.5 },
+    { "bygg": "Strandveien 10", "andel": 0.5 },
+    { "bygg": "Lilleakerveien 20", "andel": 0.5 },
+    { "bygg": "Lilleakerveien 22", "andel": 0.5 }
+  ],
+  "selskaper": [
+    { "selskap": "Fåbro Eiendom AS", "andel": 0.5 },
+    { "selskap": "Strandveien 10 AS", "andel": 0.5 },
+    { "selskap": "Strandveien 4-8 AS", "andel": 0.5 }
+  ]
+}

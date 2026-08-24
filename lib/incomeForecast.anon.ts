@@ -472,6 +472,43 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
   ],
 };
 
+// Leietype-fordeling — egen Fazile-spørring 2026-08-24 (leietakerliste, group_by=leietype,
+// hele porteføljen, aktive kontrakter i dag), til "Gjenstår å fakturere"-drilldown.
+// MERK: dette er BREDERE enn "Gjenstår å fakturere" (REMAINING) - REMAINING teller kun rene
+// husleie/parkeringslinjer (linjetype RENT i rent_roll, Del A/B), mens denne fordelingen
+// inkluderer ALLE kostnadstyper (felleskostnader, energi, markedsføringsbidrag osv. - se
+// "kostnadstyper-ikke-med"-sjekken). Til orientering/drilldown, ikke en nedbryting av selve
+// gjenstår-tallet.
+export interface LeietypeBreakdown {
+  sistOppdatert: string;
+  totalArsleie: number;
+  antallLinjer: number;
+  perLeietype: Record<string, number>;
+}
+
+export const LEIETYPE_BREAKDOWN: LeietypeBreakdown = {
+  sistOppdatert: "2026-08-24",
+  totalArsleie: 959071173.17,
+  antallLinjer: 3301,
+  perLeietype: {
+    Husleie: 538615749.18,
+    Annet: 202024447.87,
+    Felleskostnader: 67891540.91,
+    Garasjeleie: 42421643.93,
+    Energi: 38574896.41,
+    Lagerleie: 23338886.3,
+    Kantinebidrag: 16806200.34,
+    Markedsføringsbidrag: 13366078.51,
+    Parkering: 11331181.06,
+    Administrasjonsbidrag: 4100236.68,
+    Basestasjon: 336550.27,
+    Enøk: 849910.4,
+    Datarom: 114487.38,
+    Gjesteparkering: 89063.84,
+    Rabatt: -789699.91,
+  },
+};
+
 export type ReconciliationStatus = "ok" | "varsel" | "feil";
 
 export interface ReconciliationCheck {
@@ -532,11 +569,46 @@ export const RECONCILIATION: ReconciliationSnapshot = {
         "INVOICED bruker NXT-kontonummer (3640-3642=Del B). REMAINING (Fazile) bruker en seksjonsnavn-heuristikk ('garasje'/'parkering'/'p-hus'/'p-bro' i navnet). For REMAINING sin leieforhold-beregning er hovedeffekten av dette rettet 2026-08-24 (netter hele 'allerede fakturert' mot Fazile sitt Del for entydige leieforhold, se scripts/build-remaining-summary.js), men splitten er fortsatt IKKE identisk metodikk på tvers av INVOICED og REMAINING generelt - grov, men nå konsistent innad i hver kilde.",
     },
     {
+      id: "invoiced-vs-booked-avvik",
+      label: "INVOICED vs. Bokført (3600-3699): ~0,7 % avvik - forventet, ikke en feil",
+      status: "ok",
+      notat:
+        "Kontrollert 2026-08-24: INVOICED (periodisert NXT-uttrekk, periode 1-8) summerer til 532,2 mill kr, BOOKED_3600_3699 (punkt-i-tid kontogruppe-uttrekk) til 535,9 mill kr - et avvik på ca. 3,7 mill kr (0,7 %). Forventet: de to hentes med ulik metode/tidspunkt (periodisert regnskap vs. rå kontosaldo), ikke bevis på en feil. Ingen handling nødvendig.",
+    },
+    {
+      id: "kontraktsutlop-vs-remaining-ingen-dobbelttelling",
+      label: "Kontraktsutløp-2026 vs. Gjenstår: ingen dobbelttelling - verifisert med 2 konkrete leieforhold",
+      status: "ok",
+      notat:
+        "Verifisert 2026-08-24 med to konkrete eksempler (ikke bare antatt): (1) et leieforhold hvis kontrakt utløp tidlig i 2026 UTEN fornyelse mangler HELT fra REMAINING sitt leieforhold-datasett (Fazile sin aktive-kontrakt-pull viser bare det som er aktivt i dag) - den faktiske delårsinntekten er likevel korrekt fanget opp i INVOICED (NXT-fakturert hittil), og kun den hypotetiske fornyelsesverdien ligger i 'ekstra i 2026 hvis fornyet' (32,4 mill kr) - ingen overlapp. (2) et leieforhold som ER reforhandlet viser i REMAINING sin data den NYE kontraktens fulle årsverdi (etterfølgerkontrakten er allerede en egen, aktiv linje i Fazile) - og får riktig ekstraI2026=0 i kontraktsutløp-fanen (unngår dobbelttelling for allerede sikrede fornyelser).",
+    },
+    {
       id: "gnr-bnr-uverifisert",
       label: "8 mindre tomteeiendommer (Gnr./Bnr.) ga ingen treff i Fazile",
       status: "varsel",
       notat:
         "Rent roll-spørringen for disse 8 eiendommene ('Gnr. 10 Bnr. 704' m.fl.) returnerte 'ingen seksjoner matchet filtrene' for alle - ikke bekreftet om dette er reelt tomme tomter eller en navnestreng-mismatch. Lav sannsynlig påvirkning (små tomter), men ikke verifisert.",
+    },
+    {
+      id: "kontraktsutlop-eierandel-feil-funnet-og-rettet",
+      label: "Kontraktsutløp-2026 manglet eierandel-korrigering - funnet og rettet",
+      status: "ok",
+      notat:
+        "Kontrollrunde 2026-08-24: kontraktsutlop-verktøyet auto-halverer IKKE for Strandveien 4-8/10/Lilleakerveien 20-22 (i motsetning til rent_roll/leietakerliste) - 4 linjer (2 leietakere på Strandveien 4-8) var ikke halvert. Rettet i scripts/build-contract-expiry-2026.js (bruker nå samme delte lib/data/ownership-shares.json som resten av prosjektet). Effekt: totalArsleie/reell eksponering ned ca. 242 219 kr, 'ekstra i 2026 hvis fornyet' ned ca. 42 988 kr - liten kroneverdi, men en reell feil som er rettet.",
+    },
+    {
+      id: "vollsveien-13g-uavklart",
+      label: "\"Vollsveien 13G\" i NXT-budsjettet har ingen bekreftet Fazile-motpart",
+      status: "varsel",
+      notat:
+        "Kryssjekket alle 49 NXT-budsjett-bygg mot Fazile sin fulle 68-bygg-liste 2026-08-24: 11 av 12 avvik er kjente, dokumenterte alias (nå samlet i lib/data/building-registry.json). 'Vollsveien 13G' (284 494,20 kr i budsjett 2026) er IKKE gjenkjent under noe kjent navn på Fazile-siden - kan være en NXT-intern kostnadsplass uten fysisk motpart, eller en reell seksjon under et annet navn. IKKE gjettet - flagget i building-registry.json sin 'uavklart'-liste for Morten å avklare.",
+    },
+    {
+      id: "sf-prosjekt-data-foreldet",
+      label: "Salesforce Reforhandling/Ledig lokale-prosjekter er stort sett foreldet data",
+      status: "varsel",
+      notat:
+        "Sjekket 2026-08-24 for leietaker-signal-arbeidet: 12 aktive Prosjekt__c-poster (7 Reforhandling, 5 Ledig lokale), men 11 av 12 har LastModifiedDate fra 2022-2023 og en estimert ferdigstillelsesdato som allerede har passert uten at status ble satt til Fullført/Kansellert - nesten sikkert forlatte poster, ikke aktivt arbeid. Kun én (en leietaker på Lilleakerveien 2E) er fra 2026. Salesforce kan derfor IKKE brukes som en automatisk, pålitelig sannsynlighets-kilde for reforhandling/utleie - kun som et startpunkt-hint, Mortens egen vurdering må være hovedkilden.",
     },
   ],
 };
