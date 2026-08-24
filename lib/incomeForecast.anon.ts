@@ -23,273 +23,160 @@ export interface InvoicedSnapshot {
 // (jan-aug, periode 8 delvis siden dagens dato er 2026-08-14), summert over alle
 // 22 Mustad-selskaper. Selskapsnivå-totaler, ingen leietaker-identifiserende data
 // her — samme reelle tall som i .local.ts, se der for full metodikk-kommentar.
+// EIERANDEL-KORRIGERT 2026-08-24 - se lib/incomeForecast.local.ts for full kommentar
+// (samme reelle tall her, ingen leietaker-identifiserende data i denne konstanten).
 export const INVOICED: InvoicedSnapshot = {
-  sistOppdatert: "2026-08-14",
+  sistOppdatert: "2026-08-24",
   ar: 2026,
   periods: [
-    { periode: "2026-01", delA: 154311013, delB: 13116314 },
-    { periode: "2026-02", delA: 9071947, delB: 290250 },
-    { periode: "2026-03", delA: 2951922, delB: 111299 },
-    { periode: "2026-04", delA: 182432604, delB: 14235646 },
-    { periode: "2026-05", delA: -5202894, delB: 870658 },
-    { periode: "2026-06", delA: 13087349, delB: 1113836 },
-    { periode: "2026-07", delA: 169688044, delB: 12527989 },
-    { periode: "2026-08", delA: 5275689, delB: 157037 },
+    { periode: "2026-01", delA: 141302960.5, delB: 12209573 },
+    { periode: "2026-02", delA: 9026384.5, delB: 286411 },
+    { periode: "2026-03", delA: 2914222, delB: 107460 },
+    { periode: "2026-04", delA: 169500119.92, delB: 13329754.45 },
+    { periode: "2026-05", delA: -5225742.87, delB: 866270.17 },
+    { periode: "2026-06", delA: 13048334.37, delB: 1110845.83 },
+    { periode: "2026-07", delA: 156699942.24, delB: 11643812.8 },
+    { periode: "2026-08", delA: 5224641.42, delB: 154046.83 },
   ],
 };
 
-export type RenewalCertainty = "sikker" | "usikker";
-
-export interface RemainingContractLine {
-  linjeId: number;
-  beskrivelse: string;
-  del: IncomeForecastPart;
-  leietype: "RENT" | "DISCOUNT" | "CUSTOM_PARKERING";
-  periodeFra: string;
-  periodeTil: string; // reell kontraktsslutt, ELLER 31.12 hvis fornyelsesregelen er brukt
-  belopGjenstaende: number;
-  sikkerhet: RenewalCertainty;
-  fornyelseAntatt: boolean; // true kun når sikkerhet === "usikker" via fornyelsesregelen
-  originalSluttdato?: string; // linjens faktiske kontraktsslutt før antatt forlengelse
-  nyKontraktsnokkel?: string; // satt når en reell signert etterfølgerkontrakt finnes
-  nyKontraktStart?: string;
-}
-
-export interface RemainingTenantGroup {
+export interface RemainingAvvik {
   leietaker: string;
-  customerId: number;
   bygg: string;
-  lines: RemainingContractLine[];
+  belop: number;
+  forklaring: string;
 }
 
 export interface RemainingSnapshot {
   sistOppdatert: string;
   ar: number;
-  sikkerTotalDelA: number;
-  sikkerTotalDelB: number;
-  tenants: RemainingTenantGroup[];
+  // Netto "gjenstår å fakturere" for resten av 2026, summert over alle leieforhold
+  // (leietaker+bygg-par) - se metodikk-kommentar over REMAINING. IKKE lenger en
+  // sikker/usikker-splitt (fornyelsesantagelse-konseptet er fjernet, se under).
+  totalDelA: number;
+  totalDelB: number;
+  antallLeieforhold: number;
+  antallIkkeMatchetFlagget: number;
+  antallForklartOmsetningsleie: number;
+  antallForklartKontraktsendring: number;
+  antallAvsluttetNullstilt: number;
+  antallInternMustad: number;
+  // Leieforhold med et uforklart, ubekreftet avvik (allerede fakturert i NXT
+  // avviker fra Fazile sin årsverdi uten kjent årsak) - tom i dag, men strukturen
+  // finnes for å unngå at fremtidige avvik gjemmes i totalen uten varsel.
+  uforklarteAvvik: RemainingAvvik[];
 }
 
-// Se lib/incomeForecast.local.ts for full metodikk-kommentar. leietaker anonymisert til
-// "Demokunde N" (gjenbrukt fra RECEIVABLES/CONTRACTS-krysskoblingen der navnet finnes fra
-// før, ellers nye numre 278-293). bygg er reelle Mustad-seksjonsnavn (ikke sensitivt).
+// Full re-fetch av alle 55 eiendommer med reell utleie (Fazile rent_roll) + "Bokført
+// per leietaker" (NXT, eierandel-korrigert) - se scripts/build-remaining-summary.js
+// for nøyaktig fremgangsmåte ved neste oppdatering. Full leietaker/bygg-detalj ligger
+// i Redis-snapshotet bak "Gjenstår per leietaker (Fazile)"-fanen under (ETT
+// datagrunnlag for begge, ikke to divergerende kilder) - denne konstanten er kun
+// aggregatet som faktisk teller i prognosetotalen.
+//
+// METODIKK (endret 2026-08-24 etter tilbakemelding fra Morten, deretter forbedret
+// samme dag etter en dypere gjennomgang av "leieforhold til gjennomgang"-listen -
+// se memory/project_income-forecast-fazile-remaining-tenants-2026-08-24.md for full
+// bakgrunn på alle rundene):
+// - Leieforhold = (leietaker, bygg)-par - den fineste granulariteten NXT sin
+//   bokføring faktisk tillater (generalLedgerTransaction grupperes på
+//   customerNo+accountNo+orgUnit3, IKKE per Fazile kontrakt_id/linje_id).
+// - Gjenstår = FULL 2026-verdi (årsbeløp justert for kontraktens faktiske start-/
+//   sluttdato INNENFOR 2026, IKKE gjenværende dager i året) MINUS allerede fakturert
+//   i NXT for samme leietaker+bygg i år. IKKE lenger en fremover-rettet
+//   run-rate-pro-rata (forrige versjon, feil metodikk per Morten).
+// - 50 %-eierandel: Fazile-siden halveres som før (Strandveien 10/Lilleakerveien
+//   20-22 automatisk av rent_roll-verktøyet, Strandveien 4-8 manuelt pga. kjent
+//   verktøy-bug). NXT-siden ("allerede fakturert") er OGSÅ eierandel-korrigert nå -
+//   se INVOICED/BOOKED_3600_3699 sin kommentar: Fåbro Eiendom AS/Strandveien 10 AS/
+//   Strandveien 4-8 AS bokfører 100 % i eget regnskap, halvert manuelt her.
+// - Bygg-navn-alias: Fazile-seksjonsnavn og NXT-bygg-navn stemmer ikke alltid
+//   eksakt (mellomromsvarianter, og CC Vest-senteret heter "Lilleakerveien 16" i
+//   Fazile mot "CC Vest Senter" i NXT) - en kuratert alias-tabell i
+//   scripts/build-remaining-summary.js løser de bekreftede tilfellene (10 aliaser,
+//   inkl. "Lilleakerveien 2 Garasje"→"Lilleakerveien 2 - Garasje" som alene løste
+//   44 leieforhold - funnet 2026-08-24 ved å sjekke om leietakernavnet fantes
+//   EKSAKT i NXT under et annet bygg-navn for samme leietaker).
+// - Leietakernavn-fallback: når eksakt normalisert navn ikke matcher, prøves et
+//   "kjerne-navn" uten selskapsform/tegnsetting/bindestrek (f.eks. et leietakernavn
+//   skrevet med "A/S" i Fazile mot "AS" i NXT, eller med bindestrek i Fazile mot
+//   mellomrom i NXT, eller periode-uten-mellomrom i Fazile mot periode-med-mellomrom
+//   i NXT), men KUN når kjerne-navnet peker til nøyaktig én reell NXT-leietaker
+//   (unngår feilkobling ved tvetydighet). Løste 15 leieforhold 2026-08-24 (12 første runde, +3 etter at
+//   bindestrek/punktum ble byttet til mellomrom i stedet for fjernet).
+// - Interne Mustad-oppføringer ("Mustad Eiendom AS"/"Mustad Eiendomsdrift AS" som
+//   "leietaker" i Fazile, egne lokaler/administrative posteringer): flagget separat
+//   som "intern-mustad", ikke et reelt eksternt leieforhold - 21 leieforhold.
+// - Del A (leie) / Del B (parkering)-METODIKKFEIL funnet og rettet 2026-08-24:
+//   Fazile-siden bestemmer Del A/B via seksjonsnavn, NXT-siden via accountNo - for
+//   SAMME leieforhold kan disse to metodene plassere beløpet i ULIKE deler (f.eks.
+//   en kontorleiekontrakt der NXT har bokført noe under en parkeringskonto). Dette
+//   ga meningsløse, store negative Del B-tall i sum selv om SUMMEN (Del A+B) var
+//   riktig. Fikset: når et leieforhold entydig er ren Del A ELLER ren Del B på
+//   Fazile-siden, nettes HELE "allerede fakturert" (begge NXT-kontoer) mot akkurat
+//   det Del-et - løste hele 101 falske "kontraktsendring"/"omsetningsleie"-flagg
+//   (150→49 og 31→12) uten å endre totalsummen (kun A/B-fordelingen).
+// - Leieforhold uten treff i NXT: allerede fakturert=0, hele beløpet telles som
+//   gjenstår (kan bety ny kontrakt, eller en gjenstående bygg-navn-mismatch) - 25
+//   leieforhold, ned fra 110 før 2026-08-24-gjennomgangen. Klassifisert videre
+//   (ikke individuelt matchet, kun gruppert etter mest sannsynlig årsak):
+//   - Privatpersoner/små beløp på Sponhoggveien 2 og Lilleakerveien 2E (5 stk,
+//     samlet under 150 000 kr) - trolig reelle, nye, små leieforhold.
+//   - Kjente firmanavn med FLERE bygg der noen bygg mangler i NXT-datasettet for
+//     akkurat den (leietaker,bygg)-kombinasjonen (f.eks. en leietaker med en egen
+//     uteparkering-underseksjon) - ikke en navnefeil, bare ingen bokført historikk
+//     ennå for den spesifikke underseksjonen.
+//   - Ett leieforhold med et personnavn som inneholder "Mustad" (P-Bro mellom LV8
+//     og LV4, 293 607 kr) - sannsynlig familietilknytning til Mustad-navnet, IKKE
+//     reklassifisert som intern-mustad uten bekreftelse - flagget spesielt for
+//     Mortens vurdering.
+//   - Reelt nye/ukjente leietakere uten noen treff i NXT i det hele tatt.
+//   - To leieforhold med full=0 - ikke reelt et avvik, ingen handling nødvendig.
+//   Full liste: scripts/refresh-data/flagged-117.json (gitignored, ekte navn).
+// - Leieforhold der Fazile viser 0 kr (kontrakten er avsluttet i dag) men NXT har
+//   historisk fakturering i år: nullstilt til 0 (et avsluttet leieforhold genererer
+//   ikke mer inntekt - historisk fakturering er ferdig, ikke "gjenstående").
+//   10 leieforhold. MERK: én enkelt leietaker (parkeringsoperatør) alene står for 6
+//   av disse 10, med samlet 4 622 785 kr "allerede fakturert" i NXT i år fordelt på
+//   6 bygg/uteparkeringer - uvanlig stort for ett enkelt "avsluttet" leieforhold.
+//   IKKE undersøkt med faktiske transaksjoner ennå (kunne ikke rekke i denne
+//   runden) - sannsynlig forklaring er at parkeringsdriften er lagt om til en
+//   modell utenfor Fazile rent_roll (f.eks. omsetningsbasert), men dette bør
+//   Morten sjekke spesielt siden beløpet er stort.
+// - Negative leieforhold (allerede fakturert > Fazile sin årsverdi) ETTER Del A/B-
+//   fiksen er undersøkt med faktiske NXT-transaksjoner (ikke bare antatt) og faller
+//   i to bekreftede klasser, begge telt MED i totalen som de er (ikke gulvet, ikke
+//   skjult):
+//   1) CC Vest-leietakere (12 stk): NXT har bokført periodiske
+//      omsetningsleie-/minimumsleie-avregninger ("Overført fra Fazile") i tillegg
+//      til grunnleien - Fazile sin kontraktslinje-baserte årsverdi fanger kun opp
+//      grunnleien. Bekreftet ved faktisk transaksjonsuttrekk for én CC Vest-
+//      leietaker: -912 491 kr postert 30.06.2026 som egen linje på konto 3632,
+//      tekst "Overført fra Fazile" - ikke en del av den vanlige månedlige husleien.
+//   2) Andre leietakere (49 stk): Fazile viser kun DAGENS aktive kontrakt brukt
+//      for hele 2026 - hvis leieforholdet ble indeksregulert/endret i løpet av
+//      året, avviker det fra hva som faktisk ble fakturert tidligere. Bekreftet
+//      ved faktisk transaksjonsuttrekk for én leietaker på Lilleakerveien 10:
+//      kvartalsraten økte fra ca. 777 973 kr til 827 147 kr fra periode 4 2026, med en
+//      korreksjons-/reverseringspostering samme periode. IKKE individuelt
+//      verifisert for alle 49 - dette er den bekreftede MEKANISMEN, ikke en
+//      case-for-case-gjennomgang. Morten har varslet en fremtidig, grundigere
+//      gjennomgang av alle leieforhold med start/slutt i 2026.
+// - Omsetningsleie-avregning (steg 3 i inntektsprognose-roadmapen) er fortsatt
+//   IKKE bygget som egen komponent - klasse 1 over er en indirekte bekreftelse på
+//   at det trengs, ikke en erstatning for det.
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-08-14",
+  sistOppdatert: "2026-08-24",
   ar: 2026,
-  sikkerTotalDelA: 263196663,
-  sikkerTotalDelB: 10190166,
-  tenants: [
-  { leietaker: "Demokunde 22", customerId: 9001, bygg: "Arnstein Arnebergsvei 4", lines: [
-      { linjeId: 1, beskrivelse: "Kontrakt 82418", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 106528, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 242", customerId: 9002, bygg: "Gamle Drammensvei 10", lines: [
-      { linjeId: 2, beskrivelse: "Kontrakt 101943", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 45699, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 21", customerId: 9003, bygg: "Gamle Drammensvei 10", lines: [
-      { linjeId: 3, beskrivelse: "Kontrakt 82422", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 70211, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 20", customerId: 9004, bygg: "Gamle Drammensvei 10", lines: [
-      { linjeId: 4, beskrivelse: "Kontrakt 121658", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 65344, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 278", customerId: 9005, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 5, beskrivelse: "Kontrakt 81665", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 1217413, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-22" }
-  ] },
-  { leietaker: "Demokunde 279", customerId: 9006, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 6, beskrivelse: "Kontrakt 81695", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 169750, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 69", customerId: 9007, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 7, beskrivelse: "Kontrakt 81708", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 155716, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 280", customerId: 9008, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 8, beskrivelse: "Kontrakt 81711", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 3266, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 260 AS", customerId: 9009, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 9, beskrivelse: "Kontrakt 84683", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 0, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 281", customerId: 9010, bygg: "Lilleakerveien 16", lines: [
-      { linjeId: 10, beskrivelse: "Kontrakt 81726", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 8399, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 282", customerId: 9011, bygg: "Lilleakerveien 2 Garasje", lines: [
-      { linjeId: 11, beskrivelse: "Kontrakt 81817", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 28212, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 12, beskrivelse: "Kontrakt 81817", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 18808, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 254 AS", customerId: 9012, bygg: "Lilleakerveien 2 Garasje", lines: [
-      { linjeId: 13, beskrivelse: "Kontrakt 81820", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 9766, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 254 AS", customerId: 9013, bygg: "Lilleakerveien 2A", lines: [
-      { linjeId: 14, beskrivelse: "Kontrakt 84853", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 0, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 254 AS", customerId: 9014, bygg: "Lilleakerveien 2C", lines: [
-      { linjeId: 15, beskrivelse: "Kontrakt 81889", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 29299, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 282", customerId: 9015, bygg: "Lilleakerveien 2D", lines: [
-      { linjeId: 16, beskrivelse: "Kontrakt 81887", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 254557, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 17, beskrivelse: "Kontrakt 81887", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 4314, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 283", customerId: 9016, bygg: "Lilleakerveien 2E", lines: [
-      { linjeId: 18, beskrivelse: "Kontrakt 81962", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 7616, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 13", customerId: 9017, bygg: "Lilleakerveien 2E", lines: [
-      { linjeId: 19, beskrivelse: "Kontrakt 89776", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 38494, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-18" }
-  ] },
-  { leietaker: "Demokunde 186", customerId: 9018, bygg: "Lilleakerveien 4CDEF Uteparkering", lines: [
-      { linjeId: 20, beskrivelse: "Kontrakt 82007", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 32988, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 24", customerId: 9019, bygg: "Lilleakerveien 6 Uteparkering", lines: [
-      { linjeId: 21, beskrivelse: "Kontrakt 82856", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 43358, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 284", customerId: 9020, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 22, beskrivelse: "Kontrakt 82046", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 699853, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" },
-      { linjeId: 23, beskrivelse: "Kontrakt 82046", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 101047, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" },
-      { linjeId: 24, beskrivelse: "Kontrakt 82046", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 101047, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" },
-      { linjeId: 25, beskrivelse: "Kontrakt 82046", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 23721, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" }
-  ] },
-  { leietaker: "Demokunde 285", customerId: 9021, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 26, beskrivelse: "Kontrakt 82062", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 97351, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 27, beskrivelse: "Kontrakt 82062", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6882, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 286", customerId: 9022, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 28, beskrivelse: "Kontrakt 82068", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 139492, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 163", customerId: 9023, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 29, beskrivelse: "Kontrakt 82071", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10780, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 30, beskrivelse: "Kontrakt 82070", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 305019, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 201", customerId: 9024, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 31, beskrivelse: "Kontrakt 82089", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 297481, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-26" },
-      { linjeId: 32, beskrivelse: "Kontrakt 82089", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10786, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-26" },
-      { linjeId: 33, beskrivelse: "Kontrakt 82089", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 38717, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-26" },
-      { linjeId: 34, beskrivelse: "Kontrakt 82098", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10678, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-26" }
-  ] },
-  { leietaker: "Demokunde 29", customerId: 9025, bygg: "Lilleakerveien 8", lines: [
-      { linjeId: 35, beskrivelse: "Kontrakt 122831", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 199932, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-04" },
-      { linjeId: 36, beskrivelse: "Kontrakt 131837", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 0, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-04" }
-  ] },
-  { leietaker: "Demokunde 194", customerId: 9026, bygg: "Lilleakerveien 8 Uteparkering", lines: [
-      { linjeId: 37, beskrivelse: "Kontrakt 82050", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 31766, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 285", customerId: 9027, bygg: "Lilleakerveien 10", lines: [
-      { linjeId: 38, beskrivelse: "Kontrakt 82113", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10093, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 39, beskrivelse: "Kontrakt 82113", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 2937, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 215", customerId: 9028, bygg: "Lilleakerveien 10", lines: [
-      { linjeId: 40, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 21894, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 41, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10756, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 42, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10678, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 43, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 5865, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 44, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 2881, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 45, beskrivelse: "Kontrakt 82115", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 2860, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 163", customerId: 9029, bygg: "Lilleakerveien 10", lines: [
-      { linjeId: 46, beskrivelse: "Kontrakt 82117", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10678, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 47, beskrivelse: "Kontrakt 82117", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 9890, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 48, beskrivelse: "Kontrakt 82118", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 9890, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 49, beskrivelse: "Kontrakt 82117", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 39559, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 50, beskrivelse: "Kontrakt 82117", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 2937, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 121", customerId: 9030, bygg: "Lilleakerveien 10", lines: [
-      { linjeId: 51, beskrivelse: "Kontrakt 82126", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10079, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 24", customerId: 9031, bygg: "Lilleakerveien 10", lines: [
-      { linjeId: 52, beskrivelse: "Kontrakt 82130", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 937507, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" },
-      { linjeId: 53, beskrivelse: "Kontrakt 82130", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 165247, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" },
-      { linjeId: 54, beskrivelse: "Kontrakt 82130", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 10085, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 260 AS", customerId: 9032, bygg: "Lilleakerveien 14", lines: [
-      { linjeId: 55, beskrivelse: "Kontrakt 81612", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 1663241, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 24", customerId: 9033, bygg: "Lilleakerveien 14", lines: [
-      { linjeId: 56, beskrivelse: "Kontrakt 81618", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 273946, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 260 AS", customerId: 9034, bygg: "Lilleakerveien 14 Uteparkering", lines: [
-      { linjeId: 57, beskrivelse: "Kontrakt 81612", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 4097, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 1", customerId: 9035, bygg: "Lilleakerveien 31", lines: [
-      { linjeId: 58, beskrivelse: "Kontrakt 81556", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 34731, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" },
-      { linjeId: 59, beskrivelse: "Kontrakt 81556", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 36407, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 25", customerId: 9036, bygg: "Lilleakerveien 31", lines: [
-      { linjeId: 60, beskrivelse: "Kontrakt 81598", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 35239, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 260 AS", customerId: 9037, bygg: "P-Bro mellom LV8 og LV4", lines: [
-      { linjeId: 61, beskrivelse: "Kontrakt 91842", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 18008, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 286", customerId: 9038, bygg: "P-Bro Uteparkering", lines: [
-      { linjeId: 62, beskrivelse: "Kontrakt 82215", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 8595, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 24", customerId: 9039, bygg: "P-Bro Uteparkering", lines: [
-      { linjeId: 63, beskrivelse: "Kontrakt 82223", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6807, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 287", customerId: 9040, bygg: "Sponhoggveien 2", lines: [
-      { linjeId: 64, beskrivelse: "Kontrakt 82271", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 12087, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 244 AS", customerId: 9041, bygg: "Sponhoggveien 2", lines: [
-      { linjeId: 65, beskrivelse: "Kontrakt 82274", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 19193, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 265", customerId: 9042, bygg: "Sponhoggveien 2", lines: [
-      { linjeId: 66, beskrivelse: "Kontrakt 82275", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 325475, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 67, beskrivelse: "Kontrakt 82276", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 288524, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 68, beskrivelse: "Kontrakt 82275", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 94859, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 69, beskrivelse: "Kontrakt 82277", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6043, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 70, beskrivelse: "Kontrakt 82276", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 40161, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 288", customerId: 9043, bygg: "Sponhoggveien 2", lines: [
-      { linjeId: 71, beskrivelse: "Kontrakt 82272", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6043, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 289", customerId: 9044, bygg: "Sponhoggveien 2", lines: [
-      { linjeId: 72, beskrivelse: "Kontrakt 82273", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6043, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 87", customerId: 9045, bygg: "Strandveien 4-8", lines: [
-      { linjeId: 73, beskrivelse: "Kontrakt 82452", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 143494, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" },
-      { linjeId: 74, beskrivelse: "Kontrakt 82452", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 7760, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 129", customerId: 9046, bygg: "Strandveien 4-8", lines: [
-      { linjeId: 75, beskrivelse: "Kontrakt 82459", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 22491, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 290", customerId: 9047, bygg: "13-17-19 Uteparkering", lines: [
-      { linjeId: 76, beskrivelse: "Kontrakt 82759", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 22252, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 291", customerId: 9048, bygg: "13-17-19 Uteparkering", lines: [
-      { linjeId: 77, beskrivelse: "Kontrakt 82767", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 6112, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 291", customerId: 9049, bygg: "13B", lines: [
-      { linjeId: 78, beskrivelse: "Kontrakt 82294", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 64914, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 27", customerId: 9050, bygg: "13B", lines: [
-      { linjeId: 79, beskrivelse: "Kontrakt 82306", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 54784, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 199", customerId: 9051, bygg: "13B", lines: [
-      { linjeId: 80, beskrivelse: "Kontrakt 93557", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 15876, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] },
-  { leietaker: "Demokunde 221 AS", customerId: 9052, bygg: "13B", lines: [
-      { linjeId: 81, beskrivelse: "Kontrakt 82331", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 72800, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" },
-      { linjeId: 82, beskrivelse: "Kontrakt 82330", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 379166, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-03" }
-  ] },
-  { leietaker: "Demokunde 221 AS", customerId: 9053, bygg: "13C", lines: [
-      { linjeId: 83, beskrivelse: "Kontrakt 82330", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 18173, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" },
-      { linjeId: 84, beskrivelse: "Kontrakt 82330", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 15802, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-11-30" }
-  ] },
-  { leietaker: "Demokunde 27", customerId: 9054, bygg: "19", lines: [
-      { linjeId: 85, beskrivelse: "Kontrakt 82306", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 0, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 292", customerId: 9055, bygg: "Vollsveien 13D", lines: [
-      { linjeId: 86, beskrivelse: "Kontrakt 82366", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 24412, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-31" }
-  ] },
-  { leietaker: "Demokunde 293", customerId: 9056, bygg: "Vollsveien 13D", lines: [
-      { linjeId: 87, beskrivelse: "Kontrakt 82367", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 3545, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-10-30" }
-  ] },
-  { leietaker: "Demokunde 26", customerId: 9057, bygg: "Vollsveien 13D", lines: [
-      { linjeId: 88, beskrivelse: "Kontrakt 82368", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 8743, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-31" }
-  ] },
-  { leietaker: "Demokunde 18", customerId: 9058, bygg: "Vollsveien 13D", lines: [
-      { linjeId: 89, beskrivelse: "Kontrakt 82373", del: "A", leietype: "RENT", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 953, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-08-30" }
-  ] },
-  { leietaker: "Demokunde 159", customerId: 9059, bygg: "17-19-21 Uteparkering", lines: [
-      { linjeId: 90, beskrivelse: "Kontrakt 82791", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 74321, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 91, beskrivelse: "Kontrakt 82791", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 8461, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" },
-      { linjeId: 92, beskrivelse: "Kontrakt 82791", del: "B", leietype: "CUSTOM_PARKERING", periodeFra: "2026-08-15", periodeTil: "2026-12-31", belopGjenstaende: 49547, sikkerhet: "usikker", fornyelseAntatt: true, originalSluttdato: "2026-09-30" }
-  ] }
-  ],
+  totalDelA: 154264137.48,
+  totalDelB: 11285237.61,
+  antallLeieforhold: 729,
+  antallIkkeMatchetFlagget: 25,
+  antallForklartOmsetningsleie: 12,
+  antallForklartKontraktsendring: 49,
+  antallAvsluttetNullstilt: 10,
+  antallInternMustad: 21,
+  uforklarteAvvik: [],
 };
 
 export interface ManualNxtVoucher {
@@ -451,13 +338,14 @@ export interface BookedAccountRangeSnapshot {
 }
 
 // Bygg-/selskapsnavn, ikke leietaker-identifiserende - identisk med .local.ts, ingen
-// anonymisering nødvendig. Se lib/incomeForecast.local.ts for full metodikk-kommentar.
+// anonymisering nødvendig. EIERANDEL-KORRIGERT 2026-08-24, se lib/incomeForecast.local.ts
+// for full metodikk-kommentar.
 export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
   sistOppdatert: "2026-08-24",
   ar: 2026,
   kontoFra: 3600,
   kontoTil: 3699,
-  totalBelop: 577808364.82,
+  totalBelop: 535927158.83,
   perSelskap: [
     {
       selskap: "Mustad Eiendom AS",
@@ -523,11 +411,11 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
     },
     {
       selskap: "Fåbro Eiendom AS",
-      belop: 35770717.3,
+      belop: 17885358.65,
       bygg: [
-        { bygg: "Lilleakerveien 20", belop: 14842233.58 },
-        { bygg: "Lilleakerveien 22", belop: 20570287.92 },
-        { bygg: "Lilleakerveien 20-22 Uteparkering", belop: 358195.8 },
+        { bygg: "Lilleakerveien 20", belop: 7421116.79 },
+        { bygg: "Lilleakerveien 22", belop: 10285143.96 },
+        { bygg: "Lilleakerveien 20-22 Uteparkering", belop: 179097.9 },
       ],
     },
     {
@@ -570,15 +458,15 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
     },
     {
       selskap: "Strandveien 10 AS",
-      belop: 1164482.11,
-      bygg: [{ bygg: "Strandveien 10", belop: 1164482.11 }],
+      belop: 582241.06,
+      bygg: [{ bygg: "Strandveien 10", belop: 582241.06 }],
     },
     {
       selskap: "Strandveien 4-8 AS",
-      belop: 46827212.57,
+      belop: 23413606.29,
       bygg: [
         { bygg: "Fellesanlegg", belop: 0 },
-        { bygg: "Strandveien 4-8", belop: 46827212.57 },
+        { bygg: "Strandveien 4-8", belop: 23413606.29 },
       ],
     },
   ],
@@ -599,14 +487,14 @@ export interface ReconciliationSnapshot {
 }
 
 export const RECONCILIATION: ReconciliationSnapshot = {
-  sistOppdatert: "2026-08-14",
+  sistOppdatert: "2026-08-24",
   checks: [
     {
       id: "totalsum-plausibel",
       label: "Total prognose 2026 er i rimelig størrelsesorden",
       status: "ok",
       notat:
-        "Del A ~791,4 mill kr + Del B ~53,0 mill kr = ~844,4 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Virker konsistent med porteføljens størrelse.",
+        "Del A ~634,1 mill kr + Del B ~51,0 mill kr = ~685,2 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Tallet gikk ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
     },
     {
       id: "stort-enkeltbilag",
@@ -616,18 +504,32 @@ export const RECONCILIATION: ReconciliationSnapshot = {
         "Bilag 28779-4 (Mustad Eiendom AS, 'Avsetning omsetningsleie 2025 iht vedlegg', -12,14 mill kr) er uvanlig stort sammenlignet med de andre manuelle postene. Bør verifiseres mot regnskap/vedlegg før tallet stoles på fullt ut.",
     },
     {
-      id: "fornyelsesregel-konservativ",
-      label: "Fornyelsesregelen antar ingen reell fornyelse er sjekket",
-      status: "varsel",
+      id: "nxt-eierandel-feil",
+      label: "NXT bokfører 100 % for tre 50 %-eide bygg - korrigert",
+      status: "ok",
       notat:
-        "59 leietaker/bygg-kombinasjoner (92 linjer, ~9,5 mill kr) er merket 'usikker' fordi kontrakten utløper før 31.12.2026 - ingen sjekk er gjort for om en reell etterfølgerkontrakt allerede finnes (ville krevd egne spørringer per leietaker). Tallet er en konservativ antagelse, ikke bekreftet fornyelse.",
+        "Fåbro Eiendom AS, Strandveien 10 AS og Strandveien 4-8 AS bokfører 100 % av leieinntekten i sitt eget NXT-regnskap, ikke Mustads 50 %-andel (verifisert kvantitativt: NXT sin annualiserte rate for én leietaker i hvert av Strandveien 4-8 og Strandveien 10 matchet Fazile sin UHALVERTE verdi, ikke den halverte). INVOICED og BOOKED_3600_3699 er korrigert 2026-08-24 (halvert for disse 3 selskapene, som har 100 % av sin omsetning knyttet til de eierandel-byggene).",
+    },
+    {
+      id: "kostnadstyper-ikke-med",
+      label: "Felleskostnader/energi/eiendomsskatt/kantinebidrag er ikke med i 'Gjenstår å fakturere'",
+      status: "ok",
+      notat:
+        "Verifisert direkte mot Fazile sitt skjema 2026-08-24: dette er (heldigvis) tilfelle, men som en bivirkning av datamodellen - felleskostnader (contract_line.type='COMMON_COSTS') mangler leieobjekt-referanse og kan derfor ikke kobles til en seksjon av rent_roll, mens energi/eiendomsskatt/kantinebidrag ligger som en udokumentert 'CUSTOM'-type verktøyet ikke gjenkjenner. Markedsføringsbidrag (MARKETING_FEE) er ikke spesifikt verifisert. Siden dette er en bivirkning av verktøyet og ikke et bevisst, robust filter, bør det sjekkes på nytt hvis Fazile endrer rent_roll.",
+    },
+    {
+      id: "leieforhold-avvik-forklart",
+      label: "117 av 729 leieforhold er flagget til gjennomgang - 0 uforklarte",
+      status: "ok",
+      notat:
+        "Etter Morten sin oppfølging 2026-08-24 ('finn hva de heter i NXT, snevre ned antallet') ble 297 opprinnelig flaggede leieforhold undersøkt på nytt: 5 nye bygg-navn-aliaser (bl.a. 'Lilleakerveien 2 Garasje'→'Lilleakerveien 2 - Garasje', fant 44 skjulte treff) og en kjerne-navn-fallback (stavevarianter, 15 treff totalt inkl. bindestrek-/punktumvarianter) løste 85 av 110 'ikke matchet'-tilfeller. En Del A/B-nettingsfiks fjernet 101 falske 'kontraktsendring'/'omsetningsleie'-flagg forårsaket av at Fazile og NXT klassifiserer leie vs. parkering ulikt for samme leieforhold. Resultat: 25 fortsatt uten NXT-treff (ny kontrakt eller gjenstående navn-/bygg-mismatch - se REMAINING sin kommentar for videre inndeling: privatpersoner, kjente firma på ekstra underseksjoner, ett leieforhold med et Mustad-slektsnavn som mulig familietilknytning, reelt nye leietakere, og 2 med 0 kr), 12 CC Vest-leieforhold med trolig omsetningsleie-avregning i NXT (bekreftet for én leietaker), 49 med trolig kontraktsendring/indeksregulering i året (bekreftet for én leietaker, IKKE individuelt verifisert for alle 49), 10 allerede avsluttet i Fazile og nullstilt til 0 (hvorav én enkelt leietaker alene utgjør 6 stk og 4,6 mill kr - stort nok til at Morten bør sjekke det spesielt). I tillegg er 21 leieforhold der 'leietaker' er Mustad selv (egne lokaler) flagget separat som 'intern-mustad' - ikke reelle eksterne leieforhold. 0 uforklarte avvik gjenstår.",
     },
     {
       id: "del-ab-metodikk-ulik",
       label: "Del A/B-splitten er ikke identisk metodikk på tvers av kilder",
       status: "varsel",
       notat:
-        "INVOICED bruker NXT-kontonummer (3640-3642=Del B). REMAINING (Fazile) bruker en seksjonsnavn-heuristikk ('garasje'/'parkering'/'p-hus'/'p-bro' i navnet). Grov, men konsistent innad i hver kilde.",
+        "INVOICED bruker NXT-kontonummer (3640-3642=Del B). REMAINING (Fazile) bruker en seksjonsnavn-heuristikk ('garasje'/'parkering'/'p-hus'/'p-bro' i navnet). For REMAINING sin leieforhold-beregning er hovedeffekten av dette rettet 2026-08-24 (netter hele 'allerede fakturert' mot Fazile sitt Del for entydige leieforhold, se scripts/build-remaining-summary.js), men splitten er fortsatt IKKE identisk metodikk på tvers av INVOICED og REMAINING generelt - grov, men nå konsistent innad i hver kilde.",
     },
     {
       id: "gnr-bnr-uverifisert",
@@ -651,7 +553,8 @@ export interface OwnershipShareSnapshot {
 }
 
 // Bygg-navn, ikke leietaker-identifiserende - identisk med .local.ts, ingen anonymisering
-// nødvendig. Se lib/incomeForecast.local.ts for full kommentar.
+// nødvendig. Se lib/incomeForecast.local.ts for full kommentar og status (2026-08-24: REMAINING
+// har nå eierandelen korrekt bakt inn via Fazile, INVOICED/BOOKED_3600_3699 er uverifisert).
 export const OWNERSHIP_SHARE_RULES: OwnershipShareSnapshot = {
   sistOppdatert: "2026-08-24",
   rules: [
@@ -675,11 +578,8 @@ export function buildIncomeForecastContext(): string {
   const manualNxtB = MANUAL_NXT.vouchers.filter((v) => v.del === "B").reduce((s, v) => s + v.belop, 0);
   lines.push(`- Manuelle bilag allerede i NXT: Del A ${formatKr(manualNxtA)}, Del B ${formatKr(manualNxtB)} (${MANUAL_NXT.vouchers.length} bilag)`);
 
-  const remainingLines = REMAINING.tenants.flatMap((t) => t.lines);
-  const remainingSikker = remainingLines.filter((l) => l.sikkerhet === "sikker").reduce((s, l) => s + l.belopGjenstaende, 0);
-  const remainingUsikker = remainingLines.filter((l) => l.sikkerhet === "usikker").reduce((s, l) => s + l.belopGjenstaende, 0);
   lines.push(
-    `- Gjenstår å fakturere resten av året (Fazile, ${REMAINING.tenants.length} leietakere): sikkert ${formatKr(remainingSikker)}, usikkert/antatt fornyelse ${formatKr(remainingUsikker)}`,
+    `- Gjenstår å fakturere resten av 2026 (${REMAINING.antallLeieforhold} leieforhold): Del A ${formatKr(REMAINING.totalDelA)}, Del B ${formatKr(REMAINING.totalDelB)}`,
   );
 
   lines.push("\nAVSTEMMINGSKONTROLLER:");

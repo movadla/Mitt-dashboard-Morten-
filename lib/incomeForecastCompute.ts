@@ -4,8 +4,7 @@ import type { ManualIncomeLine } from "./incomeForecastManual";
 export interface PartTotals {
   fakturertHittil: number;
   manueltNxtHittil: number;
-  gjenstaendeSikker: number;
-  gjenstaendeUsikker: number;
+  gjenstaende: number;
   manuelleLinjer: number;
   totalt: number;
 }
@@ -14,11 +13,10 @@ export interface ForecastRollup {
   delA: PartTotals;
   delB: PartTotals;
   totalt: number;
-  hvoravAntattFornyelse: number;
 }
 
 function emptyTotals(): PartTotals {
-  return { fakturertHittil: 0, manueltNxtHittil: 0, gjenstaendeSikker: 0, gjenstaendeUsikker: 0, manuelleLinjer: 0, totalt: 0 };
+  return { fakturertHittil: 0, manueltNxtHittil: 0, gjenstaende: 0, manuelleLinjer: 0, totalt: 0 };
 }
 
 export function computeForecastRollup(params: {
@@ -42,16 +40,8 @@ export function computeForecastRollup(params: {
     else delB.manueltNxtHittil += v.belop;
   }
 
-  delA.gjenstaendeSikker += remaining.sikkerTotalDelA;
-  delB.gjenstaendeSikker += remaining.sikkerTotalDelB;
-
-  for (const t of remaining.tenants) {
-    for (const l of t.lines) {
-      const target = l.del === "A" ? delA : delB;
-      if (l.sikkerhet === "sikker") target.gjenstaendeSikker += l.belopGjenstaende;
-      else target.gjenstaendeUsikker += l.belopGjenstaende;
-    }
-  }
+  delA.gjenstaende += remaining.totalDelA;
+  delB.gjenstaende += remaining.totalDelB;
 
   for (const m of manualLines) {
     if (!m.aktiv) continue;
@@ -60,14 +50,12 @@ export function computeForecastRollup(params: {
   }
 
   for (const totals of [delA, delB]) {
-    totals.totalt =
-      totals.fakturertHittil + totals.manueltNxtHittil + totals.gjenstaendeSikker + totals.gjenstaendeUsikker + totals.manuelleLinjer;
+    totals.totalt = totals.fakturertHittil + totals.manueltNxtHittil + totals.gjenstaende + totals.manuelleLinjer;
   }
 
   return {
     delA,
     delB,
     totalt: delA.totalt + delB.totalt,
-    hvoravAntattFornyelse: delA.gjenstaendeUsikker + delB.gjenstaendeUsikker,
   };
 }

@@ -6,20 +6,40 @@ export interface RemainingTenantLine {
   bygg: string;
   linjetype: string;
   beskrivelse: string;
-  gjenstaende: number;
+  fullArsverdi2026: number;
+}
+
+export type RemainingByggStatus =
+  | "ok"
+  | "avsluttet"
+  | "ikke-matchet-i-nxt"
+  | "forklart-omsetningsleie"
+  | "forklart-kontraktsendring"
+  | "intern-mustad";
+
+export interface RemainingByggGruppe {
+  bygg: string;
+  fullArsverdi2026DelA: number;
+  fullArsverdi2026DelB: number;
+  alleredeFakturertDelA: number;
+  alleredeFakturertDelB: number;
+  gjenstarTotal: number;
+  status: RemainingByggStatus;
+  forklaring: string | null;
 }
 
 export interface RemainingTenant {
   navn: string;
-  totalBelop: number;
+  fullArsverdi2026: number;
+  alleredeFakturertNxt2026: number;
+  totalBelop: number; // netto gjenstår - kan i sjeldne tilfeller være negativ, se byggGrupper[].forklaring
+  byggGrupper: RemainingByggGruppe[];
   lines: RemainingTenantLine[];
 }
 
 export interface RemainingTenantsSnapshot {
   sistOppdatert: string;
   ar: number;
-  periodeFra: string;
-  periodeTil: string;
   totalBelop: number;
   antallLeietakere: number;
   tenants: RemainingTenant[];

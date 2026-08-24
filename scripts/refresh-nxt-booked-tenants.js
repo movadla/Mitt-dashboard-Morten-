@@ -51,11 +51,32 @@
 //
 // 5. Oppdater scripts/refresh-data/nxt-booked-tenants/meta.json: { "sistOppdatert": "YYYY-MM-DD", "ar": 2026 }
 //
-// 6. Kjør: node scripts/refresh-nxt-booked-tenants.js
+// 6. VIKTIG - EIERANDEL (lagt til 2026-08-24): Fåbro Eiendom AS (4489957), Strandveien 10 AS
+//    (4489969) og Strandveien 4-8 AS (4489967) er 50 %-eide, men bokfører 100 % av
+//    leieinntekten i sitt eget NXT-regnskap (verifisert kvantitativt mot Fazile sin halverte
+//    rent_roll-verdi for kjente leietakere - se REMAINING sin metodikk-kommentar i
+//    lib/incomeForecast.local.ts). Halver derfor ALLE "belop"-verdier i disse 3 selskapenes
+//    filer FØR steg 7, f.eks.:
+//      for (const f of ["4489957.json","4489967.json","4489969.json"]) {
+//        const d = JSON.parse(fs.readFileSync(dir+"/"+f));
+//        for (const l of d.lines) l.belop = Math.round(l.belop*0.5*100)/100;
+//        fs.writeFileSync(dir+"/"+f, JSON.stringify(d, null, 2));
+//      }
+//    Sjekk om Fazile/NXT har fikset dette oppstrøms før du kjører på nytt - hvis de 3
+//    selskapenes egne tall allerede reflekterer 50 %, IKKE halver på nytt (dobbelthalvering).
+//
+// 7. Kjør: node scripts/refresh-nxt-booked-tenants.js
 //
 // Scriptet grupperer leietakere PÅ TVERS av selskaper (normalisert navn, ikke customerNo -
 // customerNo er selskaps-scoped i NXT, samme fysiske leietaker kan ha ulike numre i ulike
 // selskaper). Se prosjekt-minnet "income-forecast-rebuild-roadmap" for full bakgrunn.
+//
+// ETTER at dette scriptet er kjørt (Redis er oppdatert): dump snapshotet til
+// scripts/refresh-data/booked-tenants-snapshot.json (brukes av scripts/build-remaining-summary.js):
+//   node -e "const Redis=require('ioredis');const r=new Redis(process.env.REDIS_URL);
+//   r.hget('jobb:inntektsprognose-bokfort-leietakere','snapshot').then(v=>{require('fs')
+//   .writeFileSync('scripts/refresh-data/booked-tenants-snapshot.json',v);r.disconnect();})"
+// (last inn REDIS_URL fra .env.local først, se loadEnvLocal() under for mønsteret)
 
 const fs = require("fs");
 const path = require("path");

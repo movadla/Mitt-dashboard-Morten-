@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Search, TrendingUp, Users, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Search, TrendingUp, Users, XCircle } from "lucide-react";
 import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
@@ -12,19 +12,13 @@ import {
   RECONCILIATION,
   REMAINING,
   type ReconciliationStatus,
-  type RemainingTenantGroup,
-  type RenewalCertainty,
 } from "@/lib/incomeForecast";
 import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
-import type { RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
+import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
+import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
 import { computeForecastRollup, type ForecastRollup, type PartTotals } from "@/lib/incomeForecastCompute";
 import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
 import { vibrate } from "@/lib/haptics";
-
-const CERTAINTY_STYLE: Record<RenewalCertainty, string> = {
-  sikker: "bg-status-positive/15 text-status-positive",
-  usikker: "bg-status-warning/15 text-status-warning",
-};
 
 const CONFIDENCE_STYLE: Record<ManualLineConfidence, string> = {
   "høy": "bg-status-positive/12 text-status-positive",
@@ -42,6 +36,16 @@ const RECONCILIATION_COLOR: Record<ReconciliationStatus, string> = {
   ok: "text-status-positive",
   varsel: "text-status-warning",
   feil: "text-status-danger",
+};
+
+const CONTRACT_EXPIRY_STATUS_LABEL: Record<ContractExpiryStatus, string> = {
+  apen: "Åpen",
+  reforhandlet: "Reforhandlet",
+};
+
+const CONTRACT_EXPIRY_STATUS_STYLE: Record<ContractExpiryStatus, string> = {
+  apen: "bg-status-warning/15 text-status-warning",
+  reforhandlet: "bg-status-positive/12 text-status-positive",
 };
 
 function oldestSnapshotDate(): string | null {
@@ -338,10 +342,34 @@ function BookedTenantsBlock() {
   );
 }
 
+const BYGG_STATUS_LABEL: Record<string, string> = {
+  ok: "OK",
+  avsluttet: "Avsluttet, nullstilt",
+  "ikke-matchet-i-nxt": "Ikke funnet i NXT",
+  "forklart-omsetningsleie": "Omsetningsleie i NXT",
+  "forklart-kontraktsendring": "Kontraktsendring i år",
+  "intern-mustad": "Intern (Mustad selv)",
+};
+
+const BYGG_STATUS_STYLE: Record<string, string> = {
+  ok: "bg-surface-3 text-ink-3",
+  avsluttet: "bg-status-danger/12 text-status-danger",
+  "ikke-matchet-i-nxt": "bg-accent/15 text-accent",
+  "forklart-omsetningsleie": "bg-status-warning/15 text-status-warning",
+  "forklart-kontraktsendring": "bg-status-warning/15 text-status-warning",
+  "intern-mustad": "bg-surface-3 text-ink-4",
+};
+
+const REVIEW_STATUSES = [
+  "ikke-matchet-i-nxt",
+  "forklart-omsetningsleie",
+  "forklart-kontraktsendring",
+  "avsluttet",
+  "intern-mustad",
+] as const;
+
 function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot["tenants"][number] }) {
   const [open, setOpen] = useState(false);
-  const sumLines = tenant.lines.reduce((s, l) => s + l.gjenstaende, 0);
-  const avstemmer = Math.abs(sumLines - tenant.totalBelop) < 1;
   return (
     <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
       <button
@@ -364,40 +392,63 @@ function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot[
           </svg>
           <span className="truncate text-sm">{tenant.navn}</span>
           <span className="shrink-0 text-2xs text-ink-4">
-            {tenant.lines.length} {tenant.lines.length === 1 ? "linje" : "linjer"}
+            {tenant.byggGrupper.length} {tenant.byggGrupper.length === 1 ? "bygg" : "bygg"}
           </span>
         </span>
         <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(tenant.totalBelop)}</span>
       </button>
       {open && (
-        <div className="border-t border-line px-3 pb-3 pt-1">
+        <div className="border-t border-line px-3 pb-3 pt-2">
+          <p className="mb-2 text-2xs text-ink-4">
+            Full årsverdi 2026: <span className="font-medium tabular-nums text-ink-2">{formatKr(tenant.fullArsverdi2026)}</span> − allerede
+            fakturert i NXT: <span className="font-medium tabular-nums text-ink-2">{formatKr(tenant.alleredeFakturertNxt2026)}</span> ={" "}
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(tenant.totalBelop)}</span>
+          </p>
           <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[420px] text-sm">
+            <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className="text-left text-ink-4">
                   <th className="px-2 py-1.5 text-2xs font-medium">Bygg</th>
-                  <th className="px-2 py-1.5 text-2xs font-medium">Leietype</th>
-                  <th className="px-2 py-1.5 text-2xs font-medium">Beskrivelse</th>
+                  <th className="px-2 py-1.5 text-right text-2xs font-medium">Full årsverdi</th>
+                  <th className="px-2 py-1.5 text-right text-2xs font-medium">Allerede fakturert</th>
                   <th className="px-2 py-1.5 text-right text-2xs font-medium">Gjenstår</th>
+                  <th className="px-2 py-1.5 text-2xs font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {tenant.lines.map((l, i) => (
-                  <tr key={i} className="border-t border-line">
-                    <td className="px-2 py-1.5 text-ink-2">{l.bygg}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-ink-3">{l.linjetype}</td>
-                    <td className="px-2 py-1.5 text-ink-3">{l.beskrivelse}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-ink-2">{formatKr(l.gjenstaende)}</td>
+                {tenant.byggGrupper.map((b, i) => (
+                  <tr key={i} className="border-t border-line align-top">
+                    <td className="px-2 py-1.5 text-ink-2">{b.bygg}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-ink-3">
+                      {formatKr(b.fullArsverdi2026DelA + b.fullArsverdi2026DelB)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-ink-3">
+                      {formatKr(b.alleredeFakturertDelA + b.alleredeFakturertDelB)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums font-medium text-ink-1">
+                      {formatKr(b.gjenstarTotal)}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-2xs font-medium ${BYGG_STATUS_STYLE[b.status]}`}>
+                        {BYGG_STATUS_LABEL[b.status]}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className={`mt-2 text-2xs ${avstemmer ? "text-status-positive" : "text-status-danger"}`}>
-            {avstemmer
-              ? `Avstemt: sum av linjene stemmer med totalen (${formatKr(sumLines)})`
-              : `Avvik: sum av linjene (${formatKr(sumLines)}) matcher IKKE totalen (${formatKr(tenant.totalBelop)})`}
-          </p>
+          {tenant.byggGrupper.some((b) => b.forklaring) && (
+            <ul className="mt-2 flex flex-col gap-1">
+              {tenant.byggGrupper
+                .filter((b) => b.forklaring)
+                .map((b, i) => (
+                  <li key={i} className="text-2xs text-ink-4">
+                    <span className="font-medium text-ink-3">{b.bygg}:</span> {b.forklaring}
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
       )}
     </div>
@@ -443,10 +494,9 @@ function RemainingTenantsFullBlock() {
       {!collapsed && (
         <>
           <p className="mb-2 text-2xs text-ink-4">
-            Kilde: Fazile rent_roll — alle 55 eiendommer, aktive kontraktslinjer{" "}
-            {snapshot ? `${formatDateDMY(snapshot.periodeFra)}–${formatDateDMY(snapshot.periodeTil)}` : ""}{" "}
-            pro-ratert (årsbeløp × gjenværende dager / dager i året). Full leietaker-detalj — erstatter ikke &quot;Gjenstår å
-            fakturere&quot; over, som fortsatt brukes i selve prognosetotalen.
+            Kilde: full 2026-verdi per leieforhold (Fazile, årsbeløp justert for kontraktens start-/sluttdato i 2026) minus allerede
+            fakturert i NXT (eierandel-korrigert) for samme leietaker+bygg. Samme tall som &quot;Gjenstår å fakturere&quot; over,
+            brutt ned per leietaker — ikke et separat, konkurrerende estimat.
           </p>
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
@@ -489,88 +539,9 @@ function RemainingTenantsFullBlock() {
   );
 }
 
-function RemainingTenantRow({ tenant }: { tenant: RemainingTenantGroup }) {
-  const [open, setOpen] = useState(false);
-  const total = tenant.lines.reduce((s, l) => s + l.belopGjenstaende, 0);
-  const hasUsikker = tenant.lines.some((l) => l.sikkerhet === "usikker");
-
-  return (
-    <>
-      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td colSpan={4} className="p-0">
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            className="grid w-full grid-cols-[1fr_auto_auto_auto] items-center gap-3 px-3 py-2 text-left"
-          >
-            <span className="flex min-w-0 items-center gap-2 text-ink-2">
-              <svg
-                viewBox="0 0 16 16"
-                className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M4 6l4 4 4-4" />
-              </svg>
-              <span className="truncate">{tenant.leietaker}</span>
-              {hasUsikker && (
-                <span className="shrink-0 rounded-full bg-status-warning/15 px-2 py-0.5 text-2xs font-medium text-status-warning">
-                  Usikkert: fornyelse antatt
-                </span>
-              )}
-            </span>
-            <span className="whitespace-nowrap text-2xs text-ink-4">{tenant.bygg}</span>
-            <span className="whitespace-nowrap tabular-nums text-ink-3">
-              {tenant.lines.length} {tenant.lines.length === 1 ? "linje" : "linjer"}
-            </span>
-            <span className="whitespace-nowrap tabular-nums font-medium text-ink-1">{formatKr(total)}</span>
-          </button>
-        </td>
-      </tr>
-      {open &&
-        tenant.lines.map((l) => (
-          <tr key={l.linjeId} className="border-t border-line bg-surface-2/40">
-            <td colSpan={4} className="px-3 py-2 pl-9">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-                <span className="text-ink-2">
-                  {l.beskrivelse}{" "}
-                  <span className="text-ink-4">
-                    · Del {l.del} · {formatDateDMY(l.periodeFra)}–{formatDateDMY(l.periodeTil)}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-baseline gap-2 tabular-nums text-2xs">
-                  <span className={`rounded-full px-2 py-0.5 font-medium ${CERTAINTY_STYLE[l.sikkerhet]}`}>{l.sikkerhet}</span>
-                  <span className="font-medium text-ink-2">{formatKr(l.belopGjenstaende)}</span>
-                </span>
-              </div>
-              {l.fornyelseAntatt && (
-                <p className="mt-1 text-2xs text-status-warning">
-                  → Fornyelse antatt til 31.12
-                  {l.originalSluttdato ? ` (opprinnelig utløp ${formatDateDMY(l.originalSluttdato)})` : ""}
-                </p>
-              )}
-              {!l.fornyelseAntatt && l.nyKontraktsnokkel && (
-                <p className="mt-1 text-2xs text-status-positive">
-                  → Reell etterfølgerkontrakt: {l.nyKontraktsnokkel}
-                  {l.nyKontraktStart ? `, start ${formatDateDMY(l.nyKontraktStart)}` : ""}
-                </p>
-              )}
-            </td>
-          </tr>
-        ))}
-    </>
-  );
-}
-
 function RemainingBlock() {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Gjenstår å fakturere", true);
-  const usikkerTotal = REMAINING.tenants.reduce((s, t) => s + t.lines.reduce((s2, l) => s2 + l.belopGjenstaende, 0), 0);
-  const sikkerTotal = REMAINING.sikkerTotalDelA + REMAINING.sikkerTotalDelB;
-  const total = sikkerTotal + usikkerTotal;
+  const total = REMAINING.totalDelA + REMAINING.totalDelB;
   return (
     <div className="rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
@@ -580,32 +551,403 @@ function RemainingBlock() {
         onToggleCollapse={toggleCollapsed}
       />
       {!collapsed && (
+        <div className="flex flex-col gap-2">
+          <p className="text-2xs text-ink-4">
+            Del A (leie): <span className="font-medium tabular-nums text-ink-2">{formatKr(REMAINING.totalDelA)}</span> · Del B
+            (parkering): <span className="font-medium tabular-nums text-ink-2">{formatKr(REMAINING.totalDelB)}</span> ·{" "}
+            {REMAINING.antallLeieforhold} leieforhold (leietaker+bygg)
+          </p>
+          <p className="text-2xs text-ink-4">
+            Full leietaker-detalj i &quot;Gjenstår per leietaker (Fazile)&quot; under. {REMAINING.antallAvsluttetNullstilt} leieforhold
+            var allerede avsluttet i Fazile og er nullstilt, {REMAINING.antallIkkeMatchetFlagget} har ingen tilsvarende bokføring
+            funnet i NXT i år, {REMAINING.antallForklartOmsetningsleie} CC Vest-leieforhold har trolig omsetningsleie-avregning i
+            NXT utover grunnleien, {REMAINING.antallForklartKontraktsendring} har trolig blitt endret/indeksregulert i løpet av
+            2026, og {REMAINING.antallInternMustad} er interne Mustad-oppføringer (ikke reelle eksterne leieforhold) — se
+            &quot;Leieforhold til gjennomgang&quot; under for full liste (kan eksporteres til Excel).
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ReviewRow {
+  leietaker: string;
+  bygg: string;
+  status: RemainingByggStatus;
+  forklaring: string | null;
+  fullArsverdi: number;
+  alleredeFakturert: number;
+  gjenstar: number;
+}
+
+function ReviewRowItem({ row }: { row: ReviewRow }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm text-ink-1">{row.leietaker}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${BYGG_STATUS_STYLE[row.status]}`}>
+              {BYGG_STATUS_LABEL[row.status]}
+            </span>
+          </span>
+          <span className="truncate text-2xs text-ink-4">{row.bygg}</span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(row.gjenstar)}</span>
+      </button>
+      {open && (
+        <div className="border-t border-line px-3 py-2">
+          <p className="text-2xs text-ink-4">
+            Full årsverdi: <span className="font-medium tabular-nums text-ink-2">{formatKr(row.fullArsverdi)}</span> · Allerede
+            fakturert: <span className="font-medium tabular-nums text-ink-2">{formatKr(row.alleredeFakturert)}</span>
+          </p>
+          {row.forklaring && <p className="mt-1 text-2xs text-ink-4">{row.forklaring}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeieforholdReviewBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Leieforhold til gjennomgang", true);
+  const [snapshot, setSnapshot] = useState<RemainingTenantsSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/remaining-tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const rows = useMemo<ReviewRow[]>(() => {
+    if (!snapshot) return [];
+    const out: ReviewRow[] = [];
+    for (const t of snapshot.tenants) {
+      for (const b of t.byggGrupper) {
+        if (!(REVIEW_STATUSES as readonly string[]).includes(b.status)) continue;
+        out.push({
+          leietaker: t.navn,
+          bygg: b.bygg,
+          status: b.status,
+          forklaring: b.forklaring,
+          fullArsverdi: b.fullArsverdi2026DelA + b.fullArsverdi2026DelB,
+          alleredeFakturert: b.alleredeFakturertDelA + b.alleredeFakturertDelB,
+          gjenstar: b.gjenstarTotal,
+        });
+      }
+    }
+    return out.sort((a, b) => b.fullArsverdi - a.fullArsverdi);
+  }, [snapshot]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => r.leietaker.toLowerCase().includes(q) || r.bygg.toLowerCase().includes(q));
+  }, [rows, search]);
+
+  const visible = filtered.slice(0, visibleCount);
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of rows) c[r.status] = (c[r.status] ?? 0) + 1;
+    return c;
+  }, [rows]);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Leieforhold til gjennomgang"
+        subtitle={`${rows.length} av ${snapshot ? snapshot.tenants.reduce((s, t) => s + t.byggGrupper.length, 0) : "…"} leieforhold`}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={AlertTriangle}
+        iconColorClass="text-status-warning"
+      />
+      {!collapsed && (
         <>
           <p className="mb-2 text-2xs text-ink-4">
-            Sikkert (kontrakter som løper forbi/til 31.12): <span className="font-medium tabular-nums text-ink-2">{formatKr(sikkerTotal)}</span> ·
-            Usikkert / fornyelse antatt ({REMAINING.tenants.length} leietaker/bygg-kombinasjoner):{" "}
-            <span className="font-medium tabular-nums text-ink-2">{formatKr(usikkerTotal)}</span>
+            Alle leieforhold der beløpet er usikkert eller bør sjekkes manuelt — ikke matchet mot NXT, mistenkt
+            omsetningsleie-avregning, mistenkt kontraktsendring i året, eller allerede avsluttet og nullstilt. Ikke feil i seg
+            selv, men verdt en manuell kontroll. Eksporter til Excel for gjennomgang utenfor appen.
           </p>
-          {REMAINING.tenants.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen leietakere med fornyelsesantagelse registrert.</p>
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-ink-4">
+            {REVIEW_STATUSES.map((s) => (
+              <span key={s} className="flex items-center gap-1">
+                <span className={`rounded-full px-2 py-0.5 font-medium ${BYGG_STATUS_STYLE[s]}`}>{BYGG_STATUS_LABEL[s]}</span>
+                <span className="tabular-nums">{counts[s] ?? 0}</span>
+              </span>
+            ))}
+          </div>
+          <a
+            href="/api/income-forecast/remaining-tenants/export"
+            className="mb-2 inline-block text-2xs font-medium text-accent hover:text-accent/80"
+          >
+            Eksporter til Excel
+          </a>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(30);
+              }}
+              placeholder="Søk leietaker eller bygg…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen leieforhold funnet.</p>
           ) : (
-            <div className="-mx-1 overflow-x-auto">
-              <table className="w-full min-w-[520px] text-sm">
-                <thead>
-                  <tr className="text-left text-ink-4">
-                    <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
-                    <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
-                    <th className="px-3 py-2 text-2xs font-medium">Linjer</th>
-                    <th className="px-3 py-2 text-2xs font-medium">Gjenstående</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {REMAINING.tenants.map((t) => (
-                    <RemainingTenantRow key={t.customerId} tenant={t} />
+            <>
+              <div className="flex flex-col gap-1.5">
+                {visible.map((r, i) => (
+                  <ReviewRowItem key={`${r.leietaker}||${r.bygg}||${i}`} row={r} />
+                ))}
+              </div>
+              {filtered.length > visible.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 30)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ContractExpiryRow({ contract }: { contract: ContractExpiry2026Snapshot["contracts"][number] }) {
+  const [open, setOpen] = useState(false);
+  const utlop = contract.minSlutt === contract.maxSlutt ? formatDateDMY(contract.maxSlutt) : `${formatDateDMY(contract.minSlutt)}–${formatDateDMY(contract.maxSlutt)}`;
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm text-ink-1">{contract.leietaker}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${CONTRACT_EXPIRY_STATUS_STYLE[contract.status as ContractExpiryStatus]}`}>
+              {CONTRACT_EXPIRY_STATUS_LABEL[contract.status as ContractExpiryStatus]}
+            </span>
+          </span>
+          <span className="truncate text-2xs text-ink-4">
+            {contract.bygg} · Utløp {utlop}
+          </span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(contract.totalArsleie)}</span>
+      </button>
+      {open && (
+        <div className="border-t border-line px-3 py-2">
+          <p className="text-2xs text-ink-4">
+            Kontraktsnøkkel: <span className="font-medium text-ink-2">{contract.kontraktsnokkel}</span>
+            {contract.nyKontraktsnokkel && (
+              <>
+                {" "}
+                → Reforhandlet til: <span className="font-medium text-ink-2">{contract.nyKontraktsnokkel}</span>
+              </>
+            )}
+          </p>
+          {contract.ekstraI2026 > 0 && (
+            <p className="mt-1 text-2xs text-ink-4">
+              Ekstra i 2026 hvis fornyet: <span className="font-medium text-ink-2">{formatKr(contract.ekstraI2026)}</span>{" "}
+              (ikke med i prognosetotalen)
+            </p>
+          )}
+          <div className="mt-1.5 flex flex-col gap-0.5">
+            {contract.lines.map((l) => (
+              <p key={l.linjenokkel} className="text-2xs text-ink-4">
+                {l.linjeBeskrivelse} ({l.arealtype}) — {formatKr(l.totalArsleie)}, utløp {formatDateDMY(l.linjeSlutt)}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EkstraLeietakerRow({ row }: { row: ContractExpiry2026Snapshot["ekstraI2026PerLeietaker"][number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="truncate text-sm text-ink-1">{row.leietaker}</span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(row.ekstraI2026)}</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-0.5 border-t border-line px-3 py-2">
+          {row.kontrakter.map((k) => (
+            <p key={k.kontraktsnokkel} className="text-2xs text-ink-4">
+              {k.bygg} ({k.kontraktsnokkel}) — utløp {formatDateDMY(k.maxSlutt)}, {formatKr(k.ekstraI2026)}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContractExpiry2026Block() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter som utløper i 2026", true);
+  const [snapshot, setSnapshot] = useState<ContractExpiry2026Snapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(30);
+  const [showEkstra, setShowEkstra] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/contract-expiry-2026")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!snapshot) return [];
+    const q = search.trim().toLowerCase();
+    return snapshot.contracts.filter((c) => {
+      if (onlyOpen && c.status !== "apen") return false;
+      if (!q) return true;
+      return c.leietaker.toLowerCase().includes(q) || c.bygg.toLowerCase().includes(q);
+    });
+  }, [snapshot, search, onlyOpen]);
+
+  const visible = filtered.slice(0, visibleCount);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Kontrakter som utløper i 2026"
+        subtitle={snapshot ? formatKr(snapshot.totalArsleie) : "…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={CalendarClock}
+        iconColorClass="text-orange-400"
+      />
+      {!collapsed && (
+        <>
+          <p className="mb-2 text-2xs text-ink-4">
+            Alle kontrakter med minst én linje som utløper i kalenderåret 2026, gruppert per kontrakt. Beløpet er dagens
+            årsleie — det appen kan forvente å beholde inn i 2027 dersom kontrakten fornyes uendret.
+          </p>
+          {snapshot && (
+            <p className="mb-2 text-2xs text-ink-4">
+              {snapshot.antallKontrakter} kontrakter, {formatKr(snapshot.totalArsleie)} totalt. {snapshot.antallReforhandlet}{" "}
+              er allerede reforhandlet/sikret med ny kontrakt ({formatKr(snapshot.reforhandletArsleie)}) —{" "}
+              {snapshot.antallApen} er fortsatt åpne og utgjør den reelle eksponeringen dersom de IKKE fornyes:{" "}
+              <span className="font-medium text-ink-2">{formatKr(snapshot.reellEksponeringArsleie)}</span>.
+            </p>
+          )}
+          {snapshot && (
+            <div className="mb-2 rounded-xl border border-status-warning/30 bg-status-warning/5 p-3">
+              <p className="text-2xs text-ink-3">
+                <span className="font-semibold text-ink-1">{formatKr(snapshot.totalEkstraI2026)}</span> er IKKE med i
+                prognosetotalen (685,2 mill kr) — dette er dagene fra utløpsdato til 31.12.2026 for de{" "}
+                {snapshot.ekstraI2026PerLeietaker.length} leietakerne under, betinget oppside som først blir reell inntekt
+                hvis kontrakten faktisk fornyes uendret.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowEkstra((v) => !v)}
+                className="mt-1.5 text-2xs font-medium text-accent hover:text-accent/80"
+              >
+                {showEkstra ? "Skjul liste pr. leietaker" : "Vis liste pr. leietaker"}
+              </button>
+              {showEkstra && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {snapshot.ekstraI2026PerLeietaker.map((p) => (
+                    <EkstraLeietakerRow key={p.leietaker} row={p} />
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
+          )}
+          <a
+            href="/api/income-forecast/contract-expiry-2026/export"
+            className="mb-2 inline-block text-2xs font-medium text-accent hover:text-accent/80"
+          >
+            Eksporter til Excel
+          </a>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(30);
+              }}
+              placeholder="Søk leietaker eller bygg…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          <label className="mb-2 flex w-fit items-center gap-1.5 text-2xs text-ink-3">
+            <input
+              type="checkbox"
+              checked={onlyOpen}
+              onChange={(e) => {
+                setOnlyOpen(e.target.checked);
+                setVisibleCount(30);
+              }}
+              className="h-3.5 w-3.5 rounded border-line-strong"
+            />
+            Vis kun åpne (ikke reforhandlet)
+          </label>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen kontrakter funnet.</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                {visible.map((c) => (
+                  <ContractExpiryRow key={`${c.leietaker}||${c.kontraktsnokkel}`} contract={c} />
+                ))}
+              </div>
+              {filtered.length > visible.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 30)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                </button>
+              )}
+            </>
           )}
         </>
       )}
@@ -651,8 +993,9 @@ function OwnershipShareBlock() {
     <div className="flex flex-col gap-1.5 rounded-xl border border-status-warning/30 bg-status-warning/5 p-3">
       <p className="text-2xs font-semibold uppercase tracking-wide text-status-warning">Eierandel — spesialregler</p>
       <p className="text-2xs text-ink-4">
-        Disse byggene er deleid — kun Mustads eierandel av inntekten skal telle i den endelige prognosen. Ikke
-        beregnet inn i tallene under ennå, kun dokumentert her som en huskeregel til senere.
+        Disse byggene er deleid — kun Mustads eierandel av inntekten skal telle i den endelige prognosen. Både
+        &quot;Gjenstår å fakturere&quot; (Fazile) og &quot;Fakturert hittil&quot; (NXT) har dette korrekt bakt inn
+        (verifisert og korrigert 2026-08-24) — se avstemmingskontrollene under.
       </p>
       <ul className="flex flex-col gap-1">
         {OWNERSHIP_SHARE_RULES.rules.map((r) => (
@@ -691,8 +1034,7 @@ function ReconciliationPanel() {
 const ROLLUP_ROWS: { label: string; key: keyof PartTotals }[] = [
   { label: "Fakturert hittil (NXT)", key: "fakturertHittil" },
   { label: "Manuelle bilag i NXT (hittil)", key: "manueltNxtHittil" },
-  { label: "Gjenstår å fakturere — sikkert", key: "gjenstaendeSikker" },
-  { label: "Gjenstår å fakturere — usikkert (fornyelse antatt)", key: "gjenstaendeUsikker" },
+  { label: "Gjenstår å fakturere", key: "gjenstaende" },
   { label: "Mine manuelle linjer (aktive)", key: "manuelleLinjer" },
 ];
 
@@ -701,11 +1043,6 @@ function PartTile({ label, totals }: { label: string; totals: PartTotals }) {
     <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums text-ink-1">{formatKr(totals.totalt)}</p>
-      {totals.gjenstaendeUsikker > 0 && (
-        <p className="mt-0.5 text-2xs text-status-warning">
-          hvorav antatt fornyelse (usikkert): {formatKr(totals.gjenstaendeUsikker)}
-        </p>
-      )}
     </div>
   );
 }
@@ -719,11 +1056,6 @@ function ForecastSummaryBlock({ rollup }: { rollup: ForecastRollup }) {
         <div className="rounded-xl border-2 border-line-strong bg-surface-2 px-3 py-2.5">
           <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Prognose totalt</p>
           <p className="mt-1 text-xl font-bold tabular-nums text-ink-1">{formatKr(rollup.totalt)}</p>
-          {rollup.hvoravAntattFornyelse > 0 && (
-            <p className="mt-0.5 text-2xs text-status-warning">
-              hvorav antatt fornyelse (usikkert): {formatKr(rollup.hvoravAntattFornyelse)}
-            </p>
-          )}
         </div>
       </div>
       <div className="-mx-1 overflow-x-auto">
@@ -1094,6 +1426,8 @@ export default function IncomeForecastSection() {
           <BookedTenantsBlock />
           <RemainingBlock />
           <RemainingTenantsFullBlock />
+          <LeieforholdReviewBlock />
+          <ContractExpiry2026Block />
           <ManualNxtBlock />
 
           <div className="flex flex-col gap-1.5">

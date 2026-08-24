@@ -69,5 +69,10 @@ lib/companyInfo.local.ts
 # (README.md selv er IKKE ignorert - kun undermappene med faktiske data)
 scripts/refresh-data/*/
 scripts/*-snapshot.json
+# løse dump-/mellomlagringsfiler direkte i scripts/refresh-data/ (ikke undermapper) -
+# kan inneholde ekte leietakernavn (f.eks. dump av booked-tenants-snapshot fra Redis)
+scripts/refresh-data/*.json
+scripts/refresh-data/*.txt
+!scripts/refresh-data/README.md
 
 .vercel
