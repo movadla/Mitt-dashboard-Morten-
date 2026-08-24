@@ -290,9 +290,11 @@ function BookedTenantsBlock() {
       {!collapsed && (
         <>
           <p className="mb-2 text-2xs text-ink-4">
-            Kilde: Visma NXT <code>generalLedgerTransaction</code>, filtrert på leietaker (customerNo), konto 3600-3699,
-            2026. Egen kontrollstørrelse — avviker fra &quot;Bokført totalt&quot; over ({formatKr(BOOKED_3600_3699.totalBelop)}, fra
-            periodebalanse) siden dette er en annen NXT-tabell (rå transaksjoner). Forventet, ikke en feil.
+            Kilde: Visma NXT <code>generalLedgerTransaction</code>, konto 3600-3699, 2026 — gruppert per leietaker,
+            inkl. en egen &quot;Andre&quot;-oppføring for bokføringer uten leietakerreferanse (bl.a. den store
+            omsetningsleie-avsetningen fra 2025). Egen kontrollstørrelse — differansen mot &quot;Bokført totalt&quot; over (
+            {formatKr(BOOKED_3600_3699.totalBelop)}, fra periodebalanse) er nå kun {formatKr(snapshot ? snapshot.totalBelop - BOOKED_3600_3699.totalBelop : 0)}{" "}
+            (~0,1 %) siden dette er en annen NXT-tabell (rå transaksjoner) — forventet, ikke en feil.
           </p>
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
