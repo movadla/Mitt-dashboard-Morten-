@@ -64,4 +64,10 @@ lib/incomeForecast.local.ts
 lib/tenants.local.ts
 lib/companyInfo.local.ts
 
+# ekte rådata brukt til å bygge Redis-snapshots (leietakernavn, beløp) - se
+# scripts/refresh-data/README.md for hvordan disse undermappene brukes/fylles ut på nytt
+# (README.md selv er IKKE ignorert - kun undermappene med faktiske data)
+scripts/refresh-data/*/
+scripts/*-snapshot.json
+
 .vercel
