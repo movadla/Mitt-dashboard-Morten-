@@ -1,18 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, TrendingUp, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Search, TrendingUp, Users, XCircle } from "lucide-react";
 import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
+  BOOKED_3600_3699,
   INVOICED,
   MANUAL_NXT,
+  OWNERSHIP_SHARE_RULES,
   RECONCILIATION,
   REMAINING,
   type ReconciliationStatus,
   type RemainingTenantGroup,
   type RenewalCertainty,
 } from "@/lib/incomeForecast";
+import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import { computeForecastRollup, type ForecastRollup, type PartTotals } from "@/lib/incomeForecastCompute";
 import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
 import { vibrate } from "@/lib/haptics";
@@ -41,7 +44,13 @@ const RECONCILIATION_COLOR: Record<ReconciliationStatus, string> = {
 };
 
 function oldestSnapshotDate(): string | null {
-  const dates = [INVOICED.sistOppdatert, REMAINING.sistOppdatert, MANUAL_NXT.sistOppdatert, RECONCILIATION.sistOppdatert].filter(
+  const dates = [
+    INVOICED.sistOppdatert,
+    BOOKED_3600_3699.sistOppdatert,
+    REMAINING.sistOppdatert,
+    MANUAL_NXT.sistOppdatert,
+    RECONCILIATION.sistOppdatert,
+  ].filter(
     (d) => d && d.length > 0,
   );
   if (dates.length === 0) return null;
@@ -82,6 +91,245 @@ function InvoicedBlock() {
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+function BookedCompanyRow({ company }: { company: (typeof BOOKED_3600_3699.perSelskap)[number] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+        <td colSpan={2} className="p-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2 text-left"
+          >
+            <span className="flex min-w-0 items-center gap-2 text-ink-2">
+              <svg
+                viewBox="0 0 16 16"
+                className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+              <span className="truncate">{company.selskap}</span>
+              <span className="shrink-0 text-2xs text-ink-4">({company.bygg.length} bygg)</span>
+            </span>
+            <span className="whitespace-nowrap tabular-nums font-medium text-ink-1">{formatKr(company.belop)}</span>
+          </button>
+        </td>
+      </tr>
+      {open &&
+        company.bygg.map((b) => (
+          <tr key={b.bygg} className="border-t border-line bg-surface-2/40">
+            <td className="px-3 py-1.5 pl-9 text-sm text-ink-2">{b.bygg}</td>
+            <td className="px-3 py-1.5 text-right text-sm tabular-nums text-ink-2">{formatKr(b.belop)}</td>
+          </tr>
+        ))}
+    </>
+  );
+}
+
+function BookedAccountRangeBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Bokført konto 3600-3699", true);
+  const invoicedTotal = INVOICED.periods.reduce((s, p) => s + p.delA + p.delB, 0);
+  const diff = BOOKED_3600_3699.totalBelop - invoicedTotal;
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Bokført totalt, konto 3600-3699"
+        subtitle={formatKr(BOOKED_3600_3699.totalBelop)}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <>
+          <p className="mb-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-2xs text-ink-4">
+            Steg 1 av flere — bygg-nedbrytning vist under per selskap, leietaker-nedbrytning kommer i en senere runde.
+            Rent kontrollstørrelse, ikke lagt inn i prognosetotalen under.
+          </p>
+          <p className="mb-2 text-2xs text-ink-4">
+            Differanse mot INVOICED (periode 1-8): <span className="font-medium tabular-nums text-ink-2">{formatKr(diff)}</span> — forventet, forklares
+            av forhåndsfakturerte poster i periode 9-12 som allerede er bokført.
+          </p>
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[380px] text-sm">
+              <thead>
+                <tr className="text-left text-ink-4">
+                  <th className="px-3 py-2 text-2xs font-medium">Selskap</th>
+                  <th className="px-3 py-2 text-right text-2xs font-medium">Beløp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {BOOKED_3600_3699.perSelskap.map((c) => (
+                  <BookedCompanyRow key={c.selskap} company={c} />
+                ))}
+                <tr className="border-t border-line-strong font-semibold">
+                  <td className="px-3 py-2 text-ink-1">Totalt</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(BOOKED_3600_3699.totalBelop)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BookedTenantRow({ tenant }: { tenant: BookedTenantsSnapshot["tenants"][number] }) {
+  const [open, setOpen] = useState(false);
+  const sumLines = tenant.lines.reduce((s, l) => s + l.belop, 0);
+  const avstemmer = Math.abs(sumLines - tenant.totalBelop) < 1;
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 items-center gap-2 text-ink-1">
+          <svg
+            viewBox="0 0 16 16"
+            className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+          <span className="truncate text-sm">{tenant.navn}</span>
+          <span className="shrink-0 text-2xs text-ink-4">
+            {tenant.lines.length} {tenant.lines.length === 1 ? "linje" : "linjer"}
+          </span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(tenant.totalBelop)}</span>
+      </button>
+      {open && (
+        <div className="border-t border-line px-3 pb-3 pt-1">
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[420px] text-sm">
+              <thead>
+                <tr className="text-left text-ink-4">
+                  <th className="px-2 py-1.5 text-2xs font-medium">Konto</th>
+                  <th className="px-2 py-1.5 text-2xs font-medium">Bygg</th>
+                  <th className="px-2 py-1.5 text-2xs font-medium">Selskap</th>
+                  <th className="px-2 py-1.5 text-right text-2xs font-medium">Fakturert</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tenant.lines.map((l, i) => (
+                  <tr key={i} className="border-t border-line">
+                    <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-ink-2">{l.accountNo}</td>
+                    <td className="px-2 py-1.5 text-ink-2">{l.bygg}</td>
+                    <td className="px-2 py-1.5 text-ink-3">{l.selskap}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-ink-2">{formatKr(l.belop)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={`mt-2 text-2xs ${avstemmer ? "text-status-positive" : "text-status-danger"}`}>
+            {avstemmer
+              ? `Avstemt: sum av linjene stemmer med totalen (${formatKr(sumLines)})`
+              : `Avvik: sum av linjene (${formatKr(sumLines)}) matcher IKKE totalen (${formatKr(tenant.totalBelop)})`}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BookedTenantsBlock() {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Bokført per leietaker", true);
+  const [snapshot, setSnapshot] = useState<BookedTenantsSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  useEffect(() => {
+    fetch("/api/income-forecast/booked-tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        setSnapshot(data.snapshot ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!snapshot) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return snapshot.tenants;
+    return snapshot.tenants.filter((t) => t.navn.toLowerCase().includes(q));
+  }, [snapshot, search]);
+
+  const visible = filtered.slice(0, visibleCount);
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Bokført per leietaker"
+        subtitle={snapshot ? `${formatKr(snapshot.totalBelop)} · ${snapshot.antallLeietakere} leietakere` : "Laster…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={Users}
+        iconColorClass="text-accent"
+      />
+      {!collapsed && (
+        <>
+          <p className="mb-2 text-2xs text-ink-4">
+            Kilde: Visma NXT <code>generalLedgerTransaction</code>, filtrert på leietaker (customerNo), konto 3600-3699,
+            2026. Egen kontrollstørrelse — avviker fra &quot;Bokført totalt&quot; over ({formatKr(BOOKED_3600_3699.totalBelop)}, fra
+            periodebalanse) siden dette er en annen NXT-tabell (rå transaksjoner). Forventet, ikke en feil.
+          </p>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(30);
+              }}
+              placeholder="Søk leietaker…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : !snapshot || filtered.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen leietakere funnet.</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                {visible.map((t) => (
+                  <BookedTenantRow key={t.navn} tenant={t} />
+                ))}
+              </div>
+              {filtered.length > visible.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 30)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                </button>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -239,6 +487,27 @@ function ManualNxtBlock() {
             ))}
           </ul>
         ))}
+    </div>
+  );
+}
+
+function OwnershipShareBlock() {
+  if (OWNERSHIP_SHARE_RULES.rules.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-status-warning/30 bg-status-warning/5 p-3">
+      <p className="text-2xs font-semibold uppercase tracking-wide text-status-warning">Eierandel — spesialregler</p>
+      <p className="text-2xs text-ink-4">
+        Disse byggene er deleid — kun Mustads eierandel av inntekten skal telle i den endelige prognosen. Ikke
+        beregnet inn i tallene under ennå, kun dokumentert her som en huskeregel til senere.
+      </p>
+      <ul className="flex flex-col gap-1">
+        {OWNERSHIP_SHARE_RULES.rules.map((r) => (
+          <li key={r.bygg} className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">{r.bygg}</span>
+            <span className="font-medium tabular-nums text-ink-1">{r.andelProsent}% av inntekten</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -659,12 +928,16 @@ export default function IncomeForecastSection() {
 
           <ForecastSummaryBlock rollup={rollup} />
 
+          <OwnershipShareBlock />
+
           <div className="flex flex-col gap-1.5">
             <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
             <ReconciliationPanel />
           </div>
 
           <InvoicedBlock />
+          <BookedAccountRangeBlock />
+          <BookedTenantsBlock />
           <RemainingBlock />
           <ManualNxtBlock />
 
