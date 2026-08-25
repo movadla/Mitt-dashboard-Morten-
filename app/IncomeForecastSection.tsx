@@ -491,6 +491,7 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "forklart-omsetningsleie": "Omsetningsleie i NXT",
   "forklart-kontraktsendring": "Kontraktsendring i år",
   "intern-mustad": "Intern (Mustad selv)",
+  "forklart-parkering-onepark": "Onepark-estimat lagt til",
 };
 
 const BYGG_STATUS_STYLE: Record<string, string> = {
@@ -500,6 +501,7 @@ const BYGG_STATUS_STYLE: Record<string, string> = {
   "forklart-omsetningsleie": "bg-status-warning/15 text-status-warning",
   "forklart-kontraktsendring": "bg-status-warning/15 text-status-warning",
   "intern-mustad": "bg-surface-3 text-ink-4",
+  "forklart-parkering-onepark": "bg-status-positive/12 text-status-positive",
 };
 
 const REVIEW_STATUSES = [
@@ -508,6 +510,7 @@ const REVIEW_STATUSES = [
   "forklart-kontraktsendring",
   "avsluttet",
   "intern-mustad",
+  "forklart-parkering-onepark",
 ] as const;
 
 function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot["tenants"][number] }) {

@@ -15,7 +15,8 @@ export type RemainingByggStatus =
   | "ikke-matchet-i-nxt"
   | "forklart-omsetningsleie"
   | "forklart-kontraktsendring"
-  | "intern-mustad";
+  | "intern-mustad"
+  | "forklart-parkering-onepark";
 
 export interface RemainingByggGruppe {
   bygg: string;

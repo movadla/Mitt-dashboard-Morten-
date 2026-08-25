@@ -58,6 +58,20 @@ const BUILDING_ALIASES = {
 
 const { loadEnvLocal, pushToRedis, normalizeName, coreName } = require("./lib/refresh-helpers");
 
+// Onepark AS - parkeringsdrift utenfor Fazile rent_roll (etterfakturert basert på tilsendt
+// omsetningsrapport, ikke en vanlig leiekontrakt). De 6 leieforholdene under nulles derfor
+// automatisk til "avsluttet" (ingen aktiv Fazile-kontrakt), men det er FEIL for Onepark - det
+// er fortsatt en løpende, ordinær driftsinntekt resten av året. Manuell korreksjon (Morten,
+// 2026-08-25): bruk årsestimatet fra Inntektsprognose-arkets "Onepark"-fane (rullerende
+// prognose basert på 2025-fakturering × vekstfaktor jan-mai 2026) minus det som allerede er
+// fakturert i NXT i år, lagt til Del B (ren parkeringsdrift) som ETT samlet portefølje-tillegg
+// - IKKE fordelt bygg for bygg, siden Onepark-arkets bygg-liste (CC Vest P-hus, Carl. L.
+// P-kontroll, Lilleakerveien 2, Lilleakerveien 2 Ute, Granfos Næringspark, Lilleakerveien 31,
+// Lilleakerveien 8) ikke er 1:1 med Fazile sine 6 byggGrupper for Onepark AS - ville krevd en
+// bygg-alias-tabell som ikke er bekreftet.
+const ONEPARK_LEIETAKER_KEY = "onepark as";
+const ONEPARK_ESTIMAT_2026 = 9457370.44; // Kilde: 2026_08_04_Inntektsprognose_Juli_2026.xlsx, fane "Onepark", rad "Estimert inntekt 2025"-linjen (P40)
+
 // Interne Mustad-selskaper som noen ganger opptrer som "leietaker" i Fazile-data (egne
 // lokaler/administrative posteringer) - ikke reelle eksterne leieforhold. Flagges separat
 // (status "intern-mustad") i stedet for å telles som et vanlig usikkert avvik.
@@ -296,6 +310,28 @@ function main() {
     tenant.lines.push(...g.lines);
   }
 
+  let oneparkKorreksjon = 0;
+  const oneparkTenant = tenantMap.get(ONEPARK_LEIETAKER_KEY);
+  if (oneparkTenant) {
+    const alleredeFakturertOnepark = round2(
+      oneparkTenant.byggGrupper.reduce((s, b) => s + b.alleredeFakturertDelA + b.alleredeFakturertDelB, 0),
+    );
+    oneparkKorreksjon = Math.max(0, round2(ONEPARK_ESTIMAT_2026 - alleredeFakturertOnepark));
+    oneparkTenant.byggGrupper.push({
+      bygg: "Onepark - parkeringsestimat 2026 (hele porteføljen, ikke bygg-fordelt)",
+      fullArsverdi2026DelA: 0,
+      fullArsverdi2026DelB: round2(ONEPARK_ESTIMAT_2026),
+      alleredeFakturertDelA: 0,
+      alleredeFakturertDelB: alleredeFakturertOnepark,
+      gjenstarTotal: oneparkKorreksjon,
+      status: "forklart-parkering-onepark",
+      forklaring: `Onepark-parkering faktureres etter omsetningsrapport, utenfor vanlig Fazile-kontrakt (derfor "avsluttet" på de 6 byggene over). Årsestimat fra Inntektsprognose-arket: ${ONEPARK_ESTIMAT_2026.toLocaleString("nb-NO")} kr, minus allerede fakturert i NXT i år (${alleredeFakturertOnepark.toLocaleString("nb-NO")} kr) = ${oneparkKorreksjon.toLocaleString("nb-NO")} kr gjenstår. Lagt til Del B som ett samlet tillegg, ikke bygg-fordelt.`,
+    });
+    sumTotalDelB += oneparkKorreksjon;
+  } else {
+    console.log('ADVARSEL: fant ikke "Onepark AS" i leieforhold-datasettet - Onepark-korreksjonen ble IKKE lagt til.');
+  }
+
   const tenantList = [...tenantMap.values()]
     .map((t) => {
       const fullArsverdi2026 = round2(t.byggGrupper.reduce((s, b) => s + b.fullArsverdi2026DelA + b.fullArsverdi2026DelB, 0));
@@ -315,7 +351,7 @@ function main() {
     .sort((a, b) => b.totalBelop - a.totalBelop);
 
   const snapshot = {
-    sistOppdatert: "2026-08-24",
+    sistOppdatert: "2026-08-25",
     ar: 2026,
     totalBelop: round2(sumTotalDelA + sumTotalDelB),
     antallLeietakere: tenantList.length,
@@ -329,6 +365,7 @@ function main() {
   console.log(`Flagget "ikke matchet i NXT" (ny kontrakt eller navnematch-feil - sjekk manuelt): ${countIkkeMatchetFlagget}`);
   console.log(`Forklart omsetningsleie (CC Vest): ${countOmsetning}`);
   console.log(`Forklart kontraktsendring/indeksregulering: ${countKontraktsendring}`);
+  console.log(`Onepark-parkeringskorreksjon lagt til Del B: ${oneparkKorreksjon.toLocaleString("nb-NO")} kr`);
   console.log(`REMAINING-aggregat (lim inn i lib/incomeForecast.local.ts/.anon.ts):`);
   console.log(`  totalDelA: ${round2(sumTotalDelA)},`);
   console.log(`  totalDelB: ${round2(sumTotalDelB)},`);

@@ -14,6 +14,7 @@ const STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "forklart-omsetningsleie": "Omsetningsleie i NXT",
   "forklart-kontraktsendring": "Kontraktsendring i år",
   "intern-mustad": "Intern (Mustad selv)",
+  "forklart-parkering-onepark": "Onepark-estimat lagt til",
 };
 
 const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
@@ -22,6 +23,7 @@ const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
   "forklart-omsetningsleie": "FFFFEB9C",
   "forklart-kontraktsendring": "FFFFEB9C",
   "intern-mustad": "FFD9D9D9",
+  "forklart-parkering-onepark": "FFC6E0B4",
 };
 
 const HEADERS = ["Leietaker", "Bygg", "Status", "Full årsverdi 2026", "Allerede fakturert (NXT)", "Gjenstår", "Forklaring"];

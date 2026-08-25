@@ -136,13 +136,19 @@ export interface RemainingSnapshot {
 // - Leieforhold der Fazile viser 0 kr (kontrakten er avsluttet i dag) men NXT har
 //   historisk fakturering i år: nullstilt til 0 (et avsluttet leieforhold genererer
 //   ikke mer inntekt - historisk fakturering er ferdig, ikke "gjenstående").
-//   10 leieforhold. MERK: én enkelt leietaker (parkeringsoperatør) alene står for 6
-//   av disse 10, med samlet 4 622 785 kr "allerede fakturert" i NXT i år fordelt på
-//   6 bygg/uteparkeringer - uvanlig stort for ett enkelt "avsluttet" leieforhold.
-//   IKKE undersøkt med faktiske transaksjoner ennå (kunne ikke rekke i denne
-//   runden) - sannsynlig forklaring er at parkeringsdriften er lagt om til en
-//   modell utenfor Fazile rent_roll (f.eks. omsetningsbasert), men dette bør
-//   Morten sjekke spesielt siden beløpet er stort.
+//   10 leieforhold. MERK: én enkelt leietaker (Onepark AS, parkeringsoperatør)
+//   alene står for 6 av disse 10, med samlet 4 622 785 kr "allerede fakturert" i
+//   NXT i år fordelt på 6 bygg/uteparkeringer. Bekreftet 2026-08-25: parkeringen
+//   faktureres etter tilsendt omsetningsrapport, utenfor vanlig Fazile-kontrakt -
+//   derfor riktig at disse 6 nulles. MEN Onepark er fortsatt en løpende
+//   driftsinntekt resten av året, så en manuell korreksjon er lagt til i Del B:
+//   årsestimat fra Inntektsprognose-arkets "Onepark"-fane (9 457 370,44 kr) minus
+//   allerede fakturert (4 622 785 kr) = 4 834 585,44 kr, lagt til som ETT samlet
+//   portefølje-tillegg (ikke bygg-fordelt - Excel-arkets bygg-liste for Onepark
+//   stemmer ikke 1:1 med Fazile sine 6 byggGrupper). Se
+//   scripts/build-remaining-summary.js sin ONEPARK_ESTIMAT_2026-konstant og
+//   "Gjenstår per leietaker (Fazile)"-fanen (status "forklart-parkering-onepark")
+//   for full detalj.
 // - Negative leieforhold (allerede fakturert > Fazile sin årsverdi) ETTER Del A/B-
 //   fiksen er undersøkt med faktiske NXT-transaksjoner (ikke bare antatt) og faller
 //   i to bekreftede klasser, begge telt MED i totalen som de er (ikke gulvet, ikke
@@ -166,10 +172,10 @@ export interface RemainingSnapshot {
 //   IKKE bygget som egen komponent - klasse 1 over er en indirekte bekreftelse på
 //   at det trengs, ikke en erstatning for det.
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-08-24",
+  sistOppdatert: "2026-08-25",
   ar: 2026,
   totalDelA: 154264137.48,
-  totalDelB: 11285237.61,
+  totalDelB: 16119823.05,
   antallLeieforhold: 729,
   antallIkkeMatchetFlagget: 25,
   antallForklartOmsetningsleie: 12,
@@ -531,7 +537,7 @@ export const RECONCILIATION: ReconciliationSnapshot = {
       label: "Total prognose 2026 er i rimelig størrelsesorden",
       status: "ok",
       notat:
-        "Del A ~634,1 mill kr + Del B ~51,0 mill kr = ~685,2 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Tallet gikk ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
+        "Del A ~634,1 mill kr + Del B ~55,8 mill kr = ~690,0 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Del B gikk opp fra ~51,0 mill kr til ~55,8 mill kr 2026-08-25 da Onepark-parkeringsestimatet (4 834 585,44 kr, årsestimat fra Inntektsprognose-arket minus allerede fakturert) ble lagt til - se REMAINING sin kommentar. Før det gikk totalen ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
     },
     {
       id: "stort-enkeltbilag",
