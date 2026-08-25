@@ -41,6 +41,21 @@ function andelForSelskap(selskapNavn, shares) {
   return match ? match.andel : null;
 }
 
+function normalizeName(name) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// "Kjerne-navn" uten selskapsform/tegnsetting - fallback når eksakt normalisert navn ikke
+// matcher (f.eks. et leietakernavn skrevet med "A/S" i Fazile mot "AS" i NXT). Delt mellom
+// build-remaining-summary.js og build-omsetningsavregning.js - hold i sync hvis endret.
+function coreName(name) {
+  return normalizeName(name)
+    .replace(/[.,\-'’´`]/g, " ")
+    .replace(/\b(as|asa|da|ans|ba|nuf|enk|sa|ks|a\/s)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function loadBuildingRegistry() {
   if (!fs.existsSync(BUILDING_REGISTRY_FILE)) return null;
   return JSON.parse(fs.readFileSync(BUILDING_REGISTRY_FILE, "utf8"));
@@ -59,6 +74,30 @@ function verifyTotal(label, computed, independent, toleransePct = 0.5) {
         `(${avvikPct.toFixed(2)}% avvik, toleranse ${toleransePct}%). Sjekk rådata/transkribering før du fortsetter.`,
     );
   }
+}
+
+// Leser et allerede lagret snapshot fra Redis (motstykket til pushToRedis) - brukt når et
+// build-script skal gjenbruke resultatet av et ANNET script i stedet for å duplisere
+// beregningen (f.eks. omsetningsavregning som gjenbruker gjenstår-per-leietaker-snapshotet).
+function getFromRedis(hashKey, field) {
+  loadEnvLocal();
+  if (!process.env.REDIS_URL) {
+    console.log("REDIS_URL ikke satt - kan ikke lese fra Redis.");
+    return Promise.resolve(null);
+  }
+  const Redis = require(path.join(__dirname, "..", "..", "node_modules", "ioredis"));
+  const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 3 });
+  return redis
+    .hget(hashKey, field)
+    .then((raw) => {
+      redis.disconnect();
+      return raw ? JSON.parse(raw) : null;
+    })
+    .catch((err) => {
+      console.error("Feil ved lesing fra Redis:", err);
+      redis.disconnect();
+      return null;
+    });
 }
 
 function pushToRedis(hashKey, field, snapshot, fallbackFileName) {
@@ -93,4 +132,7 @@ module.exports = {
   loadBuildingRegistry,
   verifyTotal,
   pushToRedis,
+  getFromRedis,
+  normalizeName,
+  coreName,
 };

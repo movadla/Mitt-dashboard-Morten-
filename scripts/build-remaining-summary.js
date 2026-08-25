@@ -56,22 +56,7 @@ const BUILDING_ALIASES = {
   "mustads vei 12 hagebyen": "Mustads vei 12",
 };
 
-const { loadEnvLocal, pushToRedis } = require("./lib/refresh-helpers");
-
-function normalizeName(name) {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-// "Kjerne-navn" uten selskapsform/tegnsetting - fallback når eksakt normalisert navn ikke
-// matcher (f.eks. et leietakernavn skrevet med "A/S" i Fazile mot "AS" i NXT).
-// Funnet 2026-08-24: løste 13 av 16 stavevariant-tilfeller korrekt.
-function coreName(name) {
-  return normalizeName(name)
-    .replace(/[.,-]/g, " ")
-    .replace(/\b(as|asa|da|ans|ba|nuf|enk|sa|ks|a\/s)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+const { loadEnvLocal, pushToRedis, normalizeName, coreName } = require("./lib/refresh-helpers");
 
 // Interne Mustad-selskaper som noen ganger opptrer som "leietaker" i Fazile-data (egne
 // lokaler/administrative posteringer) - ikke reelle eksterne leieforhold. Flagges separat

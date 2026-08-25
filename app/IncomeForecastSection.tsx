@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, Search, TrendingUp, Users, XCircle } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Search, ShoppingBag, TrendingUp, Users, XCircle } from "lucide-react";
 import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
 import {
@@ -18,6 +18,7 @@ import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
 import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
+import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
 import type { NxtBudgetSnapshot } from "@/lib/nxtBudget";
 import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
 import type { TenantSignal, TenantSignalType } from "@/lib/tenantSignals";
@@ -1069,6 +1070,153 @@ function LeieforholdReviewBlock() {
   );
 }
 
+function OmsetningsavregningRow({ butikk }: { butikk: OmsetningsavregningSnapshot["butikker"][number] }) {
+  const [open, setOpen] = useState(false);
+  const ikkeMatchet = butikk.matchStatus === "ikke-matchet";
+  return (
+    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm text-ink-1">{butikk.butikk}</span>
+            {ikkeMatchet && (
+              <span className="shrink-0 rounded-full bg-status-warning/12 px-2 py-0.5 text-2xs font-medium text-status-warning">
+                Ikke matchet
+              </span>
+            )}
+          </span>
+          <span className="truncate text-2xs text-ink-4">
+            Omsetning {formatKr(butikk.omsetningKorr)} × {(butikk.avtaltOmsProsent * 100).toLocaleString("nb-NO", { maximumFractionDigits: 2 })}%
+          </span>
+        </span>
+        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(butikk.ekstrafakturering)}</span>
+      </button>
+      {open && (
+        <div className="flex flex-col gap-0.5 border-t border-line px-3 py-2">
+          <p className="text-2xs text-ink-4">
+            Forventet omsetningsleie: <span className="font-medium text-ink-2">{formatKr(butikk.forventetOmsetningsleie)}</span>
+          </p>
+          <p className="text-2xs text-ink-4">
+            Fakturert + gjenstår (CC Vest):{" "}
+            <span className="font-medium text-ink-2">
+              {butikk.fakturertPlusGjenstar === null ? "—" : formatKr(butikk.fakturertPlusGjenstar)}
+            </span>
+          </p>
+          {ikkeMatchet ? (
+            <p className="mt-0.5 text-2xs text-status-warning">
+              Fant ikke noe leieforhold som matcher dette butikknavnet - ikke talt med i summen. Excel-navnet er ofte et
+              kortnavn/merkenavn som avviker fra det juridiske leietakernavnet i Fazile.
+            </p>
+          ) : (
+            <p className="text-2xs text-ink-4">Navnematch: {butikk.matchStatus}</p>
+          )}
+          {butikk.delerLeieforholdMed.length > 0 && (
+            <p className="mt-0.5 text-2xs text-ink-4">
+              Deler leieforhold (samme kontrakt/selskap) med {butikk.delerLeieforholdMed.join(", ")} — «Fakturert +
+              gjenstår» er felles for gruppen, og ekstrafakturering er fordelt proporsjonalt etter omsetning.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OmsetningsavregningBlock({
+  snapshot,
+  loading,
+}: {
+  snapshot: OmsetningsavregningSnapshot | null;
+  loading: boolean;
+}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Omsetningsavregning", true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(30);
+
+  const filtered = useMemo(() => {
+    if (!snapshot) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return snapshot.butikker;
+    return snapshot.butikker.filter((b) => b.butikk.toLowerCase().includes(q));
+  }, [snapshot, search]);
+
+  const visible = filtered.slice(0, visibleCount);
+
+  return (
+    <div id="drilldown-omsetningsavregning" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        title="Omsetningsavregning"
+        subtitle={snapshot ? `${formatKr(snapshot.totalEkstrafakturering)} · ${snapshot.antallMatchet} av ${snapshot.antallButikker} butikker` : "Laster…"}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={ShoppingBag}
+        iconColorClass="text-status-positive"
+      />
+      {!collapsed && (
+        <>
+          <p className="mb-2 text-2xs text-ink-4">
+            Pr. CC Vest-butikk: forventet omsetningsleie (omsetning siste 12 mnd × avtalt %) minus det som allerede er
+            fakturert/gjenstår å fakturere i år — gulvet på 0 kr, siden minimumsleien allerede er sikret gjennom vanlig
+            fakturering. Kilde: {snapshot?.kilde ?? "…"} (oppdatert {snapshot?.sistOppdatert ?? "…"}).
+            {snapshot && snapshot.antallIkkeMatchet > 0 && (
+              <>
+                {" "}
+                <span className="text-status-warning">
+                  {snapshot.antallIkkeMatchet} butikker er ikke matchet mot noe leieforhold og telles ikke i summen
+                </span>{" "}
+                — se disse under, merket &quot;Ikke matchet&quot;.
+              </>
+            )}
+            {snapshot && snapshot.antallUtelatt > 0 && (
+              <> {snapshot.antallUtelatt} butikker er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).</>
+            )}
+          </p>
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(30);
+              }}
+              placeholder="Søk butikk…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen butikker funnet.</p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1.5">
+                {visible.map((b) => (
+                  <OmsetningsavregningRow key={b.butikk} butikk={b} />
+                ))}
+              </div>
+              {filtered.length > visible.length && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((v) => v + 30)}
+                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                >
+                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function SignalEditor({
   id,
   type,
@@ -1475,7 +1623,6 @@ function ReconciliationPanel() {
 }
 
 const POTENTIAL_CATEGORY_LABEL: Record<PotentialIncomeCategoryKey, string> = {
-  omsetningsavregning: "Potensiell inntekt: omsetningsavregning",
   "ledige-lokaler": "Potensiell inntekt: ledige lokaler",
   annet: "Potensiell inntekt: annet",
 };
@@ -1602,12 +1749,14 @@ function TopSummaryBlock({
   potential,
   onPotentialUpdated,
   tenantSignals,
+  omsetningsavregning,
 }: {
   rollup: ForecastRollup;
   contractExpiry2026: ContractExpiry2026Snapshot | null;
   potential: PotentialIncomeSnapshot | null;
   onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
   tenantSignals: TenantSignal[];
+  omsetningsavregning: OmsetningsavregningSnapshot | null;
 }) {
   const bokfort =
     rollup.delA.fakturertHittil +
@@ -1635,7 +1784,8 @@ function TopSummaryBlock({
   const snittSannsynlighet = reforhandlingFull > 0 ? (reforhandlingVektet / reforhandlingFull) * 100 : 0;
 
   const potentialSum = potential ? potential.categories.reduce((s, c) => s + c.belop, 0) : 0;
-  const total = rollup.totalt + reforhandlingVektet + potentialSum;
+  const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
+  const total = rollup.totalt + reforhandlingVektet + omsetningsavregningSum + potentialSum;
 
   return (
     <div className="flex flex-col gap-2">
@@ -1645,6 +1795,11 @@ function TopSummaryBlock({
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <SummaryTile label="Potensiell inntekt: reforhandling" belop={reforhandlingVektet} jumpToId="drilldown-reforhandling" />
+        <SummaryTile
+          label="Potensiell inntekt: omsetningsavregning"
+          belop={omsetningsavregningSum}
+          jumpToId="drilldown-omsetningsavregning"
+        />
         {potential?.categories.map((c) => (
           <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} />
         ))}
@@ -1654,8 +1809,10 @@ function TopSummaryBlock({
         Bokført + Gjenstår er den delen som er avstemt mot NXT/Fazile (samme tall som lenger ned på siden). De fire
         potensial-boksene er ikke med i det tallet. Reforhandling er sannsynlighetsvektet:{" "}
         {formatKr(reforhandlingFull)} full verdi × snitt-sannsynlighet {snittSannsynlighet.toLocaleString("nb-NO", { maximumFractionDigits: 0 })}
-        {" "}% = {formatKr(reforhandlingVektet)} (juster sannsynlighet pr leieforhold i kontraktsutløp-fanen under). De tre
-        andre potensial-boksene er manuelle anslag du kan redigere (klikk boksen) inntil de kobles til ekte datakilder.
+        {" "}% = {formatKr(reforhandlingVektet)} (juster sannsynlighet pr leieforhold i kontraktsutløp-fanen under). Omsetningsavregning
+        er beregnet pr. CC Vest-butikk (omsetning × avtalt %, minus det som allerede er fakturert/gjenstår) — se detalj under,
+        inkl. butikker som ikke er matchet mot noe leieforhold ennå. De to siste potensial-boksene er manuelle anslag du kan
+        redigere (klikk boksen) inntil de kobles til ekte datakilder.
       </p>
     </div>
   );
@@ -1963,6 +2120,8 @@ export default function IncomeForecastSection() {
   const [loadingContractExpiry2026, setLoadingContractExpiry2026] = useState(true);
   const [potential, setPotential] = useState<PotentialIncomeSnapshot | null>(null);
   const [tenantSignals, setTenantSignals] = useState<TenantSignal[]>([]);
+  const [omsetningsavregning, setOmsetningsavregning] = useState<OmsetningsavregningSnapshot | null>(null);
+  const [loadingOmsetningsavregning, setLoadingOmsetningsavregning] = useState(true);
 
   useEffect(() => {
     fetch("/api/income-forecast/contract-expiry-2026")
@@ -1980,6 +2139,13 @@ export default function IncomeForecastSection() {
       .then((r) => r.json())
       .then((data) => setTenantSignals(data.signals ?? []))
       .catch(() => {});
+    fetch("/api/income-forecast/omsetningsavregning")
+      .then((r) => r.json())
+      .then((data) => {
+        setOmsetningsavregning(data.snapshot ?? null);
+        setLoadingOmsetningsavregning(false);
+      })
+      .catch(() => setLoadingOmsetningsavregning(false));
   }, []);
 
   function handlePotentialUpdated(next: PotentialIncomeSnapshot["categories"][number]) {
@@ -2087,6 +2253,7 @@ export default function IncomeForecastSection() {
             potential={potential}
             onPotentialUpdated={handlePotentialUpdated}
             tenantSignals={tenantSignals}
+            omsetningsavregning={omsetningsavregning}
           />
 
           <ForecastSummaryBlock rollup={rollup} />
@@ -2107,6 +2274,7 @@ export default function IncomeForecastSection() {
           <VacantAreasBlock />
           <RemainingTenantsFullBlock />
           <LeieforholdReviewBlock />
+          <OmsetningsavregningBlock snapshot={omsetningsavregning} loading={loadingOmsetningsavregning} />
           <ContractExpiry2026Block
             snapshot={contractExpiry2026}
             loading={loadingContractExpiry2026}

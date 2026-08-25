@@ -3,12 +3,14 @@ import { localDateString } from "./payday";
 
 // Manuelt anslåtte "potensielle inntekt"-kategorier i Inntektsprognose-toppseksjonen -
 // tall Morten legger inn selv (2026-08-24) i påvente av at de kobles til ekte
-// datakilder/rapporter senere (omsetningsavregning -> Fenistra, steg 3 i roadmapen;
-// ledige lokaler -> Fazile arealoversikt x markedsleie; annet -> ukjent ennå).
-// IKKE forveksle "omsetningsavregning" her (fremover-rettet, 2026) med den allerede
-// BOKFØRTE "Omsetningsleie-avsetning"-reverseringen i MANUAL_NXT (-12,14 mill kr,
-// gjelder 2025) - to helt forskjellige ting som begge nevner "omsetningsleie".
-export type PotentialIncomeCategoryKey = "omsetningsavregning" | "ledige-lokaler" | "annet";
+// datakilder/rapporter senere (ledige lokaler -> Fazile arealoversikt x markedsleie;
+// annet -> ukjent ennå).
+// "omsetningsavregning" er IKKE lenger en manuell kategori her (2026-08-24) - den er
+// erstattet av et beregnet tall fra lib/omsetningsavregning.ts (se OmsetningsavregningBlock
+// i app/IncomeForecastSection.tsx). IKKE forveksle med den allerede BOKFØRTE
+// "Omsetningsleie-avsetning"-reverseringen i MANUAL_NXT (-12,14 mill kr, gjelder 2025) -
+// to helt forskjellige ting som begge nevner "omsetningsleie".
+export type PotentialIncomeCategoryKey = "ledige-lokaler" | "annet";
 
 export interface PotentialIncomeCategory {
   key: PotentialIncomeCategoryKey;
@@ -25,13 +27,6 @@ export interface PotentialIncomeSnapshot {
 const HASH_KEY = "jobb:inntektsprognose-potensial";
 
 const DEFAULTS: Record<PotentialIncomeCategoryKey, Omit<PotentialIncomeCategory, "sistOppdatert">> = {
-  omsetningsavregning: {
-    key: "omsetningsavregning",
-    label: "Omsetningsavregning",
-    belop: 10000000,
-    notat:
-      "Foreløpig manuelt anslag - erstattes med ekte tall fra Fenistra når omsetningsleie-avregningen (steg 3 i inntektsprognose-roadmapen) er bygget.",
-  },
   "ledige-lokaler": {
     key: "ledige-lokaler",
     label: "Ledige lokaler",
@@ -46,7 +41,7 @@ const DEFAULTS: Record<PotentialIncomeCategoryKey, Omit<PotentialIncomeCategory,
   },
 };
 
-const ORDER: PotentialIncomeCategoryKey[] = ["omsetningsavregning", "ledige-lokaler", "annet"];
+const ORDER: PotentialIncomeCategoryKey[] = ["ledige-lokaler", "annet"];
 
 export async function getPotentialIncomeSnapshot(): Promise<PotentialIncomeSnapshot> {
   const stored = await hgetallJSON<PotentialIncomeCategory>(HASH_KEY);
