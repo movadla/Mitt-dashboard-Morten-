@@ -73,6 +73,8 @@ scripts/*-snapshot.json
 # kan inneholde ekte leietakernavn (f.eks. dump av booked-tenants-snapshot fra Redis)
 scripts/refresh-data/*.json
 scripts/refresh-data/*.txt
+scripts/refresh-data/*.tsv
+scripts/refresh-data/*.csv
 !scripts/refresh-data/README.md
 
 .vercel

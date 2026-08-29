@@ -6,7 +6,13 @@ export interface RemainingTenantLine {
   bygg: string;
   linjetype: string;
   beskrivelse: string;
+  del: "A" | "B";
   fullArsverdi2026: number;
+  // Kontraktslinjens egne start-/sluttdato (ISO, kan være null for løpende/uten sluttdato) -
+  // brukes til å varsle når en leietakers kontrakt starter eller slutter i 2026, se
+  // "Start/slutt 2026"-kolonnen i app/IncomeForecastSection.tsx.
+  startDato: string | null;
+  sluttDato: string | null;
 }
 
 export type RemainingByggStatus =
@@ -15,6 +21,8 @@ export type RemainingByggStatus =
   | "ikke-matchet-i-nxt"
   | "forklart-omsetningsleie"
   | "forklart-kontraktsendring"
+  | "forklart-engangsgebyr"
+  | "forklart-nxt-feilkoding"
   | "intern-mustad"
   | "forklart-parkering-onepark";
 
@@ -24,6 +32,8 @@ export interface RemainingByggGruppe {
   fullArsverdi2026DelB: number;
   alleredeFakturertDelA: number;
   alleredeFakturertDelB: number;
+  gjenstarDelA: number;
+  gjenstarDelB: number;
   gjenstarTotal: number;
   status: RemainingByggStatus;
   forklaring: string | null;
@@ -38,12 +48,19 @@ export interface RemainingTenant {
   lines: RemainingTenantLine[];
 }
 
+export interface Omsetningsavregning2025Info {
+  avsetning: number;
+  fordeltPerLeietaker: number;
+  nettoEffekt2026: number;
+}
+
 export interface RemainingTenantsSnapshot {
   sistOppdatert: string;
   ar: number;
   totalBelop: number;
   antallLeietakere: number;
   tenants: RemainingTenant[];
+  omsetningsavregning2025: Omsetningsavregning2025Info;
 }
 
 const HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";

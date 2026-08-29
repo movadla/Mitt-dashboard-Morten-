@@ -13,6 +13,8 @@ const STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "ikke-matchet-i-nxt": "Ikke funnet i NXT",
   "forklart-omsetningsleie": "Omsetningsleie i NXT",
   "forklart-kontraktsendring": "Kontraktsendring i år",
+  "forklart-engangsgebyr": "Engangsgebyr (exit fee)",
+  "forklart-nxt-feilkoding": "Feilkoding i NXT",
   "intern-mustad": "Intern (Mustad selv)",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
 };
@@ -22,6 +24,8 @@ const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
   "ikke-matchet-i-nxt": "FFBDD7EE",
   "forklart-omsetningsleie": "FFFFEB9C",
   "forklart-kontraktsendring": "FFFFEB9C",
+  "forklart-engangsgebyr": "FFFFEB9C",
+  "forklart-nxt-feilkoding": "FFFFEB9C",
   "intern-mustad": "FFD9D9D9",
   "forklart-parkering-onepark": "FFC6E0B4",
 };

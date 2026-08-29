@@ -149,39 +149,75 @@ export interface RemainingSnapshot {
 //   scripts/build-remaining-summary.js sin ONEPARK_ESTIMAT_2026-konstant og
 //   "Gjenstår per leietaker (Fazile)"-fanen (status "forklart-parkering-onepark")
 //   for full detalj.
+// - Konto 3632 = avregning av 2025-OMSETNINGSLEIEN, ikke en 2026-inntekt (funnet
+//   2026-08-25 etter et spørsmål fra Morten om en CC Vest-leietaker som viste mer
+//   fakturert enn Fazile sin kontraktslinje). Bevis: en 2025-12-31-avsetning/
+//   reversering bokført på "Andre (bokført uten leietakerreferanse)" (customerNo=0),
+//   netto -11 112 558 kr, fordelt ut på ~38 enkeltposteringer pr. leietaker gjennom
+//   jan-aug 2026 (11 652 752,78 kr) - nettoeffekt på 2026-bokføringen kun
+//   540 194,78 kr. Disse postene er en ETTERSKUDDSVIS avregning av 2025 sin faktiske
+//   omsetning, IKKE en 2026-leieinntekt, og er derfor ekskludert fra
+//   alleredeFakturertDelA/DelB (og dermed fra totalDelA under) - se
+//   OMSETNINGSAVREGNING_2025_KONTI-kommentaren i scripts/build-remaining-summary.js
+//   for full sporing (avsetning/fordelt/nettoeffekt). Løftet totalDelA fra
+//   154 264 137,48 til 165 860 886,86 kr (+11 596 749,38 kr - forskjellen mellom
+//   "fordelt til leietakere" og litt avrunding/andre mindre 3632-poster).
 // - Negative leieforhold (allerede fakturert > Fazile sin årsverdi) ETTER Del A/B-
-//   fiksen er undersøkt med faktiske NXT-transaksjoner (ikke bare antatt) og faller
-//   i to bekreftede klasser, begge telt MED i totalen som de er (ikke gulvet, ikke
-//   skjult):
-//   1) CC Vest-leietakere (12 stk): NXT har bokført periodiske
-//      omsetningsleie-/minimumsleie-avregninger ("Overført fra Fazile") i tillegg
-//      til grunnleien - Fazile sin kontraktslinje-baserte årsverdi fanger kun opp
-//      grunnleien. Bekreftet ved faktisk transaksjonsuttrekk for én CC Vest-
-//      leietaker: -912 491 kr postert 30.06.2026 som egen linje på konto 3632,
-//      tekst "Overført fra Fazile" - ikke en del av den vanlige månedlige husleien.
-//   2) Andre leietakere (49 stk): Fazile viser kun DAGENS aktive kontrakt brukt
-//      for hele 2026 - hvis leieforholdet ble indeksregulert/endret i løpet av
-//      året, avviker det fra hva som faktisk ble fakturert tidligere. Bekreftet
-//      ved faktisk transaksjonsuttrekk for én leietaker på Lilleakerveien 10:
-//      kvartalsraten økte fra ca. 777 973 kr til 827 147 kr fra periode 4 2026, med en
-//      korreksjons-/reverseringspostering samme periode. IKKE individuelt
-//      verifisert for alle 49 - dette er den bekreftede MEKANISMEN, ikke en
-//      case-for-case-gjennomgang. Morten har varslet en fremtidig, grundigere
-//      gjennomgang av alle leieforhold med start/slutt i 2026.
-// - Omsetningsleie-avregning (steg 3 i inntektsprognose-roadmapen) er fortsatt
-//   IKKE bygget som egen komponent - klasse 1 over er en indirekte bekreftelse på
-//   at det trengs, ikke en erstatning for det.
+//   fiksen OG 3632-fiksen over er undersøkt med faktiske NXT-transaksjoner (ikke
+//   bare antatt) og faller i to bekreftede klasser, begge telt MED i totalen som de
+//   er (ikke gulvet, ikke skjult):
+//   1) CC Vest-leietakere (3 stk igjen etter 3632-fiksen, ned fra 12): resterende
+//      omsetningsleie-/minimumsleie-avvik som IKKE forklares av konto 3632 alene -
+//      egne, ekte avvik pr. leieforhold, ikke undersøkt case-for-case.
+//   2) Andre leietakere (39 stk, ned fra 49 - se 2026-08-26-avsnitt under): Fazile
+//      sitt rent_roll-uttrekk henter KUN kontraktslinjer som er aktive PÅ
+//      uttrekksdatoen (aktiv_dato default = i dag) - når en kontrakt fornyes midt i
+//      2026 (ny kontrakt-ID, ofte samme/lignende sats), forsvinner den utløpte
+//      linjens del av året helt fra datagrunnlaget, selv om NXT korrekt har
+//      fakturert for hele perioden. IKKE individuelt verifisert for alle
+//      gjenværende 39 - dette er den bekreftede MEKANISMEN (9 leieforhold allerede
+//      individuelt rettet, se under), ikke en fullstendig case-for-case-gjennomgang.
+// - 2026-08-26 (Morten ba om en grundigere gjennomgang av negativ gjenstår): fant
+//   og bekreftet rotårsaken over ved å sjekke faktiske Fazile-kontraktshistorikker
+//   (ikke bare NXT-transaksjoner) for 9 leieforhold (8 bedrifter + 1 privat
+//   leietaker - navn kun i gitignored scripts/refresh-data/, se ANONYMISERING.md) -
+//   alle viste en kontrakt som fornyet seg midt i 2026 til samme/lignende sats, der
+//   KUN den nye, kortere
+//   kontraktens linje var med i datagrunnlaget. La til de manglende, utløpte
+//   linjene manuelt (se scripts/refresh-data/fazile-remaining-tenants/
+//   _additions-negativ-gjenstar-2026-08-26.json) - løftet totalDelA med
+//   5 951 394,58 kr og totalDelB med 239 879,60 kr. De resterende ~39
+//   "forklart-kontraktsendring"-leieforholdene er IKKE individuelt gått gjennom på
+//   samme måte ennå (tidsbruk) - se memory/project_income-forecast-negative-
+//   gjenstar-root-cause-2026-08-26.md for full status. En fullstendig fiks krever
+//   et bredere Fazile-uttrekk (kun_aktive_linjer:false for alle ~55 eiendommer),
+//   ikke gjort her.
+// - Omsetningsleie-avregning FOR 2026 (dvs. den ekte, fremtidige varianten av
+//   3632-mekanismen over, gjelder 2026 sin faktiske omsetning og betales trolig ut
+//   i 2027) er fortsatt IKKE bygget som egen komponent - et eget tema Morten vil
+//   se nærmere på senere, spesielt siden mange leietakere faktureres OVER
+//   minimumsleien og dermed kan ha noe å hente tilbake ved lav omsetning.
+// v2 (2026-08-26): parkerings-/garasje- og markedsbidragslinjer fjernet fra Del A. v3 (samme
+// dag): fullstendig Fazile-uttrekk av alle EXPIRED-kontrakter (311 manglende 2026-relevante
+// linjer lagt til), ny FAZILE_TO_NXT_ALIASES-mekanisme (8 tidligere uattribuerte leieforhold),
+// og engangsgebyr/exit fee-forklaring for 3 store negative gjenstår-tilfeller. v4 (samme dag):
+// erstattet navnematching mot NXT med en pålitelig kundenummer-ID-kobling (Fazile
+// `customer.erp_code` === NXT `customerNo`) som primær metode - 670/685 matcher nå via ID. Se
+// v3/v4-avsnittene i lib/incomeForecast.local.ts sin metodikk-kommentar for full forklaring.
+// v5 (2026-08-27, samme dag): fant og fikset en NXT-bygg-matchefeil (co-working-underkoder
+// "Modus"/"Co-work" manglet sammenslåing til hovedbygget, 12 leietakere), se v4-avsnittet i
+// lib/incomeForecast.local.ts for full forklaring. totalDelA NED til 167 683 859,88 kr.
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-08-25",
+  sistOppdatert: "2026-08-27",
   ar: 2026,
-  totalDelA: 154264137.48,
-  totalDelB: 16119823.05,
-  antallLeieforhold: 729,
-  antallIkkeMatchetFlagget: 25,
-  antallForklartOmsetningsleie: 12,
-  antallForklartKontraktsendring: 49,
-  antallAvsluttetNullstilt: 10,
-  antallInternMustad: 21,
+  totalDelA: 167683859.88,
+  totalDelB: 23297986.61,
+  antallLeieforhold: 726,
+  antallIkkeMatchetFlagget: 19,
+  antallForklartOmsetningsleie: 5,
+  antallForklartKontraktsendring: 53,
+  antallAvsluttetNullstilt: 8,
+  antallInternMustad: 18,
   uforklarteAvvik: [],
 };
 
@@ -537,14 +573,21 @@ export const RECONCILIATION: ReconciliationSnapshot = {
       label: "Total prognose 2026 er i rimelig størrelsesorden",
       status: "ok",
       notat:
-        "Del A ~634,1 mill kr + Del B ~55,8 mill kr = ~690,0 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Del B gikk opp fra ~51,0 mill kr til ~55,8 mill kr 2026-08-25 da Onepark-parkeringsestimatet (4 834 585,44 kr, årsestimat fra Inntektsprognose-arket minus allerede fakturert) ble lagt til - se REMAINING sin kommentar. Før det gikk totalen ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
+        "Del A ~645,7 mill kr + Del B ~55,8 mill kr = ~701,5 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Del A gikk opp fra ~634,1 mill kr til ~645,7 mill kr 2026-08-25 da konto 3632 (avregning av 2025-omsetningsleien, IKKE en 2026-inntekt - se REMAINING sin kommentar) ble ekskludert fra leietakernes 'allerede fakturert' - løftet gjenstår-siden med 11 596 749,38 kr og forklarer samtidig hvorfor mange CC Vest-leietakere tidligere viste negativ gjenstår. Før det gikk Del B opp fra ~51,0 mill kr til ~55,8 mill kr 2026-08-25 da Onepark-parkeringsestimatet (4 834 585,44 kr, årsestimat fra Inntektsprognose-arket minus allerede fakturert) ble lagt til. Før det igjen gikk totalen ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
+    },
+    {
+      id: "avvik-juli-2026-kryssjekk",
+      label: "Kryssjekket prognosen mot Finance sin egen avviks-logg",
+      status: "ok",
+      notat:
+        "Inntektsprognose-fila har et ark 'Avvik juli-2026' (120 rader) - Finance sin egen, manuelt førte kontraktslinje-nivå-logg over kjente endringer vs. opprinnelig budsjett, med fritekst-kommentar pr. linje. Kryssjekket 2026-08-26 mot 'Potensiell fremtidig inntekt': bekreftet alle fire kjente signerte-men-ikke-Fazile-registrerte kontrakter der, rettet en feil bygg-referanse (én av de fire lå på feil bygg), og la til presiseringer om tidsforskyvning/leiefritak/usikkerhet for tre av dem - se kategorien sitt eget notat. Avdekket to nye, konkrete funn IKKE tidligere fanget opp av NXT/Fazile-baserte tall: (1) en exit fee/mulig-tapt-leie-sak (netto +1 044 562 kr) og (2) en konkursrisiko hos en enkelt leietaker (−2 000 000 kr) - begge lagt inn som egne 'Mine manuelle linjer' (se Tillegg-fanen for detaljer og kilde - ekte leietakernavn/sensitiv informasjon holdes kun der, ikke i denne kommentaren). Arkets EGEN nettosum for kjente avvik (+6 171 306 kr) er vesentlig lavere enn vårt eget beregnede gap mot budsjett (−23,1 mill kr for bokført+gjenstår alene) - de to metodikkene måler ikke identiske ting (Finance sin logg er deltaer mot en allerede ikke-null budsjett-forutsetning pr. areal, vår beregning er fra null) og er IKKE videre avstemt i denne runden.",
     },
     {
       id: "stort-enkeltbilag",
       label: "Stort enkeltstående manuelt bilag",
-      status: "varsel",
+      status: "ok",
       notat:
-        "Bilag 28779-4 (Mustad Eiendom AS, 'Avsetning omsetningsleie 2025 iht vedlegg', -12,14 mill kr) er uvanlig stort sammenlignet med de andre manuelle postene. Bør verifiseres mot regnskap/vedlegg før tallet stoles på fullt ut.",
+        "Bilag 28779-4 (Mustad Eiendom AS, 'Avsetning omsetningsleie 2025 iht vedlegg', -12,14 mill kr) er nå fullt forklart (2026-08-25): det er reverseringen av en 2025-årsavsetning for omsetningsleie, bokført på 'Andre (bokført uten leietakerreferanse)' (customerNo=0, konto 3632), netto -11 112 558 kr. Gjennom jan-aug 2026 er avsetningen fordelt ut på ~38 enkeltposteringer pr. leietaker (11 652 752,78 kr) - nettoeffekt på 2026-bokføringen kun 540 194,78 kr. Begge sider er nå ekskludert fra leietakernes 2026-gjenstår i REMAINING (se scripts/build-remaining-summary.js).",
     },
     {
       id: "nxt-eierandel-feil",
@@ -565,7 +608,7 @@ export const RECONCILIATION: ReconciliationSnapshot = {
       label: "117 av 729 leieforhold er flagget til gjennomgang - 0 uforklarte",
       status: "ok",
       notat:
-        "Etter Morten sin oppfølging 2026-08-24 ('finn hva de heter i NXT, snevre ned antallet') ble 297 opprinnelig flaggede leieforhold undersøkt på nytt: 5 nye bygg-navn-aliaser (bl.a. 'Lilleakerveien 2 Garasje'→'Lilleakerveien 2 - Garasje', fant 44 skjulte treff) og en kjerne-navn-fallback (stavevarianter, 15 treff totalt inkl. bindestrek-/punktumvarianter) løste 85 av 110 'ikke matchet'-tilfeller. En Del A/B-nettingsfiks fjernet 101 falske 'kontraktsendring'/'omsetningsleie'-flagg forårsaket av at Fazile og NXT klassifiserer leie vs. parkering ulikt for samme leieforhold. Resultat: 25 fortsatt uten NXT-treff (ny kontrakt eller gjenstående navn-/bygg-mismatch - se REMAINING sin kommentar for videre inndeling: privatpersoner, kjente firma på ekstra underseksjoner, ett leieforhold med et Mustad-slektsnavn som mulig familietilknytning, reelt nye leietakere, og 2 med 0 kr), 12 CC Vest-leieforhold med trolig omsetningsleie-avregning i NXT (bekreftet for én leietaker), 49 med trolig kontraktsendring/indeksregulering i året (bekreftet for én leietaker, IKKE individuelt verifisert for alle 49), 10 allerede avsluttet i Fazile og nullstilt til 0 (hvorav én enkelt leietaker alene utgjør 6 stk og 4,6 mill kr - stort nok til at Morten bør sjekke det spesielt). I tillegg er 21 leieforhold der 'leietaker' er Mustad selv (egne lokaler) flagget separat som 'intern-mustad' - ikke reelle eksterne leieforhold. 0 uforklarte avvik gjenstår.",
+        "Etter Morten sin oppfølging 2026-08-24 ('finn hva de heter i NXT, snevre ned antallet') ble 297 opprinnelig flaggede leieforhold undersøkt på nytt: 5 nye bygg-navn-aliaser (bl.a. 'Lilleakerveien 2 Garasje'→'Lilleakerveien 2 - Garasje', fant 44 skjulte treff) og en kjerne-navn-fallback (stavevarianter, 15 treff totalt inkl. bindestrek-/punktumvarianter) løste 85 av 110 'ikke matchet'-tilfeller. En Del A/B-nettingsfiks fjernet 101 falske 'kontraktsendring'/'omsetningsleie'-flagg forårsaket av at Fazile og NXT klassifiserer leie vs. parkering ulikt for samme leieforhold. Resultat: 25 fortsatt uten NXT-treff (ny kontrakt eller gjenstående navn-/bygg-mismatch - se REMAINING sin kommentar for videre inndeling: privatpersoner, kjente firma på ekstra underseksjoner, ett leieforhold med et Mustad-slektsnavn som mulig familietilknytning, reelt nye leietakere, og 2 med 0 kr), 12 CC Vest-leieforhold med trolig omsetningsleie-avregning i NXT (bekreftet for én leietaker; NED TIL 3 stk 2026-08-25 etter at konto 3632/2025-avsetningen ble identifisert og ekskludert separat - se 'stort-enkeltbilag'-sjekken - de resterende 9 var altså denne samme mekanismen, ikke et eget fenomen), 49 med trolig kontraktsendring/indeksregulering i året (bekreftet for én leietaker, IKKE individuelt verifisert for alle 49), 10 allerede avsluttet i Fazile og nullstilt til 0 (hvorav én enkelt leietaker alene utgjør 6 stk og 4,6 mill kr - stort nok til at Morten bør sjekke det spesielt). I tillegg er 21 leieforhold der 'leietaker' er Mustad selv (egne lokaler) flagget separat som 'intern-mustad' - ikke reelle eksterne leieforhold. 0 uforklarte avvik gjenstår.",
     },
     {
       id: "del-ab-metodikk-ulik",

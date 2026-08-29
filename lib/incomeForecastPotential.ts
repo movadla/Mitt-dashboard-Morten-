@@ -2,15 +2,17 @@ import { hgetallJSON, hsetJSON } from "./kv";
 import { localDateString } from "./payday";
 
 // Manuelt anslåtte "potensielle inntekt"-kategorier i Inntektsprognose-toppseksjonen -
-// tall Morten legger inn selv (2026-08-24) i påvente av at de kobles til ekte
+// tall Morten legger inn selv (2026-08-24/25) i påvente av at de kobles til ekte
 // datakilder/rapporter senere (ledige lokaler -> Fazile arealoversikt x markedsleie;
-// annet -> ukjent ennå).
+// annet -> ukjent ennå; potensiell fremtidig inntekt -> ad-hoc gravd fram fra Fazile
+// SIGNED_BY_BOTH_PARTIES-kontrakter som ennå ikke er i REMAINING-snapshotet, ikke
+// automatiserbart på samme måte som de andre datalagene).
 // "omsetningsavregning" er IKKE lenger en manuell kategori her (2026-08-24) - den er
 // erstattet av et beregnet tall fra lib/omsetningsavregning.ts (se OmsetningsavregningBlock
 // i app/IncomeForecastSection.tsx). IKKE forveksle med den allerede BOKFØRTE
 // "Omsetningsleie-avsetning"-reverseringen i MANUAL_NXT (-12,14 mill kr, gjelder 2025) -
 // to helt forskjellige ting som begge nevner "omsetningsleie".
-export type PotentialIncomeCategoryKey = "ledige-lokaler" | "annet";
+export type PotentialIncomeCategoryKey = "potensiell-fremtidig-inntekt" | "ledige-lokaler" | "annet";
 
 export interface PotentialIncomeCategory {
   key: PotentialIncomeCategoryKey;
@@ -27,6 +29,15 @@ export interface PotentialIncomeSnapshot {
 const HASH_KEY = "jobb:inntektsprognose-potensial";
 
 const DEFAULTS: Record<PotentialIncomeCategoryKey, Omit<PotentialIncomeCategory, "sistOppdatert">> = {
+  "potensiell-fremtidig-inntekt": {
+    key: "potensiell-fremtidig-inntekt",
+    label: "Potensiell fremtidig inntekt",
+    belop: 0,
+    // IKKE legg ekte leietaker-/kundenavn i denne default-teksten (committet kode, se
+    // ANONYMISERING.md) - det reelle anslaget og notatet (med navn) settes via Redis
+    // (PATCH-endepunktet eller et engangs-seed-script), ikke her.
+    notat: "Foreløpig manuelt anslag - samlepost for signerte, men ikke Fazile-registrerte kontrakter/leieforhold.",
+  },
   "ledige-lokaler": {
     key: "ledige-lokaler",
     label: "Ledige lokaler",
@@ -41,7 +52,7 @@ const DEFAULTS: Record<PotentialIncomeCategoryKey, Omit<PotentialIncomeCategory,
   },
 };
 
-const ORDER: PotentialIncomeCategoryKey[] = ["ledige-lokaler", "annet"];
+const ORDER: PotentialIncomeCategoryKey[] = ["potensiell-fremtidig-inntekt", "ledige-lokaler", "annet"];
 
 export async function getPotentialIncomeSnapshot(): Promise<PotentialIncomeSnapshot> {
   const stored = await hgetallJSON<PotentialIncomeCategory>(HASH_KEY);

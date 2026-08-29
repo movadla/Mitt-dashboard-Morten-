@@ -44,13 +44,42 @@
 
 const fs = require("fs");
 const path = require("path");
-const { loadEnvLocal, pushToRedis, loadOwnershipShares, andelForBygg } = require("./lib/refresh-helpers");
+const { loadEnvLocal, pushToRedis, getFromRedis, loadOwnershipShares, andelForBygg, normalizeName } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "kontraktsutlop-raw-full.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-kontraktsutlop-2026";
 const REDIS_FIELD = "snapshot";
+const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
+const REMAINING_FIELD = "snapshot";
 const AR = 2026;
+const AR_START = new Date(`${AR}-01-01T00:00:00Z`);
 const AR_SLUTT = new Date(`${AR}-12-31T00:00:00Z`);
+
+// v2 (2026-08-29, Morten): denne fila hentet råttall UTEN å filtrere bort felleskostnader/
+// markedsbidrag/energi/eiendomsskatt/administrasjonsbidrag/driftsavtale/parkering-garasje - alt
+// dette er allerede ekskludert fra "leieinntekter" (Del A) i build-remaining-summary.js (samme
+// regex-sett, duplisert her - se der for full begrunnelse/historikk pr. kategori). Denne fila
+// skal vise "det samme som leietakerlisten", så samme eksklusjon må gjelde her.
+const PARKERING_LINJE_REGEX = /garasje|parkering|\bparking\b/i;
+const MARKEDSBIDRAG_REGEX = /markedsf.ringsbidrag|markedsbidrag/i;
+const FELLESKOST_KANTINE_REGEX = /^à konto felleskost|^felleskost|kantinebidrag|^kantine(\s|$)|canteen contribution/i;
+const ENERGI_REGEX = /energi|energy|electric|electrisity|ladestrøm|strøm/i;
+const EIENDOMSSKATT_REGEX = /eiendomsskatt|eiendomskatt|property tax/i;
+const ADMINISTRASJONSBIDRAG_REGEX = /administrasjonsbidrag/i;
+const DRIFTSAVTALE_REGEX = /driftsavtale|vaktmester/i;
+const SD_ANLEGG_REGEX = /sd.?anlegg/i;
+function erKjerneleieLinje(beskrivelse) {
+  const b = (beskrivelse || "").trim();
+  if (PARKERING_LINJE_REGEX.test(b)) return false;
+  if (MARKEDSBIDRAG_REGEX.test(b)) return false;
+  if (FELLESKOST_KANTINE_REGEX.test(b)) return false;
+  if (ENERGI_REGEX.test(b)) return false;
+  if (EIENDOMSSKATT_REGEX.test(b)) return false;
+  if (ADMINISTRASJONSBIDRAG_REGEX.test(b)) return false;
+  if (DRIFTSAVTALE_REGEX.test(b)) return false;
+  if (SD_ANLEGG_REGEX.test(b)) return false;
+  return true;
+}
 
 function ekstraI2026ForLinje(linjeSlutt, totalArsleie, reforhandlet) {
   if (reforhandlet) return 0;
@@ -59,12 +88,23 @@ function ekstraI2026ForLinje(linjeSlutt, totalArsleie, reforhandlet) {
   return (totalArsleie / 365) * dagerEtter;
 }
 
-function main() {
+async function main() {
   loadEnvLocal();
   const raw = JSON.parse(fs.readFileSync(RAW_FILE, "utf8"));
   const shares = loadOwnershipShares();
+  // v2 (2026-08-29, Morten): "denne listen må gjelde kontrakter med utløp fra i dag og ut resten
+  // av året" - eksempel Jernia, som allerede er reforhandlet men fortsatt dukket opp fordi
+  // status-baserte "reforhandlet"-deteksjonen har hull. Datofilter (linje_slutt >= i dag) er en
+  // robust sperre UAVHENGIG av om status-feltet er korrekt - en linje som allerede er utløpt er
+  // uansett ikke lenger en fremtidig reforhandlings-beslutning. I DAG regnes dynamisk (ikke en
+  // hardkodet dato), så scriptet forblir riktig neste gang det kjøres.
+  const I_DAG_ISO = new Date().toISOString().slice(0, 10);
   const rows = (raw.rows || []).filter(
-    (r) => r.linje_slutt >= `${AR}-01-01` && r.linje_slutt <= `${AR}-12-31` && r.total_arsleie > 0,
+    (r) =>
+      r.linje_slutt >= I_DAG_ISO &&
+      r.linje_slutt <= `${AR}-12-31` &&
+      r.total_arsleie > 0 &&
+      erKjerneleieLinje(r.linje_beskrivelse),
   );
 
   let antallEierandelKorrigert = 0;
@@ -125,8 +165,52 @@ function main() {
       nyKontraktsnokkel: g.nyKontraktsnokkel,
       ekstraI2026: Math.round(g.ekstraI2026 * 100) / 100,
       lines: g.lines,
+      muligAlleredeDekket: null, // fylles under
     }))
     .sort((a, b) => b.totalArsleie - a.totalArsleie);
+
+  // v2 (2026-08-29, Morten - "tenk som en inntektskontroller"): varsel når leietakeren allerede
+  // har fakturert MER i 2026 enn det kontraktens egen sluttdato skulle tilsi - kan bety at
+  // ekstraI2026 dobbelttelles mot en allerede realisert engangs-/dobbel-kvartal-betaling
+  // (bekreftet mønster for Follestad Trend AS tidligere i dag, Omsetningsavregning-arbeidet).
+  // Enkelt-byggforhold sjekkes direkte (unngår bygg-navn-alias-fellen "Lilleakerveien 16"
+  // (Fazile) vs. "CC Vest Senter" (NXT) som ellers ville skjult nettopp Follestad Trend);
+  // fler-byggforhold krever et bygg-navn-treff, ellers IKKE flagget (konservativt - unngår
+  // falske positiver fra multi-bygg-leietakere, se filhode).
+  const remaining = await getFromRedis(REMAINING_HASH_KEY, REMAINING_FIELD);
+  let antallFlagget = 0;
+  if (remaining) {
+    const remainingByNavn = new Map(remaining.tenants.map((t) => [normalizeName(t.navn), t]));
+    for (const c of contracts) {
+      if (c.status !== "apen" || c.ekstraI2026 <= 0) continue;
+      const t = remainingByNavn.get(normalizeName(c.leietaker));
+      if (!t) continue;
+      const reelleGrupper = t.byggGrupper.filter((bg) => bg.status !== "intern-mustad");
+      let faktiskFakturert = null;
+      if (reelleGrupper.length === 1) {
+        faktiskFakturert = reelleGrupper[0].alleredeFakturertDelA;
+      } else if (reelleGrupper.length > 1) {
+        const kontraktBygg = c.bygg.split(",").map((b) => normalizeName(b.trim()));
+        const treff = reelleGrupper.filter((bg) => kontraktBygg.includes(normalizeName(bg.bygg)));
+        if (treff.length > 0) faktiskFakturert = treff.reduce((s, bg) => s + bg.alleredeFakturertDelA, 0);
+      }
+      if (faktiskFakturert === null) continue;
+      const sluttDato = new Date(`${c.maxSlutt}T00:00:00Z`);
+      const daysThroughEnd = Math.round((sluttDato - AR_START) / 86400000) + 1;
+      const forventetGjennomSlutt = c.totalArsleie * (daysThroughEnd / 365);
+      if (faktiskFakturert > forventetGjennomSlutt * 1.1) {
+        c.muligAlleredeDekket = {
+          faktiskFakturert: Math.round(faktiskFakturert * 100) / 100,
+          forventetGjennomSlutt: Math.round(forventetGjennomSlutt * 100) / 100,
+          overskudd: Math.round((faktiskFakturert - forventetGjennomSlutt) * 100) / 100,
+        };
+        antallFlagget++;
+      }
+    }
+  } else {
+    console.warn("ADVARSEL: fant ikke REMAINING-snapshot - kunne ikke sjekke mulig dobbelttelling (muligAlleredeDekket forblir null for alle).");
+  }
+  if (antallFlagget > 0) console.log(`Flagget ${antallFlagget} kontrakt(er) som mulig allerede dekket av tidligere fakturering.`);
 
   const totalArsleie = contracts.reduce((sum, c) => sum + c.totalArsleie, 0);
   const reforhandlet = contracts.filter((c) => c.status === "reforhandlet");

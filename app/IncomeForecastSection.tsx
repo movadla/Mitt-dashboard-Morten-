@@ -1,9 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, Search, ShoppingBag, TrendingUp, Users, XCircle } from "lucide-react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  DoorOpen,
+  Info,
+  MessageSquare,
+  Search,
+  ShoppingBag,
+  TrendingUp,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateDMY, formatKr } from "@/lib/widgets";
+import { addDaysIso, localDateString } from "@/lib/payday";
 import {
   BOOKED_3600_3699,
   INVOICED,
@@ -18,6 +35,7 @@ import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
 import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
+import type { TenantForecastGrupper, TenantForecastGruppering, TenantForecastRow, TenantForecastTableSnapshot } from "@/lib/tenantForecastTable";
 import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
 import type { NxtBudgetSnapshot } from "@/lib/nxtBudget";
 import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
@@ -490,6 +508,8 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "ikke-matchet-i-nxt": "Ikke funnet i NXT",
   "forklart-omsetningsleie": "Omsetningsleie i NXT",
   "forklart-kontraktsendring": "Kontraktsendring i år",
+  "forklart-engangsgebyr": "Engangsgebyr (exit fee)",
+  "forklart-nxt-feilkoding": "Feilkoding i NXT",
   "intern-mustad": "Intern (Mustad selv)",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
 };
@@ -500,6 +520,8 @@ const BYGG_STATUS_STYLE: Record<string, string> = {
   "ikke-matchet-i-nxt": "bg-accent/15 text-accent",
   "forklart-omsetningsleie": "bg-status-warning/15 text-status-warning",
   "forklart-kontraktsendring": "bg-status-warning/15 text-status-warning",
+  "forklart-engangsgebyr": "bg-status-warning/15 text-status-warning",
+  "forklart-nxt-feilkoding": "bg-status-warning/15 text-status-warning",
   "intern-mustad": "bg-surface-3 text-ink-4",
   "forklart-parkering-onepark": "bg-status-positive/12 text-status-positive",
 };
@@ -508,6 +530,8 @@ const REVIEW_STATUSES = [
   "ikke-matchet-i-nxt",
   "forklart-omsetningsleie",
   "forklart-kontraktsendring",
+  "forklart-engangsgebyr",
+  "forklart-nxt-feilkoding",
   "avsluttet",
   "intern-mustad",
   "forklart-parkering-onepark",
@@ -1073,58 +1097,31 @@ function LeieforholdReviewBlock() {
   );
 }
 
-function OmsetningsavregningRow({ butikk }: { butikk: OmsetningsavregningSnapshot["butikker"][number] }) {
-  const [open, setOpen] = useState(false);
-  const ikkeMatchet = butikk.matchStatus === "ikke-matchet";
+const LEIETYPE_STYLE: Record<OmsetningsavregningSnapshot["butikker"][number]["leietype"], string> = {
+  Minimumsleie: "bg-surface-3 text-ink-3",
+  Omsetningsleie: "bg-status-warning/15 text-status-warning",
+  "Fast leie": "bg-surface-3 text-ink-3",
+};
+
+type OmsetningsavregningSortKey =
+  | "butikk"
+  | "bygg"
+  | "omsetningKorr"
+  | "avtaltOmsProsent"
+  | "forventetOmsetningsleie"
+  | "fakturert2026"
+  | "gjenstar2026"
+  | "ekstrafakturering";
+
+function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["butikker"][number] }) {
   return (
-    <div className="rounded-xl border border-line bg-surface-2 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="grid w-full grid-cols-[1fr_auto] items-center gap-3 px-3 py-2.5 text-left"
-      >
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm text-ink-1">{butikk.butikk}</span>
-            {ikkeMatchet && (
-              <span className="shrink-0 rounded-full bg-status-warning/12 px-2 py-0.5 text-2xs font-medium text-status-warning">
-                Ikke matchet
-              </span>
-            )}
-          </span>
-          <span className="truncate text-2xs text-ink-4">
-            Omsetning {formatKr(butikk.omsetningKorr)} × {(butikk.avtaltOmsProsent * 100).toLocaleString("nb-NO", { maximumFractionDigits: 2 })}%
-          </span>
-        </span>
-        <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-ink-1">{formatKr(butikk.ekstrafakturering)}</span>
-      </button>
-      {open && (
-        <div className="flex flex-col gap-0.5 border-t border-line px-3 py-2">
-          <p className="text-2xs text-ink-4">
-            Forventet omsetningsleie: <span className="font-medium text-ink-2">{formatKr(butikk.forventetOmsetningsleie)}</span>
-          </p>
-          <p className="text-2xs text-ink-4">
-            Fakturert + gjenstår (CC Vest):{" "}
-            <span className="font-medium text-ink-2">
-              {butikk.fakturertPlusGjenstar === null ? "—" : formatKr(butikk.fakturertPlusGjenstar)}
-            </span>
-          </p>
-          {ikkeMatchet ? (
-            <p className="mt-0.5 text-2xs text-status-warning">
-              Fant ikke noe leieforhold som matcher dette butikknavnet - ikke talt med i summen. Excel-navnet er ofte et
-              kortnavn/merkenavn som avviker fra det juridiske leietakernavnet i Fazile.
-            </p>
-          ) : (
-            <p className="text-2xs text-ink-4">Navnematch: {butikk.matchStatus}</p>
-          )}
-          {butikk.delerLeieforholdMed.length > 0 && (
-            <p className="mt-0.5 text-2xs text-ink-4">
-              Deler leieforhold (samme kontrakt/selskap) med {butikk.delerLeieforholdMed.join(", ")} — «Fakturert +
-              gjenstår» er felles for gruppen, og ekstrafakturering er fordelt proporsjonalt etter omsetning.
-            </p>
-          )}
-        </div>
+    <div className="flex flex-col gap-1.5 border-t border-line bg-surface-1 px-3 py-2.5 text-2xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-ink-3">Type</span>
+        <span className={`rounded-full px-2 py-0.5 font-medium ${LEIETYPE_STYLE[b.leietype]}`}>{b.leietype}</span>
+      </div>
+      {b.delerLeieforholdMed.length > 0 && (
+        <p className="mt-1 text-ink-4">Deler leieforhold/selskap med: {b.delerLeieforholdMed.join(", ")}</p>
       )}
     </div>
   );
@@ -1140,21 +1137,71 @@ function OmsetningsavregningBlock({
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Omsetningsavregning", true);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(30);
+  const [sort, setSort] = useState<{ key: OmsetningsavregningSortKey; dir: "asc" | "desc" }>({ key: "ekstrafakturering", dir: "desc" });
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showInfo, setShowInfo] = useState(false);
 
   const filtered = useMemo(() => {
     if (!snapshot) return [];
     const q = search.trim().toLowerCase();
     if (!q) return snapshot.butikker;
-    return snapshot.butikker.filter((b) => b.butikk.toLowerCase().includes(q));
+    return snapshot.butikker.filter((b) => b.butikk.toLowerCase().includes(q) || b.bygg.toLowerCase().includes(q));
   }, [snapshot, search]);
 
-  const visible = filtered.slice(0, visibleCount);
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      const av = a[sort.key];
+      const bv = b[sort.key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      const cmp = typeof av === "string" ? av.localeCompare(bv as string, "nb-NO") : (av as number) - (bv as number);
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+    return arr;
+  }, [filtered, sort]);
+
+  const visible = sorted.slice(0, visibleCount);
+
+  const totalOmsetning = filtered.reduce((s, b) => s + (b.omsetningKorr ?? 0), 0);
+  const totalForventetLeie = filtered.reduce((s, b) => s + (b.forventetOmsetningsleie ?? 0), 0);
+  const totalFakturert = filtered.reduce((s, b) => s + (b.fakturert2026 ?? 0), 0);
+  const totalGjenstar = filtered.reduce((s, b) => s + (b.gjenstar2026 ?? 0), 0);
+  const totalAvregning = filtered.reduce((s, b) => s + (b.ekstrafakturering ?? 0), 0);
+
+  function toggleSort(key: OmsetningsavregningSortKey) {
+    setSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
+  }
+
+  function toggleExpanded(butikk: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(butikk)) next.delete(butikk);
+      else next.add(butikk);
+      return next;
+    });
+  }
+
+  function headerButton(label: string, key: OmsetningsavregningSortKey) {
+    const active = sort.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
+      >
+        {label}
+        {active && (sort.dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+      </button>
+    );
+  }
 
   return (
     <div id="drilldown-omsetningsavregning" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Omsetningsavregning"
-        subtitle={snapshot ? `${formatKr(snapshot.totalEkstrafakturering)} · ${snapshot.antallMatchet} av ${snapshot.antallButikker} butikker` : "Laster…"}
+        subtitle={snapshot ? `${formatKr(snapshot.totalEkstrafakturering)} · ${snapshot.antallMatchet} leieforhold` : "Laster…"}
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={ShoppingBag}
@@ -1162,23 +1209,6 @@ function OmsetningsavregningBlock({
       />
       {!collapsed && (
         <>
-          <p className="mb-2 text-2xs text-ink-4">
-            Pr. CC Vest-butikk: forventet omsetningsleie (omsetning siste 12 mnd × avtalt %) minus det som allerede er
-            fakturert/gjenstår å fakturere i år — gulvet på 0 kr, siden minimumsleien allerede er sikret gjennom vanlig
-            fakturering. Kilde: {snapshot?.kilde ?? "…"} (oppdatert {snapshot?.sistOppdatert ?? "…"}).
-            {snapshot && snapshot.antallIkkeMatchet > 0 && (
-              <>
-                {" "}
-                <span className="text-status-warning">
-                  {snapshot.antallIkkeMatchet} butikker er ikke matchet mot noe leieforhold og telles ikke i summen
-                </span>{" "}
-                — se disse under, merket &quot;Ikke matchet&quot;.
-              </>
-            )}
-            {snapshot && snapshot.antallUtelatt > 0 && (
-              <> {snapshot.antallUtelatt} butikker er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).</>
-            )}
-          </p>
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
             <input
@@ -1188,31 +1218,115 @@ function OmsetningsavregningBlock({
                 setSearch(e.target.value);
                 setVisibleCount(30);
               }}
-              placeholder="Søk butikk…"
+              placeholder="Søk leietaker eller bygg…"
               className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
             />
           </div>
           {loading ? (
             <SkeletonRows count={4} />
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen butikker funnet.</p>
+            <p className="text-sm text-ink-3">Ingen leieforhold funnet.</p>
           ) : (
             <>
-              <div className="flex flex-col gap-1.5">
-                {visible.map((b) => (
-                  <OmsetningsavregningRow key={b.butikk} butikk={b} />
-                ))}
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[780px] text-sm">
+                  <thead>
+                    <tr className="text-left text-ink-4">
+                      <th className="px-3 py-2">{headerButton("Leietaker", "butikk")}</th>
+                      <th className="px-3 py-2">{headerButton("Bygg", "bygg")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Omsetning", "omsetningKorr")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Oms.-%", "avtaltOmsProsent")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Forventet leie", "forventetOmsetningsleie")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Fakturert", "fakturert2026")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Gjenstår", "gjenstar2026")}</th>
+                      <th className="px-3 py-2 text-right">{headerButton("Avregning", "ekstrafakturering")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((b) => {
+                      const isOpen = expanded.has(b.butikk);
+                      return (
+                        <Fragment key={`${b.butikk}-${b.bygg}`}>
+                          <tr
+                            className="cursor-pointer border-t border-line/60 transition-colors hover:bg-surface-2/50"
+                            onClick={() => toggleExpanded(b.butikk)}
+                          >
+                            <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">{b.butikk}</td>
+                            <td className="max-w-[130px] truncate px-3 py-2 text-ink-3">{b.bygg}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">{b.omsetningKorr == null ? "—" : formatKr(b.omsetningKorr)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                              {b.avtaltOmsProsent == null ? "—" : `${(b.avtaltOmsProsent * 100).toLocaleString("nb-NO", { maximumFractionDigits: 2 })} %`}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                              {b.forventetOmsetningsleie == null ? "—" : formatKr(b.forventetOmsetningsleie)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                              {b.fakturert2026 == null ? "—" : formatKr(b.fakturert2026)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">{b.gjenstar2026 == null ? "—" : formatKr(b.gjenstar2026)}</td>
+                            <td
+                              className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                                b.ekstrafakturering == null ? "text-ink-4" : b.ekstrafakturering > 0 ? "text-status-positive" : "text-ink-3"
+                              }`}
+                            >
+                              {b.ekstrafakturering == null ? "—" : formatKr(b.ekstrafakturering)}
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="border-t border-line">
+                              <td colSpan={8} className="p-0">
+                                <OmsetningsavregningDrilldown b={b} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-line-strong font-semibold">
+                      <td className="px-3 py-2 text-ink-1">Totalt ({filtered.length})</td>
+                      <td className="px-3 py-2" />
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOmsetning)}</td>
+                      <td className="px-3 py-2" />
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalForventetLeie)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-status-positive">{formatKr(totalAvregning)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-              {filtered.length > visible.length && (
+              {sorted.length > visible.length && (
                 <button
                   type="button"
                   onClick={() => setVisibleCount((v) => v + 30)}
                   className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
                 >
-                  Vis {Math.min(30, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+                  Vis {Math.min(30, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
                 </button>
               )}
             </>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowInfo((v) => !v)}
+            className="mt-3 flex w-full items-center justify-between border-t border-line pt-2 text-2xs font-medium text-ink-3 hover:text-ink-1"
+          >
+            Om denne rapporten
+            {showInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+          {showInfo && (
+            <p className="mt-1.5 text-2xs text-ink-4">
+              Pr. leieforhold med minimums- eller omsetningsbasert leie: forventet leie (omsetningsprosent × faktisk
+              omsetning) mot det som er fakturert/gjenstår å fakturere i år — avregning er gulvet på 0 kr, siden
+              minimumsleien allerede er sikret gjennom vanlig fakturering. Trykk en rad for å se omsetning, avtalt
+              prosent og forventet omsetningsleie. Kilde: {snapshot?.kilde ?? "…"} (oppdatert{" "}
+              {snapshot?.sistOppdatert ?? "…"}).
+              {snapshot && snapshot.antallUtelatt > 0 && (
+                <> {snapshot.antallUtelatt} leieforhold er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).</>
+              )}
+            </p>
           )}
         </>
       )}
@@ -1310,6 +1424,37 @@ function SignalEditor({
   );
 }
 
+// Delt mellom ContractExpiryRow (Tillegg-fanen) og KontrakterPaUtlopBlock (Prognose-fanen sin
+// nye "Kontrakter på utløp"-seksjon) - samme kontraktsnøkkel/linje-detaljer vises begge steder.
+function ContractExpiryDetails({ contract }: { contract: ContractExpiry2026Snapshot["contracts"][number] }) {
+  return (
+    <>
+      <p className="text-2xs text-ink-4">
+        Kontraktsnøkkel: <span className="font-medium text-ink-2">{contract.kontraktsnokkel}</span>
+        {contract.nyKontraktsnokkel && (
+          <>
+            {" "}
+            → Reforhandlet til: <span className="font-medium text-ink-2">{contract.nyKontraktsnokkel}</span>
+          </>
+        )}
+      </p>
+      {contract.ekstraI2026 > 0 && (
+        <p className="mt-1 text-2xs text-ink-4">
+          Ekstra i 2026 hvis fornyet: <span className="font-medium text-ink-2">{formatKr(contract.ekstraI2026)}</span>{" "}
+          (ikke med i prognosetotalen)
+        </p>
+      )}
+      <div className="mt-1.5 flex flex-col gap-0.5">
+        {contract.lines.map((l) => (
+          <p key={l.linjenokkel} className="text-2xs text-ink-4">
+            {l.linjeBeskrivelse} ({l.arealtype}) — {formatKr(l.totalArsleie)}, utløp {formatDateDMY(l.linjeSlutt)}
+          </p>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function ContractExpiryRow({
   contract,
   signal,
@@ -1345,28 +1490,7 @@ function ContractExpiryRow({
       </button>
       {open && (
         <div className="border-t border-line px-3 py-2">
-          <p className="text-2xs text-ink-4">
-            Kontraktsnøkkel: <span className="font-medium text-ink-2">{contract.kontraktsnokkel}</span>
-            {contract.nyKontraktsnokkel && (
-              <>
-                {" "}
-                → Reforhandlet til: <span className="font-medium text-ink-2">{contract.nyKontraktsnokkel}</span>
-              </>
-            )}
-          </p>
-          {contract.ekstraI2026 > 0 && (
-            <p className="mt-1 text-2xs text-ink-4">
-              Ekstra i 2026 hvis fornyet: <span className="font-medium text-ink-2">{formatKr(contract.ekstraI2026)}</span>{" "}
-              (ikke med i prognosetotalen)
-            </p>
-          )}
-          <div className="mt-1.5 flex flex-col gap-0.5">
-            {contract.lines.map((l) => (
-              <p key={l.linjenokkel} className="text-2xs text-ink-4">
-                {l.linjeBeskrivelse} ({l.arealtype}) — {formatKr(l.totalArsleie)}, utløp {formatDateDMY(l.linjeSlutt)}
-              </p>
-            ))}
-          </div>
+          <ContractExpiryDetails contract={contract} />
           <SignalEditor
             id={contract.kontraktsnokkel}
             type="reforhandling"
@@ -1626,6 +1750,7 @@ function ReconciliationPanel() {
 }
 
 const POTENTIAL_CATEGORY_LABEL: Record<PotentialIncomeCategoryKey, string> = {
+  "potensiell-fremtidig-inntekt": "Potensiell fremtidig inntekt",
   "ledige-lokaler": "Potensiell inntekt: ledige lokaler",
   annet: "Potensiell inntekt: annet",
 };
@@ -1666,9 +1791,11 @@ function SummaryTile({
 function PotentialCategoryTile({
   category,
   onUpdated,
+  compact,
 }: {
   category: PotentialIncomeSnapshot["categories"][number];
   onUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
+  compact?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [belop, setBelop] = useState(String(category.belop));
@@ -1730,6 +1857,15 @@ function PotentialCategoryTile({
     );
   }
 
+  if (compact) {
+    return (
+      <button type="button" onClick={() => setEditing(true)} className="flex items-baseline justify-between gap-2 text-left text-sm">
+        <span className="text-ink-2">{POTENTIAL_CATEGORY_LABEL[category.key]}</span>
+        <span className="font-medium tabular-nums text-ink-1">{formatKr(category.belop)}</span>
+      </button>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 transition hover:border-line-strong">
       <button type="button" onClick={() => setEditing(true)} className="w-full text-left">
@@ -1746,21 +1882,35 @@ function PotentialCategoryTile({
   );
 }
 
-function TopSummaryBlock({
+// Delt mellom MainForecastBox (toppboksen) og KontrakterPaUtlopBlock (Prognose-fanen) -
+// garanterer at de to ALLTID viser nøyaktig samme sannsynlighetsvektede sum (v2, 2026-08-29,
+// Morten: "tenk som en inntektskontroller" - fant at toppboksen tidligere brukte det u-vektede
+// totalEkstraI2026, uavhengig av hva som faktisk var satt pr. kontrakt).
+function beregnVektetReforhandlingTotal(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[]): number {
+  if (!snapshot) return 0;
+  const signalsById = new Map(signals.map((s) => [s.id, s]));
+  return snapshot.contracts
+    .filter((c) => c.status === "apen")
+    .reduce((sum, c) => sum + c.ekstraI2026 * ((signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100) / 100), 0);
+}
+
+function MainForecastBox({
   rollup,
   contractExpiry2026,
-  potential,
-  onPotentialUpdated,
-  tenantSignals,
   omsetningsavregning,
+  potential,
+  tenantSignals,
+  onPotentialUpdated,
 }: {
   rollup: ForecastRollup;
   contractExpiry2026: ContractExpiry2026Snapshot | null;
-  potential: PotentialIncomeSnapshot | null;
-  onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
-  tenantSignals: TenantSignal[];
   omsetningsavregning: OmsetningsavregningSnapshot | null;
+  potential: PotentialIncomeSnapshot | null;
+  tenantSignals: TenantSignal[];
+  onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
 }) {
+  const [open, setOpen] = useState(false);
+
   const bokfort =
     rollup.delA.fakturertHittil +
     rollup.delB.fakturertHittil +
@@ -1769,54 +1919,1059 @@ function TopSummaryBlock({
     rollup.delA.manuelleLinjer +
     rollup.delB.manuelleLinjer;
   const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
-  const reforhandlingFull = contractExpiry2026?.totalEkstraI2026 ?? 0;
-
-  // Sannsynlighetsvektet forventningsverdi (Morten, 2026-08-24) i stedet for full verdi -
-  // leieforhold uten satt sannsynlighet telles med 0 %, ikke full verdi, til Morten har
-  // vurdert dem (se lib/tenantSignals.ts).
-  const signalsById = useMemo(() => new Map(tenantSignals.map((s) => [s.id, s])), [tenantSignals]);
-  const reforhandlingVektet = useMemo(() => {
-    if (!contractExpiry2026) return 0;
-    return contractExpiry2026.contracts.reduce((sum, c) => {
-      if (c.ekstraI2026 <= 0) return sum;
-      const signal = signalsById.get(c.kontraktsnokkel);
-      const sannsynlighet = signal ? signal.sannsynlighetProsent / 100 : 0;
-      return sum + c.ekstraI2026 * sannsynlighet;
-    }, 0);
-  }, [contractExpiry2026, signalsById]);
-  const snittSannsynlighet = reforhandlingFull > 0 ? (reforhandlingVektet / reforhandlingFull) * 100 : 0;
-
-  const potentialSum = potential ? potential.categories.reduce((s, c) => s + c.belop, 0) : 0;
+  // v2 (2026-08-29): RETTET - viste tidligere `contractExpiry2026?.totalEkstraI2026` direkte, et
+  // tall som antar 100 % sannsynlighet for ALLE åpne kontrakter uansett hva Morten faktisk har
+  // satt pr. kontrakt i "Kontrakter på utløp" (Prognose-fanen). Bruker nå samme sannsynlighets-
+  // vektede beregning som den seksjonen selv viser - de to skal ALLTID vise samme tall.
+  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
   const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
-  const total = rollup.totalt + reforhandlingVektet + omsetningsavregningSum + potentialSum;
+  const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
+  const potensiellFremtidig = potentialByKey.get("potensiell-fremtidig-inntekt")?.belop ?? 0;
+  const ledigeLokaler = potentialByKey.get("ledige-lokaler")?.belop ?? 0;
+  const annet = potentialByKey.get("annet")?.belop ?? 0;
+  const total = bokfort + gjenstar + reforhandlingFull + omsetningsavregningSum + potensiellFremtidig + ledigeLokaler + annet;
+
+  return (
+    <div className="rounded-2xl border-2 border-line-strong bg-surface-2 p-4">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full flex-col gap-1 text-left"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold uppercase tracking-wide text-ink-4">Inntektsprognose 2026</p>
+          {open ? <ChevronUp className="h-4 w-4 shrink-0 text-ink-4" /> : <ChevronDown className="h-4 w-4 shrink-0 text-ink-4" />}
+        </div>
+        <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
+        {!open && <p className="text-2xs text-accent">Se breakdown ↓</p>}
+      </button>
+      {open && (
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">Bokført</span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(bokfort)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">Gjenstår å fakturere</span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(gjenstar)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">Reforhandling (vektet med sannsynlighet, kontraktsutløp i 2026)</span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(reforhandlingFull)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-ink-2">Omsetningsavregning</span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(omsetningsavregningSum)}</span>
+          </div>
+          {potential?.categories.map((c) => (
+            <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} compact />
+          ))}
+          <p className="mt-1 text-2xs text-ink-4">
+            Bokført + Gjenstår er avstemt mot NXT/Fazile. Reforhandling er vektet med sannsynligheten du har satt pr.
+            kontrakt i "Kontrakter på utløp" (Prognose-fanen) - endres der, endres tallet her automatisk. De tre siste er
+            manuelle anslag du kan redigere ved å klikke på dem.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Delt mellom TenantDrilldown (Leieinntekter) og LedigeLokalerBlock (den dedikerte "Ledige
+// lokaler"-oversikten) - samme leietaker-liste vises begge steder, kun via ulik inngang.
+// v8 (2026-08-29): egne "label: verdi"-par pr. tall i stedet for én lang flex-rad - den forrige
+// varianten fløt fritt og overlappet/klippet av på smale mobilskjermer (Morten viste skjermbilde
+// av dette 2026-08-29). Budsjett-tallet her er nøyaktig det samme beløpet som er trukket fra
+// Ledig-radens "Trukket ut"-sum lenger opp - eksplisitt sagt i teksten, ikke bare underforstått.
+function FlyttetInnListe({ flyttetInn }: { flyttetInn: TenantForecastRow[] }) {
+  if (flyttetInn.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-col gap-1.5 border-t border-line-strong pt-1.5">
+      <p className="text-2xs font-medium text-ink-3">
+        Flyttet inn her <span className="font-normal text-ink-4">— budsjettet under er beløpet trukket ut over</span>
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {flyttetInn.map((t) => (
+          <div key={t.navn} className="rounded-lg bg-surface-2/60 px-2 py-1.5">
+            <p className="truncate text-2xs font-medium text-ink-1">{t.navn}</p>
+            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-2xs tabular-nums">
+              <span className="text-ink-4">
+                Budsjett <span className="text-ink-2">{formatKr(t.budsjett ?? 0)}</span>
+              </span>
+              <span className="text-ink-4">
+                Fakturert <span className="text-ink-2">{formatKr(t.fakturert)}</span>
+              </span>
+              <span className="text-ink-4">
+                Gjenstår <span className="text-ink-2">{formatKr(t.gjenstar)}</span>
+              </span>
+              <span className="text-ink-4">
+                +/-{" "}
+                <span className={t.avvik === null ? "text-ink-4" : t.avvik >= 0 ? "text-status-positive" : "text-status-danger"}>
+                  {t.avvik === null ? "—" : formatKr(t.avvik, true)}
+                </span>
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TenantDrilldown({ row, flyttetInn = [] }: { row: TenantForecastRow; flyttetInn?: TenantForecastRow[] }) {
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-line bg-surface-1 px-3 py-2.5">
+      {row.linjer.length === 0 ? (
+        <p className="text-2xs text-ink-4">Ingen kontraktslinjer registrert.</p>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {row.linjer.map((l, i) => (
+            <div key={`${l.bygg}-${l.beskrivelse}-${i}`} className="flex items-baseline justify-between gap-2 text-2xs text-ink-3">
+              <span className="truncate">
+                {l.leietaker ? `${l.leietaker} — ` : ""}
+                {l.bygg} — {l.beskrivelse} ({l.linjetype})
+              </span>
+              <span className="shrink-0 tabular-nums text-ink-4">{formatKr(l.fullArsverdi2026)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <FlyttetInnListe flyttetInn={flyttetInn} />
+      <div className="mt-1 flex items-baseline justify-between gap-2 border-t border-line-strong pt-1.5 text-sm">
+        <span className="text-ink-2">Fakturert</span>
+        <span className="font-semibold tabular-nums text-ink-1">{formatKr(row.fakturert)}</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-sm">
+        <span className="text-ink-2">+/- vs. budsjett</span>
+        <span
+          className={`font-semibold tabular-nums ${
+            row.avvik === null ? "text-ink-4" : row.avvik >= 0 ? "text-status-positive" : "text-status-danger"
+          }`}
+        >
+          {row.avvik === null ? "—" : formatKr(row.avvik, true)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Finner om noen av leietakerens kontraktslinjer starter og/eller slutter i 2026 - varsler om
+// dette direkte i tabellen (Morten, 2026-08-26) siden det ofte forklarer hvorfor fakturert/
+// gjenstår ser rart ut (kontrakten dekker bare en DEL av året). Tar tidligste start og seneste
+// slutt blant linjer som faktisk faller innenfor 2026 - representerer leietakerens "inn"/"ut"-
+// tidspunkt for de fleste tilfeller (én hovedlinje pr. leietaker+bygg er normalt).
+function finn2026StartSlutt(linjer: { startDato: string | null; sluttDato: string | null }[]): { start: string | null; slutt: string | null } {
+  let start: string | null = null;
+  let slutt: string | null = null;
+  for (const l of linjer) {
+    if (l.startDato && l.startDato >= "2026-01-01" && l.startDato <= "2026-12-31") {
+      if (!start || l.startDato < start) start = l.startDato;
+    }
+    if (l.sluttDato && l.sluttDato >= "2026-01-01" && l.sluttDato <= "2026-12-31") {
+      if (!slutt || l.sluttDato > slutt) slutt = l.sluttDato;
+    }
+  }
+  return { start, slutt };
+}
+
+function formatDagManed(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}.${m}`;
+}
+
+// Kommentarer kan bli lange (frie forklaringer, se lib/tenantForecastComments.ts) - en enkel
+// ensrads-input klipper teksten. Klikk åpner en Popover med full tekst i en tekstboks, fortsatt
+// redigerbar (lagrer ved blur), i stedet for kun en synlig ensrads-visning (Morten, 2026-08-27).
+function KommentarCell({ navn, value, onSave }: { navn: string; value: string; onSave: (navn: string, value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next && draft !== value) onSave(navn, draft);
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDraft(value);
+            }}
+            className="block w-full max-w-[180px] truncate rounded-md border border-transparent px-1.5 py-1 text-left text-2xs text-ink-2 outline-none transition hover:border-line hover:bg-surface-2"
+          >
+            {value || <span className="text-ink-4">Kommentar…</span>}
+          </button>
+        }
+      />
+      <PopoverContent className="w-80" onClick={(e) => e.stopPropagation()}>
+        <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">{navn}</p>
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            if (draft !== value) onSave(navn, draft);
+          }}
+          placeholder="Skriv en kommentar…"
+          rows={5}
+          autoFocus
+          className="w-full resize-none rounded-md border border-line bg-surface-2 p-2 text-sm text-ink-1 outline-none focus:border-line-strong"
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type LedigeLokalerSortKey = "navn" | "opprinnelig" | "trukketUt" | "gjenstaende" | "avvik";
+
+// Dedikert oversikt over "Ledig <kortkode>"-radene + hvem som har flyttet inn i dem, samlet ett
+// sted (Morten, 2026-08-29) - i TILLEGG til (ikke erstatning for) at de samme radene/leietakerne
+// fortsatt vises som normalt i Leieinntekter-tabellen over. Leser samme delA.leietaker-array,
+// ingen egen Redis-pipeline.
+function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige lokaler", true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [commentOverrides, setCommentOverrides] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<{ key: LedigeLokalerSortKey; dir: 1 | -1 }>({ key: "trukketUt", dir: -1 });
+
+  async function saveComment(navn: string, kommentar: string) {
+    setCommentOverrides((prev) => ({ ...prev, [navn]: kommentar }));
+    try {
+      await fetch("/api/income-forecast/tenant-comments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ navn, kommentar }),
+      });
+    } catch {
+      /* lagring feilet stille - kommentaren vises fortsatt lokalt til neste sideoppdatering */
+    }
+  }
+
+  const flyttetInnByLedigNavn = useMemo(() => {
+    const m = new Map<string, TenantForecastRow[]>();
+    for (const r of rows) {
+      if (!r.flyttetInnI) continue;
+      if (!m.has(r.flyttetInnI)) m.set(r.flyttetInnI, []);
+      m.get(r.flyttetInnI)!.push(r);
+    }
+    return m;
+  }, [rows]);
+
+  const ledigRows = useMemo(() => rows.filter((r) => r.navn.startsWith("Ledig")), [rows]);
+
+  const derivedAll = useMemo(
+    () =>
+      ledigRows.map((row) => ({
+        row,
+        flyttetInn: flyttetInnByLedigNavn.get(row.navn) ?? [],
+        opprinnelig: row.ledigOpprinneligBudsjett ?? row.budsjett ?? 0,
+        trukketUt: row.ledigTrukketUt ?? 0,
+        gjenstaende: row.budsjett ?? 0,
+        avvik: row.avvik ?? 0,
+      })),
+    [ledigRows, flyttetInnByLedigNavn],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return derivedAll;
+    return derivedAll.filter((d) => d.row.navn.toLowerCase().includes(q) || d.flyttetInn.some((t) => t.navn.toLowerCase().includes(q)));
+  }, [derivedAll, search]);
+
+  function toggleSort(key: LedigeLokalerSortKey) {
+    setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: key === "navn" ? 1 : -1 }));
+  }
+
+  const sorted = useMemo(() => {
+    const { key, dir } = sort;
+    return [...filtered].sort((a, b) => (key === "navn" ? a.row.navn.localeCompare(b.row.navn, "nb-NO") * dir : (a[key] - b[key]) * dir));
+  }, [filtered, sort]);
+
+  const visible = sorted.slice(0, visibleCount);
+
+  function toggle(navn: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(navn)) next.delete(navn);
+      else next.add(navn);
+      return next;
+    });
+  }
+
+  function headerButton(label: string, key: LedigeLokalerSortKey) {
+    const active = sort.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
+      >
+        {label}
+        {active && (sort.dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+      </button>
+    );
+  }
+
+  const totalOpprinnelig = derivedAll.reduce((s, d) => s + d.opprinnelig, 0);
+  const totalTrukketUt = derivedAll.reduce((s, d) => s + d.trukketUt, 0);
+  const totalGjenstaende = derivedAll.reduce((s, d) => s + d.gjenstaende, 0);
+  const totalAvvik = derivedAll.reduce((s, d) => s + d.avvik, 0);
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <SummaryTile label="Bokført" belop={bokfort} jumpToId="drilldown-bokfort" />
-        <SummaryTile label="Gjenstår å fakturere" belop={gjenstar} jumpToId="drilldown-gjenstar" />
-      </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <SummaryTile label="Potensiell inntekt: reforhandling" belop={reforhandlingVektet} jumpToId="drilldown-reforhandling" />
-        <SummaryTile
-          label="Potensiell inntekt: omsetningsavregning"
-          belop={omsetningsavregningSum}
-          jumpToId="drilldown-omsetningsavregning"
-        />
-        {potential?.categories.map((c) => (
-          <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} />
+      <CardHeader
+        title="Ledige lokaler"
+        subtitle={`${formatKr(totalGjenstaende)} gjenstår · ${ledigRows.length} bygg`}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={DoorOpen}
+        iconColorClass="text-status-warning"
+      />
+      {!collapsed && (
+        <>
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(20);
+              }}
+              placeholder="Søk bygg eller innflyttet leietaker…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {ledigRows.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen ledige lokaler i denne kategorien.</p>
+          ) : (
+            <div className="-mx-1 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="text-left text-ink-4">
+                    <th className="px-3 py-2">{headerButton("Ledig", "navn")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Opprinnelig", "opprinnelig")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Trukket ut", "trukketUt")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Gjenstående", "gjenstaende")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("+/-", "avvik")}</th>
+                    <th className="px-3 py-2 text-left">Kommentar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((d) => {
+                    const isOpen = expanded.has(d.row.navn);
+                    return (
+                      <Fragment key={d.row.navn}>
+                        <tr
+                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
+                          onClick={() => toggle(d.row.navn)}
+                        >
+                          <td className="max-w-[140px] truncate px-3 py-2 text-ink-1">{d.row.navn}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(d.opprinnelig)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.trukketUt === 0 ? "—" : formatKr(d.trukketUt)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(d.gjenstaende)}</td>
+                          <td
+                            className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                              d.avvik >= 0 ? "text-status-positive" : "text-status-danger"
+                            }`}
+                          >
+                            {formatKr(d.avvik, true)}
+                          </td>
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                            <KommentarCell navn={d.row.navn} value={commentOverrides[d.row.navn] ?? d.row.kommentar ?? ""} onSave={saveComment} />
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="border-t border-line">
+                            <td colSpan={6} className="p-0">
+                              <TenantDrilldown row={d.row} flyttetInn={d.flyttetInn} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-line-strong font-semibold">
+                    <td className="px-3 py-2 text-ink-1">Totalt ({derivedAll.length})</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOpprinnelig)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalTrukketUt)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstaende)}</td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${totalAvvik >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+                      {formatKr(totalAvvik, true)}
+                    </td>
+                    <td className="px-3 py-2" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {sorted.length > visible.length && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((v) => v + 20)}
+              className="mt-1 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+            >
+              Vis {Math.min(20, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+type KontraktUtlopSortKey = "leietaker" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "ekstraVedReforhandling";
+
+// Ny seksjon (Morten, 2026-08-29): "samme kolonner som leietakerlisten" + mulighet til å sette
+// sannsynlighet for reforhandling PR. KONTRAKT, med en potensiell-eksponering-sum som endrer seg
+// live basert på valgene. Gjenbruker ALT eksisterende datagrunnlag (ContractExpiry2026Snapshot,
+// TenantSignal, TenantForecastRow) - ingen ny pipeline, ingen nytt API. Den eldre, mer detaljerte
+// "Kontrakter som utløper i 2026"-seksjonen i Tillegg-fanen (ContractExpiry2026Block) er
+// UBERØRT - dette er en tilleggsvisning, ikke en erstatning.
+function KontrakterPaUtlopBlock({
+  snapshot,
+  loading,
+  signals,
+  onSignalUpdated,
+  leietakerRader,
+}: {
+  snapshot: ContractExpiry2026Snapshot | null;
+  loading: boolean;
+  signals: TenantSignal[];
+  onSignalUpdated: (next: TenantSignal) => void;
+  leietakerRader: TenantForecastRow[];
+}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter på utløp", true);
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<{ key: KontraktUtlopSortKey; dir: 1 | -1 }>({ key: "ekstraVedReforhandling", dir: -1 });
+
+  const signalsById = useMemo(() => new Map(signals.map((s) => [s.id, s])), [signals]);
+  // Case-insensitiv navnematch mot leietakerlisten - samme Fazile/REMAINING-kilde begge steder,
+  // men faller trygt tilbake til "—" i UI-en hvis en leietaker mot formodning ikke skulle finnes.
+  const leietakerByNavn = useMemo(() => new Map(leietakerRader.map((r) => [r.navn.trim().toLowerCase(), r])), [leietakerRader]);
+
+  const apneKontrakter = useMemo(() => (snapshot ? snapshot.contracts.filter((c) => c.status === "apen") : []), [snapshot]);
+
+  const derivedAll = useMemo(
+    () =>
+      apneKontrakter.map((kontrakt) => {
+        const tenantRow = leietakerByNavn.get(kontrakt.leietaker.trim().toLowerCase());
+        const signal = signalsById.get(kontrakt.kontraktsnokkel);
+        // v9 (2026-08-29): RETTET - Morten var ute etter "ekstra inntekt resten av 2026 hvis
+        // reforhandlet til samme vilkår" (kontrakt.ekstraI2026 - dagsprorata fra utløpsdato til
+        // 31.12.2026), IKKE full årsleie vektet mot risikoen for IKKE å reforhandle (det jeg
+        // bygde først). Default sannsynlighet er 100 % (ikke 0 %) når ingen signal er satt ennå -
+        // matcher den eksisterende, ikke-vektede `totalEkstraI2026` (som antar ALLE reforhandles)
+        // som naturlig startpunkt/referanse ("det var tidligere 32 mnok").
+        const sannsynlighet = signal?.sannsynlighetProsent ?? 100;
+        // Vis 100 % som en synlig, redigerbar verdi fra start (ikke en "Sett sannsynlighet"-
+        // knapp som skjuler default-antagelsen) - Morten (2026-08-29): "prosentsatsen [må] vise
+        // og at man kan justere den". Kun til VISNING - selve lagringen (onSignalUpdated) bruker
+        // fortsatt fallbackNavn/fallbackBygg/type til å opprette et ekte signal ved første lagring.
+        const visSignal: TenantSignal =
+          signal ??
+          ({
+            id: kontrakt.kontraktsnokkel,
+            type: "reforhandling",
+            navn: kontrakt.leietaker,
+            bygg: kontrakt.bygg,
+            sannsynlighetProsent: 100,
+            notat: "",
+            kilde: "Standard (ingen vurdering satt ennå)",
+            sistOppdatert: "",
+          } satisfies TenantSignal);
+        const ekstraVedReforhandling = Math.round(kontrakt.ekstraI2026 * (sannsynlighet / 100) * 100) / 100;
+        // Morten (2026-08-29): Gjenstår/+/- hentet rått fra Leieinntekter forutsetter at
+        // leieforholdet bare tar slutt på kontraktens utløpsdato - ved 100 % sannsynlighet for
+        // reforhandling skal "gjenstår å fakturere" i stedet reflekte at fakturering fortsetter
+        // resten av året til samme sats. Legger derfor til `ekstraVedReforhandling` (allerede
+        // sannsynlighetsvektet, 0 ved 0 % sannsynlighet - gir da nøyaktig samme tall som i dag)
+        // i gjenstår, slik at +/- går mot ~0 når sannsynligheten er høy (eksakt det Morten
+        // beskrev for Scandinavian Cosmetics AS).
+        const gjenstar = tenantRow ? Math.round((tenantRow.gjenstar + ekstraVedReforhandling) * 100) / 100 : null;
+        const avvik = tenantRow && tenantRow.budsjett !== null ? Math.round((tenantRow.fakturert + gjenstar! - tenantRow.budsjett) * 100) / 100 : null;
+        // v2 (2026-08-29, Morten: "tenk som en inntektskontroller") - to uavhengige varsler:
+        // (1) avviket forblir stort selv ved den sannsynligheten som faktisk er valgt - noe
+        // stemmer trolig ikke i budsjett-/kontraktsdataen for denne (se ContractExpiryDetails-
+        // drilldown for detaljer); (2) leietakeren har allerede fakturert mer enn kontraktens
+        // egen sluttdato skulle tilsi (beregnet server-side i build-contract-expiry-2026.js,
+        // se kontrakt.muligAlleredeDekket) - ekstraVedReforhandling kan da dobbeltelle en
+        // allerede realisert engangs-/dobbel-kvartal-betaling (bekreftet mønster for Follestad
+        // Trend AS).
+        const storAvvikSelvJustert = avvik !== null && tenantRow?.budsjett && Math.abs(avvik) > tenantRow.budsjett * 0.1 && Math.abs(avvik) > 50000;
+        const varsler = [
+          storAvvikSelvJustert ? `Stort avvik (${formatKr(avvik!, true)}) selv med valgt sannsynlighet - budsjett/kontraktsdata bør sjekkes.` : null,
+          kontrakt.muligAlleredeDekket
+            ? `Allerede fakturert ${formatKr(kontrakt.muligAlleredeDekket.faktiskFakturert)} i bygget - ${formatKr(kontrakt.muligAlleredeDekket.overskudd)} mer enn kontraktens sluttdato skulle tilsi. "Ekstra ved reforhandling" kan dobbeltelle dette.`
+            : null,
+        ].filter((v): v is string => v !== null);
+        return {
+          kontrakt,
+          signal,
+          visSignal,
+          tenantRow,
+          fakturert: tenantRow?.fakturert ?? null,
+          gjenstar,
+          budsjett: tenantRow?.budsjett ?? null,
+          avvik,
+          ekstraVedReforhandling,
+          varsler,
+        };
+      }),
+    [apneKontrakter, leietakerByNavn, signalsById],
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return derivedAll;
+    return derivedAll.filter((d) => d.kontrakt.leietaker.toLowerCase().includes(q) || d.kontrakt.bygg.toLowerCase().includes(q));
+  }, [derivedAll, search]);
+
+  function toggleSort(key: KontraktUtlopSortKey) {
+    setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: key === "leietaker" ? 1 : -1 }));
+  }
+
+  const sorted = useMemo(() => {
+    const { key, dir } = sort;
+    return [...filtered].sort((a, b) => {
+      if (key === "leietaker") return a.kontrakt.leietaker.localeCompare(b.kontrakt.leietaker, "nb-NO") * dir;
+      const av = a[key];
+      const bv = b[key];
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return (av - bv) * dir;
+    });
+  }, [filtered, sort]);
+
+  const visible = sorted.slice(0, visibleCount);
+
+  function toggle(kontraktsnokkel: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(kontraktsnokkel)) next.delete(kontraktsnokkel);
+      else next.add(kontraktsnokkel);
+      return next;
+    });
+  }
+
+  function headerButton(label: string, key: KontraktUtlopSortKey) {
+    const active = sort.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
+      >
+        {label}
+        {active && (sort.dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+      </button>
+    );
+  }
+
+  // Samme delte funksjon som MainForecastBox (toppboksen) bruker - garanterer at de to alltid
+  // viser identisk tall, i stedet for to uavhengige utregninger som kan drifte fra hverandre.
+  const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <CardHeader
+        title="Kontrakter på utløp"
+        subtitle={
+          snapshot
+            ? `${formatKr(totalEkstraVektet)} ekstra inntekt hvis reforhandlet (av ${formatKr(snapshot.totalEkstraI2026)} hvis alt reforhandles til samme vilkår)`
+            : "Laster…"
+        }
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={CalendarClock}
+        iconColorClass="text-status-warning"
+      />
+      {!collapsed && (
+        <>
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setVisibleCount(20);
+              }}
+              placeholder="Søk leietaker eller bygg…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
+          </div>
+          {loading ? (
+            <SkeletonRows count={4} />
+          ) : apneKontrakter.length === 0 ? (
+            <p className="text-sm text-ink-3">Ingen åpne kontrakter utløper i 2026.</p>
+          ) : (
+            <div className="-mx-1 overflow-x-auto">
+              <table className="w-full min-w-[960px] text-sm">
+                <thead>
+                  <tr className="text-left text-ink-4">
+                    <th className="px-3 py-2">{headerButton("Leietaker", "leietaker")}</th>
+                    <th className="px-3 py-2 text-left text-2xs font-medium text-ink-4">Bygg</th>
+                    <th className="px-3 py-2 text-left text-2xs font-medium text-ink-4">Utløp</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Fakturert", "fakturert")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Gjenstår", "gjenstar")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Budsjett", "budsjett")}</th>
+                    <th className="px-3 py-2 text-right">{headerButton("+/-", "avvik")}</th>
+                    <th className="px-3 py-2 text-left">Sannsynlighet reforhandling</th>
+                    <th className="px-3 py-2 text-right">{headerButton("Ekstra ved reforhandling", "ekstraVedReforhandling")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((d) => {
+                    const isOpen = expanded.has(d.kontrakt.kontraktsnokkel);
+                    const utlop =
+                      d.kontrakt.minSlutt === d.kontrakt.maxSlutt
+                        ? formatDateDMY(d.kontrakt.maxSlutt)
+                        : `${formatDateDMY(d.kontrakt.minSlutt)}–${formatDateDMY(d.kontrakt.maxSlutt)}`;
+                    return (
+                      <Fragment key={d.kontrakt.kontraktsnokkel}>
+                        <tr
+                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
+                          onClick={() => toggle(d.kontrakt.kontraktsnokkel)}
+                        >
+                          <td className="max-w-[150px] px-3 py-2 text-ink-1">
+                            <span className="flex min-w-0 items-center gap-1">
+                              <span className="truncate">{d.kontrakt.leietaker}</span>
+                              {d.varsler.length > 0 && (
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <button
+                                        type="button"
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label="Varsel"
+                                        className="shrink-0 text-status-warning hover:text-status-warning/80"
+                                      >
+                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                      </button>
+                                    }
+                                  />
+                                  <TooltipContent className="max-w-xs">
+                                    {d.varsler.map((v, i) => (
+                                      <p key={i} className={i > 0 ? "mt-1" : ""}>
+                                        {v}
+                                      </p>
+                                    ))}
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </span>
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 text-2xs text-ink-3">{d.kontrakt.bygg}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-3">{utlop}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.fakturert == null ? "—" : formatKr(d.fakturert)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.gjenstar == null ? "—" : formatKr(d.gjenstar)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.budsjett == null ? "—" : formatKr(d.budsjett)}</td>
+                          <td
+                            className={`px-3 py-2 text-right tabular-nums ${
+                              d.avvik == null ? "text-ink-4" : d.avvik >= 0 ? "text-status-positive" : "text-status-danger"
+                            }`}
+                          >
+                            {d.avvik == null ? "—" : formatKr(d.avvik, true)}
+                          </td>
+                          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                            <SignalEditor
+                              id={d.kontrakt.kontraktsnokkel}
+                              type="reforhandling"
+                              signal={d.visSignal}
+                              fallbackNavn={d.kontrakt.leietaker}
+                              fallbackBygg={d.kontrakt.bygg}
+                              onUpdated={onSignalUpdated}
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink-1">{formatKr(d.ekstraVedReforhandling)}</td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="border-t border-line">
+                            <td colSpan={9} className="bg-surface-1 p-3">
+                              <ContractExpiryDetails contract={d.kontrakt} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-line-strong font-semibold">
+                    <td className="px-3 py-2 text-ink-1" colSpan={7}>
+                      Totalt ({derivedAll.length} åpne kontrakter)
+                    </td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalEkstraVektet)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          {sorted.length > visible.length && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((v) => v + 20)}
+              className="mt-1 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+            >
+              Vis {Math.min(20, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const GRUPPERING_LABEL: Record<TenantForecastGruppering, string> = { leietaker: "Leietaker", bygg: "Bygg", leietype: "Leietype" };
+const GRUPPERINGER: TenantForecastGruppering[] = ["leietaker", "bygg", "leietype"];
+const EMPTY_GRUPPER: TenantForecastGrupper = { leietaker: [], bygg: [], leietype: [] };
+
+function TenantForecastTable({
+  title,
+  grupper,
+  totalBudsjettOverride,
+}: {
+  title: string;
+  grupper: TenantForecastGrupper;
+  // Kun satt for Parkering: budsjettert som ÉN totallinje i kildefila, ikke pr. leietaker/bygg/
+  // leietype (Morten 2026-08-26) - når satt, vises Totalt-radens budsjett/+/- mot denne
+  // verdien i stedet for sum av (alltid null) pr.-rad-budsjett.
+  totalBudsjettOverride?: number;
+}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse(`Inntektsprognose: ${title}`, false);
+  const [gruppering, setGruppering] = useState<TenantForecastGruppering>("leietaker");
+  const rows = grupper[gruppering];
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(20);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Lokalt overstyr-lag for kommentarer - viser optimistisk oppdatering rett etter lagring,
+  // uten å måtte vente på at grupper-proppen (som kommer fra en fetch lenger oppe i treet)
+  // hentes på nytt.
+  const [commentOverrides, setCommentOverrides] = useState<Record<string, string>>({});
+  // Grønn markering på sluttdato = "aktuelt vindu" (Morten 2026-08-27): frister som enten
+  // ligger foran i tid resten av 2026, eller nettopp har passert (inntil 30 dager tilbake) -
+  // altså fortsatt relevant å følge opp. Eldre, lenge passerte datoer forblir røde.
+  const greenFrom = addDaysIso(localDateString(), -30);
+
+  async function saveComment(navn: string, kommentar: string) {
+    setCommentOverrides((prev) => ({ ...prev, [navn]: kommentar }));
+    try {
+      await fetch("/api/income-forecast/tenant-comments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ navn, kommentar }),
+      });
+    } catch {
+      /* lagring feilet stille - kommentaren vises fortsatt lokalt til neste sideoppdatering */
+    }
+  }
+
+  function handleGrupperingChange(next: TenantForecastGruppering) {
+    setGruppering(next);
+    setSearch("");
+    setVisibleCount(20);
+    setExpanded(new Set());
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    // v8 (2026-08-29): tidligere ble r.flyttetInnI-rader skjult her med mindre man søkte -
+    // fjernet igjen, siden budsjett-fratrekket (kobleFlyttetInnOgTrekkFra() i
+    // scripts/build-tenant-forecast-table.js) nå gir dem et ekte, meningsfullt budsjett/avvik i
+    // stedet for et forvirrende budsjett=0. Morten (2026-08-29): "behold alle ledige lokaler og
+    // leietakere i leietakerlisten" - viktig også fordi noen av disse (f.eks. Origon AS) allerede
+    // har en STOR, helt normal rad fra før (andre bygg) - å skjule HELE raden pga. flyttetInnI på
+    // én liten linje ville feilaktig gjemt bort en ellers ordinær leietaker.
+    if (!q) return rows;
+    return rows.filter((r) => r.navn.toLowerCase().includes(q));
+  }, [rows, search]);
+
+  // Gruppert pr. Ledig-rad-navn - brukes til å vise "flyttet inn her" i TenantDrilldown.
+  const flyttetInnByLedigNavn = useMemo(() => {
+    const m = new Map<string, TenantForecastRow[]>();
+    for (const r of rows) {
+      if (!r.flyttetInnI) continue;
+      if (!m.has(r.flyttetInnI)) m.set(r.flyttetInnI, []);
+      m.get(r.flyttetInnI)!.push(r);
+    }
+    return m;
+  }, [rows]);
+
+  function toggle(navn: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(navn)) next.delete(navn);
+      else next.add(navn);
+      return next;
+    });
+  }
+
+  const [sort, setSort] = useState<{ key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik"; dir: 1 | -1 } | null>(null);
+
+  function toggleSort(key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik") {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: key === "navn" ? 1 : -1 };
+      return { key, dir: (prev.dir * -1) as 1 | -1 };
+    });
+    setVisibleCount(20);
+  }
+
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    const { key, dir } = sort;
+    return [...filtered].sort((a, b) => {
+      if (key === "navn") return a.navn.localeCompare(b.navn, "nb-NO") * dir;
+      const av = a[key];
+      const bv = b[key];
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return (av - bv) * dir;
+    });
+  }, [filtered, sort]);
+
+  const visible = sorted.slice(0, visibleCount);
+
+  const totalFakturert = rows.reduce((s, r) => s + r.fakturert, 0);
+  const totalGjenstar = rows.reduce((s, r) => s + r.gjenstar, 0);
+  const totalBudsjett = totalBudsjettOverride ?? rows.reduce((s, r) => s + (r.budsjett ?? 0), 0);
+  const totalAvvik =
+    totalBudsjettOverride != null ? totalFakturert + totalGjenstar - totalBudsjettOverride : rows.reduce((s, r) => s + (r.avvik ?? 0), 0);
+  const harBudsjett = totalBudsjettOverride != null || rows.some((r) => r.budsjett !== null);
+
+  function headerButton(label: string, key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik") {
+    const active = sort?.key === key;
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(key)}
+        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
+      >
+        {label}
+        {active ? (
+          sort!.dir === 1 ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )
+        ) : null}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <CardHeader
+        title={title}
+        subtitle={filtered.length !== rows.length && !search.trim() ? `${filtered.length} av ${rows.length} rader` : `${rows.length} rader`}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+      />
+      {!collapsed && (
+        <>
+      {totalBudsjettOverride != null && (
+        <p className="text-2xs text-ink-4">
+          Budsjettert kun som én totallinje i kildefila, ikke pr. {GRUPPERING_LABEL[gruppering].toLowerCase()} — Budsjett/+/- vises derfor kun på
+          Totalt-raden, mot samlet fakturert + gjenstår.
+        </p>
+      )}
+      <div className="flex w-fit gap-1 rounded-lg bg-surface-2 p-0.5">
+        {GRUPPERINGER.map((g) => (
+          <button
+            key={g}
+            type="button"
+            onClick={() => handleGrupperingChange(g)}
+            className={`rounded-md px-2.5 py-1 text-2xs font-medium transition ${
+              gruppering === g ? "bg-accent text-white" : "text-ink-3 hover:text-ink-1"
+            }`}
+          >
+            {GRUPPERING_LABEL[g]}
+          </button>
         ))}
       </div>
-      <SummaryTile label="Inntektsprognose 2026" belop={total} emphasize />
-      <p className="text-2xs text-ink-4">
-        Bokført + Gjenstår er den delen som er avstemt mot NXT/Fazile (samme tall som lenger ned på siden). De fire
-        potensial-boksene er ikke med i det tallet. Reforhandling er sannsynlighetsvektet:{" "}
-        {formatKr(reforhandlingFull)} full verdi × snitt-sannsynlighet {snittSannsynlighet.toLocaleString("nb-NO", { maximumFractionDigits: 0 })}
-        {" "}% = {formatKr(reforhandlingVektet)} (juster sannsynlighet pr leieforhold i kontraktsutløp-fanen under). Omsetningsavregning
-        er beregnet pr. CC Vest-butikk (omsetning × avtalt %, minus det som allerede er fakturert/gjenstår) — se detalj under,
-        inkl. butikker som ikke er matchet mot noe leieforhold ennå. De to siste potensial-boksene er manuelle anslag du kan
-        redigere (klikk boksen) inntil de kobles til ekte datakilder.
-      </p>
+      <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+        <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setVisibleCount(20);
+          }}
+          placeholder={`Søk ${GRUPPERING_LABEL[gruppering].toLowerCase()}…`}
+          className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+        />
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-ink-3">Ingen data i denne kategorien ennå.</p>
+      ) : (
+        <div className="-mx-1 overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead>
+              <tr className="text-left text-ink-4">
+                <th className="px-3 py-2">{headerButton(GRUPPERING_LABEL[gruppering], "navn")}</th>
+                {gruppering === "leietaker" && <th className="whitespace-nowrap px-3 py-2 text-left text-2xs font-medium text-ink-4">Start/slutt 2026</th>}
+                <th className="px-3 py-2 text-right">{headerButton("Fakturert", "fakturert")}</th>
+                <th className="px-3 py-2 text-right">{headerButton("Gjenstår", "gjenstar")}</th>
+                <th className="px-3 py-2 text-right">{headerButton("Budsjett", "budsjett")}</th>
+                <th className="px-3 py-2 text-right">{headerButton("+/-", "avvik")}</th>
+                {gruppering === "leietaker" && <th className="px-3 py-2 text-left">Kommentar</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((row) => {
+                const isOpen = expanded.has(row.navn);
+                return (
+                  <Fragment key={row.navn}>
+                    <tr
+                      className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
+                      onClick={() => toggle(row.navn)}
+                    >
+                      <td className="max-w-[160px] px-3 py-2 text-ink-1">
+                        <span className="flex min-w-0 items-center gap-1">
+                          {row.internleie ? (
+                            <span className="min-w-0 truncate text-ink-3">{row.navn}</span>
+                          ) : (
+                            <span className="min-w-0 truncate">{row.navn}</span>
+                          )}
+                          {row.internleie && (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="Om internleie"
+                                    className="shrink-0 text-ink-4 hover:text-ink-1"
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>
+                                Internleie — Mustad sine egne lokaler, ikke et reelt eksternt leieforhold. Vises som fullt fakturert siden det ikke
+                                skal måles mot NXT/Fazile som vanlige leietakere.
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          {gruppering === "leietaker" && (commentOverrides[row.navn] ?? row.kommentar) && (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="Har kommentar"
+                                    className="shrink-0 text-accent hover:text-ink-1"
+                                  >
+                                    <MessageSquare className="h-3 w-3" />
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>{commentOverrides[row.navn] ?? row.kommentar}</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </span>
+                      </td>
+                      {gruppering === "leietaker" &&
+                        (() => {
+                          const { start, slutt } = finn2026StartSlutt(row.linjer);
+                          if (!start && !slutt) return <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">—</td>;
+                          const sluttAktuell = slutt !== null && slutt >= greenFrom;
+                          return (
+                            <td className="whitespace-nowrap px-3 py-2 text-2xs font-medium">
+                              {start && <span className="text-status-danger">start {formatDagManed(start)}</span>}
+                              {start && slutt && <span className="text-ink-4"> · </span>}
+                              {slutt && (
+                                <span className={sluttAktuell ? "text-status-positive" : "text-status-danger"}>
+                                  slutt {formatDagManed(slutt)}
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })()}
+                      <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${row.internleie ? "text-ink-3" : "text-ink-2"}`}>
+                        {formatKr(row.fakturert)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${row.internleie ? "text-ink-3" : "text-ink-2"}`}>
+                        {formatKr(row.gjenstar)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${row.internleie ? "text-ink-3" : "text-ink-2"}`}>
+                        {row.budsjett === null ? "—" : formatKr(row.budsjett)}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap px-3 py-2 text-right tabular-nums font-medium ${
+                          row.internleie
+                            ? "text-ink-4"
+                            : row.avvik === null
+                              ? "text-ink-4"
+                              : row.avvik >= 0
+                                ? "text-status-positive"
+                                : "text-status-danger"
+                        }`}
+                      >
+                        {row.avvik === null ? "—" : formatKr(row.avvik, true)}
+                      </td>
+                      {gruppering === "leietaker" && (
+                        <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                          <KommentarCell navn={row.navn} value={commentOverrides[row.navn] ?? row.kommentar ?? ""} onSave={saveComment} />
+                        </td>
+                      )}
+                    </tr>
+                    {isOpen && (
+                      <tr className="border-t border-line">
+                        <td colSpan={gruppering === "leietaker" ? 7 : 5} className="p-0">
+                          <TenantDrilldown row={row} flyttetInn={flyttetInnByLedigNavn.get(row.navn) ?? []} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              <tr className="border-t border-line-strong font-semibold">
+                <td className="px-3 py-2 text-ink-1">Totalt ({rows.length})</td>
+                {gruppering === "leietaker" && <td className="px-3 py-2" />}
+                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{harBudsjett ? formatKr(totalBudsjett) : "—"}</td>
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${
+                    !harBudsjett ? "text-ink-4" : totalAvvik >= 0 ? "text-status-positive" : "text-status-danger"
+                  }`}
+                >
+                  {harBudsjett ? formatKr(totalAvvik, true) : "—"}
+                </td>
+                {gruppering === "leietaker" && <td className="px-3 py-2" />}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      {filtered.length > visible.length && (
+        <button
+          type="button"
+          onClick={() => setVisibleCount((v) => v + 20)}
+          className="w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+        >
+          Vis {Math.min(20, filtered.length - visible.length)} til ({filtered.length - visible.length} gjenstår)
+        </button>
+      )}
+        </>
+      )}
     </div>
   );
 }
@@ -2125,6 +3280,8 @@ export default function IncomeForecastSection() {
   const [tenantSignals, setTenantSignals] = useState<TenantSignal[]>([]);
   const [omsetningsavregning, setOmsetningsavregning] = useState<OmsetningsavregningSnapshot | null>(null);
   const [loadingOmsetningsavregning, setLoadingOmsetningsavregning] = useState(true);
+  const [tenantForecastTable, setTenantForecastTable] = useState<TenantForecastTableSnapshot | null>(null);
+  const [activeTab, setActiveTab] = useState<"prognose" | "tillegg">("prognose");
 
   useEffect(() => {
     fetch("/api/income-forecast/contract-expiry-2026")
@@ -2149,6 +3306,10 @@ export default function IncomeForecastSection() {
         setLoadingOmsetningsavregning(false);
       })
       .catch(() => setLoadingOmsetningsavregning(false));
+    fetch("/api/income-forecast/tenant-forecast-table")
+      .then((r) => r.json())
+      .then((data) => setTenantForecastTable(data.snapshot ?? null))
+      .catch(() => {});
   }, []);
 
   function handlePotentialUpdated(next: PotentialIncomeSnapshot["categories"][number]) {
@@ -2250,83 +3411,119 @@ export default function IncomeForecastSection() {
             Øyeblikksbilde — avstemt manuelt mot Visma NXT og Fazile, oppdateres ved forespørsel. Ikke en live-integrasjon.
           </p>
 
-          <TopSummaryBlock
-            rollup={rollup}
-            contractExpiry2026={contractExpiry2026}
-            potential={potential}
-            onPotentialUpdated={handlePotentialUpdated}
-            tenantSignals={tenantSignals}
-            omsetningsavregning={omsetningsavregning}
-          />
-
-          <ForecastSummaryBlock rollup={rollup} />
-
-          <OwnershipShareBlock />
-
-          <div className="flex flex-col gap-1.5">
-            <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
-            <ReconciliationPanel />
-          </div>
-
-          <InvoicedBlock />
-          <BookedAccountRangeBlock />
-          <NxtBudgetBlock rollup={rollup} />
-          <BookedTenantsBlock />
-          <RemainingBlock />
-          <LeietypeBreakdownBlock />
-          <VacantAreasBlock />
-          <RemainingTenantsFullBlock />
-          <LeieforholdReviewBlock />
-          <OmsetningsavregningBlock snapshot={omsetningsavregning} loading={loadingOmsetningsavregning} />
-          <ContractExpiry2026Block
-            snapshot={contractExpiry2026}
-            loading={loadingContractExpiry2026}
-            signals={tenantSignals}
-            onSignalUpdated={handleSignalUpdated}
-          />
-          <ManualNxtBlock />
-
-          <div className="flex flex-col gap-1.5">
-            <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Mine manuelle linjer</p>
-            <label className="flex items-center gap-1.5 text-xs text-ink-3">
-              <input
-                type="checkbox"
-                checked={includeLowConfidence}
-                onChange={(e) => setIncludeLowConfidence(e.target.checked)}
-              />
-              Inkluder lav sikkerhet i prognosen
-            </label>
-            {showManualForm ? (
-              <ManualLineForm initial={EMPTY_MANUAL_FORM} onCancel={() => setShowManualForm(false)} onSave={handleAddManualLine} />
-            ) : (
+          <div className="flex w-fit gap-1 rounded-xl bg-surface-2 p-1">
+            {(["prognose", "tillegg"] as const).map((tab) => (
               <button
+                key={tab}
                 type="button"
-                onClick={() => setShowManualForm(true)}
-                className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                onClick={() => setActiveTab(tab)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                  activeTab === tab ? "bg-accent text-white" : "text-ink-3 hover:text-ink-1"
+                }`}
               >
-                <span className="text-base leading-none">+</span> Ny manuell linje
+                {tab === "prognose" ? "Prognose" : "Tillegg"}
               </button>
-            )}
-            {loadingManual ? (
-              <SkeletonRows count={2} />
-            ) : manualLines.length === 0 ? (
-              <p className="text-sm text-ink-3">Ingen manuelle linjer lagt inn ennå.</p>
-            ) : (
-              <ul className="flex flex-col gap-1.5">
-                {manualLines.map((l) => (
-                  <ManualLineRow
-                    key={l.id}
-                    line={l}
-                    editing={editingManualId === l.id}
-                    onStartEdit={setEditingManualId}
-                    onCancelEdit={() => setEditingManualId(null)}
-                    onSaveEdit={handleSaveManualEdit}
-                    onRemove={(id) => confirmDelete.request(id)}
-                  />
-                ))}
-              </ul>
-            )}
+            ))}
           </div>
+
+          {activeTab === "prognose" ? (
+            <>
+              <MainForecastBox
+                rollup={rollup}
+                contractExpiry2026={contractExpiry2026}
+                omsetningsavregning={omsetningsavregning}
+                potential={potential}
+                tenantSignals={tenantSignals}
+                onPotentialUpdated={handlePotentialUpdated}
+              />
+
+              <TenantForecastTable title="Leieinntekter" grupper={tenantForecastTable?.delA ?? EMPTY_GRUPPER} />
+              <TenantForecastTable
+                title="Parkering"
+                grupper={tenantForecastTable?.delB ?? EMPTY_GRUPPER}
+                totalBudsjettOverride={tenantForecastTable?.delBBudsjettTotal}
+              />
+              <OmsetningsavregningBlock snapshot={omsetningsavregning} loading={loadingOmsetningsavregning} />
+              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
+              <KontrakterPaUtlopBlock
+                snapshot={contractExpiry2026}
+                loading={loadingContractExpiry2026}
+                signals={tenantSignals}
+                onSignalUpdated={handleSignalUpdated}
+                leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
+              />
+            </>
+          ) : (
+            <>
+              <ForecastSummaryBlock rollup={rollup} />
+
+              <OwnershipShareBlock />
+
+              <div className="flex flex-col gap-1.5">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
+                <ReconciliationPanel />
+              </div>
+
+              <InvoicedBlock />
+              <BookedAccountRangeBlock />
+              <NxtBudgetBlock rollup={rollup} />
+              <BookedTenantsBlock />
+              <RemainingBlock />
+              <LeietypeBreakdownBlock />
+              <VacantAreasBlock />
+              <RemainingTenantsFullBlock />
+              <LeieforholdReviewBlock />
+              <ContractExpiry2026Block
+                snapshot={contractExpiry2026}
+                loading={loadingContractExpiry2026}
+                signals={tenantSignals}
+                onSignalUpdated={handleSignalUpdated}
+              />
+              <ManualNxtBlock />
+
+              <div className="flex flex-col gap-1.5">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Mine manuelle linjer</p>
+                <label className="flex items-center gap-1.5 text-xs text-ink-3">
+                  <input
+                    type="checkbox"
+                    checked={includeLowConfidence}
+                    onChange={(e) => setIncludeLowConfidence(e.target.checked)}
+                  />
+                  Inkluder lav sikkerhet i prognosen
+                </label>
+                {showManualForm ? (
+                  <ManualLineForm initial={EMPTY_MANUAL_FORM} onCancel={() => setShowManualForm(false)} onSave={handleAddManualLine} />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualForm(true)}
+                    className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                  >
+                    <span className="text-base leading-none">+</span> Ny manuell linje
+                  </button>
+                )}
+                {loadingManual ? (
+                  <SkeletonRows count={2} />
+                ) : manualLines.length === 0 ? (
+                  <p className="text-sm text-ink-3">Ingen manuelle linjer lagt inn ennå.</p>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    {manualLines.map((l) => (
+                      <ManualLineRow
+                        key={l.id}
+                        line={l}
+                        editing={editingManualId === l.id}
+                        onStartEdit={setEditingManualId}
+                        onCancelEdit={() => setEditingManualId(null)}
+                        onSaveEdit={handleSaveManualEdit}
+                        onRemove={(id) => confirmDelete.request(id)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
         </div>
       <ConfirmDialog
         open={confirmDelete.isOpen}

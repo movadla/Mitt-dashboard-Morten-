@@ -23,6 +23,12 @@ export interface ContractExpiryContract {
   nyKontraktsnokkel: string | null;
   ekstraI2026: number;
   lines: ContractExpiryLine[];
+  // v2 (2026-08-29): varsel - leietakeren har allerede fakturert vesentlig MER i 2026 enn det
+  // kontraktens egen (registrerte) sluttdato skulle tilsi - kan bety at ekstraI2026 dobbelttelles
+  // mot en allerede realisert engangs-/dobbel-kvartal-betaling (se build-contract-expiry-2026.js).
+  // null = ingen mistanke, eller kunne ikke sjekkes pålitelig (f.eks. bygg-navn fant ikke treff
+  // for en leietaker med flere byggforhold - da IKKE flagget, for å unngå falske positiver).
+  muligAlleredeDekket: { faktiskFakturert: number; forventetGjennomSlutt: number; overskudd: number } | null;
 }
 
 export interface ContractExpiryEkstraLeietaker {
