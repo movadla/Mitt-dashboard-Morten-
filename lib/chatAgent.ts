@@ -418,7 +418,12 @@ export async function runChatTurn(
     "en gitt dag), og legge til nye varer i Handleliste-seksjonen (add_shopping_item — velg butikkseksjon " +
     "ut fra hva slags vare det er). Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
     "(for bulk: hvor mange som ble lagt til). Hvis et verktøy feiler fordi flere eller ingen elementer " +
-    "matcher, forklar det kort til brukeren i stedet for å gjette.\n\n" +
+    "matcher, forklar det kort til brukeren i stedet for å gjette. VIKTIG: Bekreft ALDRI at noe er lagt " +
+    "til/oppdatert/slettet med mindre du faktisk har kalt det tilhørende verktøyet i denne runden — aldri " +
+    "late som noe ble gjort. Er forespørselen uklar, ufullstendig eller ser avkuttet ut (typisk fra en " +
+    "diktert talekommando, f.eks. et ord uten sammenheng eller en setning som stopper brått), IKKE gjett " +
+    "hva som ble ment — si fra at du ikke fikk med deg hele forespørselen og be om at den gjentas i stedet " +
+    "for å kalle et verktøy med et gjettet innhold.\n\n" +
     buildDashboardContext() +
     "\n" +
     (await buildPrivatContext());

@@ -80,13 +80,24 @@ const LEAGUE_ROUND_DOT_COLOR = "#8b5cf6";
 // stedet for å liste alle kampene enkeltvis — se LeagueSubsection under.
 const LEAGUE_CATS = LEAGUE_ROUND_CATEGORIES;
 
+// Ingen egen lenke-affordance i UI-et (ikon/tekst) — hele raden er
+// klikkbar til et Google-søk på kampen, jf. ønske om at det ikke skal ta
+// opp noe ekstra plass i seksjonen.
+function sportEventSearchUrl(ev: SportEvent): string {
+  const query = [ev.name, ev.competition, ev.date].filter(Boolean).join(" ");
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
 function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolean }) {
   const col = SPORT_COLOR[ev.category] ?? "#6b7280";
   const Icon = SPORT_ICON[ev.category];
   const isHighlight = HIGHLIGHT_CATEGORIES.has(ev.category);
   return (
-    <div
-      className={`flex items-center gap-3 px-4 py-2.5 ${border ? "border-t border-line" : ""}`}
+    <a
+      href={sportEventSearchUrl(ev)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-3/50 ${border ? "border-t border-line" : ""}`}
       style={{ background: isHighlight ? `${col}12` : undefined }}
     >
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${col}18` }}>
@@ -100,7 +111,7 @@ function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolea
         </p>
       </div>
       {ev.time && <span className="shrink-0 text-xs font-bold tabular-nums" style={{ color: col }}>{ev.time}</span>}
-    </div>
+    </a>
   );
 }
 

@@ -185,6 +185,11 @@ function ReminderRowContent({
 }) {
   const subtasks = reminder.subtasks ?? [];
   const subtasksDone = subtasks.filter((s) => s.done).length;
+  // Rød dato for oversittede frister — samme signal som "I dag"-widgeten i
+  // TodaySummary.tsx allerede gir, bare her på selve datoteksten siden denne
+  // raden ikke har et eget frist-redigeringsikon å farge.
+  const overdue = !reminder.done && !!reminder.dueDate && reminder.dueDate < localDateString();
+  const completedLabel = reminder.done && reminder.completedAt ? `Fullført ${formatDMY(reminder.completedAt.slice(0, 10))}` : null;
   return (
     <div className="flex flex-col gap-1">
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
@@ -214,16 +219,20 @@ function ReminderRowContent({
           <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>{reminder.text}</p>
           {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
         </div>
-        {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0) && (
+        {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0 || completedLabel) && (
           <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-4">
             <span>
-              {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+              <span className={overdue ? "font-medium text-status-danger" : undefined}>
+                {reminder.dueDate ? formatDMY(reminder.dueDate) : ""}
+              </span>
               {reminder.dueDate && reminder.recurrence !== "none" ? " · " : ""}
               {reminder.recurrence !== "none" ? RECURRENCE_LABEL[reminder.recurrence] : ""}
+              {completedLabel && (reminder.dueDate || reminder.recurrence !== "none") ? " · " : ""}
+              {completedLabel ?? ""}
             </span>
             {subtasks.length > 0 && (
               <span className="inline-flex items-center gap-1">
-                {(reminder.dueDate || reminder.recurrence !== "none") && <span>·</span>}
+                {(reminder.dueDate || reminder.recurrence !== "none" || completedLabel) && <span>·</span>}
                 <SubtaskProgress done={subtasksDone} total={subtasks.length} />
                 {`${subtasksDone}/${subtasks.length}`}
               </span>
@@ -548,6 +557,7 @@ export default function RemindersSection({
   const [reorderMode, setReorderMode] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   // "now" leses fra state (ikke Date.now() direkte i render, som React
   // Compiler flagger som uren) — oppdateres sjelden, siden 24-timers-vinduet
   // for "Nylig fullført" ikke trenger sekund-presisjon.
@@ -819,6 +829,11 @@ export default function RemindersSection({
         (r.done && r.completedAt && now - new Date(r.completedAt).getTime() <= RECENTLY_COMPLETED_WINDOW_MS) ||
         (r.done && justToggled.has(r.id)),
     )
+    .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
+  // All-tid historikk — samme datagrunnlag som "Nylig fullført", men uten
+  // 24-timersvinduet, jf. ønske om å kunne se alt som noen gang er fullført.
+  const history = reminders
+    .filter((r) => r.done && r.completedAt)
     .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
   function openAddForm() {
@@ -1092,6 +1107,44 @@ export default function RemindersSection({
               >
                 {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
               </button>
+            </>
+          )}
+
+          {history.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowHistory((v) => !v)}
+                className="text-left text-2xs font-medium text-ink-4 hover:text-ink-2"
+              >
+                {showHistory ? "Skjul historikk" : "Historikk"}
+              </button>
+              {showHistory && (
+                <ul className="mt-1 flex flex-col gap-1.5">
+                  {history.map((r) => (
+                    <ReminderRow
+                      key={r.id}
+                      reminder={r}
+                      editing={editingId === r.id}
+                      onToggle={handleToggle}
+                      onRemove={confirmDelete.request}
+                      onStartEdit={setEditingId}
+                      onCancelEdit={() => setEditingId(null)}
+                      onSaveEdit={handleSaveEdit}
+                      onJumpToLinked={onJumpToLinked}
+                      comments={comments[commentKey("reminder", r.id)] ?? []}
+                      onAddComment={(tekst) => addComment("reminder", r.id, tekst)}
+                      onDeleteComment={(commentId, preview) =>
+                        confirmCommentDelete.request({ targetType: "reminder", targetId: r.id, commentId, preview })
+                      }
+                      onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("reminder", r.id, commentId, ikkeRelevant)}
+                      onAddSubtask={(text) => handleAddSubtask(r.id, text)}
+                      onToggleSubtask={(subtaskId) => handleToggleSubtask(r.id, subtaskId)}
+                      onRemoveSubtask={(subtaskId) => requestRemoveSubtask(r, subtaskId)}
+                    />
+                  ))}
+                </ul>
+              )}
             </>
           )}
         </div>

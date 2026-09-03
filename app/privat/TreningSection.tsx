@@ -234,10 +234,16 @@ function findLastEntry(exerciseId: string, sessions: WorkoutSession[], excludeSe
 interface ExerciseHistoryPoint {
   date: string;
   maxKg: number;
+  // Reps totalt (summen av alle sett) samme økt — vist som en egen linje i
+  // ProgressChart ved siden av vekten, jf. ønske om å se progresjon i BÅDE
+  // kg og antall, ikke bare vekt alene (man kan øke volum uten å øke vekten,
+  // eller omvendt).
+  totalReps: number;
 }
 
-// Høyeste vekt logget per avsluttet økt for en øvelse, kronologisk (eldst
-// først) — "sessions" er nyest-først server-side, så vi snur rekkefølgen.
+// Høyeste vekt OG totalt antall reps logget per avsluttet økt for en øvelse,
+// kronologisk (eldst først) — "sessions" er nyest-først server-side, så vi
+// snur rekkefølgen.
 function exerciseHistory(exerciseId: string, sessions: WorkoutSession[], excludeSessionId?: string): ExerciseHistoryPoint[] {
   const points: ExerciseHistoryPoint[] = [];
   for (const s of sessions) {
@@ -246,52 +252,87 @@ function exerciseHistory(exerciseId: string, sessions: WorkoutSession[], exclude
     if (!entry || entry.sets.length === 0) continue;
     const kgValues = entry.sets.map((set) => set.kg).filter((kg): kg is number => kg != null);
     if (kgValues.length === 0) continue;
-    points.push({ date: s.startedAt, maxKg: Math.max(...kgValues) });
+    const totalReps = entry.sets.reduce((sum, set) => sum + (set.reps ?? 0), 0);
+    points.push({ date: s.startedAt, maxKg: Math.max(...kgValues), totalReps });
   }
   return points.reverse();
 }
 
+// Normaliserer én tallserie til chart-koordinater — kg og reps lever på helt
+// ulike skalaer, så hver linje normaliseres uavhengig av den andre (egen
+// min/maks), ikke på en delt akse.
+function chartCoords(values: number[], width: number, height: number, pad: number): { x: number; y: number }[] {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const stepX = values.length > 1 ? (width - pad * 2) / (values.length - 1) : 0;
+  return values.map((v, i) => ({
+    x: pad + i * stepX,
+    y: height - pad - ((v - min) / range) * (height - pad * 2),
+  }));
+}
+
 // Enkel innebygd SVG-linjegraf — ingen chart-bibliotek i prosjektet, og en
 // håndfull punkter (typisk et titalls økter) trenger ikke noe tyngre enn dette.
+// To linjer (vekt + totalt antall reps), hver normalisert til egen skala —
+// se chartCoords.
 function ProgressChart({ points }: { points: ExerciseHistoryPoint[] }) {
   if (points.length < 2) {
     return <p className="text-2xs text-ink-4">Ikke nok data ennå for graf.</p>;
   }
 
   const width = 260;
-  const height = 60;
+  const height = 64;
   const pad = 6;
   const kgValues = points.map((p) => p.maxKg);
-  const min = Math.min(...kgValues);
-  const max = Math.max(...kgValues);
-  const range = max - min || 1;
-  const stepX = points.length > 1 ? (width - pad * 2) / (points.length - 1) : 0;
-  const coords = points.map((p, i) => {
-    const x = pad + i * stepX;
-    const y = height - pad - ((p.maxKg - min) / range) * (height - pad * 2);
-    return { x, y };
-  });
+  const repValues = points.map((p) => p.totalReps);
+  const kgCoords = chartCoords(kgValues, width, height, pad);
+  const repCoords = chartCoords(repValues, width, height, pad);
 
   return (
-    <div className="flex flex-col gap-1">
-      {/* Rå farge, ikke status-positive — den er reservert ekte suksess-
-          /positive-tilstander andre steder i appen (se SportSection.tsx). */}
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full text-emerald-400">
+    <div className="flex flex-col gap-1.5">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+        {/* Rå farger, ikke status-positive/status-action — de er reservert
+            ekte suksess-/handlings-tilstander andre steder i appen (se
+            SportSection.tsx). Reps-linjen er stiplet i tillegg til å ha
+            egen farge, så de to seriene skiller seg selv i gråtoner. */}
         <polyline
-          points={coords.map((c) => `${c.x},${c.y}`).join(" ")}
+          points={kgCoords.map((c) => `${c.x},${c.y}`).join(" ")}
           fill="none"
+          className="text-emerald-400"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {coords.map((c, i) => (
-          <circle key={i} cx={c.x} cy={c.y} r="2.5" fill="currentColor" />
+        {kgCoords.map((c, i) => (
+          <circle key={`kg-${i}`} cx={c.x} cy={c.y} r="2.5" className="text-emerald-400" fill="currentColor" />
+        ))}
+        <polyline
+          points={repCoords.map((c) => `${c.x},${c.y}`).join(" ")}
+          fill="none"
+          className="text-sky-400"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {repCoords.map((c, i) => (
+          <circle key={`reps-${i}`} cx={c.x} cy={c.y} r="2" className="text-sky-400" fill="currentColor" />
         ))}
       </svg>
-      <p className="text-2xs text-ink-4">
-        {formatKg(min)}–{formatKg(max)} kg siste {points.length} {points.length === 1 ? "økt" : "økter"}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-ink-4">
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+          {formatKg(Math.min(...kgValues))}–{formatKg(Math.max(...kgValues))} kg
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+          {Math.min(...repValues)}–{Math.max(...repValues)} reps totalt
+        </span>
+        <span>siste {points.length} {points.length === 1 ? "økt" : "økter"}</span>
+      </div>
     </div>
   );
 }
@@ -322,6 +363,7 @@ function SetRowShell({
   index,
   done,
   previousLabel,
+  pr = false,
   onToggleDone,
   onRemove,
   children,
@@ -329,6 +371,9 @@ function SetRowShell({
   index: number;
   done: boolean;
   previousLabel?: string;
+  // Satt når vekten i dette settet slår alt tidligere logget på øvelsen —
+  // en liten motiverende markør, ikke noe som lagres på settet selv.
+  pr?: boolean;
   onToggleDone: () => void;
   onRemove: () => void;
   children: React.ReactNode;
@@ -344,6 +389,11 @@ function SetRowShell({
           <div className="flex min-w-0 items-center gap-1.5">
             <DoneToggle done={done} onToggle={onToggleDone} size="sm" label={done ? "Merk sett som ikke fullført" : "Merk sett som fullført"} />
             <span className="shrink-0 text-xs font-semibold tabular-nums text-ink-4">Sett {index + 1}</span>
+            {pr && (
+              <span className="shrink-0 rounded-full bg-status-positive/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-status-positive">
+                PR
+              </span>
+            )}
             {/* "Spøkelses"-verdi fra forrige gang samme sett-indeks ble logget
                 — gir progresjon sett-for-sett, ikke bare et sammendrag øverst
                 i øvelsen. */}
@@ -369,6 +419,7 @@ function StrengthSetRow({
   index,
   previousLabel,
   bodyweight = false,
+  bestEverKg = 0,
   onUpdate,
   onToggleDone,
   onRemove,
@@ -377,12 +428,18 @@ function StrengthSetRow({
   index: number;
   previousLabel?: string;
   bodyweight?: boolean;
+  // Høyeste vekt noensinne logget på denne øvelsen (på tvers av ALLE
+  // tidligere økter, ikke bare forrige) — brukt til å avgjøre om dette
+  // settet er en ny personlig rekord.
+  bestEverKg?: number;
   onUpdate: (updates: { kg: number | null; reps: number | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
 }) {
   const [kg, setKg] = useState(set.kg?.toString() ?? "");
   const [reps, setReps] = useState(set.reps?.toString() ?? "");
+  const kgNum = kg.trim() ? Number(kg) : null;
+  const isPr = !bodyweight && kgNum != null && kgNum > bestEverKg;
 
   function commit(nextKg: string, nextReps: string) {
     onUpdate({
@@ -413,35 +470,48 @@ function StrengthSetRow({
   }
 
   return (
-    <SetRowShell index={index} done={!!set.done} previousLabel={previousLabel} onToggleDone={onToggleDone} onRemove={onRemove}>
+    <SetRowShell index={index} done={!!set.done} previousLabel={previousLabel} pr={isPr} onToggleDone={onToggleDone} onRemove={onRemove}>
       <div className={`grid gap-2 ${bodyweight ? "grid-cols-1" : "grid-cols-2"}`}>
         {!bodyweight && (
           <div className="flex items-center gap-1">
             <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
-            <input
-              type="number"
-              step="0.5"
-              inputMode="decimal"
-              value={kg}
-              onChange={(e) => setKg(e.target.value)}
-              onBlur={() => commit(kg, reps)}
-              placeholder="Kg"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
-            />
+            {/* Enhets-suffiks inni feltet (samme mønster som CardioSetRow) —
+                placeholder alene forsvant idet man skrev inn et tall, og
+                boksene ble da to like tall uten noe som skilte kg fra reps. */}
+            <div className="relative min-w-0 flex-1">
+              <input
+                type="number"
+                step="0.5"
+                inputMode="decimal"
+                value={kg}
+                onChange={(e) => setKg(e.target.value)}
+                onBlur={() => commit(kg, reps)}
+                placeholder="Kg"
+                className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-7 text-left text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
+              />
+              {kg.trim() && (
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">kg</span>
+              )}
+            </div>
             <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
           </div>
         )}
         <div className="flex items-center gap-1">
           <StepperButton symbol="−" label="Reduser reps" onClick={() => adjustReps(-1)} />
-          <input
-            type="number"
-            inputMode="numeric"
-            value={reps}
-            onChange={(e) => setReps(e.target.value)}
-            onBlur={() => commit(kg, reps)}
-            placeholder="Reps"
-            className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
-          />
+          <div className="relative min-w-0 flex-1">
+            <input
+              type="number"
+              inputMode="numeric"
+              value={reps}
+              onChange={(e) => setReps(e.target.value)}
+              onBlur={() => commit(kg, reps)}
+              placeholder="Reps"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-12 text-left text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
+            />
+            {reps.trim() && (
+              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">reps</span>
+            )}
+          </div>
           <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
         </div>
       </div>
@@ -650,6 +720,10 @@ function EntryRow({
     });
   }
 
+  // Høyeste vekt noensinne på tvers av ALLE tidligere økter (ikke bare
+  // forrige) — grunnlaget for PR-badgen i StrengthSetRow.
+  const bestEverKg = history.length > 0 ? Math.max(...history.map((h) => h.maxKg)) : 0;
+
   // Foreslår vekt/reps (eller minutter/km-t/intensitet for cardio) for et nytt
   // sett fra forrige sett i samme øvelse denne økten, ellers fra "sist"-
   // referansen — matcher hvordan Strong/Hevy foreslår neste vekt i stedet for
@@ -755,8 +829,21 @@ function EntryRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {lastEntry && setSummary(lastEntry) && (
-        <p className="text-2xs text-ink-4">Sist: {setSummary(lastEntry, 3)}</p>
+      {/* Egne chips per sett i stedet for én lang komma-separert tekststreng
+          — mer oversiktlig å skanne, og bryter pent over flere linjer i
+          stedet for å bli en tekstvegg for øvelser med mange sett. */}
+      {lastEntry && lastEntry.sets.some((s) => formatSetLog(s)) && (
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="shrink-0 text-2xs font-medium text-ink-4">Forrige økt:</span>
+          {lastEntry.sets.slice(-4).map((s, i) => {
+            const label = formatSetLog(s);
+            return label ? (
+              <span key={i} className="rounded-md bg-surface-3 px-1.5 py-0.5 text-2xs tabular-nums text-ink-3">
+                {label}
+              </span>
+            ) : null;
+          })}
+        </div>
       )}
       {history.length > 0 && (
         <div className="flex flex-col gap-1.5">
@@ -796,6 +883,7 @@ function EntryRow({
                 index={i}
                 previousLabel={previousLabel}
                 bodyweight={bodyweight}
+                bestEverKg={bestEverKg}
                 onUpdate={(updates) => onUpdateSet(s.id, updates)}
                 onToggleDone={() => onToggleSetDone(s.id, !s.done)}
                 onRemove={() => onRemoveSet(s.id)}
@@ -1195,16 +1283,118 @@ function RoutineRow({
   );
 }
 
+// Handlingene som trengs for å redigere sett/øvelser i EN bestemt økt —
+// samme form som de aktive-økt-spesifikke handlerne i TreningSection
+// (handleAddSet osv.), men parameterisert på en vilkårlig sessionId slik at
+// de også kan brukes til å redigere en AVSLUTTET økt i historikken.
+interface SessionEditHandlers {
+  onAddEntry: (exercise: Exercise) => void;
+  onUpdateEntry: (entryId: string, updates: { minutes: number | null; notes: string | null }) => void;
+  onRemoveEntry: (entryId: string) => void;
+  onAddSet: (
+    entryId: string,
+    prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity },
+  ) => void;
+  onUpdateSet: (
+    entryId: string,
+    setId: string,
+    updates: { kg?: number | null; reps?: number | null; minutes?: number | null; kmt?: number | null; distanceKm?: number | null; intensity?: SetIntensity | null },
+  ) => void;
+  onToggleSetDone: (entryId: string, setId: string, done: boolean) => void;
+  onRemoveSet: (entryId: string, setId: string) => void;
+  onToggleEntryDone: (entryId: string, done: boolean) => void;
+}
+
+// Full redigering av en tidligere (avsluttet) økt — gjenbruker EntryRow (samme
+// rad som den aktive økten bruker) i stedet for kun HistoryRow sitt
+// skrivebeskyttede sammendrag, jf. ønske om å kunne rette opp sett/øvelser i
+// ettertid, ikke bare mens klokken går.
+function HistorySessionEditor({
+  session,
+  exercises,
+  sessions,
+  handlers,
+  onCreateAndAdd,
+  onSaveExercise,
+  onDeleteExercise,
+}: {
+  session: WorkoutSession;
+  exercises: Exercise[];
+  sessions: WorkoutSession[];
+  handlers: SessionEditHandlers;
+  onCreateAndAdd: (name: string, description: string, category: ExerciseCategory, bodyweight: boolean) => Promise<boolean>;
+  onSaveExercise: (id: string, updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean }) => Promise<boolean>;
+  onDeleteExercise: (exercise: Exercise) => void;
+}) {
+  const [showPicker, setShowPicker] = useState(false);
+  return (
+    <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
+      {session.entries.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {session.entries.map((entry) => (
+            <EntryRow
+              key={entry.id}
+              entry={entry}
+              lastEntry={findLastEntry(entry.exerciseId, sessions, session.id)}
+              history={exerciseHistory(entry.exerciseId, sessions, session.id)}
+              bodyweight={exercises.find((ex) => ex.id === entry.exerciseId)?.bodyweight}
+              startExpanded={false}
+              onAddSet={(prefill) => handlers.onAddSet(entry.id, prefill)}
+              onUpdateSet={(setId, updates) => handlers.onUpdateSet(entry.id, setId, updates)}
+              onToggleSetDone={(setId, done) => handlers.onToggleSetDone(entry.id, setId, done)}
+              onRemoveSet={(setId) => handlers.onRemoveSet(entry.id, setId)}
+              onUpdateEntry={(updates) => handlers.onUpdateEntry(entry.id, updates)}
+              onToggleEntryDone={() => handlers.onToggleEntryDone(entry.id, !entry.done)}
+              onRemoveEntry={() => handlers.onRemoveEntry(entry.id)}
+            />
+          ))}
+        </ul>
+      )}
+      {showPicker ? (
+        <ExercisePicker
+          exercises={exercises}
+          onPick={(ex) => {
+            handlers.onAddEntry(ex);
+            setShowPicker(false);
+          }}
+          onCreateAndPick={async (name, description, category, bodyweight) => {
+            const ok = await onCreateAndAdd(name, description, category, bodyweight);
+            if (ok) setShowPicker(false);
+            return ok;
+          }}
+          onSaveExercise={onSaveExercise}
+          onDeleteExercise={onDeleteExercise}
+          onClose={() => setShowPicker(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
+          className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+        >
+          <span className="text-base leading-none">+</span> Legg til øvelse
+        </button>
+      )}
+    </div>
+  );
+}
+
 function HistoryRow({
   session,
   expanded,
+  editing,
   onToggle,
+  onToggleEdit,
   onDelete,
+  editor,
 }: {
   session: WorkoutSession;
   expanded: boolean;
+  editing: boolean;
   onToggle: () => void;
+  onToggleEdit: () => void;
   onDelete: () => void;
+  editor?: React.ReactNode;
 }) {
   const duration = session.endedAt ? new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime() : 0;
   return (
@@ -1218,6 +1408,15 @@ function HistoryRow({
             {formatElapsed(duration)} · {session.entries.length} {session.entries.length === 1 ? "øvelse" : "øvelser"}
           </p>
         </button>
+        {expanded && (
+          <button
+            type="button"
+            onClick={onToggleEdit}
+            className="shrink-0 text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
+          >
+            {editing ? "Ferdig" : "Rediger"}
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}
@@ -1227,22 +1426,25 @@ function HistoryRow({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      {expanded && (
-        <ul className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
-          {session.entries.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen øvelser logget.</p>
-          ) : (
-            session.entries.map((e) => (
-              <li key={e.id} className="text-sm text-ink-2">
-                <span className="font-medium text-ink-1">{e.exerciseName}</span>
-                {e.sets.length > 0 && <span className="text-ink-3"> · {setSummary(e)}</span>}
-                {e.minutes ? <span className="text-ink-3"> · {e.minutes} min</span> : null}
-                {e.notes && <p className="text-2xs text-ink-4">{e.notes}</p>}
-              </li>
-            ))
-          )}
-        </ul>
-      )}
+      {expanded &&
+        (editing ? (
+          editor
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2">
+            {session.entries.length === 0 ? (
+              <p className="text-sm text-ink-3">Ingen øvelser logget.</p>
+            ) : (
+              session.entries.map((e) => (
+                <li key={e.id} className="text-sm text-ink-2">
+                  <span className="font-medium text-ink-1">{e.exerciseName}</span>
+                  {e.sets.length > 0 && <span className="text-ink-3"> · {setSummary(e)}</span>}
+                  {e.minutes ? <span className="text-ink-3"> · {e.minutes} min</span> : null}
+                  {e.notes && <p className="text-2xs text-ink-4">{e.notes}</p>}
+                </li>
+              ))
+            )}
+          </ul>
+        ))}
     </li>
   );
 }
@@ -1421,7 +1623,16 @@ export default function TreningSection() {
   // uten å måtte åpne raden man nettopp la til.
   const [justAddedEntryId, setJustAddedEntryId] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  // Hvilken tidligere økt som akkurat nå redigeres fullt ut (ikke bare vist
+  // som sammendrag) — kun én om gangen, nullstilt når raden lukkes/skiftes.
+  const [editingHistoryId, setEditingHistoryId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // "Sett opp økt": velg øvelser FØR klokken starter, i stedet for kun å
+  // kunne legge til underveis i en allerede pågående økt — se
+  // handleStartWithExercises, som oppretter økten og seeder alt i ett steg.
+  const [showSetup, setShowSetup] = useState(false);
+  const [showSetupPicker, setShowSetupPicker] = useState(false);
+  const [draftExercises, setDraftExercises] = useState<{ exerciseId: string; exerciseName: string }[]>([]);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
   const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
@@ -1469,7 +1680,11 @@ export default function TreningSection() {
     }
   }
 
-  async function handleStartFromRoutine(routine: Routine) {
+  // Felles for "start fra rutine" OG "start fra en selv-satt-sammen liste"
+  // (se draftExercises/handleSetupStart under) — oppretter økten og seeder
+  // alle øvelsene i ett steg, i stedet for at man må legge dem til én og én
+  // etter at klokken allerede har startet.
+  async function handleStartWithExercises(list: { exerciseId: string; exerciseName: string }[]) {
     try {
       const res = await fetch("/api/workouts", { method: "POST" });
       if (!res.ok) throw new Error("start failed");
@@ -1479,17 +1694,31 @@ export default function TreningSection() {
         const exists = current.sessions.some((s) => s.id === started.id);
         return { sessions: exists ? current.sessions.map((s) => (s.id === started.id ? started : s)) : [started, ...current.sessions] };
       }, { revalidate: false });
-      const { session: seeded, failedCount } = await seedRoutineEntries(started.id, routine.exercises);
-      if (seeded) {
-        mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === seeded.id ? seeded : s)) }, { revalidate: false });
-      }
-      if (failedCount > 0) {
-        mutationError.show(`Klarte ikke å legge til ${failedCount} ${failedCount === 1 ? "øvelse" : "øvelser"} fra rutinen. Legg dem til manuelt.`);
+      if (list.length > 0) {
+        const { session: seeded, failedCount } = await seedRoutineEntries(started.id, list);
+        if (seeded) {
+          mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === seeded.id ? seeded : s)) }, { revalidate: false });
+        }
+        if (failedCount > 0) {
+          mutationError.show(`Klarte ikke å legge til ${failedCount} ${failedCount === 1 ? "øvelse" : "øvelser"}. Legg dem til manuelt.`);
+        }
       }
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
     } catch {
-      mutationError.show("Kunne ikke starte økten fra rutinen. Prøv igjen.");
+      mutationError.show("Kunne ikke starte økten. Prøv igjen.");
     }
+  }
+
+  async function handleStartFromRoutine(routine: Routine) {
+    await handleStartWithExercises(routine.exercises);
+  }
+
+  async function handleSetupStart() {
+    const list = draftExercises;
+    setShowSetup(false);
+    setShowSetupPicker(false);
+    setDraftExercises([]);
+    await handleStartWithExercises(list);
   }
 
   async function handleEndSession() {
@@ -1581,13 +1810,16 @@ export default function TreningSection() {
     }
   }
 
-  async function handleCreateExerciseAndAdd(
+  // Kun opprettelsen — hvor den nye øvelsen skal HAVNE (lagt til aktiv økt,
+  // lagt i draftExercises, eller lagt til en tidligere økt) avgjøres av
+  // hvilken av de tre wrapperne under som kaller denne.
+  async function handleCreateExercise(
     name: string,
     description: string,
     category: ExerciseCategory,
     bodyweight: boolean,
-  ): Promise<boolean> {
-    if (!name.trim()) return false;
+  ): Promise<Exercise | null> {
+    if (!name.trim()) return null;
     try {
       const res = await fetch("/api/exercises", {
         method: "POST",
@@ -1596,19 +1828,96 @@ export default function TreningSection() {
       });
       if (!res.ok) {
         mutationError.show("Kunne ikke opprette øvelsen. Prøv igjen.");
-        return false;
+        return null;
       }
       const created: Exercise = await res.json();
       mutateExercises(
         (current) => current && { exercises: [...current.exercises, created].sort((a, b) => a.name.localeCompare(b.name, "nb")) },
         { revalidate: false },
       );
-      await handleAddEntry(created);
-      return true;
+      return created;
     } catch {
       mutationError.show("Kunne ikke opprette øvelsen. Prøv igjen.");
-      return false;
+      return null;
     }
+  }
+
+  async function handleCreateExerciseAndAdd(
+    name: string,
+    description: string,
+    category: ExerciseCategory,
+    bodyweight: boolean,
+  ): Promise<boolean> {
+    const created = await handleCreateExercise(name, description, category, bodyweight);
+    if (!created) return false;
+    await handleAddEntry(created);
+    return true;
+  }
+
+  // Draft-varianten av "opprett og legg til" — brukt av "Sett opp økt"-
+  // panelet FØR økten faktisk er startet, så det finnes ingen sessionId å
+  // POSTe en entry til ennå. Legger i stedet den nye øvelsen rett i
+  // draftExercises, samme liste som ExercisePicker-valg fra biblioteket
+  // havner i.
+  async function handleCreateExerciseForDraft(
+    name: string,
+    description: string,
+    category: ExerciseCategory,
+    bodyweight: boolean,
+  ): Promise<boolean> {
+    const created = await handleCreateExercise(name, description, category, bodyweight);
+    if (!created) return false;
+    setDraftExercises((cur) => [...cur, { exerciseId: created.id, exerciseName: created.name }]);
+    return true;
+  }
+
+  // Generisk mutasjon mot EN vilkårlig økt (ikke nødvendigvis den aktive) —
+  // grunnlaget for sessionEditHandlers under, som lar HistorySessionEditor
+  // redigere en avsluttet økt med akkurat samme sett/øvelse-håndtering som
+  // den aktive økten bruker.
+  async function mutateSessionApi(sessionId: string, path: string, method: string, body?: unknown): Promise<WorkoutSession | null> {
+    try {
+      const res = await fetch(`/api/workouts/${sessionId}${path}`, {
+        method,
+        headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) throw new Error("request failed");
+      const updated: WorkoutSession = await res.json();
+      mutateSessions((current) => current && { sessions: current.sessions.map((s) => (s.id === updated.id ? updated : s)) }, { revalidate: false });
+      return updated;
+    } catch {
+      mutationError.show("Kunne ikke lagre endringen. Prøv igjen.");
+      return null;
+    }
+  }
+
+  function sessionEditHandlers(sessionId: string): SessionEditHandlers {
+    return {
+      onAddEntry: (exercise) => {
+        void mutateSessionApi(sessionId, "/entries", "POST", { exerciseId: exercise.id, exerciseName: exercise.name });
+      },
+      onUpdateEntry: (entryId, updates) => void mutateSessionApi(sessionId, `/entries/${entryId}`, "PATCH", updates),
+      onRemoveEntry: (entryId) => void mutateSessionApi(sessionId, `/entries/${entryId}`, "DELETE"),
+      onAddSet: (entryId, prefill) => void mutateSessionApi(sessionId, `/entries/${entryId}/sets`, "POST", prefill),
+      onUpdateSet: (entryId, setId, updates) => void mutateSessionApi(sessionId, `/entries/${entryId}/sets/${setId}`, "PATCH", updates),
+      onToggleSetDone: (entryId, setId, done) => void mutateSessionApi(sessionId, `/entries/${entryId}/sets/${setId}`, "PATCH", { done }),
+      onRemoveSet: (entryId, setId) => void mutateSessionApi(sessionId, `/entries/${entryId}/sets/${setId}`, "DELETE"),
+      onToggleEntryDone: (entryId, done) => void mutateSessionApi(sessionId, `/entries/${entryId}`, "PATCH", { done }),
+    };
+  }
+
+  async function handleCreateExerciseAndAddToSession(
+    sessionId: string,
+    name: string,
+    description: string,
+    category: ExerciseCategory,
+    bodyweight: boolean,
+  ): Promise<boolean> {
+    const created = await handleCreateExercise(name, description, category, bodyweight);
+    if (!created) return false;
+    await mutateSessionApi(sessionId, "/entries", "POST", { exerciseId: created.id, exerciseName: created.name });
+    return true;
   }
 
   async function handleUpdateEntry(entryId: string, updates: { minutes: number | null; notes: string | null }) {
@@ -2007,6 +2316,74 @@ export default function TreningSection() {
                     </button>
                   )}
                 </div>
+              ) : showSetup ? (
+                <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Sett opp økt</p>
+                  {draftExercises.length > 0 ? (
+                    <ul className="flex flex-col gap-1">
+                      {draftExercises.map((ex, i) => (
+                        <li
+                          key={`${ex.exerciseId}-${i}`}
+                          className="flex items-center gap-2 rounded-lg bg-surface-1 px-2.5 py-1.5 text-sm text-ink-1"
+                        >
+                          <span className="min-w-0 flex-1 truncate">{ex.exerciseName}</span>
+                          <button
+                            type="button"
+                            onClick={() => setDraftExercises((cur) => cur.filter((_, idx) => idx !== i))}
+                            aria-label="Fjern øvelse"
+                            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-ink-3">Ingen øvelser valgt ennå.</p>
+                  )}
+                  {showSetupPicker ? (
+                    <ExercisePicker
+                      exercises={exercises}
+                      onPick={(ex) => {
+                        setDraftExercises((cur) => [...cur, { exerciseId: ex.id, exerciseName: ex.name }]);
+                        setShowSetupPicker(false);
+                      }}
+                      onCreateAndPick={handleCreateExerciseForDraft}
+                      onSaveExercise={handleSaveExercise}
+                      onDeleteExercise={(ex) => confirmDeleteExercise.request(ex)}
+                      onClose={() => setShowSetupPicker(false)}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowSetupPicker(true)}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                    >
+                      <span className="text-base leading-none">+</span> Legg til øvelse
+                    </button>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSetup(false);
+                        setShowSetupPicker(false);
+                        setDraftExercises([]);
+                      }}
+                      className="text-xs font-medium text-ink-4 hover:text-ink-2"
+                    >
+                      Avbryt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSetupStart}
+                      disabled={draftExercises.length === 0}
+                      className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                    >
+                      Start økt
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="flex flex-col gap-2">
                   <button
@@ -2015,6 +2392,13 @@ export default function TreningSection() {
                     className="rounded-xl bg-accent-privat px-3 py-3 text-center text-sm font-semibold text-surface-0 transition hover:bg-accent-privat/85"
                   >
                     Start treningsøkt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowSetup(true)}
+                    className="rounded-xl border border-dashed border-line px-3 py-2.5 text-center text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                  >
+                    Sett opp økt først
                   </button>
                   {routines.length > 0 && (
                     <div className="flex flex-col gap-1.5">
@@ -2085,8 +2469,25 @@ export default function TreningSection() {
                                 key={s.id}
                                 session={s}
                                 expanded={expandedHistoryId === s.id}
+                                editing={editingHistoryId === s.id}
                                 onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
+                                onToggleEdit={() => setEditingHistoryId((v) => (v === s.id ? null : s.id))}
                                 onDelete={() => confirmDeleteSession.request(s)}
+                                editor={
+                                  editingHistoryId === s.id ? (
+                                    <HistorySessionEditor
+                                      session={s}
+                                      exercises={exercises}
+                                      sessions={sessions}
+                                      handlers={sessionEditHandlers(s.id)}
+                                      onCreateAndAdd={(name, description, category, bodyweight) =>
+                                        handleCreateExerciseAndAddToSession(s.id, name, description, category, bodyweight)
+                                      }
+                                      onSaveExercise={handleSaveExercise}
+                                      onDeleteExercise={(ex) => confirmDeleteExercise.request(ex)}
+                                    />
+                                  ) : undefined
+                                }
                               />
                             ))}
                           </ul>
@@ -2119,8 +2520,25 @@ export default function TreningSection() {
                                   key={s.id}
                                   session={s}
                                   expanded={expandedHistoryId === s.id}
+                                  editing={editingHistoryId === s.id}
                                   onToggle={() => setExpandedHistoryId((v) => (v === s.id ? null : s.id))}
+                                  onToggleEdit={() => setEditingHistoryId((v) => (v === s.id ? null : s.id))}
                                   onDelete={() => confirmDeleteSession.request(s)}
+                                  editor={
+                                    editingHistoryId === s.id ? (
+                                      <HistorySessionEditor
+                                        session={s}
+                                        exercises={exercises}
+                                        sessions={sessions}
+                                        handlers={sessionEditHandlers(s.id)}
+                                        onCreateAndAdd={(name, description, category, bodyweight) =>
+                                          handleCreateExerciseAndAddToSession(s.id, name, description, category, bodyweight)
+                                        }
+                                        onSaveExercise={handleSaveExercise}
+                                        onDeleteExercise={(ex) => confirmDeleteExercise.request(ex)}
+                                      />
+                                    ) : undefined
+                                  }
                                 />
                               ))}
                             </ul>

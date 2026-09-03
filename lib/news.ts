@@ -18,6 +18,10 @@ export interface NewsItem {
   // Usatt hvis AI-kallet feilet eller ANTHROPIC_API_KEY ikke er satt; UI-en
   // faller da tilbake til title/description.
   aiTitle?: string;
+  // Én kort setning — vist FØRST når man utvider en sak, før man evt. trykker
+  // "Mer" for summaryBullets/full artikkel. UI-en faller tilbake til første
+  // punkt i summaryBullets, eller en avkortet description, hvis usatt.
+  oneLiner?: string;
   summaryBullets?: string[];
 }
 
@@ -32,11 +36,24 @@ interface Candidate extends NewsItem {
 }
 
 const CACHE_KEY = "cache:news:aggregert";
-const CACHE_TTL_SECONDS = 15 * 60;
+// Hvor lenge cachen regnes som FERSK — utløpt cache serveres likevel (se
+// getNews), bare markert for bakgrunnsoppdatering, så denne styrer kun hvor
+// ofte vi PRØVER å friske opp, ikke hvor lenge brukeren må vente.
+const CACHE_FRESH_SECONDS = 15 * 60;
+// Sikkerhetsnett i Redis — reell "aldri be om denne igjen"-grense, mye lenger
+// enn CACHE_FRESH_SECONDS. Praksis: getNews returnerer alltid stale data
+// umiddelbart og friskner opp i bakgrunnen, så denne rammer kun en app som
+// har stått helt urørt i flere dager.
+const CACHE_SAFETY_TTL_SECONDS = 24 * 60 * 60;
 const MODEL = "claude-haiku-4-5";
 const TOP_N = 10;
 const BATCH_SIZE = 5;
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (mitt-dashboard privat nyhetsboks)" } };
+
+interface NewsCache {
+  items: NewsItem[];
+  fetchedAt: number;
+}
 
 function decodeEntities(s: string): string {
   return s
@@ -255,6 +272,7 @@ async function fetchArticlePage(link: string): Promise<{ text: string; isVideo: 
 
 interface AiNewsResult {
   title: string;
+  oneLiner: string;
   bullets: string[];
   category: Category;
   importance: "lav" | "medium" | "høy";
@@ -281,7 +299,7 @@ async function summarizeText(item: { title: string }, text: string): Promise<AiN
       max_tokens: 500,
       system:
         'Du hjelper til med å tolke norske nyhetsartikler. Svar KUN med gyldig JSON på formen ' +
-        '{"title": string, "bullets": string[], "category": string, "importance": string} — ingen annen tekst før eller etter. ' +
+        '{"title": string, "oneLiner": string, "bullets": string[], "category": string, "importance": string} — ingen annen tekst før eller etter. ' +
         `"category" MÅ være nøyaktig én av: ${CATEGORY_OPTIONS.join(", ")}. ` +
         `"importance" MÅ være nøyaktig én av: lav, medium, høy. ${PERSONA_CONTEXT} Vurder "importance" som relevans for AKKURAT DENNE PERSONEN spesifikt, ikke generell nyhetsverdi.`,
       messages: [
@@ -292,7 +310,7 @@ async function summarizeText(item: { title: string }, text: string): Promise<AiN
 Artikkeltekst (kan inneholde noe navigasjons-/reklametekst fra siden rundt selve artikkelen — ignorer det som klart ikke er brødteksten):
 ${text}
 
-Gi: 1) en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i saken, 2) 3-5 punkter som sammendrag av de viktigste faktaene, 3) kategori, 4) viktighet for personen beskrevet over.`,
+Gi: 1) en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i saken, 2) ÉN kort setning (maks ca. 20 ord) som gir kjernen i saken — dette er det FØRSTE brukeren ser, før et eventuelt "mer"-trykk, 3) 3-5 punkter som utdypende sammendrag av de viktigste faktaene, 4) kategori, 5) viktighet for personen beskrevet over.`,
         },
       ],
     });
@@ -304,17 +322,24 @@ Gi: 1) en kortfattet norsk tittel (maks ca. 10 ord) som beskriver INNHOLDET i sa
       .join("");
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) return null;
-    const parsed = JSON.parse(match[0]) as { title?: unknown; bullets?: unknown; category?: unknown; importance?: unknown };
+    const parsed = JSON.parse(match[0]) as {
+      title?: unknown;
+      oneLiner?: unknown;
+      bullets?: unknown;
+      category?: unknown;
+      importance?: unknown;
+    };
     if (typeof parsed.title !== "string" || !Array.isArray(parsed.bullets)) return null;
     const bullets = parsed.bullets.filter((b): b is string => typeof b === "string");
     if (!bullets.length) return null;
+    const oneLiner = typeof parsed.oneLiner === "string" && parsed.oneLiner.trim() ? parsed.oneLiner.trim() : bullets[0];
     const category: Category =
       typeof parsed.category === "string" && (CATEGORY_OPTIONS as readonly string[]).includes(parsed.category)
         ? (parsed.category as Category)
         : "Annet";
     const importance: AiNewsResult["importance"] =
       parsed.importance === "lav" || parsed.importance === "medium" || parsed.importance === "høy" ? parsed.importance : "medium";
-    return { title: parsed.title, bullets, category, importance };
+    return { title: parsed.title, oneLiner, bullets, category, importance };
   } catch {
     return null;
   }
@@ -367,13 +392,14 @@ async function processCandidate(candidate: Candidate): Promise<NewsItem | null> 
 
   const ai = await summarizeText(base, text);
   if (!ai) return base;
-  return { ...base, aiTitle: ai.title, summaryBullets: ai.bullets, category: ai.category, importance: ai.importance };
+  return { ...base, aiTitle: ai.title, oneLiner: ai.oneLiner, summaryBullets: ai.bullets, category: ai.category, importance: ai.importance };
 }
 
-export async function getNews(): Promise<NewsItem[]> {
-  const cached = await getJSON<NewsItem[]>(CACHE_KEY);
-  if (cached) return cached;
-
+// Selve innsamlings-/AI-berikings-løpet — uendret logikk, bare trukket ut som
+// egen funksjon slik at getNews kan kjøre den enten synkront (helt kald
+// cache) eller i bakgrunnen uten å blokkere responsen (utløpt-men-brukbar
+// cache), se getNews under.
+async function fetchAndEnrichNews(): Promise<NewsItem[]> {
   const results = await Promise.allSettled(SOURCES.map((s) => s.fetch()));
   const all = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
@@ -384,8 +410,7 @@ export async function getNews(): Promise<NewsItem[]> {
   // Prosesseres i samtidige bolker i stedet for én om gangen — vi må typisk
   // prøve 15-20 kandidater (noen skrelles bort som video/duplikat) for å
   // fylle TOP_N reelle saker, og et rent sekvensielt løp (artikkel-henting +
-  // Claude-kall per kandidat) ville gjort en enkelt cache-miss-forespørsel
-  // for treg.
+  // Claude-kall per kandidat) ville gjort et enkelt friskt-opp-løp for treg.
   const enriched: NewsItem[] = [];
   const seenWords: Set<string>[] = [];
   for (let i = 0; i < candidates.length && enriched.length < TOP_N; i += BATCH_SIZE) {
@@ -401,6 +426,48 @@ export async function getNews(): Promise<NewsItem[]> {
     }
   }
 
-  await setJSON(CACHE_KEY, enriched, CACHE_TTL_SECONDS);
+  return enriched;
+}
+
+// Modul-nivå flagg (ikke i Redis) — hindrer at flere forespørsler som
+// ankommer mens cachen er utløpt, hver især trigger sitt eget fulle
+// friskt-opp-løp (15-20 artikkel-henter + Claude-kall om gangen). Nullstilles
+// alltid i finally, og er bevisst prosess-lokal: verste konsekvens av en
+// dobbel-trigger på tvers av flere serverinstanser er én ekstra oppfriskning,
+// ikke feil data.
+let refreshing = false;
+
+function refreshNewsInBackground(): void {
+  if (refreshing) return;
+  refreshing = true;
+  fetchAndEnrichNews()
+    .then((items) => setJSON<NewsCache>(CACHE_KEY, { items, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS))
+    .catch(() => {
+      // Stille — neste forespørsel prøver igjen, og brukeren har uansett
+      // allerede fått den stale (men brukbare) cachen servert.
+    })
+    .finally(() => {
+      refreshing = false;
+    });
+}
+
+// Stale-while-revalidate: en utløpt cache returneres UMIDDELBART (fortsatt
+// nyttig — nyheter noen minutter gamle er ikke feil), mens en fersk versjon
+// hentes i bakgrunnen for NESTE forespørsel. Uten dette betalte den
+// tilfeldige brukeren som traff et cache-miss hver 15. minutt hele kostnaden
+// (6 RSS-feeds + opptil ~20 artikkel-henter + Claude-kall) synkront — det var
+// årsaken til treg lasting, jf. tilbakemelding. Kun en HELT kald cache (aldri
+// hentet før) blokkerer fortsatt, siden det da ikke finnes noe å falle
+// tilbake til.
+export async function getNews(): Promise<NewsItem[]> {
+  const cached = await getJSON<NewsCache>(CACHE_KEY);
+  if (cached) {
+    const ageSeconds = (Date.now() - cached.fetchedAt) / 1000;
+    if (ageSeconds > CACHE_FRESH_SECONDS) refreshNewsInBackground();
+    return cached.items;
+  }
+
+  const enriched = await fetchAndEnrichNews();
+  await setJSON<NewsCache>(CACHE_KEY, { items: enriched, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS);
   return enriched;
 }

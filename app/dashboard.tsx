@@ -4,18 +4,23 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Task } from "@/lib/tasks";
 import ChatWidget from "./ChatWidget";
-import JobbView from "./JobbView";
 import { SkeletonRows } from "./CardShell";
 
 type Mode = "jobb" | "privat";
 
 const MODE_STORAGE_KEY = "mitt-dashboard:mode:v1";
 
-// Privat-visningen (13 seksjonskomponenter + @dnd-kit for kort-reordering) er
-// den tyngste bunten, og lastes derfor kun når den faktisk trengs, slik at
-// Jobb-fanen ikke må laste ned all den koden først.
+// Begge fanene lastes lazy — hver er en tung bunt (Privat: 13 seksjons-
+// komponenter + @dnd-kit; Jobb: JobbView.tsx alene er svært stor). Før var
+// KUN Privat lazy, mens Jobb ble importert statisk øverst i filen — det
+// betydde at JobbView sin kode ble bundlet og lastet ned uansett, selv for
+// en økt som aldri forlater Privat-fanen (som er default-fanen), jf.
+// tilbakemelding om treg oppstart.
 const PrivatPanel = dynamic(() => import("./privat/PrivatPanel"), {
   loading: () => <div className="mt-6 mb-6"><SkeletonRows count={4} /></div>,
+});
+const JobbView = dynamic(() => import("./JobbView"), {
+  loading: () => <div className="mt-6"><SkeletonRows count={4} /></div>,
 });
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -94,7 +99,7 @@ export default function Dashboard({
 
   return (
     <>
-      <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-5xl md:px-8">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-[1440px] md:px-8">
         <div className="sticky top-0 z-40 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)]">
           <div className="flex items-center justify-end gap-3">
             {mode && <ModeToggle mode={mode} onChange={setMode} />}

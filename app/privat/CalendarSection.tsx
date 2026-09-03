@@ -250,6 +250,7 @@ export default function CalendarSection({
   const mutationError = useMutationError();
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete: confirmCommentDelete } = useComments();
   const [visibleCount, setVisibleCount] = useState(10);
+  const [showRecentlyPast, setShowRecentlyPast] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
 
@@ -373,6 +374,13 @@ export default function CalendarSection({
   const nextWeek = upcoming.filter((e) => e.date > thisWeekEnd && e.date <= nextWeekEnd);
   const later = upcoming.filter((e) => e.date > nextWeekEnd);
   const visibleLater = later.slice(0, visibleCount);
+  // Nylig passerte hendelser (siste 14 dager) — kalenderhendelser har ingen
+  // "fullført"-status som påminnelser, så "nylig" er rent dato-basert i
+  // stedet for et 24-timers angre-vindu. Skjult bak en knapp per default,
+  // samme mønster som "Nylig fullført" i Påminnelser.
+  const recentlyPast = events
+    .filter((e) => e.date < today && e.date >= addDaysIso(today, -14))
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.startTime ?? "").localeCompare(a.startTime ?? ""));
 
   // Skroller til og fremhever raden når man hopper hit fra en lenket
   // påminnelse. Hvis raden ligger bak "Fremover"-paginering, bumpes
@@ -475,10 +483,9 @@ export default function CalendarSection({
 
           {loading ? (
             <SkeletonRows count={2} />
-          ) : upcoming.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>
           ) : (
             <>
+              {upcoming.length === 0 && <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>}
               {thisWeek.length > 0 && (
                 <div>
                   <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-2">Denne uken</p>
@@ -571,6 +578,43 @@ export default function CalendarSection({
                     >
                       {`Mer (${later.length - visibleCount})`}
                     </button>
+                  )}
+                </div>
+              )}
+
+              {recentlyPast.length > 0 && (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRecentlyPast((v) => !v)}
+                    className="text-left text-xs font-medium text-ink-3 hover:text-ink-1"
+                  >
+                    {showRecentlyPast ? "Skjul nylig passerte" : `Nylig passerte (${recentlyPast.length})`}
+                  </button>
+                  {showRecentlyPast && (
+                    <ul className="mt-1 flex flex-col gap-1.5 opacity-75">
+                      {recentlyPast.map((e) => (
+                        <EventRow
+                          key={e.id}
+                          event={e}
+                          dayLabel={relativeDayLabel(e.date, today)}
+                          editing={editingId === e.id}
+                          onRemove={confirmDelete.request}
+                          onStartEdit={setEditingId}
+                          onCancelEdit={() => setEditingId(null)}
+                          onSaveEdit={handleSaveEdit}
+                          comments={comments[commentKey("calendar-event", e.id)] ?? []}
+                          onAddComment={(tekst) => addComment("calendar-event", e.id, tekst)}
+                          onDeleteComment={(commentId, preview) =>
+                            confirmCommentDelete.request({ targetType: "calendar-event", targetId: e.id, commentId, preview })
+                          }
+                          onToggleCommentRelevance={(commentId, ikkeRelevant) => toggleRelevance("calendar-event", e.id, commentId, ikkeRelevant)}
+                          onCreateReminder={(comment) => handleCreateReminderFromComment(comment, e)}
+                          highlighted={highlightedId === e.id}
+                          setRowRef={setRowRef}
+                        />
+                      ))}
+                    </ul>
                   )}
                 </div>
               )}

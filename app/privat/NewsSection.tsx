@@ -30,8 +30,23 @@ function timeLabel(pubDate?: string): string {
   return d.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
 }
 
-function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boolean; onToggle: () => void }) {
+// Avkorter en rå (ikke AI-tolket) description til en kort setning — samme
+// rolle som oneLiner for saker uten AI-berikelse (feilet kall/mangler nøkkel).
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen).trimEnd()}…`;
+}
+
+function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
+  item: NewsItem;
+  expanded: boolean;
+  showMore: boolean;
+  onToggle: () => void;
+  onToggleMore: () => void;
+}) {
   const displayTitle = item.aiTitle ?? item.title;
+  const shortSummary = item.oneLiner ?? (item.description ? truncate(item.description, 110) : null);
+  const hasMoreDetail = (item.summaryBullets && item.summaryBullets.length > 0) || !!item.description;
   const categoryColor = item.category ? (CATEGORY_COLOR[item.category] ?? CATEGORY_COLOR.Annet) : undefined;
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
@@ -82,28 +97,47 @@ function NewsRow({ item, expanded, onToggle }: { item: NewsItem; expanded: boole
       </button>
       {expanded && (
         <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
-          {item.summaryBullets && item.summaryBullets.length > 0 ? (
-            <ul className="flex flex-col gap-1">
-              {item.summaryBullets.map((bullet, i) => (
-                <li key={i} className="flex gap-1.5 text-sm text-ink-2">
-                  <span className="text-ink-4">•</span>
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
-          ) : item.description ? (
-            <p className="text-sm text-ink-2">{item.description}</p>
+          {/* Kort versjon først (én setning) — "Mer" avslører det fulle
+              punktvise sammendraget/beskrivelsen, i stedet for å dumpe alt
+              med det samme man utvider saken. */}
+          {shortSummary ? (
+            <p className="text-sm text-ink-2">{shortSummary}</p>
           ) : (
             <p className="text-sm text-ink-4">Ingen sammendrag tilgjengelig.</p>
           )}
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-          >
-            Les hele saken →
-          </a>
+          {showMore && (
+            item.summaryBullets && item.summaryBullets.length > 0 ? (
+              <ul className="flex flex-col gap-1">
+                {item.summaryBullets.map((bullet, i) => (
+                  <li key={i} className="flex gap-1.5 text-sm text-ink-2">
+                    <span className="text-ink-4">•</span>
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : item.description ? (
+              <p className="text-sm text-ink-2">{item.description}</p>
+            ) : null
+          )}
+          <div className="flex items-center gap-3">
+            {hasMoreDetail && (
+              <button
+                type="button"
+                onClick={onToggleMore}
+                className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+              >
+                {showMore ? "Mindre" : "Mer"}
+              </button>
+            )}
+            <a
+              href={item.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+            >
+              Les hele saken →
+            </a>
+          </div>
         </div>
       )}
     </li>
@@ -114,6 +148,7 @@ export default function NewsSection() {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
+  const [moreLink, setMoreLink] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
 
   const load = useCallback(() => {
@@ -152,7 +187,12 @@ export default function NewsSection() {
                   key={item.link}
                   item={item}
                   expanded={expandedLink === item.link}
-                  onToggle={() => setExpandedLink((v) => (v === item.link ? null : item.link))}
+                  showMore={moreLink === item.link}
+                  onToggle={() => {
+                    setExpandedLink((v) => (v === item.link ? null : item.link));
+                    setMoreLink(null);
+                  }}
+                  onToggleMore={() => setMoreLink((v) => (v === item.link ? null : item.link))}
                 />
               ))}
             </ul>

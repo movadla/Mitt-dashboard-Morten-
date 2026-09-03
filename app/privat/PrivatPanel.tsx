@@ -207,7 +207,10 @@ export default function PrivatPanel() {
   // "fortsatt under lasting" er to ulike ting — begge slått sammen til én
   // sectionNodes-nullsjekk over ville fått nav-elementet til å blinke inn/ut
   // mens dataen hentes. Her regnes kun det første som "skjul fra nav".
-  const worldcupVisible = worldCup.length > 0 || worldCupLoading;
+  // Ikke inkluder worldCupLoading her — det fikk "VM" til å blinke inn i
+  // navigasjonen mens dataen lastet, for så å forsvinne igjen idet det viste
+  // seg å være tomt program (utenfor VM-vinduet), jf. tilbakemelding.
+  const worldcupVisible = worldCup.length > 0;
   const fplVisible = fplLoading || (!!fpl && fpl.active && !!fpl.gw?.deadline);
   const navBadges: Partial<Record<string, number>> = {
     reminders: dueRemindersCount,

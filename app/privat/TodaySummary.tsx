@@ -13,8 +13,9 @@ import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
 import { LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
 import type { FplData } from "@/lib/fpl";
-import type { WeatherData } from "@/lib/weather";
+import type { HourlyForecast, WeatherData } from "@/lib/weather";
 import type { LifeEvent } from "@/lib/payday";
+import type { NewsItem } from "@/lib/news";
 import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateString, weekdayDateLabel } from "@/lib/payday";
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { formatUsd } from "@/lib/widgets";
@@ -39,6 +40,7 @@ import {
   ChevronDown,
   Bot,
   Moon,
+  Newspaper,
 } from "lucide-react";
 
 const MAX_OFFSET = 365;
@@ -239,8 +241,254 @@ function WeatherIcon({ symbol, className }: { symbol: string; className?: string
   return <Cloud className={cls} />;
 }
 
-function hourLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+function shortHourLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit" }).replace(/^0/, "");
+}
+
+function osloHourOf(iso: string): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour: "2-digit", hourCycle: "h23" }).format(new Date(iso)));
+}
+
+function isNightHour(iso: string): boolean {
+  const h = osloHourOf(iso);
+  return h < 6 || h >= 21;
+}
+
+function weatherSymbolLabel(symbol: string): string {
+  const s = baseSymbol(symbol);
+  if (s.includes("thunder")) return "Tordenbyger";
+  if (s === "heavyrain") return "Kraftig regn";
+  if (s === "rain") return "Regn";
+  if (s.includes("shower") || s.includes("rain")) return "Byger utover døgnet";
+  if (s.includes("sleet")) return "Sludd";
+  if (s.includes("snow")) return "Snø";
+  if (s === "fog") return "Tåke";
+  if (s === "clearsky") return "Klarvær";
+  if (s === "cloudy") return "Skyet";
+  if (s === "fair" || s.includes("partly")) return "Delvis skyet";
+  return "Skiftende";
+}
+
+// iOS-værapp-inspirert time-for-time-graf — temperaturlinje over en
+// bakgrunn som skiller dag fra natt, med regn-stolper under timer med
+// nedbør. Ren SVG (samme "ingen chart-bibliotek nødvendig for en håndfull
+// punkter"-linje som ProgressChart i TreningSection.tsx), ikke et forsøk på
+// å gjenskape HELE iOS-widgeten (f.eks. ingen nedbørsSANNSYNLIGHET — met.no
+// gir oss kun mm nedbør per time, ikke prosent).
+function WeatherHourlyChart({ hours, nowLabel }: { hours: HourlyForecast[]; nowLabel?: string }) {
+  if (hours.length < 2) return null;
+  const colWidth = 42;
+  const width = hours.length * colWidth;
+  const height = 90;
+  const padTop = 14;
+  const padBottom = 34;
+  const temps = hours.map((h) => h.temp);
+  const min = Math.min(...temps);
+  const max = Math.max(...temps);
+  const range = max - min || 1;
+  const chartH = height - padTop - padBottom;
+  const points = hours.map((h, i) => ({
+    x: colWidth * i + colWidth / 2,
+    y: padTop + chartH - ((h.temp - min) / range) * chartH,
+  }));
+  const maxPrecip = Math.max(...hours.map((h) => h.precipitationMm), 1);
+  // Vis kun hver 3. klokkeslett-etikett (pluss "nå") — én per time ble for
+  // trangt til å lese på mobil.
+  const tickEvery = 3;
+
+  return (
+    <div className="overflow-x-auto">
+      <svg width={width} height={height} className="block">
+        {/* Natt-/dag-bånd — svakt tonet rektangel per time, ikke en fancy
+            gradient-def, siden "hvilke timer er natt" ikke følger en jevn
+            gradient. */}
+        {hours.map((h, i) =>
+          isNightHour(h.time) ? (
+            <rect key={`band-${h.time}`} x={colWidth * i} y={0} width={colWidth} height={height} className="fill-indigo-500/8" />
+          ) : null,
+        )}
+        <polyline
+          points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill="none"
+          className="text-amber-400"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {points.map((p, i) => (
+          <circle key={`pt-${hours[i].time}`} cx={p.x} cy={p.y} r="2" className="text-amber-400" fill="currentColor" />
+        ))}
+        {hours.map((h, i) =>
+          h.precipitationMm > 0 ? (
+            <rect
+              key={`rain-${h.time}`}
+              x={colWidth * i + colWidth / 2 - 3}
+              y={height - padBottom + 4}
+              width="6"
+              height={Math.max(3, (h.precipitationMm / maxPrecip) * 10)}
+              rx="2"
+              className="fill-sky-400"
+            />
+          ) : null,
+        )}
+        {hours.map((h, i) => {
+          const showTick = i === 0 || i % tickEvery === 0;
+          if (!showTick) return null;
+          return (
+            <text
+              key={`tick-${h.time}`}
+              x={colWidth * i + colWidth / 2}
+              y={height - 4}
+              textAnchor="middle"
+              className="fill-ink-4 text-[9px]"
+            >
+              {i === 0 && nowLabel ? nowLabel : shortHourLabel(h.time)}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+interface DaySummary {
+  high: number;
+  low: number;
+  precipMm: number;
+  symbol: string;
+}
+
+function summarizeDay(hours: HourlyForecast[]): DaySummary | null {
+  if (hours.length === 0) return null;
+  return {
+    high: Math.max(...hours.map((h) => h.temp)),
+    low: Math.min(...hours.map((h) => h.temp)),
+    precipMm: Math.round(hours.reduce((sum, h) => sum + h.precipitationMm, 0) * 10) / 10,
+    symbol: hours[Math.floor(hours.length / 2)]?.symbol ?? hours[0].symbol,
+  };
+}
+
+// Hele det utvidede vær-kortet — velger AUTOMATISK i dag vs. i morgen som
+// hoved-grafen ut fra klokkeslettet (fra kl. 20 vises i morgen først, siden
+// resten av dagens vær ikke lenger er det interessante), jf. tilbakemelding.
+// Den andre dagen (når data finnes for den) vises som en kort oppsummeringsrad
+// under grafen — samme rolle som "I morgen"-raden i iOS Vær-appen.
+function WeatherDetail({ weather, nowHour }: { weather: WeatherData; nowHour: number }) {
+  const firstDate = toOsloDateString(new Date(weather.hourly[0].time));
+  const todayHours = weather.hourly.filter((h) => toOsloDateString(new Date(h.time)) === firstDate);
+  const tomorrowHours = weather.hourly.filter((h) => toOsloDateString(new Date(h.time)) !== firstDate);
+  const showTomorrowFirst = nowHour >= 20 && tomorrowHours.length >= 2;
+  const primaryHours = showTomorrowFirst ? tomorrowHours : todayHours;
+  const primaryLabel = showTomorrowFirst ? "I morgen" : "I dag";
+  const secondary = showTomorrowFirst ? null : summarizeDay(tomorrowHours);
+  const headline = weatherSymbolLabel(primaryHours[0]?.symbol ?? weather.symbol);
+
+  return (
+    <div className="mb-3 flex flex-col gap-2 overflow-hidden rounded-xl border border-line bg-surface-2">
+      <div className="flex items-center gap-3 px-3 pt-2.5">
+        <WeatherIcon symbol={primaryHours[0]?.symbol ?? weather.symbol} className="h-8 w-8" />
+        <span className="text-3xl font-semibold tabular-nums text-ink-1">{primaryHours[0]?.temp ?? weather.temp}°</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-ink-1">{headline}</p>
+          <p className="text-2xs text-ink-4">
+            Oslo · {primaryLabel.toLowerCase()}
+            {(() => {
+              const s = summarizeDay(primaryHours);
+              return s ? ` · H ${s.high}° · L ${s.low}°${s.precipMm > 0 ? ` · ${s.precipMm} mm` : ""}` : "";
+            })()}
+          </p>
+        </div>
+      </div>
+      <WeatherHourlyChart hours={primaryHours} nowLabel={showTomorrowFirst ? undefined : "nå"} />
+      {secondary && (
+        <div className="flex items-center gap-2 border-t border-line px-3 py-2">
+          <WeatherIcon symbol={secondary.symbol} className="h-5 w-5" />
+          <span className="text-xs font-medium text-ink-1">I morgen</span>
+          <span className="truncate text-2xs text-ink-4">{weatherSymbolLabel(secondary.symbol)}</span>
+          <span className="ml-auto shrink-0 text-xs tabular-nums text-ink-2">
+            H {secondary.high}° · L {secondary.low}°{secondary.precipMm > 0 ? ` · ${secondary.precipMm} mm` : ""}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const IMPORTANCE_RANK: Record<string, number> = { høy: 2, medium: 1, lav: 0 };
+
+// De 5 "viktigste" nyhetene (AI-vurdert relevans i lib/news.ts, ikke bare
+// nyest) — "høy"-saker vises alltid direkte i "I dag" uten et eget klikk
+// (med en "Viktig"-markør), resten ligger bak en liten "flere nyheter"-
+// knapp, jf. ønske om at man ikke skal måtte utvide boksen for å se noe som
+// virker viktig.
+function NewsPreview({ items }: { items: NewsItem[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const ranked = [...items]
+    .sort((a, b) => (IMPORTANCE_RANK[b.importance ?? "lav"] ?? 0) - (IMPORTANCE_RANK[a.importance ?? "lav"] ?? 0))
+    .slice(0, 5);
+  if (ranked.length === 0) return <p className="text-sm text-ink-3">Ingen nyheter tilgjengelig.</p>;
+  const high = ranked.filter((i) => i.importance === "høy");
+  const rest = ranked.filter((i) => i.importance !== "høy");
+
+  function NewsLine({ item, dimmed }: { item: NewsItem; dimmed?: boolean }) {
+    return (
+      <li>
+        <a
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`flex items-baseline gap-1.5 text-sm hover:text-accent-privat ${dimmed ? "text-ink-2" : "text-ink-1"}`}
+        >
+          {item.importance === "høy" && (
+            <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
+              Viktig
+            </span>
+          )}
+          <span className="min-w-0 truncate">{item.aiTitle ?? item.title}</span>
+        </a>
+      </li>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {high.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {high.map((item) => (
+            <NewsLine key={item.link} item={item} />
+          ))}
+        </ul>
+      )}
+      {high.length === 0 && rest.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          <NewsLine item={rest[0]} dimmed />
+        </ul>
+      )}
+      {(() => {
+        const remaining = high.length > 0 ? rest : rest.slice(1);
+        if (remaining.length === 0) return null;
+        return (
+          <>
+            {showAll && (
+              <ul className="flex flex-col gap-1">
+                {remaining.map((item) => (
+                  <NewsLine key={item.link} item={item} dimmed />
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+            >
+              {showAll ? "Vis mindre" : `${remaining.length} flere ${remaining.length === 1 ? "nyhet" : "nyheter"}`}
+            </button>
+          </>
+        );
+      })()}
+    </div>
+  );
 }
 
 export default function TodaySummary({ onJump }: { onJump: (id: string) => void }) {
@@ -255,6 +503,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const { data: eventsData } = useSWR<{ events: LifeEvent[] }>("/api/events", jsonFetcher);
   const { data: aiUsageRaw } = useSWR<AiUsageSummary | { error: string }>("/api/ai-usage", jsonFetcher);
   const { data: diaryData } = useSWR<{ entries: DiaryEntry[] }>("/api/diary", jsonFetcher);
+  const { data: newsData } = useSWR<{ items: NewsItem[] }>("/api/news", jsonFetcher);
 
   const reminders = remindersData?.reminders ?? [];
   const events = calendarData?.events ?? [];
@@ -264,6 +513,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const lifeEvents = eventsData?.events ?? [];
   const aiUsage = aiUsageRaw && !("error" in aiUsageRaw) ? aiUsageRaw : null;
   const diaryEntries = diaryData?.entries ?? [];
+  const news = newsData?.items ?? [];
   const loading = [remindersData, calendarData, sportsData, fplRaw, weatherRaw, eventsData, aiUsageRaw].some(
     (d) => d === undefined,
   );
@@ -500,17 +750,14 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const lifeEventsOnViewed = lifeEvents.filter((e) => occursOnDate(e, viewedDate));
   const paydayOnViewed = isPaydayToday(viewedDate);
   // Kort nudge i stedet for embedded utfylling — selve utfyllingen skjer nå
-  // kun inne i Dagbok-fanen (app/privat/DiarySection.tsx). Vises fra kl.
-  // 21:00 hvis dagens dagbok ikke er fylt ut ennå, ELLER uansett klokkeslett
-  // hvis gårsdagen mangler — forsvinner helt når begge er i orden, jf.
-  // tidligere tilbakemelding om at den ikke skal mase etter at man er ferdig.
+  // kun inne i Dagbok-fanen (app/privat/DiarySection.tsx). Vises KUN når
+  // gårsdagen mangler — ikke lenger et kl. 21-varsel for DAGENS dagbok, jf.
+  // tilbakemelding om at den bare skal komme når man faktisk har glemt
+  // forrige dag, ikke mase om dagen som fortsatt pågår.
   const yesterday = addDaysIso(realToday, -1);
   const yesterdayDiaryEntry = diaryEntries.find((e) => e.date === yesterday) ?? null;
-  const todayDiaryEntry = diaryEntries.find((e) => e.date === realToday) ?? null;
-  const showDiaryNudge = isToday && (!yesterdayDiaryEntry || (nowHour >= 21 && !todayDiaryEntry));
-  const diaryNudgeText = !yesterdayDiaryEntry
-    ? `Du fylte ikke ut dagboken i går (${weekdayDateLabel(yesterday)}).`
-    : "Husk å fylle ut dagboken for i dag.";
+  const showDiaryNudge = isToday && !yesterdayDiaryEntry;
+  const diaryNudgeText = `Du fylte ikke ut dagboken i går (${weekdayDateLabel(yesterday)}).`;
 
   useEffect(() => {
     if (loading) return;
@@ -565,19 +812,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
         )}
       </div>
 
-      {weather && weatherExpanded && isToday && (
-        <div className="mb-3 overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
-          <div className="flex w-max gap-4">
-            {weather.hourly.map((h) => (
-              <div key={h.time} className="flex flex-col items-center gap-1 text-center">
-                <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
-                <WeatherIcon symbol={h.symbol} className="h-5 w-5" />
-                <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {weather && weatherExpanded && isToday && <WeatherDetail weather={weather} nowHour={nowHour} />}
 
       {loading ? (
         <SkeletonRows count={3} className="h-6" />
@@ -623,69 +858,75 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                 tom-tekst — slik at Sport aldri kan "vinne" toppen bare fordi de to
                 viktigste kategoriene er tomme. */}
             <div className="flex flex-col divide-y divide-line">
-              <div className="pb-2 first:pt-0">
-                <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser" onJump={() => onJump("reminders")}>
-                  {!addingReminder && (
-                    <div className="mb-1 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setAddingReminder(true)}
-                        className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                      >
-                        Ny+
-                      </button>
-                    </div>
-                  )}
-                  <MutationError message={mutationError.message} />
-                  {reminderRows.length > 0 ? (
-                    <ul className="flex flex-col gap-1">
-                      {reminderRows.map(({ reminder, overdue }) => (
-                        <ReminderLine
-                          key={reminder.id}
-                          reminder={reminder}
-                          overdue={overdue}
-                          editing={editingReminderId === reminder.id}
-                          onStartEdit={() => setEditingReminderId(reminder.id)}
-                          onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
-                          onCancelEdit={() => setEditingReminderId(null)}
-                          onToggleDone={() => handleToggleReminderDone(reminder.id)}
+              {/* "Ny+" flyttet ut av CategoryRow sine children og inn som en
+                  sidestilt knapp her — den lå tidligere ØVERST i children, som
+                  skjøv selve påminnelse-teksten ned én linje og fikk bjelle-
+                  ikonet (linjert mot FØRSTE linje) til å virke forskjøvet fra
+                  teksten, i motsetning til Kalender-ikonet der children
+                  starter rett på innholdet. */}
+              <div className="flex items-start gap-2 pb-2 first:pt-0">
+                <div className="min-w-0 flex-1">
+                  <CategoryRow icon={Bell} colorClass="text-accent-privat" label="Påminnelser" onJump={() => onJump("reminders")}>
+                    <MutationError message={mutationError.message} />
+                    {reminderRows.length > 0 ? (
+                      <ul className="flex flex-col gap-1">
+                        {reminderRows.map(({ reminder, overdue }) => (
+                          <ReminderLine
+                            key={reminder.id}
+                            reminder={reminder}
+                            overdue={overdue}
+                            editing={editingReminderId === reminder.id}
+                            onStartEdit={() => setEditingReminderId(reminder.id)}
+                            onChangeDueDate={(date) => handleChangeDueDate(reminder.id, date)}
+                            onCancelEdit={() => setEditingReminderId(null)}
+                            onToggleDone={() => handleToggleReminderDone(reminder.id)}
+                          />
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
+                    )}
+                    {addingReminder && (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newReminderText}
+                          onChange={(e) => setNewReminderText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleAddReminder();
+                            if (e.key === "Escape") setAddingReminder(false);
+                          }}
+                          placeholder="Ny påminnelse..."
+                          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
                         />
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-ink-3">{isToday ? "Ingen påminnelser i dag." : "Ingen påminnelser denne dagen."}</p>
-                  )}
-                  {addingReminder && (
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newReminderText}
-                        onChange={(e) => setNewReminderText(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleAddReminder();
-                          if (e.key === "Escape") setAddingReminder(false);
-                        }}
-                        placeholder="Ny påminnelse..."
-                        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-                      />
-                      <input
-                        type="time"
-                        value={newReminderTime}
-                        onChange={(e) => setNewReminderTime(e.target.value)}
-                        className="w-24 shrink-0 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddReminder}
-                        disabled={!newReminderText.trim() || submittingReminder}
-                        className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-                      >
-                        Legg til
-                      </button>
-                    </div>
-                  )}
-                </CategoryRow>
+                        <input
+                          type="time"
+                          value={newReminderTime}
+                          onChange={(e) => setNewReminderTime(e.target.value)}
+                          className="w-24 shrink-0 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddReminder}
+                          disabled={!newReminderText.trim() || submittingReminder}
+                          className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                        >
+                          Legg til
+                        </button>
+                      </div>
+                    )}
+                  </CategoryRow>
+                </div>
+                {!addingReminder && (
+                  <button
+                    type="button"
+                    onClick={() => setAddingReminder(true)}
+                    className="shrink-0 text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                  >
+                    Ny+
+                  </button>
+                )}
               </div>
 
               <div className="py-2">
@@ -735,6 +976,18 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
                         {new Date(fplDeadlineOnViewed).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                     </p>
+                  </CategoryRow>
+                </div>
+              )}
+
+              {/* Fast del av "I dag" (ikke betinget av at det finnes noe å
+                  vise, i motsetning til de andre kategoriene over) — kun på
+                  selve i dag-visningen, siden "dagens nyheter" ikke gir
+                  mening når man blar til en annen dag. */}
+              {isToday && (
+                <div className="py-2 last:pb-0">
+                  <CategoryRow icon={Newspaper} colorClass="text-orange-400" label="Nyheter" onJump={() => onJump("news")}>
+                    <NewsPreview items={news} />
                   </CategoryRow>
                 </div>
               )}

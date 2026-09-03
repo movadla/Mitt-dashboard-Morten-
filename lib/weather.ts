@@ -5,6 +5,9 @@ export interface HourlyForecast {
   time: string; // ISO
   temp: number;
   symbol: string;
+  // mm nedbør i timen ETTER dette tidspunktet — grunnlag for regn-stolpene i
+  // time-for-time-grafen (TodaySummary sin WeatherDetail).
+  precipitationMm: number;
 }
 
 export interface WeatherData {
@@ -50,6 +53,7 @@ export async function getWeather(): Promise<WeatherData> {
     time: e.time,
     temp: Math.round(e.data.instant.details.air_temperature),
     symbol: (e.data.next_1_hours ?? e.data.next_6_hours)?.summary?.symbol_code ?? "cloudy",
+    precipitationMm: e.data.next_1_hours?.details?.precipitation_amount ?? 0,
   }));
 
   const result: WeatherData = {

@@ -297,8 +297,9 @@ export default function ShoppingListSection() {
   const [showDone, setShowDone] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
-  const [section, setSection] = useState<StoreSection>("frukt-gront");
+  const [section, setSection] = useState<StoreSection>("annet");
   const [quantity, setQuantity] = useState("");
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const confirmDelete = useConfirmDelete<string>();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -363,6 +364,8 @@ export default function ShoppingListSection() {
       if (ok) {
         setName("");
         setQuantity("");
+        setSection("annet");
+        setShowMoreOptions(false);
         setShowForm(false);
       }
     } finally {
@@ -373,6 +376,21 @@ export default function ShoppingListSection() {
   async function handleQuickAdd(qp: QuickPick) {
     vibrate(8);
     await addItemToList(qp.name, qp.section);
+  }
+
+  // Samme hurtigvalg-tillegg som handleQuickAdd, men fra "Ny vare"-skjemaet —
+  // tilbakestiller i tillegg skjemaet, siden dette ER skjemaets primære
+  // legg-til-handling når det finnes et treff (se autocomplete-listen under).
+  async function handleAddFromMatch(qp: QuickPick) {
+    vibrate(8);
+    const ok = await addItemToList(qp.name, qp.section);
+    if (ok) {
+      setName("");
+      setQuantity("");
+      setSection("annet");
+      setShowMoreOptions(false);
+      setShowForm(false);
+    }
   }
 
   async function handleSaveQuickPick(id: string, updates: { name: string; section: StoreSection }): Promise<boolean> {
@@ -501,6 +519,12 @@ export default function ShoppingListSection() {
   const notDoneFlat = grouped.flatMap((g) => g.items);
   const visibleNotDone = notDoneFlat.slice(0, visibleNotDoneCount);
   const visibleDone = done.slice(0, visibleDoneCount);
+  // Autocomplete i "Ny vare"-feltet — matchende hurtigvalg vises som forslag
+  // man kan trykke rett på (med sin kjente kategori), i stedet for at man
+  // alltid må velge kategori manuelt selv for varer man har lagt inn før.
+  const matchingQuickPicks = name.trim()
+    ? quickPicks.filter((qp) => qp.name.toLowerCase().includes(name.trim().toLowerCase())).slice(0, 6)
+    : [];
   const isSearchingQuickPicks = quickPickQuery.trim().length > 0;
   const visibleQuickPicks = isSearchingQuickPicks
     ? quickPicks.filter((qp) => qp.name.toLowerCase().includes(quickPickQuery.trim().toLowerCase()))
@@ -596,50 +620,87 @@ export default function ShoppingListSection() {
             <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
               <input
                 type="text"
+                autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAdd();
+                  if (e.key === "Enter" && matchingQuickPicks.length === 0) handleAdd();
                   if (e.key === "Escape") setShowForm(false);
                 }}
                 placeholder="Ny vare..."
                 className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={section}
-                  onChange={(e) => setSection(e.target.value as StoreSection)}
-                  className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-                >
-                  {SECTION_ORDER.map((s) => (
-                    <option key={s} value={s}>
-                      {SECTION_META[s].label}
-                    </option>
+              {/* Treff blant hurtigvalgene: én-trykks legg-til med kategorien
+                  varen allerede har — ingen manuell kategori-/mengdevelger
+                  vises da, siden det ikke trengs for en vare man har lagt inn
+                  før. */}
+              {matchingQuickPicks.length > 0 ? (
+                <ul className="flex flex-col gap-1">
+                  {matchingQuickPicks.map((qp) => (
+                    <li key={qp.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleAddFromMatch(qp)}
+                        className="flex w-full items-center gap-2 rounded-lg bg-surface-1 px-3 py-2 text-left text-sm text-ink-1 transition hover:bg-surface-3"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{qp.name}</span>
+                        <span className={`shrink-0 text-2xs ${SECTION_META[qp.section].text}`}>{SECTION_META[qp.section].label}</span>
+                      </button>
+                    </li>
                   ))}
-                </select>
-                <input
-                  type="text"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  placeholder="Mengde (valgfritt)"
-                  className="w-32 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="text-xs font-medium text-ink-4 hover:text-ink-2"
-                >
-                  Avbryt
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAdd}
-                  disabled={!name.trim() || submitting}
-                  className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-                >
-                  Legg til
-                </button>
-              </div>
+                </ul>
+              ) : (
+                <>
+                  {showMoreOptions && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={section}
+                        onChange={(e) => setSection(e.target.value as StoreSection)}
+                        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                      >
+                        {SECTION_ORDER.map((s) => (
+                          <option key={s} value={s}>
+                            {SECTION_META[s].label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        placeholder="Mengde (valgfritt)"
+                        className="w-32 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+                      />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {!showMoreOptions && (
+                      <button
+                        type="button"
+                        onClick={() => setShowMoreOptions(true)}
+                        className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                      >
+                        + Kategori/mengde
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(false)}
+                      className="text-xs font-medium text-ink-4 hover:text-ink-2"
+                    >
+                      Avbryt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAdd}
+                      disabled={!name.trim() || submitting}
+                      className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+                    >
+                      Legg til
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
