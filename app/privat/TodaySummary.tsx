@@ -41,6 +41,7 @@ import {
   Bot,
   Moon,
   Newspaper,
+  Info,
 } from "lucide-react";
 
 const MAX_OFFSET = 365;
@@ -241,17 +242,8 @@ function WeatherIcon({ symbol, className }: { symbol: string; className?: string
   return <Cloud className={cls} />;
 }
 
-function shortHourLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit" }).replace(/^0/, "");
-}
-
-function osloHourOf(iso: string): number {
-  return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Oslo", hour: "2-digit", hourCycle: "h23" }).format(new Date(iso)));
-}
-
-function isNightHour(iso: string): boolean {
-  const h = osloHourOf(iso);
-  return h < 6 || h >= 21;
+function hourLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
 }
 
 function weatherSymbolLabel(symbol: string): string {
@@ -269,167 +261,65 @@ function weatherSymbolLabel(symbol: string): string {
   return "Skiftende";
 }
 
-// iOS-værapp-inspirert time-for-time-graf — temperaturlinje over en
-// bakgrunn som skiller dag fra natt, med regn-stolper under timer med
-// nedbør. Ren SVG (samme "ingen chart-bibliotek nødvendig for en håndfull
-// punkter"-linje som ProgressChart i TreningSection.tsx), ikke et forsøk på
-// å gjenskape HELE iOS-widgeten (f.eks. ingen nedbørsSANNSYNLIGHET — met.no
-// gir oss kun mm nedbør per time, ikke prosent).
-function WeatherHourlyChart({ hours, nowLabel }: { hours: HourlyForecast[]; nowLabel?: string }) {
-  if (hours.length < 2) return null;
-  const colWidth = 42;
-  const width = hours.length * colWidth;
-  const height = 90;
-  const padTop = 14;
-  const padBottom = 34;
-  const temps = hours.map((h) => h.temp);
-  const min = Math.min(...temps);
-  const max = Math.max(...temps);
-  const range = max - min || 1;
-  const chartH = height - padTop - padBottom;
-  const points = hours.map((h, i) => ({
-    x: colWidth * i + colWidth / 2,
-    y: padTop + chartH - ((h.temp - min) / range) * chartH,
-  }));
-  const maxPrecip = Math.max(...hours.map((h) => h.precipitationMm), 1);
-  // Vis kun hver 3. klokkeslett-etikett (pluss "nå") — én per time ble for
-  // trangt til å lese på mobil.
-  const tickEvery = 3;
-
-  return (
-    <div className="overflow-x-auto">
-      <svg width={width} height={height} className="block">
-        {/* Natt-/dag-bånd — svakt tonet rektangel per time, ikke en fancy
-            gradient-def, siden "hvilke timer er natt" ikke følger en jevn
-            gradient. */}
-        {hours.map((h, i) =>
-          isNightHour(h.time) ? (
-            <rect key={`band-${h.time}`} x={colWidth * i} y={0} width={colWidth} height={height} className="fill-indigo-500/8" />
-          ) : null,
-        )}
-        <polyline
-          points={points.map((p) => `${p.x},${p.y}`).join(" ")}
-          fill="none"
-          className="text-amber-400"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {points.map((p, i) => (
-          <circle key={`pt-${hours[i].time}`} cx={p.x} cy={p.y} r="2" className="text-amber-400" fill="currentColor" />
-        ))}
-        {hours.map((h, i) =>
-          h.precipitationMm > 0 ? (
-            <rect
-              key={`rain-${h.time}`}
-              x={colWidth * i + colWidth / 2 - 3}
-              y={height - padBottom + 4}
-              width="6"
-              height={Math.max(3, (h.precipitationMm / maxPrecip) * 10)}
-              rx="2"
-              className="fill-sky-400"
-            />
-          ) : null,
-        )}
-        {hours.map((h, i) => {
-          const showTick = i === 0 || i % tickEvery === 0;
-          if (!showTick) return null;
-          return (
-            <text
-              key={`tick-${h.time}`}
-              x={colWidth * i + colWidth / 2}
-              y={height - 4}
-              textAnchor="middle"
-              className="fill-ink-4 text-[9px]"
-            >
-              {i === 0 && nowLabel ? nowLabel : shortHourLabel(h.time)}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
+// Kort tekstbeskrivelse (ikke en graf) av værtypen for en dag — forklarende
+// setning bak "info"-knappen, se WeatherInfo. Bevisst enkel prosa, ikke et
+// forsøk på å visualisere time for time.
+function weatherDescription(hours: HourlyForecast[], fallbackSymbol: string): string {
+  if (hours.length === 0) return "";
+  const high = Math.max(...hours.map((h) => h.temp));
+  const low = Math.min(...hours.map((h) => h.temp));
+  const precipMm = Math.round(hours.reduce((sum, h) => sum + h.precipitationMm, 0) * 10) / 10;
+  const midSymbol = hours[Math.floor(hours.length / 2)]?.symbol ?? hours[0]?.symbol ?? fallbackSymbol;
+  const precipPart = precipMm > 0 ? ` Nedbør ventet, opptil ${precipMm} mm.` : " Ingen nedbør ventet.";
+  return `${weatherSymbolLabel(midSymbol)}. Høy ${high}°, lav ${low}°.${precipPart}`;
 }
 
-interface DaySummary {
-  high: number;
-  low: number;
-  precipMm: number;
-  symbol: string;
-}
-
-function summarizeDay(hours: HourlyForecast[]): DaySummary | null {
-  if (hours.length === 0) return null;
-  return {
-    high: Math.max(...hours.map((h) => h.temp)),
-    low: Math.min(...hours.map((h) => h.temp)),
-    precipMm: Math.round(hours.reduce((sum, h) => sum + h.precipitationMm, 0) * 10) / 10,
-    symbol: hours[Math.floor(hours.length / 2)]?.symbol ?? hours[0].symbol,
-  };
-}
-
-// Hele det utvidede vær-kortet — velger AUTOMATISK i dag vs. i morgen som
-// hoved-grafen ut fra klokkeslettet (fra kl. 20 vises i morgen først, siden
-// resten av dagens vær ikke lenger er det interessante), jf. tilbakemelding.
-// Den andre dagen (når data finnes for den) vises som en kort oppsummeringsrad
-// under grafen — samme rolle som "I morgen"-raden i iOS Vær-appen.
-function WeatherDetail({ weather, nowHour }: { weather: WeatherData; nowHour: number }) {
+// Kort skriftlig værbeskrivelse bak en egen "info"-knapp — velger AUTOMATISK
+// i dag vs. i morgen ut fra klokkeslettet (fra kl. 20 beskrives i morgen i
+// stedet, siden resten av dagens vær ikke lenger er det interessante).
+function WeatherInfo({ weather, nowHour }: { weather: WeatherData; nowHour: number }) {
   const firstDate = toOsloDateString(new Date(weather.hourly[0].time));
   const todayHours = weather.hourly.filter((h) => toOsloDateString(new Date(h.time)) === firstDate);
   const tomorrowHours = weather.hourly.filter((h) => toOsloDateString(new Date(h.time)) !== firstDate);
-  const showTomorrowFirst = nowHour >= 20 && tomorrowHours.length >= 2;
-  const primaryHours = showTomorrowFirst ? tomorrowHours : todayHours;
-  const primaryLabel = showTomorrowFirst ? "I morgen" : "I dag";
-  const secondary = showTomorrowFirst ? null : summarizeDay(tomorrowHours);
-  const headline = weatherSymbolLabel(primaryHours[0]?.symbol ?? weather.symbol);
+  const showTomorrow = nowHour >= 20 && tomorrowHours.length >= 2;
+  const label = showTomorrow ? "I morgen" : "I dag";
+  const description = weatherDescription(showTomorrow ? tomorrowHours : todayHours, weather.symbol);
 
   return (
-    <div className="mb-3 flex flex-col gap-2 overflow-hidden rounded-xl border border-line bg-surface-2">
-      <div className="flex items-center gap-3 px-3 pt-2.5">
-        <WeatherIcon symbol={primaryHours[0]?.symbol ?? weather.symbol} className="h-8 w-8" />
-        <span className="text-3xl font-semibold tabular-nums text-ink-1">{primaryHours[0]?.temp ?? weather.temp}°</span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-ink-1">{headline}</p>
-          <p className="text-2xs text-ink-4">
-            Oslo · {primaryLabel.toLowerCase()}
-            {(() => {
-              const s = summarizeDay(primaryHours);
-              return s ? ` · H ${s.high}° · L ${s.low}°${s.precipMm > 0 ? ` · ${s.precipMm} mm` : ""}` : "";
-            })()}
-          </p>
-        </div>
-      </div>
-      <WeatherHourlyChart hours={primaryHours} nowLabel={showTomorrowFirst ? undefined : "nå"} />
-      {secondary && (
-        <div className="flex items-center gap-2 border-t border-line px-3 py-2">
-          <WeatherIcon symbol={secondary.symbol} className="h-5 w-5" />
-          <span className="text-xs font-medium text-ink-1">I morgen</span>
-          <span className="truncate text-2xs text-ink-4">{weatherSymbolLabel(secondary.symbol)}</span>
-          <span className="ml-auto shrink-0 text-xs tabular-nums text-ink-2">
-            H {secondary.high}° · L {secondary.low}°{secondary.precipMm > 0 ? ` · ${secondary.precipMm} mm` : ""}
-          </span>
-        </div>
-      )}
+    <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">{label}</p>
+      <p className="mt-0.5 text-sm text-ink-1">{description}</p>
     </div>
   );
 }
 
-const IMPORTANCE_RANK: Record<string, number> = { høy: 2, medium: 1, lav: 0 };
+// "Viktig" for "I dag"-widgeten betyr IKKE lenger bare AI-ens isolerte per-
+// artikkel-vurdering — det krever at minst to ULIKE kilder melder samme sak
+// (lib/news.ts sin sourceCount, satt av kryss-kilde-duplikatsjekken), OG at
+// den ikke er vurdert som lav personlig relevans. Flere medier om samme sak
+// ER selve viktighets-signalet her, jf. tilbakemelding — AI-relevansen
+// brukes kun som et filter mot saker som åpenbart ikke er relevante for
+// Morten spesifikt (f.eks. lav-vurdert kjendisstoff som likevel dekkes bredt).
+function isImportantNews(item: NewsItem): boolean {
+  return (item.sourceCount ?? 1) >= 2 && item.importance !== "lav";
+}
 
-// De 5 "viktigste" nyhetene (AI-vurdert relevans i lib/news.ts, ikke bare
-// nyest) — "høy"-saker vises alltid direkte i "I dag" uten et eget klikk
-// (med en "Viktig"-markør), resten ligger bak en liten "flere nyheter"-
-// knapp, jf. ønske om at man ikke skal måtte utvide boksen for å se noe som
-// virker viktig.
+function shortNewsTitle(item: NewsItem): string {
+  const title = item.aiTitle ?? item.title;
+  return title.length > 42 ? `${title.slice(0, 42).trimEnd()}…` : title;
+}
+
+// De 5 "viktigste" nyhetene — se isImportantNews. De vises direkte i "I dag"
+// uten et eget klikk (med en "Viktig"-markør + miniatyrbilde), resten ligger
+// bak en liten "flere nyheter"-knapp.
 function NewsPreview({ items }: { items: NewsItem[] }) {
   const [showAll, setShowAll] = useState(false);
   const ranked = [...items]
-    .sort((a, b) => (IMPORTANCE_RANK[b.importance ?? "lav"] ?? 0) - (IMPORTANCE_RANK[a.importance ?? "lav"] ?? 0))
+    .sort((a, b) => Number(isImportantNews(b)) - Number(isImportantNews(a)))
     .slice(0, 5);
   if (ranked.length === 0) return <p className="text-sm text-ink-3">Ingen nyheter tilgjengelig.</p>;
-  const high = ranked.filter((i) => i.importance === "høy");
-  const rest = ranked.filter((i) => i.importance !== "høy");
+  const high = ranked.filter(isImportantNews);
+  const rest = ranked.filter((i) => !isImportantNews(i));
 
   function NewsLine({ item, dimmed }: { item: NewsItem; dimmed?: boolean }) {
     return (
@@ -438,30 +328,36 @@ function NewsPreview({ items }: { items: NewsItem[] }) {
           href={item.link}
           target="_blank"
           rel="noopener noreferrer"
-          className={`flex items-baseline gap-1.5 text-sm hover:text-accent-privat ${dimmed ? "text-ink-2" : "text-ink-1"}`}
+          className="flex items-center gap-2 hover:text-accent-privat"
         >
-          {item.importance === "høy" && (
-            <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
-              Viktig
-            </span>
+          {item.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
           )}
-          <span className="min-w-0 truncate">{item.aiTitle ?? item.title}</span>
+          <span className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-sm ${dimmed ? "text-ink-2" : "text-ink-1"}`}>
+            {isImportantNews(item) && (
+              <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
+                Viktig
+              </span>
+            )}
+            <span className="min-w-0 truncate">{shortNewsTitle(item)}</span>
+          </span>
         </a>
       </li>
     );
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {high.length > 0 && (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1.5">
           {high.map((item) => (
             <NewsLine key={item.link} item={item} />
           ))}
         </ul>
       )}
       {high.length === 0 && rest.length > 0 && (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-col gap-1.5">
           <NewsLine item={rest[0]} dimmed />
         </ul>
       )}
@@ -471,7 +367,7 @@ function NewsPreview({ items }: { items: NewsItem[] }) {
         return (
           <>
             {showAll && (
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col gap-1.5">
                 {remaining.map((item) => (
                   <NewsLine key={item.link} item={item} dimmed />
                 ))}
@@ -527,6 +423,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   }, []);
 
   const [weatherExpanded, setWeatherExpanded] = useState(false);
+  const [weatherInfoOpen, setWeatherInfoOpen] = useState(false);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -799,20 +696,45 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
           )}
         </div>
         {weather && isToday && (
-          <button
-            type="button"
-            onClick={() => setWeatherExpanded((v) => !v)}
-            aria-expanded={weatherExpanded}
-            aria-label="Vis vær time for time"
-            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
-          >
-            <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
-            <span className="tabular-nums">{weather.temp}°</span>
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setWeatherExpanded((v) => !v)}
+              aria-expanded={weatherExpanded}
+              aria-label="Vis vær time for time"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
+            >
+              <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
+              <span className="tabular-nums">{weather.temp}°</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeatherInfoOpen((v) => !v)}
+              aria-expanded={weatherInfoOpen}
+              aria-label="Værbeskrivelse"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-2 hover:text-ink-2"
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          </div>
         )}
       </div>
 
-      {weather && weatherExpanded && isToday && <WeatherDetail weather={weather} nowHour={nowHour} />}
+      {weather && weatherInfoOpen && isToday && <WeatherInfo weather={weather} nowHour={nowHour} />}
+
+      {weather && weatherExpanded && isToday && (
+        <div className="mb-3 overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
+          <div className="flex w-max gap-4">
+            {weather.hourly.map((h) => (
+              <div key={h.time} className="flex flex-col items-center gap-1 text-center">
+                <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
+                <WeatherIcon symbol={h.symbol} className="h-5 w-5" />
+                <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <SkeletonRows count={3} className="h-6" />

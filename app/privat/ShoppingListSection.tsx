@@ -548,73 +548,6 @@ export default function ShoppingListSection() {
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
-          {quickPicks.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Hurtigvalg</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManagingQuickPicks((v) => !v);
-                    setEditingQuickPickId(null);
-                  }}
-                  aria-expanded={managingQuickPicks}
-                  className="text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
-                >
-                  {managingQuickPicks ? "Ferdig" : "Rediger"}
-                </button>
-              </div>
-              {quickPicks.length > VISIBLE_QUICK_PICKS && !managingQuickPicks && (
-                <input
-                  type="text"
-                  value={quickPickQuery}
-                  onChange={(e) => setQuickPickQuery(e.target.value)}
-                  placeholder="Søk i hurtigvalg..."
-                  aria-label="Søk i hurtigvalg"
-                  className="rounded-lg border border-transparent bg-surface-2 px-3 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-                />
-              )}
-              {managingQuickPicks ? (
-                <ul className="flex flex-col gap-1.5">
-                  {visibleQuickPicks.map((qp) => (
-                    <QuickPickManageRow
-                      key={qp.id}
-                      quickPick={qp}
-                      editing={editingQuickPickId === qp.id}
-                      onStartEdit={() => setEditingQuickPickId(qp.id)}
-                      onCancelEdit={() => setEditingQuickPickId(null)}
-                      onSave={(updates) => handleSaveQuickPick(qp.id, updates)}
-                      onDelete={() => confirmQuickPickDelete.request(qp)}
-                    />
-                  ))}
-                </ul>
-              ) : visibleQuickPicks.length === 0 ? (
-                <p className="text-xs text-ink-4">Ingen treff.</p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {visibleQuickPicks.map((qp) => (
-                    <button
-                      key={qp.id}
-                      type="button"
-                      onClick={() => handleQuickAdd(qp)}
-                      className="rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs font-medium text-ink-1 transition hover:border-line-strong hover:bg-surface-3 active:opacity-70"
-                    >
-                      {qp.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {quickPicks.length > VISIBLE_QUICK_PICKS && !isSearchingQuickPicks && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllQuickPicks((v) => !v)}
-                  className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
-                >
-                  {showAllQuickPicks ? "Vis mindre" : `Mer (${quickPicks.length - VISIBLE_QUICK_PICKS})`}
-                </button>
-              )}
-            </div>
-          )}
 
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
@@ -630,11 +563,64 @@ export default function ShoppingListSection() {
                 placeholder="Ny vare..."
                 className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
-              {/* Treff blant hurtigvalgene: én-trykks legg-til med kategorien
-                  varen allerede har — ingen manuell kategori-/mengdevelger
-                  vises da, siden det ikke trengs for en vare man har lagt inn
-                  før. */}
-              {matchingQuickPicks.length > 0 ? (
+              {/* Hurtigvalg-katalogen vises IKKE lenger av seg selv — kun
+                  som treff idet man skriver (matchingQuickPicks under), eller
+                  her bak et eksplisitt "Administrer"-trykk for å redigere/
+                  slette lagrede hurtigvalg, jf. tilbakemelding om at
+                  allerede lagrede ting ikke skal vises før man skriver noe. */}
+              {quickPicks.length > 0 && !matchingQuickPicks.length && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManagingQuickPicks((v) => !v);
+                    setEditingQuickPickId(null);
+                  }}
+                  aria-expanded={managingQuickPicks}
+                  className="self-start text-xs font-medium text-ink-4 hover:text-ink-2"
+                >
+                  {managingQuickPicks ? "Ferdig med hurtigvalg" : "Administrer hurtigvalg"}
+                </button>
+              )}
+              {managingQuickPicks ? (
+                <>
+                  {quickPicks.length > VISIBLE_QUICK_PICKS && (
+                    <input
+                      type="text"
+                      value={quickPickQuery}
+                      onChange={(e) => setQuickPickQuery(e.target.value)}
+                      placeholder="Søk i hurtigvalg..."
+                      aria-label="Søk i hurtigvalg"
+                      className="rounded-lg border border-transparent bg-surface-1 px-3 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                    />
+                  )}
+                  {visibleQuickPicks.length === 0 ? (
+                    <p className="text-xs text-ink-4">Ingen treff.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {visibleQuickPicks.map((qp) => (
+                        <QuickPickManageRow
+                          key={qp.id}
+                          quickPick={qp}
+                          editing={editingQuickPickId === qp.id}
+                          onStartEdit={() => setEditingQuickPickId(qp.id)}
+                          onCancelEdit={() => setEditingQuickPickId(null)}
+                          onSave={(updates) => handleSaveQuickPick(qp.id, updates)}
+                          onDelete={() => confirmQuickPickDelete.request(qp)}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                  {quickPicks.length > VISIBLE_QUICK_PICKS && !isSearchingQuickPicks && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllQuickPicks((v) => !v)}
+                      className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                    >
+                      {showAllQuickPicks ? "Vis mindre" : `Mer (${quickPicks.length - VISIBLE_QUICK_PICKS})`}
+                    </button>
+                  )}
+                </>
+              ) : matchingQuickPicks.length > 0 ? (
                 <ul className="flex flex-col gap-1">
                   {matchingQuickPicks.map((qp) => (
                     <li key={qp.id}>

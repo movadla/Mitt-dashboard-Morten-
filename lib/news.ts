@@ -23,6 +23,13 @@ export interface NewsItem {
   // punkt i summaryBullets, eller en avkortet description, hvis usatt.
   oneLiner?: string;
   summaryBullets?: string[];
+  // Antall ULIKE kilder som melder samme sak (tittel-overlapp, se
+  // isDuplicateTitle) — usatt/1 hvis kun én kilde har den. Flere kilder om
+  // samme sak er signalet "I dag"-widgeten bruker for å avgjøre om noe er
+  // viktig nok til å vises uten å måtte utvide boksen, jf. tilbakemelding —
+  // ikke AI-en sin isolerte per-artikkel-vurdering alene. Kun satt av
+  // getNews sin dedup-løkke, aldri av processCandidate/kilde-parserne.
+  sourceCount?: number;
 }
 
 // Interne felt kun brukt under innsamling — aldri en del av det som caches/
@@ -360,15 +367,20 @@ function significantWords(title: string): Set<string> {
   return new Set(normalized.split(/\s+/).filter((w) => w.length >= 4));
 }
 
-function isDuplicateTitle(words: Set<string>, seen: Set<string>[]): boolean {
-  if (words.size === 0) return false;
-  for (const other of seen) {
+// Returnerer indeksen i `seen` en tittel matcher (samme sak, ulik kilde),
+// eller -1 hvis den ikke matcher noe allerede holdt. Indeksbasert (ikke bare
+// boolsk) slik at kalleren kan telle kryss-kilde-dekning på RIKTIG sak i
+// stedet for bare å luke duplikatet vekk.
+function findDuplicateIndex(words: Set<string>, seen: Set<string>[]): number {
+  if (words.size === 0) return -1;
+  for (let i = 0; i < seen.length; i++) {
+    const other = seen[i];
     if (other.size === 0) continue;
     let overlap = 0;
     for (const w of words) if (other.has(w)) overlap++;
-    if (overlap / Math.min(words.size, other.size) >= 0.5) return true;
+    if (overlap / Math.min(words.size, other.size) >= 0.5) return i;
   }
-  return false;
+  return -1;
 }
 
 // ── Kandidat-prosessering ────────────────────────────────────────────────────
@@ -413,16 +425,31 @@ async function fetchAndEnrichNews(): Promise<NewsItem[]> {
   // Claude-kall per kandidat) ville gjort et enkelt friskt-opp-løp for treg.
   const enriched: NewsItem[] = [];
   const seenWords: Set<string>[] = [];
+  // Parallell til seenWords/enriched — hvilke KILDER (VG/TV2/...) som
+  // allerede har bidratt til hver holdte sak, for å telle sourceCount uten å
+  // dobbelttelle om samme kilde skulle dukke opp to ganger for samme sak.
+  const seenSources: Set<string>[] = [];
   for (let i = 0; i < candidates.length && enriched.length < TOP_N; i += BATCH_SIZE) {
     const batch = candidates.slice(i, i + BATCH_SIZE);
     const processed = await Promise.all(batch.map(processCandidate));
     for (const item of processed) {
-      if (enriched.length >= TOP_N) break;
       if (!item) continue; // video
       const words = significantWords(item.aiTitle ?? item.title);
-      if (isDuplicateTitle(words, seenWords)) continue;
+      const dupIdx = findDuplicateIndex(words, seenWords);
+      if (dupIdx !== -1) {
+        // Samme sak som en allerede holdt fra en annen kilde — teller som
+        // kryss-kilde-dekning (se sourceCount) i stedet for en ny fylt
+        // plass i TOP_N.
+        if (!seenSources[dupIdx].has(item.source)) {
+          seenSources[dupIdx].add(item.source);
+          enriched[dupIdx].sourceCount = (enriched[dupIdx].sourceCount ?? 1) + 1;
+        }
+        continue;
+      }
+      if (enriched.length >= TOP_N) continue;
       seenWords.push(words);
-      enriched.push(item);
+      seenSources.push(new Set([item.source]));
+      enriched.push({ ...item, sourceCount: 1 });
     }
   }
 

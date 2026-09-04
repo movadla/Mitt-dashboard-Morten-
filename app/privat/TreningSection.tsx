@@ -2398,7 +2398,7 @@ export default function TreningSection() {
                     onClick={() => setShowSetup(true)}
                     className="rounded-xl border border-dashed border-line px-3 py-2.5 text-center text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
                   >
-                    Sett opp økt først
+                    Sett opp økt
                   </button>
                   {routines.length > 0 && (
                     <div className="flex flex-col gap-1.5">

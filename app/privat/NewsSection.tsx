@@ -37,6 +37,15 @@ function truncate(text: string, maxLen: number): string {
   return `${text.slice(0, maxLen).trimEnd()}…`;
 }
 
+// Samme regel som "I dag"-widgeten (TodaySummary.tsx sin isImportantNews) —
+// krever kryss-kilde-dekning (minst to ulike medier om samme sak), ikke bare
+// AI-ens isolerte per-artikkel-vurdering. Holdt som en liten, bevisst
+// duplisert ett-linjer her fremfor en delt modul, siden lib/news.ts er
+// server-only og ikke kan importeres av disse klient-komponentene.
+function isImportantNews(item: NewsItem): boolean {
+  return (item.sourceCount ?? 1) >= 2 && item.importance !== "lav";
+}
+
 function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
   item: NewsItem;
   expanded: boolean;
@@ -58,7 +67,7 @@ function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm text-ink-1">{displayTitle}</p>
-            {item.importance === "høy" && (
+            {isImportantNews(item) && (
               <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
                 Viktig for deg
               </span>
