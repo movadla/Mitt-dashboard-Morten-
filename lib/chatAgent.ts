@@ -437,6 +437,16 @@ async function persistExchange(messages: Anthropic.MessageParam[], assistantText
 export interface ChatTurnResult {
   text: string;
   changed: boolean;
+  // true når svaret stiller brukeren et spørsmål og altså venter på svar —
+  // signalet iOS-snarveien bruker til å åpne mikrofonen på nytt i stedet for
+  // å avslutte, slik at samtalen kan gå frem og tilbake uten at man må
+  // trigge snarveien manuelt hver gang. Ren heuristikk (spørsmålstegn), som
+  // er pålitelig nok her fordi voiceMode-svar er maks én kort setning.
+  awaitingReply: boolean;
+}
+
+function looksLikeQuestion(text: string): boolean {
+  return text.includes("?");
 }
 
 export async function runChatTurn(
@@ -450,7 +460,17 @@ export async function runChatTurn(
     `Dagens dato er ${today}.\n\n` +
     "Du er Mortens personlige assistent i mitt-dashboard. Svar kort og konkret på norsk.\n" +
     (opts?.voiceMode
-      ? "Dette svaret leses høyt av en telefon-snarvei — svar EKSTRA kort, maks én kort setning.\n"
+      ? "Dette svaret leses høyt av en telefon-snarvei, og snarveien åpner mikrofonen på nytt " +
+        "AUTOMATISK hvis svaret ditt inneholder et spørsmålstegn — du er altså en muntlig " +
+        "samtalepartner, ikke et engangs-svar. Regler for talemodus:\n" +
+        "- Svar EKSTRA kort, maks én til to korte setninger.\n" +
+        "- Stiller du et spørsmål: still KUN ETT, og avslutt svaret med det. Da får brukeren " +
+        "ordet igjen med det samme, og du fortsetter samtalen i neste runde.\n" +
+        "- Er du ferdig (ingenting mer du trenger fra brukeren): IKKE bruk spørsmålstegn i det " +
+        "hele tatt — da avsluttes samtalen. Ikke avslutt med høflighetsspørsmål som 'Noe mer?' " +
+        "med mindre du faktisk vil at brukeren skal svare.\n" +
+        "- Har brukeren bedt om en gjennomgang (f.eks. av dagen sin): oppsummer kort det du har " +
+        "fått, lagre det du kan med verktøyene, og still så neste enkeltspørsmål.\n"
       : "") +
     "Nye kontrakter, leieinntekt per bygg, dagens møter, garantioversikt og kundefordringer under er " +
     `EKTE data (Fazile, Outlook, Asana og Visma Business NXT — hentet ${today}). Sport, FPL, ` +
@@ -543,7 +563,7 @@ export async function runChatTurn(
         text = "Svaret ble for langt og ble kappet av. Prøv å be om en mindre liste om gangen.";
       }
       await persistExchange(messages, text);
-      return { text, changed };
+      return { text, changed, awaitingReply: looksLikeQuestion(text) };
     }
 
     convo.push({ role: "assistant", content: response.content });
@@ -573,5 +593,5 @@ export async function runChatTurn(
 
   const fallback = "Fikk ikke fullført forespørselen. Prøv igjen.";
   await persistExchange(messages, fallback);
-  return { text: fallback, changed };
+  return { text: fallback, changed, awaitingReply: false };
 }

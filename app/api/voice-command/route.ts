@@ -41,5 +41,8 @@ export async function POST(request: NextRequest) {
   const messages = [...history, { role: "user" as const, content: text.trim() }];
 
   const result = await runChatTurn(messages, { voiceMode: true });
-  return NextResponse.json({ reply: result.text, changed: result.changed });
+  // awaitingReply forteller snarveien om den skal åpne mikrofonen på nytt
+  // (assistenten stilte et spørsmål) eller avslutte — det som gjør flyten til
+  // en reell frem-og-tilbake-samtale i stedet for ett engangs-svar per trykk.
+  return NextResponse.json({ reply: result.text, changed: result.changed, awaitingReply: result.awaitingReply });
 }
