@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runChatTurn } from "@/lib/chatAgent";
+import { getChatHistory } from "@/lib/chatHistory";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Mangler tekst" }, { status: 400 });
   }
 
-  const result = await runChatTurn([{ role: "user", content: text.trim() }], { voiceMode: true });
+  // Hver snarveis-utløsning var tidligere ETT isolert utsagn uten noe av
+  // samtalen fra før — hvis Alfred svarte med et oppfølgingsspørsmål, hadde
+  // en ny utløsning av snarveien ingen anelse om hva den nettopp ble spurt
+  // om, så et "svar" traff aldri sammenhengen. Deler nå historikk med
+  // chat-boblen (app/api/chat, samme "privat:chat:history"-nøkkel) slik at
+  // en oppfølging via talekommando faktisk fortsetter forrige utveksling —
+  // samme "husker til man trykker Tøm i chat-boblen"-modell som der.
+  const history = await getChatHistory();
+  const messages = [...history, { role: "user" as const, content: text.trim() }];
+
+  const result = await runChatTurn(messages, { voiceMode: true });
   return NextResponse.json({ reply: result.text, changed: result.changed });
 }
