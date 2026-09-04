@@ -17,11 +17,22 @@ export interface FplLeague {
   gapToTarget?: number;
   topEntries?: { name: string; total: number; rank: number }[];
 }
+// Ett brukt chip i sesongen (wildcard/benkeboost/trippelkaptein/freehit/
+// assistenttrener) — brukt av sesongstatistikk-seksjonen (Rumpehåland/fisak).
+export interface FplChip {
+  name: string; // rå FPL-kode, f.eks. "wildcard", "bboost", "3xc", "freehit", "manager"
+  event: number;
+}
 export interface FplTeam {
   teamKey: TeamKey; teamId: number; teamName: string;
   overallRank?: number; totalPoints?: number;
   currentGwPoints?: number; currentGw?: number;
-  gwHistory?: { event: number; rank: number; points?: number }[];
+  // `points` er KUMULATIVT (total_points ved den runden) — brukt av
+  // RankSparkline sin trend, som kun bryr seg om retning. `gwPoints` er selve
+  // rundescoren (FPL sitt eget `points`-felt), grunnlaget for
+  // søyle-diagrammet i sesongstatistikken.
+  gwHistory?: { event: number; rank: number; points?: number; gwPoints?: number; benchPoints?: number; transfers?: number; transferCost?: number }[];
+  chips?: FplChip[];
   leagues: FplLeague[];
 }
 export interface FplData {
@@ -145,11 +156,20 @@ export async function getFplData(): Promise<FplData> {
         const entry   = rawEntries[i]   as EntryData | null;
         const history = rawHistories[i] as HistoryData | null;
         const gwHistory = (history?.current ?? [])
-          .map((h: GwHistoryEntry) => ({ event: h.event, rank: h.overall_rank, points: h.total_points }));
+          .map((h: GwHistoryEntry) => ({
+            event: h.event,
+            rank: h.overall_rank,
+            points: h.total_points,
+            gwPoints: h.points,
+            benchPoints: h.points_on_bench,
+            transfers: h.event_transfers,
+            transferCost: h.event_transfers_cost,
+          }));
+        const chips = history?.chips ?? [];
         const pts: number = entry?.summary_overall_points ?? 0;
         return fetchTeam(entry!, pts).then((team): FplTeam | null => {
           if (!team) return null;
-          return { ...team, teamKey: t.key, gwHistory };
+          return { ...team, teamKey: t.key, gwHistory, chips };
         });
       })
     );
@@ -177,8 +197,11 @@ interface FplEvent {
   is_next: boolean; is_current: boolean; finished: boolean;
   average_entry_score?: number;
 }
-interface GwHistoryEntry { event: number; overall_rank: number; total_points: number; }
-interface HistoryData { current: GwHistoryEntry[] }
+interface GwHistoryEntry {
+  event: number; overall_rank: number; total_points: number; points: number;
+  points_on_bench: number; event_transfers: number; event_transfers_cost: number;
+}
+interface HistoryData { current: GwHistoryEntry[]; chips?: FplChip[] }
 interface RawLeague {
   id: number; name: string; entry_rank: number; entry_last_rank?: number;
 }

@@ -286,6 +286,117 @@ function BokoNotes() {
   );
 }
 
+const CHIP_LABEL: Record<string, string> = {
+  wildcard: "Wildcard",
+  bboost: "Benkeboost",
+  "3xc": "Trippelkaptein",
+  freehit: "Freehit",
+  manager: "Assistenttrener",
+};
+
+// Enkelt søyle-diagram over poeng per runde — samme "ingen chart-bibliotek
+// nødvendig"-mønster som resten av appen (se f.eks. ProgressChart i
+// TreningSection.tsx), tilpasset FPL-panelets egne mørke inline-styles i
+// stedet for CardShell/Tailwind-tokens.
+function GwPointsChart({ history, accent }: { history: { event: number; gwPoints: number }[]; accent: string }) {
+  if (history.length < 2) return null;
+  const W = 280, H = 64, pad = 3;
+  const barW = (W - pad * 2) / history.length;
+  const max = Math.max(...history.map((h) => h.gwPoints), 1);
+  return (
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} className="block">
+      {history.map((h, i) => {
+        const barH = Math.max(1, (h.gwPoints / max) * (H - pad * 2));
+        const x = pad + i * barW;
+        return (
+          <rect
+            key={h.event}
+            x={x + barW * 0.15}
+            y={H - pad - barH}
+            width={Math.max(1, barW * 0.7)}
+            height={barH}
+            rx="1.5"
+            fill={accent}
+            opacity={0.75}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+function StatTile({ label, value, accent, accentM }: { label: string; value: number | string; accent: string; accentM: string }) {
+  return (
+    <div className="rounded-lg px-2.5 py-2" style={{ background: "rgba(0,0,0,0.28)" }}>
+      <p className="truncate text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: `${accentM}0.35)` }}>
+        {label}
+      </p>
+      <p className="text-[15px] font-black tabular-nums" style={{ color: accent }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+// Sesongstatistikk bygget fra FPL-historikk-dataen appen allerede henter
+// (lib/fpl.ts sin gwHistory/chips) — ikke en lenke til et eksternt prosjekt
+// (slik Boko sin "sesongstatistikk" er, se lenken lenger ned), men en ekte
+// seksjon i selve dashboardet. Kun vist under Rumpehåland/fisak-panelet.
+function SeasonStats({ team, accent, accentM }: { team: FplTeam; accent: string; accentM: string }) {
+  const gws = (team.gwHistory ?? []).filter(
+    (h): h is typeof h & { gwPoints: number } => h.gwPoints != null,
+  );
+  if (gws.length === 0) return null;
+
+  const best = gws.reduce((a, b) => (b.gwPoints > a.gwPoints ? b : a));
+  const worst = gws.reduce((a, b) => (b.gwPoints < a.gwPoints ? b : a));
+  const totalGwPoints = gws.reduce((sum, h) => sum + h.gwPoints, 0);
+  const avg = Math.round((totalGwPoints / gws.length) * 10) / 10;
+  const totalBench = gws.reduce((sum, h) => sum + (h.benchPoints ?? 0), 0);
+  const totalTransferCost = gws.reduce((sum, h) => sum + (h.transferCost ?? 0), 0);
+  const chips = team.chips ?? [];
+
+  return (
+    <div className="px-3 pb-4" style={{ background: "rgba(0,0,0,0.20)", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <p className="pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: accent }}>
+        Sesongstatistikk
+      </p>
+      <div className="mb-2 rounded-xl p-2.5" style={{ background: "rgba(0,0,0,0.28)" }}>
+        <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: `${accentM}0.35)` }}>
+          Poeng per runde
+        </p>
+        <GwPointsChart history={gws} accent={accent} />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <StatTile label="Snitt/runde" value={avg} accent={accent} accentM={accentM} />
+        <StatTile label="Totalt" value={(team.totalPoints ?? totalGwPoints).toLocaleString("nb-NO")} accent={accent} accentM={accentM} />
+        <StatTile label={`Beste (GW${best.event})`} value={best.gwPoints} accent={accent} accentM={accentM} />
+        <StatTile label={`Svakeste (GW${worst.event})`} value={worst.gwPoints} accent={accent} accentM={accentM} />
+      </div>
+      {(totalBench > 0 || totalTransferCost > 0) && (
+        <p className="mt-2 text-[10px]" style={{ color: `${accentM}0.35)` }}>
+          {totalBench > 0 && `${totalBench}p på benken totalt`}
+          {totalBench > 0 && totalTransferCost > 0 && " · "}
+          {totalTransferCost > 0 && `-${totalTransferCost}p i bytte-trekk`}
+        </p>
+      )}
+      {chips.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {chips.map((c) => (
+            <span
+              key={`${c.name}-${c.event}`}
+              className="rounded-full px-2 py-1 text-[10px] font-semibold"
+              style={{ background: `${accentM}0.12)`, color: accent }}
+            >
+              {CHIP_LABEL[c.name] ?? c.name} · GW{c.event}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MiniLeaderboard({
   entries, myRank, myTotal, teamName, accent, accentM,
 }: {
@@ -703,6 +814,9 @@ export function FplHero({ fpl }: { fpl: FplData }) {
               accent={TEAM_THEME[expandedTeam].accent}
             />
           </div>
+          {expandedTeam === "fisak" && (
+            <SeasonStats team={expandedTeamData} accent={TEAM_THEME.fisak.accent} accentM={TEAM_THEME.fisak.accentM} />
+          )}
           {expandedTeam === "boko" && <BokoNotes />}
         </div>
       )}
