@@ -3,7 +3,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Building2,
   CalendarClock,
+  Car,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -92,6 +94,11 @@ function InvoicedBlock() {
   return (
     <div className="flex flex-col gap-1.5">
       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Fakturert (Visma NXT, hittil i år)</p>
+      <p className="rounded-lg bg-surface-2 px-2.5 py-1.5 text-2xs text-ink-4">
+        Historisk måned-for-måned-oversikt, periode 1-8. Ikke lenger en del av "Bokført" i toppboksen - erstattet
+        2026-08-30 av "Bokført totalt, konto 3600-3699" under (rå helårs-kontosaldo, unngår en dobbelttellingsfeil
+        denne periodiserte metoden hadde med manuelt bokførte bilag).
+      </p>
       {INVOICED.periods.length === 0 ? (
         <p className="text-sm text-ink-3">Ingen data lagt inn ennå.</p>
       ) : (
@@ -114,8 +121,8 @@ function InvoicedBlock() {
               ))}
               <tr className="border-t border-line-strong font-semibold">
                 <td className="px-3 py-2 text-ink-1">Totalt</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalA)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalB)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalA)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalB)}</td>
               </tr>
             </tbody>
           </table>
@@ -182,12 +189,16 @@ function BookedAccountRangeBlock() {
       {!collapsed && (
         <>
           <p className="mb-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-2xs text-ink-4">
-            Steg 1 av flere — bygg-nedbrytning vist under per selskap, leietaker-nedbrytning kommer i en senere runde.
-            Rent kontrollstørrelse, ikke lagt inn i prognosetotalen under.
+            OPPDATERT 2026-08-30: dette er nå selve kilden til "Bokført" i toppboksen (se breakdown der) - ikke
+            lenger bare en kontrollstørrelse. Rå helårs-kontosaldo (generalLedgerBalanceForOrgUnit3, ingen
+            periodebegrensning, ingen egen liste over manuelle bilag å holde synkronisert) - erstattet den tidligere
+            INVOICED+manuelle bilag-konstruksjonen etter at en dobbelttellingsfeil ble bekreftet der (et manuelt
+            bokført bilag ble trukket fra to ganger - én gang i periodesaldoen, én gang i den separate
+            bilagslisten). Bygg-nedbrytning vist under per selskap, leietaker-nedbrytning kommer i en senere runde.
           </p>
           <p className="mb-2 text-2xs text-ink-4">
-            Differanse mot INVOICED (periode 1-8): <span className="font-medium tabular-nums text-ink-2">{formatKr(diff)}</span> — forventet, forklares
-            av forhåndsfakturerte poster i periode 9-12 som allerede er bokført.
+            Differanse mot INVOICED (historisk, periode 1-8): <span className="font-medium tabular-nums text-ink-2">{formatKr(diff)}</span> — forventet,
+            forklares av forhåndsfakturerte poster i periode 9-12 som allerede er bokført.
           </p>
           <div className="-mx-1 overflow-x-auto">
             <table className="w-full min-w-[380px] text-sm">
@@ -203,7 +214,7 @@ function BookedAccountRangeBlock() {
                 ))}
                 <tr className="border-t border-line-strong font-semibold">
                   <td className="px-3 py-2 text-ink-1">Totalt</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(BOOKED_3600_3699.totalBelop)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(BOOKED_3600_3699.totalBelop)}</td>
                 </tr>
               </tbody>
             </table>
@@ -320,7 +331,7 @@ function NxtBudgetBlock({ rollup }: { rollup: ForecastRollup }) {
                     ))}
                     <tr className="border-t border-line-strong font-semibold">
                       <td className="px-3 py-2 text-ink-1">Totalt</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(snapshot.totalBelop)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(snapshot.totalBelop)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -512,6 +523,8 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "forklart-nxt-feilkoding": "Feilkoding i NXT",
   "intern-mustad": "Intern (Mustad selv)",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
+  "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
+  "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
 };
 
 const BYGG_STATUS_STYLE: Record<string, string> = {
@@ -524,6 +537,8 @@ const BYGG_STATUS_STYLE: Record<string, string> = {
   "forklart-nxt-feilkoding": "bg-status-warning/15 text-status-warning",
   "intern-mustad": "bg-surface-3 text-ink-4",
   "forklart-parkering-onepark": "bg-status-positive/12 text-status-positive",
+  "forklart-parkering-uten-fazile-linje": "bg-status-warning/15 text-status-warning",
+  "fazile-plan-mangler": "bg-status-warning/15 text-status-warning",
 };
 
 const REVIEW_STATUSES = [
@@ -535,6 +550,8 @@ const REVIEW_STATUSES = [
   "avsluttet",
   "intern-mustad",
   "forklart-parkering-onepark",
+  "forklart-parkering-uten-fazile-linje",
+  "fazile-plan-mangler",
 ] as const;
 
 function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot["tenants"][number] }) {
@@ -1201,7 +1218,8 @@ function OmsetningsavregningBlock({
     <div id="drilldown-omsetningsavregning" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Omsetningsavregning"
-        subtitle={snapshot ? `${formatKr(snapshot.totalEkstrafakturering)} · ${snapshot.antallMatchet} leieforhold` : "Laster…"}
+        subtitle={snapshot ? formatKr(snapshot.totalEkstrafakturering) : "Laster…"}
+        alwaysShowSubtitle
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={ShoppingBag}
@@ -1253,19 +1271,19 @@ function OmsetningsavregningBlock({
                           >
                             <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">{b.butikk}</td>
                             <td className="max-w-[130px] truncate px-3 py-2 text-ink-3">{b.bygg}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">{b.omsetningKorr == null ? "—" : formatKr(b.omsetningKorr)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{b.omsetningKorr == null ? "—" : formatKr(b.omsetningKorr)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
                               {b.avtaltOmsProsent == null ? "—" : `${(b.avtaltOmsProsent * 100).toLocaleString("nb-NO", { maximumFractionDigits: 2 })} %`}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
                               {b.forventetOmsetningsleie == null ? "—" : formatKr(b.forventetOmsetningsleie)}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
                               {b.fakturert2026 == null ? "—" : formatKr(b.fakturert2026)}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-ink-2">{b.gjenstar2026 == null ? "—" : formatKr(b.gjenstar2026)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{b.gjenstar2026 == null ? "—" : formatKr(b.gjenstar2026)}</td>
                             <td
-                              className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                              className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${
                                 b.ekstrafakturering == null ? "text-ink-4" : b.ekstrafakturering > 0 ? "text-status-positive" : "text-ink-3"
                               }`}
                             >
@@ -1287,12 +1305,12 @@ function OmsetningsavregningBlock({
                     <tr className="border-t border-line-strong font-semibold">
                       <td className="px-3 py-2 text-ink-1">Totalt ({filtered.length})</td>
                       <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOmsetning)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOmsetning)}</td>
                       <td className="px-3 py-2" />
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalForventetLeie)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-status-positive">{formatKr(totalAvregning)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalForventetLeie)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-positive">{formatKr(totalAvregning)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1683,6 +1701,14 @@ function ManualNxtBlock() {
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
       />
+      {!collapsed && (
+        <p className="mb-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-2xs text-ink-4">
+          Ren historikk/kontekst siden 2026-08-30 - IKKE lenger lagt til i "Bokført" (se "Bokført totalt, konto
+          3600-3699" over). Disse bilagene er allerede inkludert der, siden periodesaldoen NXT bruker teller alt
+          uansett opprinnelse (bekreftet direkte mot NXT for avsetningsposten under) - en egen addering her hadde
+          dobbelttalt dem.
+        </p>
+      )}
       {!collapsed &&
         (MANUAL_NXT.vouchers.length === 0 ? (
           <p className="text-sm text-ink-3">Ingen bilag registrert ennå.</p>
@@ -1894,6 +1920,25 @@ function beregnVektetReforhandlingTotal(snapshot: ContractExpiry2026Snapshot | n
     .reduce((sum, c) => sum + c.ekstraI2026 * ((signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100) / 100), 0);
 }
 
+// Delt mellom KontrakterPaUtlopBlock (som viser dette pr. KONTRAKT) og TenantForecastTable
+// (Leieinntekter, som viser dette pr. LEIETAKER-navn - summert over ev. flere åpne kontrakter
+// for samme leietaker) - Morten (2026-08-29): "det man velger under kontrakter på utløp
+// reflekteres fortsatt ikke opp i leieinntekter" - uten dette viste de to tabellene ulike +/-
+// for samme leietaker, siden justeringen tidligere kun ble regnet ut lokalt inni
+// KontrakterPaUtlopBlock.
+function beregnEkstraVedReforhandlingByNavn(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[]): Map<string, number> {
+  const result = new Map<string, number>();
+  if (!snapshot) return result;
+  const signalsById = new Map(signals.map((s) => [s.id, s]));
+  for (const c of snapshot.contracts) {
+    if (c.status !== "apen") continue;
+    const sannsynlighet = signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100;
+    const key = c.leietaker.trim().toLowerCase();
+    result.set(key, (result.get(key) ?? 0) + c.ekstraI2026 * (sannsynlighet / 100));
+  }
+  return result;
+}
+
 function MainForecastBox({
   rollup,
   contractExpiry2026,
@@ -1924,6 +1969,14 @@ function MainForecastBox({
   // satt pr. kontrakt i "Kontrakter på utløp" (Prognose-fanen). Bruker nå samme sannsynlighets-
   // vektede beregning som den seksjonen selv viser - de to skal ALLTID vise samme tall.
   const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
+  // NYTT 2026-08-30 (Morten: "et eget punkt ... hva den potensielle ekstrainntekten kan bli hvis
+  // alle reforhandles til samme vilkår") - samler ALLE åpne (ikke reforhandlede) kontrakter på
+  // 36-serien som utløper i 2026, og viser hva de ville gitt i ekstra 2026-inntekt HVIS alle ble
+  // reforhandlet til akkurat samme vilkår som i dag (dvs. sluttdato = 31.12.2026 eller senere) -
+  // 100 %-scenario, IKKE sannsynlighetsvektet (det er "Reforhandling"-linjen over).
+  // BEVISST IKKE lagt til `total` under - dette er et øvre-grense-scenario for referanse, ikke et
+  // sannsynlighetsjustert bidrag til selve prognosen (som ville dobbelttalt mot linjen over).
+  const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
   const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
   const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
   const potensiellFremtidig = potentialByKey.get("potensiell-fremtidig-inntekt")?.belop ?? 0;
@@ -1953,25 +2006,40 @@ function MainForecastBox({
             <span className="font-medium tabular-nums text-ink-1">{formatKr(bokfort)}</span>
           </div>
           <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className="text-ink-2">Gjenstår å fakturere</span>
+            <span className="text-ink-2">Gjenstår</span>
             <span className="font-medium tabular-nums text-ink-1">{formatKr(gjenstar)}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className="text-ink-2">Reforhandling (vektet med sannsynlighet, kontraktsutløp i 2026)</span>
-            <span className="font-medium tabular-nums text-ink-1">{formatKr(reforhandlingFull)}</span>
           </div>
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-ink-2">Omsetningsavregning</span>
             <span className="font-medium tabular-nums text-ink-1">{formatKr(omsetningsavregningSum)}</span>
           </div>
-          {potential?.categories.map((c) => (
-            <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} compact />
-          ))}
-          <p className="mt-1 text-2xs text-ink-4">
-            Bokført + Gjenstår er avstemt mot NXT/Fazile. Reforhandling er vektet med sannsynligheten du har satt pr.
-            kontrakt i "Kontrakter på utløp" (Prognose-fanen) - endres der, endres tallet her automatisk. De tre siste er
-            manuelle anslag du kan redigere ved å klikke på dem.
-          </p>
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="flex items-center gap-1 text-ink-2">
+              Reforhandlingsmuligheter
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button type="button" aria-label="Om reforhandlingsmuligheter" className="shrink-0 text-ink-4 hover:text-ink-1">
+                      <Info className="h-3 w-3" />
+                    </button>
+                  }
+                />
+                <TooltipContent>
+                  Vektet med sannsynligheten du har satt pr. kontrakt i "Kontrakter på utløp" (Prognose-fanen) - endres
+                  der, endres tallet her automatisk. Øvre grense (100 % sannsynlighet på alle åpne kontrakter på
+                  36-serien som utløper i 2026): {formatKr(potensiellEkstrainntektReforhandling100)} - IKKE i totalen,
+                  kun til referanse.
+                </TooltipContent>
+              </Tooltip>
+            </span>
+            <span className="font-medium tabular-nums text-ink-1">{formatKr(reforhandlingFull)}</span>
+          </div>
+          {potential?.categories
+            .filter((c) => c.belop !== 0)
+            .map((c) => (
+              <PotentialCategoryTile key={c.key} category={c} onUpdated={onPotentialUpdated} compact />
+            ))}
+          <p className="mt-1 text-2xs text-ink-4">Bokført + Gjenstår er avstemt mot NXT/Fazile.</p>
         </div>
       )}
     </div>
@@ -2019,30 +2087,80 @@ function FlyttetInnListe({ flyttetInn }: { flyttetInn: TenantForecastRow[] }) {
   );
 }
 
+// v3 (2026-08-29, Morten: "vist kontoer og så fakturert pr konto (alignes under kolonnen
+// Fakturert), så linjer fra Fazile og gjenstår å fakturere (aligned under den kolonnen)") -
+// erstatter den forrige enkle linjelisten (som viste Fazile sin kontraktsfestede ÅRSVERDI, ikke
+// hva som faktisk gjensto) med to side-om-side seksjoner som speiler foreldreraden sine to
+// tallkolonner: NXT-kontoer -> Fakturert (venstre), Fazile-linjer -> Gjenstår (høyre, med
+// gjenstår proporsjonalt fordelt over linjene - se gjenstarShare i build-tenant-forecast-table.js).
 function TenantDrilldown({ row, flyttetInn = [] }: { row: TenantForecastRow; flyttetInn?: TenantForecastRow[] }) {
+  const kontoer = row.kontoer ?? [];
   return (
-    <div className="flex flex-col gap-1.5 border-t border-line bg-surface-1 px-3 py-2.5">
-      {row.linjer.length === 0 ? (
-        <p className="text-2xs text-ink-4">Ingen kontraktslinjer registrert.</p>
-      ) : (
+    <div className="flex flex-col gap-2 border-t border-line bg-surface-1 px-3 py-2.5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1">
-          {row.linjer.map((l, i) => (
-            <div key={`${l.bygg}-${l.beskrivelse}-${i}`} className="flex items-baseline justify-between gap-2 text-2xs text-ink-3">
-              <span className="truncate">
-                {l.leietaker ? `${l.leietaker} — ` : ""}
-                {l.bygg} — {l.beskrivelse} ({l.linjetype})
-              </span>
-              <span className="shrink-0 tabular-nums text-ink-4">{formatKr(l.fullArsverdi2026)}</span>
-            </div>
-          ))}
+          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Konto → Fakturert</p>
+          {kontoer.length === 0 ? (
+            <p className="text-2xs text-ink-4">Ingen NXT-postering funnet.</p>
+          ) : (
+            kontoer.map((k) => (
+              <div key={k.konto} className="flex items-baseline justify-between gap-2 text-2xs text-ink-3">
+                <span className="truncate">{k.konto}</span>
+                <span className="shrink-0 tabular-nums text-ink-4">{formatKr(k.belop)}</span>
+              </div>
+            ))
+          )}
+          <div className="flex items-baseline justify-between gap-2 border-t border-line-strong pt-1 text-sm">
+            <span className="text-ink-2">Fakturert</span>
+            <span className="font-semibold tabular-nums text-ink-1">{formatKr(row.fakturert)}</span>
+          </div>
         </div>
-      )}
-      <FlyttetInnListe flyttetInn={flyttetInn} />
-      <div className="mt-1 flex items-baseline justify-between gap-2 border-t border-line-strong pt-1.5 text-sm">
-        <span className="text-ink-2">Fakturert</span>
-        <span className="font-semibold tabular-nums text-ink-1">{formatKr(row.fakturert)}</span>
+        <div className="flex flex-col gap-1">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button type="button" className="flex items-center gap-1 text-left" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Fazile-linje → Gjenstår (estimat)</p>
+                  <Info className="h-3 w-3 shrink-0 text-ink-4" />
+                </button>
+              }
+            />
+            <TooltipContent>
+              REMAINING har kun gjenstår pr. bygg, ikke pr. kontraktslinje - beløpet under er byggets
+              samlede gjenstår fordelt proporsjonalt på hver linjes andel av årsleien, IKKE et ekte tall
+              hentet fra Fazile. Fazile har et eget, mer presist per-linje-tall (via fakturahistorikk),
+              men det er per 2026-08-29/30 upålitelig for perioder før ca. 20. januar 2026 pga. en
+              kjent migreringsartefakt (kontraktslinje-ID-er ble regenerert 15.-20. januar 2026) - derfor
+              ikke tatt i bruk ennå. Summen nederst stemmer alltid med Gjenstår-kolonnen i tabellen over.
+            </TooltipContent>
+          </Tooltip>
+          {row.linjer.length === 0 ? (
+            <p className="text-2xs text-ink-4">Ingen kontraktslinjer registrert.</p>
+          ) : (
+            row.linjer.map((l, i) => (
+              <div key={`${l.bygg}-${l.beskrivelse}-${i}`} className="flex items-baseline justify-between gap-2 text-2xs text-ink-3">
+                <span className="truncate">
+                  {l.leietaker ? `${l.leietaker} — ` : ""}
+                  {l.bygg ? `${l.bygg} — ` : ""}
+                  {l.beskrivelse}
+                  {l.linjetype ? ` (${l.linjetype})` : ""}
+                </span>
+                {/* gjenstarShare er kun satt for ekte leietaker-rader (buildLeietakerMap()) -
+                    andre gjenbrukere av TenantDrilldown (f.eks. Ledige lokaler sine areal-linjer)
+                    har ikke dette feltet og faller tilbake til linjens fulle årsverdi/budsjett. */}
+                <span className="shrink-0 tabular-nums text-ink-4">{formatKr(l.gjenstarShare ?? l.fullArsverdi2026)}</span>
+              </div>
+            ))
+          )}
+          <div className="flex items-baseline justify-between gap-2 border-t border-line-strong pt-1 text-sm">
+            <span className="text-ink-2">Gjenstår</span>
+            <span className="font-semibold tabular-nums text-ink-1">{formatKr(row.gjenstar)}</span>
+          </div>
+        </div>
       </div>
-      <div className="flex items-baseline justify-between gap-2 text-sm">
+      <FlyttetInnListe flyttetInn={flyttetInn} />
+      {row.kommentar && <p className="rounded-lg bg-surface-2 px-2 py-1.5 text-2xs text-ink-3">{row.kommentar}</p>}
+      <div className="flex items-baseline justify-between gap-2 border-t border-line-strong pt-1.5 text-sm">
         <span className="text-ink-2">+/- vs. budsjett</span>
         <span
           className={`font-semibold tabular-nums ${
@@ -2061,18 +2179,36 @@ function TenantDrilldown({ row, flyttetInn = [] }: { row: TenantForecastRow; fly
 // gjenstår ser rart ut (kontrakten dekker bare en DEL av året). Tar tidligste start og seneste
 // slutt blant linjer som faktisk faller innenfor 2026 - representerer leietakerens "inn"/"ut"-
 // tidspunkt for de fleste tilfeller (én hovedlinje pr. leietaker+bygg er normalt).
-function finn2026StartSlutt(linjer: { startDato: string | null; sluttDato: string | null }[]): { start: string | null; slutt: string | null } {
+// v2 (2026-08-29, Morten: AFRY-funn - "start 20.04 · slutt 31.03" så ut som en umulig,
+// baklengs kontraktsperiode). Rotårsak: en leietaker med mange UAVHENGIGE linjer (typisk mange
+// enkeltstående parkeringsplass-kontrakter, hver med egen historikk) fikk tidligere den TIDLIGSTE
+// 2026-startdatoen og den SENESTE 2026-sluttdatoen plukket ut hver for seg, uansett om de kom fra
+// SAMME linje - for AFRY Norway AS var det to helt urelaterte garasjeplasser (én sluttet 31.03,
+// en helt annen startet 20.04), ikke én reell kontrakt med en baklengs periode. Sporer nå hvilken
+// linje hver dato kom fra - `sammeLinje` er kun true når ÉN OG SAMME linje faktisk både startet
+// OG sluttet i 2026 (en reell kort delårskontrakt), IKKE når datoene stammer fra ulike linjer.
+function finn2026StartSlutt(
+  linjer: { startDato: string | null; sluttDato: string | null }[],
+): { start: string | null; slutt: string | null; sammeLinje: boolean } {
   let start: string | null = null;
+  let startLinje: (typeof linjer)[number] | null = null;
   let slutt: string | null = null;
+  let sluttLinje: (typeof linjer)[number] | null = null;
   for (const l of linjer) {
     if (l.startDato && l.startDato >= "2026-01-01" && l.startDato <= "2026-12-31") {
-      if (!start || l.startDato < start) start = l.startDato;
+      if (!start || l.startDato < start) {
+        start = l.startDato;
+        startLinje = l;
+      }
     }
     if (l.sluttDato && l.sluttDato >= "2026-01-01" && l.sluttDato <= "2026-12-31") {
-      if (!slutt || l.sluttDato > slutt) slutt = l.sluttDato;
+      if (!slutt || l.sluttDato > slutt) {
+        slutt = l.sluttDato;
+        sluttLinje = l;
+      }
     }
   }
-  return { start, slutt };
+  return { start, slutt, sammeLinje: startLinje !== null && startLinje === sluttLinje };
 }
 
 function formatDagManed(iso: string): string {
@@ -2225,10 +2361,11 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
   const totalAvvik = derivedAll.reduce((s, d) => s + d.avvik, 0);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Ledige lokaler"
-        subtitle={`${formatKr(totalGjenstaende)} gjenstår · ${ledigRows.length} bygg`}
+        subtitle={`${formatKr(totalGjenstaende)} gjenstår`}
+        alwaysShowSubtitle
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={DoorOpen}
@@ -2274,11 +2411,11 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                           onClick={() => toggle(d.row.navn)}
                         >
                           <td className="max-w-[140px] truncate px-3 py-2 text-ink-1">{d.row.navn}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(d.opprinnelig)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.trukketUt === 0 ? "—" : formatKr(d.trukketUt)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(d.gjenstaende)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(d.opprinnelig)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{d.trukketUt === 0 ? "—" : formatKr(d.trukketUt)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(d.gjenstaende)}</td>
                           <td
-                            className={`px-3 py-2 text-right font-semibold tabular-nums ${
+                            className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${
                               d.avvik >= 0 ? "text-status-positive" : "text-status-danger"
                             }`}
                           >
@@ -2288,10 +2425,32 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                             <KommentarCell navn={d.row.navn} value={commentOverrides[d.row.navn] ?? d.row.kommentar ?? ""} onSave={saveComment} />
                           </td>
                         </tr>
+                        {isOpen && d.flyttetInn.length > 0 && (
+                          <>
+                            <tr className="border-t border-line-strong bg-surface-2/40">
+                              <td colSpan={6} className="px-3 py-1 text-2xs font-medium text-ink-3">
+                                Flyttet inn her — beløpet er leietakerens eget fakturert+gjenstår fra Leieinntekter (samme tall, ikke egne beregninger)
+                              </td>
+                            </tr>
+                            {d.flyttetInn.map((t) => (
+                              <tr key={t.navn} className="border-t border-line">
+                                <td className="max-w-[140px] truncate px-3 py-1.5 pl-6 text-ink-2">
+                                  <span className="text-ink-4">↳ </span>
+                                  {t.navn}
+                                </td>
+                                <td className="px-3 py-1.5 text-right text-ink-4">—</td>
+                                <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-ink-2">{formatKr(t.fakturert + t.gjenstar)}</td>
+                                <td className="px-3 py-1.5 text-right text-ink-4">—</td>
+                                <td className="px-3 py-1.5 text-right text-ink-4">—</td>
+                                <td className="px-3 py-1.5" />
+                              </tr>
+                            ))}
+                          </>
+                        )}
                         {isOpen && (
                           <tr className="border-t border-line">
                             <td colSpan={6} className="p-0">
-                              <TenantDrilldown row={d.row} flyttetInn={d.flyttetInn} />
+                              <TenantDrilldown row={d.row} flyttetInn={[]} />
                             </td>
                           </tr>
                         )}
@@ -2302,10 +2461,10 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                 <tfoot>
                   <tr className="border-t border-line-strong font-semibold">
                     <td className="px-3 py-2 text-ink-1">Totalt ({derivedAll.length})</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOpprinnelig)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalTrukketUt)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstaende)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${totalAvvik >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOpprinnelig)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalTrukketUt)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstaende)}</td>
+                    <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${totalAvvik >= 0 ? "text-status-positive" : "text-status-danger"}`}>
                       {formatKr(totalAvvik, true)}
                     </td>
                     <td className="px-3 py-2" />
@@ -2363,6 +2522,11 @@ function KontrakterPaUtlopBlock({
 
   const apneKontrakter = useMemo(() => (snapshot ? snapshot.contracts.filter((c) => c.status === "apen") : []), [snapshot]);
 
+  // Summert PR. LEIETAKER (ikke pr. kontrakt) - samme Map som Leieinntekter-tabellen bruker, slik
+  // at Gjenstår/+/- her ALLTID stemmer overens med det Leieinntekter viser for samme leietaker,
+  // også når en leietaker har flere åpne kontrakter som utløper i 2026.
+  const ekstraVedReforhandlingByNavn = useMemo(() => beregnEkstraVedReforhandlingByNavn(snapshot, signals), [snapshot, signals]);
+
   const derivedAll = useMemo(
     () =>
       apneKontrakter.map((kontrakt) => {
@@ -2395,11 +2559,14 @@ function KontrakterPaUtlopBlock({
         // Morten (2026-08-29): Gjenstår/+/- hentet rått fra Leieinntekter forutsetter at
         // leieforholdet bare tar slutt på kontraktens utløpsdato - ved 100 % sannsynlighet for
         // reforhandling skal "gjenstår å fakturere" i stedet reflekte at fakturering fortsetter
-        // resten av året til samme sats. Legger derfor til `ekstraVedReforhandling` (allerede
-        // sannsynlighetsvektet, 0 ved 0 % sannsynlighet - gir da nøyaktig samme tall som i dag)
-        // i gjenstår, slik at +/- går mot ~0 når sannsynligheten er høy (eksakt det Morten
-        // beskrev for Scandinavian Cosmetics AS).
-        const gjenstar = tenantRow ? Math.round((tenantRow.gjenstar + ekstraVedReforhandling) * 100) / 100 : null;
+        // resten av året til samme sats. Legger derfor til leietakerens SAMLEDE
+        // ekstraVedReforhandling (summert over ev. flere åpne kontrakter, samme Map som
+        // Leieinntekter-tabellen bruker - IKKE bare denne ene kontraktens egen verdi) i
+        // gjenstår, slik at +/- går mot ~0 når sannsynligheten er høy OG stemmer eksakt overens
+        // med tallet Leieinntekter viser for samme leietaker (Morten 2026-08-29: "det man velger
+        // under kontrakter på utløp reflekteres fortsatt ikke opp i leieinntekter").
+        const ekstraVedReforhandlingTenantTotal = ekstraVedReforhandlingByNavn.get(kontrakt.leietaker.trim().toLowerCase()) ?? 0;
+        const gjenstar = tenantRow ? Math.round((tenantRow.gjenstar + ekstraVedReforhandlingTenantTotal) * 100) / 100 : null;
         const avvik = tenantRow && tenantRow.budsjett !== null ? Math.round((tenantRow.fakturert + gjenstar! - tenantRow.budsjett) * 100) / 100 : null;
         // v2 (2026-08-29, Morten: "tenk som en inntektskontroller") - to uavhengige varsler:
         // (1) avviket forblir stort selv ved den sannsynligheten som faktisk er valgt - noe
@@ -2429,7 +2596,7 @@ function KontrakterPaUtlopBlock({
           varsler,
         };
       }),
-    [apneKontrakter, leietakerByNavn, signalsById],
+    [apneKontrakter, leietakerByNavn, signalsById, ekstraVedReforhandlingByNavn],
   );
 
   const filtered = useMemo(() => {
@@ -2485,14 +2652,11 @@ function KontrakterPaUtlopBlock({
   const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Kontrakter på utløp"
-        subtitle={
-          snapshot
-            ? `${formatKr(totalEkstraVektet)} ekstra inntekt hvis reforhandlet (av ${formatKr(snapshot.totalEkstraI2026)} hvis alt reforhandles til samme vilkår)`
-            : "Laster…"
-        }
+        subtitle={snapshot ? formatKr(snapshot.totalEkstraI2026) : "Laster…"}
+        alwaysShowSubtitle
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={CalendarClock}
@@ -2500,6 +2664,12 @@ function KontrakterPaUtlopBlock({
       />
       {!collapsed && (
         <>
+          {snapshot && (
+            <p className="text-2xs text-ink-3">
+              {formatKr(totalEkstraVektet)} ekstra inntekt hvis reforhandlet (av {formatKr(snapshot.totalEkstraI2026)}{" "}
+              hvis alt reforhandles til samme vilkår)
+            </p>
+          )}
           <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
             <input
@@ -2576,11 +2746,11 @@ function KontrakterPaUtlopBlock({
                           </td>
                           <td className="max-w-[220px] truncate px-3 py-2 text-2xs text-ink-3">{d.kontrakt.bygg}</td>
                           <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-3">{utlop}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.fakturert == null ? "—" : formatKr(d.fakturert)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.gjenstar == null ? "—" : formatKr(d.gjenstar)}</td>
-                          <td className="px-3 py-2 text-right tabular-nums text-ink-2">{d.budsjett == null ? "—" : formatKr(d.budsjett)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{d.fakturert == null ? "—" : formatKr(d.fakturert)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{d.gjenstar == null ? "—" : formatKr(d.gjenstar)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{d.budsjett == null ? "—" : formatKr(d.budsjett)}</td>
                           <td
-                            className={`px-3 py-2 text-right tabular-nums ${
+                            className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${
                               d.avvik == null ? "text-ink-4" : d.avvik >= 0 ? "text-status-positive" : "text-status-danger"
                             }`}
                           >
@@ -2596,7 +2766,7 @@ function KontrakterPaUtlopBlock({
                               onUpdated={onSignalUpdated}
                             />
                           </td>
-                          <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink-1">{formatKr(d.ekstraVedReforhandling)}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-ink-1">{formatKr(d.ekstraVedReforhandling)}</td>
                         </tr>
                         {isOpen && (
                           <tr className="border-t border-line">
@@ -2615,7 +2785,7 @@ function KontrakterPaUtlopBlock({
                       Totalt ({derivedAll.length} åpne kontrakter)
                     </td>
                     <td className="px-3 py-2" />
-                    <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalEkstraVektet)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalEkstraVektet)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2636,6 +2806,10 @@ function KontrakterPaUtlopBlock({
   );
 }
 
+// _reforhandlingsjustering er kun satt når raden fikk Gjenstår/+/- justert med
+// reforhandlingByNavn (se TenantForecastTable) - brukes til å vise et infoikon i UI-en.
+type DisplayTenantRow = TenantForecastRow & { _reforhandlingsjustering?: number };
+
 const GRUPPERING_LABEL: Record<TenantForecastGruppering, string> = { leietaker: "Leietaker", bygg: "Bygg", leietype: "Leietype" };
 const GRUPPERINGER: TenantForecastGruppering[] = ["leietaker", "bygg", "leietype"];
 const EMPTY_GRUPPER: TenantForecastGrupper = { leietaker: [], bygg: [], leietype: [] };
@@ -2644,6 +2818,7 @@ function TenantForecastTable({
   title,
   grupper,
   totalBudsjettOverride,
+  reforhandlingByNavn,
 }: {
   title: string;
   grupper: TenantForecastGrupper;
@@ -2651,10 +2826,49 @@ function TenantForecastTable({
   // leietype (Morten 2026-08-26) - når satt, vises Totalt-radens budsjett/+/- mot denne
   // verdien i stedet for sum av (alltid null) pr.-rad-budsjett.
   totalBudsjettOverride?: number;
+  // Kun satt for Leieinntekter (delA) - samme Map som KontrakterPaUtlopBlock bruker, slik at en
+  // leietaker med en åpen kontrakt som utløper i 2026 viser SAMME Gjenstår/+/- her som i
+  // "Kontrakter på utløp" for den valgte reforhandlingssannsynligheten, i stedet for at Gjenstår
+  // her alltid forutsetter at leieforholdet tar slutt på kontraktens registrerte sluttdato
+  // (Morten 2026-08-29: "det man velger under kontrakter på utløp reflekteres fortsatt ikke opp
+  // i leieinntekter"). Kun meningsfull ved leietaker-gruppering (Map er navnebasert).
+  reforhandlingByNavn?: Map<string, number>;
 }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse(`Inntektsprognose: ${title}`, false);
+  const [collapsed, toggleCollapsed] = usePersistedCollapse(`Inntektsprognose: ${title}`, true);
   const [gruppering, setGruppering] = useState<TenantForecastGruppering>("leietaker");
-  const rows = grupper[gruppering];
+  const rawRows = grupper[gruppering];
+  // Justerer gjenstår/avvik pr. leietaker-rad med samme sannsynlighetsvektede
+  // "ekstraVedReforhandling"-sum som "Kontrakter på utløp" viser - se
+  // beregnEkstraVedReforhandlingByNavn(). Ingen justering ved bygg-/leietype-gruppering (Map er
+  // navnebasert) eller for leietakere uten en åpen 2026-kontrakt i snapshotet.
+  const rows: DisplayTenantRow[] = useMemo(() => {
+    if (gruppering !== "leietaker" || !reforhandlingByNavn || reforhandlingByNavn.size === 0) return rawRows;
+    return rawRows.map((r): DisplayTenantRow => {
+      const justering = reforhandlingByNavn.get(r.navn.trim().toLowerCase());
+      if (!justering) return r;
+      const gjenstar = Math.round((r.gjenstar + justering) * 100) / 100;
+      const avvik = r.budsjett !== null ? Math.round((r.fakturert + gjenstar - r.budsjett) * 100) / 100 : null;
+      // Justeringen er et EKSTRA beløp pr. leietaker (ikke knyttet til én bestemt Fazile-linje) -
+      // uten en synlig linje her ville drilldownen sin "Fazile-linje → Gjenstår"-sum (basert på
+      // de ORIGINALE linjenes gjenstarShare) ikke stemt overens med raden sin egen, justerte
+      // Gjenstår-verdi (Morten 2026-08-29 sitt "linjer/kontoer skal stemme"-krav gjelder også her).
+      const linjer = [
+        ...r.linjer,
+        {
+          eiendom: "",
+          bygg: "",
+          linjetype: "",
+          beskrivelse: "Ekstra ved reforhandling (se Kontrakter på utløp)",
+          del: "A" as const,
+          fullArsverdi2026: 0,
+          startDato: null,
+          sluttDato: null,
+          gjenstarShare: justering,
+        },
+      ];
+      return { ...r, gjenstar, avvik, linjer, _reforhandlingsjustering: justering };
+    });
+  }, [rawRows, gruppering, reforhandlingByNavn]);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(20);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -2774,15 +2988,21 @@ function TenantForecastTable({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title={title}
-        subtitle={filtered.length !== rows.length && !search.trim() ? `${filtered.length} av ${rows.length} rader` : `${rows.length} rader`}
+        subtitle={formatKr(totalFakturert + totalGjenstar)}
+        alwaysShowSubtitle
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
+        icon={title === "Parkering" ? Car : Building2}
+        iconColorClass="text-ink-3"
       />
       {!collapsed && (
         <>
+      <p className="text-2xs text-ink-4">
+        {filtered.length !== rows.length && !search.trim() ? `${filtered.length} av ${rows.length} rader` : `${rows.length} rader`}
+      </p>
       {totalBudsjettOverride != null && (
         <p className="text-2xs text-ink-4">
           Budsjettert kun som én totallinje i kildefila, ikke pr. {GRUPPERING_LABEL[gruppering].toLowerCase()} — Budsjett/+/- vises derfor kun på
@@ -2889,18 +3109,28 @@ function TenantForecastTable({
                       </td>
                       {gruppering === "leietaker" &&
                         (() => {
-                          const { start, slutt } = finn2026StartSlutt(row.linjer);
+                          const { start, slutt, sammeLinje } = finn2026StartSlutt(row.linjer);
                           if (!start && !slutt) return <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">—</td>;
+                          // Vis KUN begge sammen når de faktisk stammer fra samme linje (en reell
+                          // kort delårskontrakt) - ellers er dette to urelaterte hendelser (typisk
+                          // en leietaker med mange uavhengige parkeringsplass-linjer) som IKKE skal
+                          // se ut som én sammenhengende periode. Slutt prioriteres alene (mer
+                          // handlingsrelevant enn en isolert "ny linje"-dato) når de er urelaterte.
+                          const visBegge = start && slutt && sammeLinje;
                           const sluttAktuell = slutt !== null && slutt >= greenFrom;
                           return (
                             <td className="whitespace-nowrap px-3 py-2 text-2xs font-medium">
-                              {start && <span className="text-status-danger">start {formatDagManed(start)}</span>}
-                              {start && slutt && <span className="text-ink-4"> · </span>}
-                              {slutt && (
-                                <span className={sluttAktuell ? "text-status-positive" : "text-status-danger"}>
-                                  slutt {formatDagManed(slutt)}
-                                </span>
-                              )}
+                              {visBegge ? (
+                                <>
+                                  <span className="text-status-danger">start {formatDagManed(start!)}</span>
+                                  <span className="text-ink-4"> · </span>
+                                  <span className={sluttAktuell ? "text-status-positive" : "text-status-danger"}>slutt {formatDagManed(slutt!)}</span>
+                                </>
+                              ) : slutt ? (
+                                <span className={sluttAktuell ? "text-status-positive" : "text-status-danger"}>slutt {formatDagManed(slutt)}</span>
+                              ) : start ? (
+                                <span className="text-status-danger">start {formatDagManed(start)}</span>
+                              ) : null}
                             </td>
                           );
                         })()}
@@ -2908,7 +3138,29 @@ function TenantForecastTable({
                         {formatKr(row.fakturert)}
                       </td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${row.internleie ? "text-ink-3" : "text-ink-2"}`}>
-                        {formatKr(row.gjenstar)}
+                        <span className="inline-flex items-center gap-1">
+                          {formatKr(row.gjenstar)}
+                          {row._reforhandlingsjustering ? (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="Justert for reforhandlingssannsynlighet"
+                                    className="shrink-0 text-accent hover:text-ink-1"
+                                  >
+                                    <Info className="h-3 w-3" />
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>
+                                Inkluderer {formatKr(row._reforhandlingsjustering, true)} fra "Kontrakter på utløp" - valgt
+                                reforhandlingssannsynlighet for denne leietakerens utløpende kontrakt(er).
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : null}
+                        </span>
                       </td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${row.internleie ? "text-ink-3" : "text-ink-2"}`}>
                         {row.budsjett === null ? "—" : formatKr(row.budsjett)}
@@ -2945,11 +3197,11 @@ function TenantForecastTable({
               <tr className="border-t border-line-strong font-semibold">
                 <td className="px-3 py-2 text-ink-1">Totalt ({rows.length})</td>
                 {gruppering === "leietaker" && <td className="px-3 py-2" />}
-                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-1">{harBudsjett ? formatKr(totalBudsjett) : "—"}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{harBudsjett ? formatKr(totalBudsjett) : "—"}</td>
                 <td
-                  className={`px-3 py-2 text-right tabular-nums ${
+                  className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${
                     !harBudsjett ? "text-ink-4" : totalAvvik >= 0 ? "text-status-positive" : "text-status-danger"
                   }`}
                 >
@@ -2976,9 +3228,12 @@ function TenantForecastTable({
   );
 }
 
+// "manueltNxtHittil" er bevisst utelatt her (OPPDATERT 2026-08-30) - feltet holdes på 0 siden
+// manuelt bokførte NXT-bilag nå inngår i "Fakturert hittil (NXT)" (BOOKED_3600_3699 sin
+// periodesaldo teller alt uansett opprinnelse), se kommentaren på PartTotals i
+// lib/incomeForecastCompute.ts. En egen rad her ville bare vist 0 kr på begge deler.
 const ROLLUP_ROWS: { label: string; key: keyof PartTotals }[] = [
   { label: "Fakturert hittil (NXT)", key: "fakturertHittil" },
-  { label: "Manuelle bilag i NXT (hittil)", key: "manueltNxtHittil" },
   { label: "Gjenstår å fakturere", key: "gjenstaende" },
   { label: "Mine manuelle linjer (aktive)", key: "manuelleLinjer" },
 ];
@@ -3017,9 +3272,9 @@ function ForecastSummaryBlock({ rollup }: { rollup: ForecastRollup }) {
             {ROLLUP_ROWS.map((row) => (
               <tr key={row.key} className="border-t border-line">
                 <td className="px-3 py-2 text-ink-2">{row.label}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(rollup.delA[row.key])}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(rollup.delB[row.key])}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium text-ink-1">
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(rollup.delA[row.key])}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(rollup.delB[row.key])}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums font-medium text-ink-1">
                   {formatKr(rollup.delA[row.key] + rollup.delB[row.key])}
                 </td>
               </tr>
@@ -3383,8 +3638,7 @@ export default function IncomeForecastSection() {
   const rollup = useMemo(
     () =>
       computeForecastRollup({
-        invoiced: INVOICED,
-        manualNxt: MANUAL_NXT,
+        booked: BOOKED_3600_3699,
         remaining: REMAINING,
         manualLines: activeManualLines,
       }),
@@ -3392,6 +3646,13 @@ export default function IncomeForecastSection() {
   );
 
   const lastUpdated = oldestSnapshotDate();
+
+  // Samme grunnlag som KontrakterPaUtlopBlock - garanterer at Leieinntekter viser samme
+  // reforhandlingsjusterte Gjenstår/+/- for en leietaker med utløpende kontrakt(er) i 2026.
+  const ekstraVedReforhandlingByNavn = useMemo(
+    () => beregnEkstraVedReforhandlingByNavn(contractExpiry2026, tenantSignals),
+    [contractExpiry2026, tenantSignals],
+  );
 
   return (
     <div className="border-t-2 border-t-yellow-400/60 p-4">
@@ -3437,14 +3698,17 @@ export default function IncomeForecastSection() {
                 onPotentialUpdated={handlePotentialUpdated}
               />
 
-              <TenantForecastTable title="Leieinntekter" grupper={tenantForecastTable?.delA ?? EMPTY_GRUPPER} />
+              <TenantForecastTable
+                title="Leieinntekter"
+                grupper={tenantForecastTable?.delA ?? EMPTY_GRUPPER}
+                reforhandlingByNavn={ekstraVedReforhandlingByNavn}
+              />
               <TenantForecastTable
                 title="Parkering"
                 grupper={tenantForecastTable?.delB ?? EMPTY_GRUPPER}
                 totalBudsjettOverride={tenantForecastTable?.delBBudsjettTotal}
               />
               <OmsetningsavregningBlock snapshot={omsetningsavregning} loading={loadingOmsetningsavregning} />
-              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
               <KontrakterPaUtlopBlock
                 snapshot={contractExpiry2026}
                 loading={loadingContractExpiry2026}
@@ -3452,6 +3716,7 @@ export default function IncomeForecastSection() {
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
               />
+              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
             </>
           ) : (
             <>

@@ -1,6 +1,31 @@
 // Bygger et budsjett-snapshot (pr. leietaker, pr. bygg, pr. leietype) fra Excel-arket
-// "Budsjett 2026 (redig) (2)" (i Inntektsprognose-fila Morten sender over), som Del A/B-
-// tabellene i Inntektsprognose-toppstrukturen bruker som Budsjett-kolonne.
+// "Budsjett 2026 (redig)" (UTEN "(2)") i "Budsjett 2026 - Master.xlsx" (OneDrive: Budsjett/
+// MEAS/2026/1. Inntekter, i dag Morten sender over), som Del A/B-tabellene i
+// Inntektsprognose-toppstrukturen bruker som Budsjett-kolonne.
+//
+// v10 (2026-08-31): byttet kilde fra "2026_08_04_Inntektsprognose_Juli_2026.xlsx" (arket
+// "Budsjett 2026 (redig) (2)") til "Budsjett 2026 - Master.xlsx" (arket "Budsjett 2026
+// (redig)", uten "(2)") - se [[project_income-forecast-pgs-budget-rabatt-2026-08-30]] for
+// hvorfor: den gamle filens "Inntekt 2026"-kolonne hadde 1170/1876 rader med delte
+// Excel-formler UTEN cachet resultat, ExcelJS kunne ikke lese dem. Morten hardkodet cellene
+// i den nye filen (2026-08-31) i stedet for å kjøre Ctrl+Alt+F9 - samme sluttresultat
+// (0 rader uten lesbar verdi), men INGEN formler igjen i "Inntekt 2026"-kolonnen i det hele
+// tatt lenger, kun statiske tall. 39 rader har fortsatt en TOM "Inntekt 2026"-celle (10 er
+// legitimt tomme - haleceller/0-kr "Ledig"-rader - resten er ekte leieforhold uten forklart
+// årsak, f.eks. "Oppstart 2027"-kommentar eller "Antar at bygget blir solgt") - Morten
+// bekreftet 2026-08-31: behandle disse som 0 kr, ikke prøv å utlede en verdi.
+//
+// EIERANDEL-METODIKK ENDRET (v10, 2026-08-31): "Justert 2026 50%"-kolonnen i denne nye
+// masterfilen er UPÅLITELIG - den mangler HELT for 2 av de 4 delt-eide byggene
+// (Lilleakerveien 20 Audi, Lilleakerveien 22 VW - 0 av radene har en verdi der), mens den
+// samtidig, uforklart, ER utfylt for 2 enkeltrader i HELT ANDRE bygg (Widenorth AS i
+// Lilleakerveien 26, Appear AS i Lilleakerveien 2B - ~4,7 mnok til sammen) som ikke er
+// delt-eide. Å stole på kolonnen slik v4-v9 gjorde ga derfor ~2,4 mnok feil halvering.
+// Løsningen: IGNORER "Justert 2026 50%"-kolonnen helt, halver i stedet basert på BYGG-navn
+// direkte (se HALVBYGG_50 under) - Morten bekreftet 2026-08-31 nøyaktig hvilke 4 bygg som er
+// delt-eide (104,63 mnok rått, 52,31 mnok halvert). Denne bygg-baserte halveringen treffer
+// gammel offisiell total (724 750 636 kr) på 24 øre nær - praktisk talt eksakt, og forklarer
+// fullt ut det ~21 mnok "avviket" som først så ut som reell budsjettvekst.
 //
 // v5 (2026-08-26, samme dag som v4): Morten presiserte at det IKKE skal finnes noen
 // "Ufordelt"-blob i det hele tatt - ALT budsjett er i Excel-arket alltid koblet til enten en
@@ -34,7 +59,7 @@
 // budgetLine-tabell pr. customerNo, men den viste seg å ha budsjett på BYGG-nivå (aggregert,
 // uten customerNo) for de fleste store ankertleietakere - se f.eks. Lilleakerveien 4A
 // (19,1 mill kr bygg-totalt budsjett i NXT), der kun 2,3 mill kr var customerNo-tilknyttet.
-// Excel-arket har derimot ekte budsjett PR. KONTRAKTSLINJE (1911 rader), inkl. reelle
+// Excel-arket har derimot ekte budsjett PR. KONTRAKTSLINJE (1876 rader), inkl. reelle
 // parkerings-/garasjelinjer (motsetning til NXT, der parkeringsbudsjett ALDRI har customerNo).
 //
 // NAVNEUTFORDRING (Del A): Excel sin "Kontrakt"-kolonne bruker ofte et handelsnavn/kortnavn
@@ -53,10 +78,9 @@
 // "Kommentar inntekt"-kolonnen logges fortsatt for uten-treff-rader >100 000 kr (konsoll) slik
 // at hver enkelt kan sjekkes mot Finance sin egen forklaring i stedet for å anta matchefeil.
 //
-// EIERANDEL: bruker "Justert 2026 50%"-kolonnen direkte når den finnes på raden (Finance sin
-// egen, pr.-linje-halverte verdi for de 3 delt-eide selskapene), ellers "Inntekt 2026" som den
-// står (allerede korrekt for 100%-eide bygg). IKKE bruk andelForBygg() på denne datakilden -
-// det ville dobbelthalvert radene som allerede har en Justert-verdi.
+// EIERANDEL (endret v10, 2026-08-31 - se v10-avsnittet i filhodet for hvorfor): halveres
+// basert på BYGG-navn direkte (HALVBYGG_50 under), IKKE "Justert 2026 50%"-kolonnen - den er
+// upålitelig i den nye masterfilen. "Inntekt 2026" brukes rått for alle andre bygg.
 //
 // AVSTEMMING MOT OFFISIELL TOTAL (2026-08-26): "Oppsummering juli-2026"-arket (rad 2,
 // "Budsjett 2026", merket "Harde tall" - manuelt limt inn, ikke en live formel i arket) sier
@@ -70,15 +94,17 @@
 //      ALDRI har vært ekte kontraktslinjer i dette arket - konsistent med at NXT heller ikke har
 //      customerNo på parkeringskontoer. Derfor: INGEN pr.-rad-budsjett for Del B, kun
 //      `totalDelB` som ÉN tallstørrelse - se v5-avsnittet over.
-//   2) Del A (leieinntekter): med riktig ark+halvering treffer summen av ALLE rå-rader
-//      664 379 702 kr mot offisiell 665 780 066 kr - kun ~1,4 mill kr gap (0,2 %). Dette er IKKE
-//      en matchefeil (siden bygg/leietype-grupperingen tar med bokstavelig talt ALLE rader,
-//      uansett navnematch) - mest sannsynlig mindre redigeringer i arket etter at "harde
-//      tall"-cellen ble limt inn i Oppsummering-arket. Vises som en liten, ærlig navngitt
+//   2) Del A (leieinntekter): med v10 sin bygg-baserte halvering (se filhode) treffer summen av
+//      ALLE rå-rader 665 780 066,22 kr mot offisiell 665 780 066 kr - kun 22 øre gap (2026-08-31,
+//      ny masterfil). Praktisk talt eksakt - langt bedre enn ~1,4 mill kr-gapet den forrige
+//      kilden/"Justert 2026 50%"-kolonnen ga. Vises fortsatt som en liten, ærlig navngitt
 //      "Avstemmingsdifferanse"-rad (se AVSTEMMING_LABEL) i stedet for å skjules i en
-//      "Ufordelt"-blob.
+//      "Ufordelt"-blob, i tilfelle fremtidige kilder har et større gap igjen.
 const OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026 = 665780066;
 const OFFICIAL_PARKERING_BUDSJETT_2026 = 58970570.16;
+// De 4 delt-eide byggene (Morten bekreftet direkte 2026-08-31) - halveres på BYGG-navn, ikke
+// via "Justert 2026 50%"-kolonnen (se v10-avsnittet i filhodet). Eksakte Excel-byggnavn.
+const HALVBYGG_50 = new Set(["Lilleakerveien 20 Audi", "Lilleakerveien 22 VW", "Strandveien 10", "Strandveien 4-8"]);
 // v6 (2026-08-28): "Ledig (vakante lokaler)" var tidligere ETT eksakt radnavn - er nå en PREFIX
 // for 15 forskjellige radnavn, ett pr. bygg (se ledigLinjerByBygg under).
 // lib/tenantForecastTable.ts sin anonymiserings-sjekk må derfor bruke prefix-match, ikke eksakt
@@ -112,10 +138,10 @@ const MUSTAD_INTERN_LABEL = "Mustad Eiendom (intern bruk, ikke leieforhold)";
 const AVSTEMMING_LABEL = "Avstemmingsdifferanse (Excel redigert etter at 'harde tall' ble limt inn i Oppsummering-arket)";
 //
 // Rådata (gitignored, ekte navn): scripts/refresh-data/budsjett-2026-excel-raw.json - hentet
-// ved å streame "Budsjett 2026 (redig) (2)"-arket i
-// 2026_08_04_Inntektsprognose_Juli_2026.xlsx med ExcelJS sin WorkbookReader (full in-memory
-// load av denne 30 MB-fila går tom for minne - se scripts/refresh-data/README.md for
-// kommando/mønster hvis arket må hentes på nytt).
+// fra "Budsjett 2026 (redig)"-arket i "Budsjett 2026 - Master.xlsx" (se v10-avsnitt i
+// filhodet). Kolonner lest: Ansvarlig(D), Kontrakt(E), Leietype(F), Bygg(G),
+// KontraktObjekt(H), Årsbeløp(K), Inntekt 2026(Z), Justert 2026 50%(A, IKKE lenger brukt til
+// halvering - kun tatt vare på i rådataen for referanse), Kommentar inntekt(AE).
 //
 // Kjør: node scripts/build-tenant-budget.js (etter build-remaining-summary.js, siden
 // bygg+beskrivelse-matchingen i tier 3 leser REMAINING sitt snapshot fra Redis)
@@ -141,6 +167,11 @@ const MUSTAD_INTERN_NAVN = new Set(["mustad eiendom as", "mustad eiendomsdrift a
 // (samme CC Vest-handelsnavn-problem, Morten-bekreftet der 2026-08-24/25) - IKKE utvidet med
 // ubekreftede gjetninger (se f.eks. "Newbie" som ble hoppet over der pga. usikkerhet).
 const EXCEL_TO_FAZILE_ALIASES = {
+  // Morten oppdaget 2026-08-30: PGS Geophysical AS sin leierabatt (-800 000 kr/år, ny avtale
+  // 2023) ligger i Excel under det KORTE kontraktsnavnet "PGS" - alle andre PGS-linjer bruker
+  // "PGS Geophysical AS". Uten dette aliaset havner rabatten som en egen, uforklart "PGS"-rad
+  // i stedet for å trekkes fra riktig leietaker.
+  pgs: "pgs geophysical as",
   "meny cc vest": "norgesgruppen øst as",
   "anton sport": "sport holding retail as",
   sportsnett: "sport holding retail as",
@@ -250,6 +281,10 @@ const EXCEL_TO_FAZILE_ALIASES = {
   // aktiv leiekontrakt i REMAINING i dag - Human Care AS er det reelle, aktive leieforholdet
   // (Mustadsvei 1) disse Excel-budsjettradene skal telle mot.
   "assistermeg as": "human care as",
+  // Runde 7 (2026-08-31) - bekreftet via Salesforce Account (Forretning_Navn__c/Bygg_Navn__c),
+  // begge samme bygg som Excel-raden:
+  "sfty as": "resideo nordics as", // SF Account "Resideo Nordics AS": Forretning_Navn__c "Tidligere Sfty AS", Bygg_Navn__c Lilleakerveien 31 (29) - matcher Excel sin Lilleakerveien 31-rad
+  "b s teknikk as": "bs teknikk as", // Excel skriver "B S Teknikk AS" (mellomrom mellom B og S), Fazile/SF "BS Teknikk AS" (uten) - samme leietaker, Lilleakerveien 2E
 };
 
 // FUNN 2026-08-26 (Morten sin avvik-gjennomgang av alle leietakere med |avvik| >= 100 000 kr):
@@ -284,7 +319,14 @@ const EXCEL_TO_FAZILE_ALIASES = {
 // Øvrige bygg+beskrivelse-treff sjekket (Bikuben barnehage, Vow Green Metals, Telenor Infra,
 // Pegasus Kontroll, Advansia) fant INGEN konkurrerende separat Fazile-kunde under Excel-navnet -
 // lavere risiko, IKKE ekskludert her, men heller ikke 100 % bekreftet som riktig matchet.
-const BYGG_BESKRIVELSE_FALSE_POSITIVES = new Set(["aya yoga"]);
+// "aya yoga" FJERNET herfra igjen (2026-08-29): etter den fullstendige historiske rent_roll-
+// hentingen finnes leietakeren nå som en ekte, entydig REMAINING-post ("Aya Yoga AS") - treffer
+// derfor korrekt via kjerne-navn-fallacken FØR bygg+beskrivelse-steget (som opprinnelig var
+// årsaken til at denne sto her) i det hele tatt nås. Blokkeringen skapte en dobbelttelling: en
+// "spøkelsesrad" (Excel sitt eget "Aya Yoga"-navn, budsjett men 0 fakturert/gjenstår) OG den ekte
+// "Aya Yoga AS"-raden (som fant budsjettet sitt via en ANNEN, mer liberal kjerne-navn-oppslag i
+// build-tenant-forecast-table.js) fikk BEGGE samme budsjettbeløp.
+const BYGG_BESKRIVELSE_FALSE_POSITIVES = new Set();
 
 // Alias for PRIVATPERSONER holdes UTENFOR denne committede fila (ANONYMISERING.md) - lastes fra
 // en gitignored fil i stedet. Se scripts/refresh-data/_private-tenant-aliases.json.
@@ -299,6 +341,23 @@ if (fs.existsSync(PRIVATE_ALIASES_FILE)) {
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+// v9 (2026-08-29, Morten: "sortert på bygg så skal lilleakerveien 16 og cc vest være sammen") -
+// to separate problemer som begge splittet ett fysisk bygg i flere bygg-grupperingsrader:
+//  1) Excel sin egen "bygg"-kolonne bruker "CC Vest senter" for ALLE CC Vest-budsjettlinjer,
+//     mens Fazile/NXT (REMAINING-siden, se build-tenant-forecast-table.js) konsekvent bruker
+//     "Lilleakerveien 16" - samme kjente alias-forskjell som `resolveNxtBuilding()` i
+//     build-remaining-summary.js allerede håndterer for NXT-matching, men den løsningen
+//     propagerer ikke til DENNE grupperingens visningsnavn. Kanoniserer til "Lilleakerveien 16"
+//     her (samme navn som REMAINING-siden bruker for de 180 reelle kontraktslinjene).
+//  2) Noen rå bygg-strenger har dobbelt mellomrom (f.eks. "Lilleakerveien  4A" - funnet for Rob
+//     Arnesen AS 2026-08-26) som gir en EGEN, nesten tom bygg-rad ved siden av den riktige -
+//     kollapses her generelt, ikke bare for dette ene tilfellet.
+const BYGG_NAVN_ALIAS = { "cc vest senter": "Lilleakerveien 16" };
+function kanoniskByggNavn(bygg) {
+  const trimmed = (bygg || "").replace(/\s+/g, " ").trim();
+  return BYGG_NAVN_ALIAS[trimmed.toLowerCase()] || trimmed;
 }
 
 async function main() {
@@ -318,7 +377,12 @@ async function main() {
   const allCores = remaining.tenants.map((t) => ({ navn: t.navn, core: coreName(t.navn) }));
   for (const t of remaining.tenants) {
     for (const l of t.lines) {
-      const key = normalizeName(l.bygg) + "||" + normalizeName(l.beskrivelse);
+      // v11 (2026-08-29, Telenor Infra AS-funn): kanoniserer bygg-navnet her (samme
+      // kanoniskByggNavn() som bygg-grupperingen lenger ned bruker) - uten dette matchet ALDRI
+      // Excel sin "CC Vest senter"-rad mot Fazile sin "Lilleakerveien 16"-linje via
+      // bygg+beskrivelse-fallbacken under, siden begge sider tidligere brukte RÅ, ukanoniserte
+      // bygg-strenger i nøkkelen.
+      const key = normalizeName(kanoniskByggNavn(l.bygg)) + "||" + normalizeName(l.beskrivelse);
       if (!byggBeskrivelse.has(key)) byggBeskrivelse.set(key, new Set());
       byggBeskrivelse.get(key).add(t.navn);
     }
@@ -340,7 +404,7 @@ async function main() {
     const coreHit = byCoreName.get(core);
     if (coreHit && coreHit.size === 1) return { navn: [...coreHit][0], via: "kjerne-navn" };
 
-    const beKey = normalizeName(row.bygg) + "||" + normalizeName(row.kontraktObjekt);
+    const beKey = normalizeName(kanoniskByggNavn(row.bygg)) + "||" + normalizeName(row.kontraktObjekt || "");
     const beHit = byggBeskrivelse.get(beKey);
     if (beHit && beHit.size === 1) return { navn: [...beHit][0], via: "bygg+beskrivelse" };
 
@@ -364,10 +428,10 @@ async function main() {
 
   for (const row of rows) {
     const raw = row.inntekt2026 || 0;
-    if (raw === 0 && (row.justert2026_50 == null || row.justert2026_50 === 0)) continue;
-    // Justert 2026 50% = Finance sin egen, pr.-linje-halverte verdi (delt-eide selskaper) -
-    // bruk den når den finnes, IKKE andelForBygg() (ville dobbelthalvert). Se filhode.
-    const belopJustert = round2(row.justert2026_50 != null ? row.justert2026_50 : raw);
+    if (raw === 0) continue;
+    // Bygg-basert halvering for de 4 delt-eide byggene - IKKE "Justert 2026 50%"-kolonnen
+    // (upålitelig i denne kilden, se v10-avsnittet i filhodet).
+    const belopJustert = round2(HALVBYGG_50.has((row.bygg || "").trim()) ? raw / 2 : raw);
     const del = DEL_B_LEIETYPER.has((row.leietype || "").toLowerCase()) ? "B" : "A";
 
     if (del === "B") {
@@ -380,7 +444,7 @@ async function main() {
     // Bygg/leietype-grupperingen tar med ALLE Del A-rader (også Ledig/Mustad selv/uten treff) -
     // ingen navnematching involvert, derfor et strengt mer komplett grunnlag enn leietaker-
     // grupperingen. Se filhode for hvorfor selv dette ikke treffer offisiell total helt eksakt.
-    const bygg = row.bygg || "(uspesifisert bygg)";
+    const bygg = kanoniskByggNavn(row.bygg) || "(uspesifisert bygg)";
     if (!perBygg.has(bygg)) perBygg.set(bygg, { delA: 0 });
     perBygg.get(bygg).delA = round2(perBygg.get(bygg).delA + belopJustert);
 
@@ -503,7 +567,7 @@ async function main() {
   // (forecast-table-scriptet bygger ÉN samlet Totalt-rad av den).
   const delB = { leietaker: [], bygg: [], leietype: [] };
 
-  console.log(`Budsjett (2026, Excel "Budsjett 2026 (redig) (2)"), eierandel-korrigert:`);
+  console.log(`Budsjett (2026, Excel "Budsjett 2026 (redig)"), eierandel-korrigert:`);
   console.log(`  Del A (leieinntekter) pr. leietaker: ${delALeietaker.length} rader, ${round2(delALeietaker.reduce((s, t) => s + t.budsjett, 0)).toLocaleString("nb-NO")} kr, offisiell total ${OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026.toLocaleString("nb-NO")} kr`);
   console.log(`  Herav Ledig: ${round2(ledigBelop).toLocaleString("nb-NO")} kr, Mustad-intern: ${round2(mustadBelop).toLocaleString("nb-NO")} kr, uten Fazile-treff (${perUnmatchedNamed.size} navn): ${round2([...perUnmatchedNamed.values()].reduce((s, t) => s + t.delA, 0)).toLocaleString("nb-NO")} kr`);
   console.log(`  Del B (parkering): ${round2(delBBelop).toLocaleString("nb-NO")} kr i rå-arket, budsjettert kun som totallinje ${OFFICIAL_PARKERING_BUDSJETT_2026.toLocaleString("nb-NO")} kr - ingen pr.-rad-budsjett bygges.`);

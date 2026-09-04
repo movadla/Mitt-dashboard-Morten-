@@ -1,8 +1,19 @@
-import type { InvoicedSnapshot, ManualNxtSnapshot, RemainingSnapshot } from "./incomeForecast";
+import type { BookedAccountRangeSnapshot, RemainingSnapshot } from "./incomeForecast";
 import type { ManualIncomeLine } from "./incomeForecastManual";
 
 export interface PartTotals {
   fakturertHittil: number;
+  // Historisk felt - stod tidligere for manuelt bokførte NXT-bilag lagt til OVENPÅ
+  // fakturertHittil (fra INVOICED, periode-begrenset). OPPDATERT 2026-08-30: fant en reell
+  // dobbelttelling ved å spore en enkelt post (konto 3632, "Avsetning omsetningsleie 2025")
+  // direkte i NXT - generalLedgerPeriodBalance sin periodesaldo inkluderer ALLEREDE alle
+  // posteringer uansett origin (bekreftet: summen av samtlige origin-transaksjoner for
+  // konto+periode matchet periodesaldoen på øret), så et eget MANUAL_NXT-tillegg dobbelttalte
+  // manuelle bilag som periodesaldoen allerede hadde med. `fakturertHittil` kommer nå fra
+  // `BOOKED_3600_3699` (rå, helårs, ingen periodebegrensning) i stedet for INVOICED+MANUAL_NXT -
+  // dette feltet holdes på 0 og beholdes kun for å unngå å endre PartTotals-formen andre steder
+  // i UI-en (se ForecastSummaryBlock). MANUAL_NXT-konstanten/visningen lever videre som ren
+  // historikk/kontekst, bare ikke lenger summert inn her.
   manueltNxtHittil: number;
   gjenstaende: number;
   manuelleLinjer: number;
@@ -20,25 +31,17 @@ function emptyTotals(): PartTotals {
 }
 
 export function computeForecastRollup(params: {
-  invoiced: InvoicedSnapshot;
-  manualNxt: ManualNxtSnapshot;
+  booked: BookedAccountRangeSnapshot;
   remaining: RemainingSnapshot;
   manualLines: ManualIncomeLine[];
 }): ForecastRollup {
-  const { invoiced, manualNxt, remaining, manualLines } = params;
+  const { booked, remaining, manualLines } = params;
 
   const delA = emptyTotals();
   const delB = emptyTotals();
 
-  for (const p of invoiced.periods) {
-    delA.fakturertHittil += p.delA;
-    delB.fakturertHittil += p.delB;
-  }
-
-  for (const v of manualNxt.vouchers) {
-    if (v.del === "A") delA.manueltNxtHittil += v.belop;
-    else delB.manueltNxtHittil += v.belop;
-  }
+  delA.fakturertHittil = booked.totalDelA;
+  delB.fakturertHittil = booked.totalDelB;
 
   delA.gjenstaende += remaining.totalDelA;
   delB.gjenstaende += remaining.totalDelB;

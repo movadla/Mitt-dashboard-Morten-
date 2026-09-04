@@ -18,6 +18,19 @@ export interface TenantForecastLine {
   // app/IncomeForecastSection.tsx.
   startDato: string | null;
   sluttDato: string | null;
+  // Byggruppens gjenstår-beløp proporsjonalt fordelt over linjene i gruppen (etter linjas andel
+  // av full 2026-verdi) - REMAINING har kun gjenstår pr. byggGruppe, ikke pr. linje. Kun satt for
+  // leietaker-grupperingen (se buildLeietakerMap() i build-tenant-forecast-table.js) - bygg-/
+  // leietype-grupperingen bruker linesA/linesB sin egen fordeling, ikke dette feltet.
+  gjenstarShare?: number;
+}
+
+export interface TenantForecastKonto {
+  // NXT-bokføringskonto (f.eks. "3600"), eller en syntetisk merkelapp for en manuell korreksjon
+  // (f.eks. "Overtatt fra gammelt kundenummer") - se RemainingKontoBelop i
+  // lib/incomeForecastRemainingTenants.ts.
+  konto: string;
+  belop: number;
 }
 
 export type TenantForecastGruppering = "leietaker" | "bygg" | "leietype";
@@ -29,6 +42,9 @@ export interface TenantForecastRow {
   budsjett: number | null; // null = budsjett finnes strukturelt ikke her (Del B/parkering)
   avvik: number | null; // (fakturert + gjenstår) - budsjett; null hvis budsjett er null
   linjer: TenantForecastLine[];
+  // NXT-kontofordeling av `fakturert` - kun satt for leietaker-grupperingen (bygg-/leietype-
+  // grupperingen blander sammen flere leietakeres posteringer, gir ikke mening som én kontoliste).
+  kontoer?: TenantForecastKonto[];
   // Kun satt for MUSTAD_INTERN_LABEL-raden (Mustad Eiendom/Eiendomsdrift sine egne lokaler) -
   // vises som fullt fakturert (fakturert=budsjett, gjenstår=0, avvik=0) siden det ikke er et
   // reelt eksternt leieforhold å måle mot NXT/Fazile, men markeres visuelt annerledes i UI-en.

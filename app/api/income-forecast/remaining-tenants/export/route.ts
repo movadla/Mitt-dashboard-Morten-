@@ -15,8 +15,12 @@ const STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "forklart-kontraktsendring": "Kontraktsendring i år",
   "forklart-engangsgebyr": "Engangsgebyr (exit fee)",
   "forklart-nxt-feilkoding": "Feilkoding i NXT",
+  "forklart-historisk-kundenummer": "Overtatt fra gammelt kundenummer",
+  "forklart-manglende-linje": "Manglende linje lagt til",
   "intern-mustad": "Intern (Mustad selv)",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
+  "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
+  "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
 };
 
 const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
@@ -26,8 +30,12 @@ const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
   "forklart-kontraktsendring": "FFFFEB9C",
   "forklart-engangsgebyr": "FFFFEB9C",
   "forklart-nxt-feilkoding": "FFFFEB9C",
+  "forklart-historisk-kundenummer": "FFFFEB9C",
+  "forklart-manglende-linje": "FFFFEB9C",
   "intern-mustad": "FFD9D9D9",
   "forklart-parkering-onepark": "FFC6E0B4",
+  "forklart-parkering-uten-fazile-linje": "FFFFEB9C",
+  "fazile-plan-mangler": "FFFFEB9C",
 };
 
 const HEADERS = ["Leietaker", "Bygg", "Status", "Full årsverdi 2026", "Allerede fakturert (NXT)", "Gjenstår", "Forklaring"];
@@ -60,6 +68,8 @@ export async function GET() {
         "forklart-kontraktsendring",
         "avsluttet",
         "intern-mustad",
+        "forklart-parkering-uten-fazile-linje",
+        "fazile-plan-mangler",
       ];
       const rows = snapshot.tenants
         .flatMap((t) =>

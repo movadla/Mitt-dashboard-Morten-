@@ -107,12 +107,50 @@ async function main() {
       erKjerneleieLinje(r.linje_beskrivelse),
   );
 
+  // Manuelt bekreftede tilfeller der en kontrakt ER reelt reforhandlet, men Fazile sitt eget
+  // "reforhandlet"-flagg (contract.renewed_contract_id) ikke har fanget det opp ennå - typisk en
+  // ALLEREDE SIGNED_BY_BOTH_PARTIES etterfølgerkontrakt som ikke er formelt LENKET til den gamle
+  // kontrakten i Fazile sin egen masterdata (2026-08-29, Erco Lighting-funn: WN1289 -> FA0929).
+  // Uten dette ville "ekstraI2026" her DOBBELTELLE samme beløp som allerede er lagt direkte inn i
+  // REMAINING sin fullA via MANGLENDE_LINJE_KORREKSJON i build-remaining-summary.js - én gang som
+  // reelt fakturert/gjenstår, én gang til som hypotetisk "hvis reforhandlet"-ekstra.
+  const MANUELT_BEKREFTET_REFORHANDLET = new Map([
+    ["WN1289", "FA0929"],
+    // Møllefossen Cafe AS (2026-08-29, funnet ved å lete etter FLERE tilfeller av samme
+    // dobbelttellingsmønster som Erco Lighting): NY8348 sin "Husleie avg.pl."-linje (101 081
+    // kr/år, Lilleakerveien 2E, slutt 2026-10-18) er identisk i beløp med etterfølgeren -
+    // kontrakt_id 135963 sin "Minimumsleie avg.pl. Eventlokale" (samme 101 081 kr/år, start
+    // 2026-10-19 - dagen etter) i _additions-signed-not-active-2026-08-26.json, som allerede er
+    // lagt inn i REMAINING sin fullA. Uten denne ville NY8348 sin ekstraI2026 (okt19-des31)
+    // dobbelttalt akkurat den samme perioden.
+    ["NY8348", "135963 (kontrakt_id, ikke-lenket fornyelse)"],
+    // Follestad Trend AS (2026-08-29, funnet etter en fullstendig historisk rent_roll-henting):
+    // DB5766 (kontrakt_id 81665) sin "Minimumsleie avg.pl. - 2"-linje slutter 2026-11-22, men
+    // SAMME kontrakt_id har en ALLEREDE AVTALT "- 3"-linje (3 299 925,65 kr/år, en pre-avtalt
+    // trinnvis leieøkning - IKKE en ny forhandling) fra 2026-11-23 til 2029-12-31. Denne var
+    // usynlig for kontraktsutlop-uttrekket vårt fordi linjens EGEN sluttdato (2029) faller
+    // utenfor "utløper i 2026"-vinduet - men den er allerede lagt inn i REMAINING sin fullA
+    // (siden rent_roll fanger den uavhengig av dette vinduet). Uten denne ville ekstraI2026
+    // dobbelttalt nov23-des31.
+    ["DB5766", "81665, linje '- 3' (samme kontrakt, pre-avtalt trinnleie, ikke ny forhandling)"],
+    // Scandinavian Cosmetics AS (2026-08-30, funnet under "reforhandling"-gjennomgangen): QN1867
+    // (kontrakt_id 82130, Lilleakerveien 10, "Husleie avg.pl." m.fl., slutt 2026-08-31) har en
+    // ulenket etterfølger - kontrakt_id 138800, "Husleie avg.pl." 1 986 400 kr/år, start
+    // 2026-09-01 (dagen etter) - bekreftet direkte mot Fazile sin contract_line-tabell samme dag
+    // (se [[project_income-forecast-gjenstar-topplevel-audit-2026-08-30]]), allerede lagt inn i
+    // REMAINING sin fullA via en ny rad i fazile-remaining-tenants/Lilleakerveien-10-E.json. Uten
+    // denne ville QN1867 sin ekstraI2026 (sep-des, ~822 848 kr) dobbelttalt samme periode.
+    ["QN1867", "138800 (kontrakt_id, ikke-lenket fornyelse)"],
+  ]);
+
   let antallEierandelKorrigert = 0;
   const groups = new Map();
   for (const r of rows) {
     const andel = r.bygg ? andelForBygg(r.bygg, shares) : 1;
     if (andel !== 1) antallEierandelKorrigert++;
     const totalArsleie = r.total_arsleie * andel;
+    const manueltBekreftetNy = MANUELT_BEKREFTET_REFORHANDLET.get(r.kontraktsnokkel);
+    const erReforhandlet = r.reforhandlet || Boolean(manueltBekreftetNy);
 
     const key = `${r.leietaker}||${r.kontraktsnokkel}`;
     if (!groups.has(key)) {
@@ -134,11 +172,11 @@ async function main() {
     if (r.bygg && r.bygg !== "(ukjent bygg)") g.byggSet.add(r.bygg);
     if (r.linje_slutt < g.minSlutt) g.minSlutt = r.linje_slutt;
     if (r.linje_slutt > g.maxSlutt) g.maxSlutt = r.linje_slutt;
-    if (r.reforhandlet) {
+    if (erReforhandlet) {
       g.status = "reforhandlet";
-      g.nyKontraktsnokkel = r.ny_kontraktsnokkel;
+      g.nyKontraktsnokkel = manueltBekreftetNy || r.ny_kontraktsnokkel;
     }
-    const ekstraLinje = ekstraI2026ForLinje(r.linje_slutt, totalArsleie, r.reforhandlet);
+    const ekstraLinje = ekstraI2026ForLinje(r.linje_slutt, totalArsleie, erReforhandlet);
     g.ekstraI2026 += ekstraLinje;
     g.lines.push({
       linjenokkel: r.linjenokkel,
