@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -1131,15 +1131,58 @@ type OmsetningsavregningSortKey =
   | "ekstrafakturering";
 
 function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["butikker"][number] }) {
+  const gulvavvik = b.gulvavvik ?? null;
+  const harGulvavvik = gulvavvik != null && Math.abs(gulvavvik) >= 1000;
+  const row = (label: string, value: ReactNode, valueClass = "text-ink-2") => (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-ink-3">{label}</span>
+      <span className={`text-right tabular-nums ${valueClass}`}>{value}</span>
+    </div>
+  );
   return (
     <div className="flex flex-col gap-1.5 border-t border-line bg-surface-1 px-3 py-2.5 text-2xs">
       <div className="flex items-center justify-between gap-2">
         <span className="text-ink-3">Type</span>
         <span className={`rounded-full px-2 py-0.5 font-medium ${LEIETYPE_STYLE[b.leietype]}`}>{b.leietype}</span>
       </div>
+      {b.krevManuellSjekk && (
+        <p className="flex items-center gap-1 font-medium text-status-warning">
+          <AlertTriangle className="h-3 w-3 shrink-0" /> Krever manuell sjekk - se kommentar under
+        </p>
+      )}
+      {b.kontraktsminimum2026 != null && row("Kontraktsminimum 2026 (Fazile)", formatKr(b.kontraktsminimum2026))}
+      {harGulvavvik &&
+        row(
+          gulvavvik > 0 ? "Fakturert + gjenstår under kontraktsminimum" : "Fakturert + gjenstår over kontraktsminimum",
+          formatKr(Math.abs(gulvavvik)),
+          gulvavvik > 0 ? "text-status-warning" : "text-ink-2",
+        )}
+      {b.andelAvAr != null && b.andelAvAr < 1 && row("Aktiv andel av 2026", `${Math.round(b.andelAvAr * 12)}/12 mnd (forventet leie er skalert)`)}
+      {b.omsetning2025 != null && (
+        <div className="mt-1 border-t border-line/60 pt-1.5">
+          {row("Omsetning 2025 (Amesto)", formatKr(b.omsetning2025))}
+          {b.omsetningYoyPct != null &&
+            row(
+              "Omsetning rullerende 12 mnd vs. 2025",
+              `${b.omsetningYoyPct > 0 ? "+" : ""}${b.omsetningYoyPct.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} %`,
+              Math.abs(b.omsetningYoyPct) >= 15 ? "text-status-warning" : "text-ink-2",
+            )}
+          {b.akonto2025 != null && row("À konto leie 2025", formatKr(b.akonto2025))}
+          {b.avregning2025 != null && row("Avregnet merleie 2025", formatKr(b.avregning2025), b.avregning2025 > 0 ? "text-status-positive" : "text-ink-3")}
+        </div>
+      )}
+      {b.remainingNavn && (
+        <p className="mt-1 text-ink-4">
+          Leietaker i leietaker-tabellen: {b.remainingNavn}
+          {b.remainingStatus ? ` (status ${b.remainingStatus})` : ""}
+          {b.kjerneLinjer && b.kjerneLinjer.length > 0 ? ` - kjerneleie-linjer: ${b.kjerneLinjer.join("; ")}` : ""}
+        </p>
+      )}
       {b.delerLeieforholdMed.length > 0 && (
         <p className="mt-1 text-ink-4">Deler leieforhold/selskap med: {b.delerLeieforholdMed.join(", ")}</p>
       )}
+      {b.kommentar && <p className="mt-1 text-ink-4">{b.kommentar}</p>}
+      <p className="text-ink-4">Match: {b.matchStatus}</p>
     </div>
   );
 }
@@ -1269,7 +1312,12 @@ function OmsetningsavregningBlock({
                             className="cursor-pointer border-t border-line/60 transition-colors hover:bg-surface-2/50"
                             onClick={() => toggleExpanded(b.butikk)}
                           >
-                            <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">{b.butikk}</td>
+                            <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">
+                              <span className="inline-flex items-center gap-1">
+                                {b.krevManuellSjekk && <AlertTriangle className="h-3 w-3 shrink-0 text-status-warning" aria-label="Krever manuell sjekk" />}
+                                {b.butikk}
+                              </span>
+                            </td>
                             <td className="max-w-[130px] truncate px-3 py-2 text-ink-3">{b.bygg}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{b.omsetningKorr == null ? "—" : formatKr(b.omsetningKorr)}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
@@ -1336,11 +1384,23 @@ function OmsetningsavregningBlock({
           </button>
           {showInfo && (
             <p className="mt-1.5 text-2xs text-ink-4">
-              Pr. leieforhold med minimums- eller omsetningsbasert leie: forventet leie (omsetningsprosent × faktisk
-              omsetning) mot det som er fakturert/gjenstår å fakturere i år — avregning er gulvet på 0 kr, siden
-              minimumsleien allerede er sikret gjennom vanlig fakturering. Trykk en rad for å se omsetning, avtalt
-              prosent og forventet omsetningsleie. Kilde: {snapshot?.kilde ?? "…"} (oppdatert{" "}
-              {snapshot?.sistOppdatert ?? "…"}).
+              Pr. leieforhold med minimums- eller omsetningsbasert leie: forventet leie (omsetningsprosent × rullerende
+              12 mnd omsetning) mot kjerneleien (minimumsleie/omsetningsleie) som er fakturert og gjenstår å fakturere i
+              år, hentet fra samme tall som leietaker-tabellen. Lager, tillegg og lignende holdes utenfor, slik Amesto
+              gjør i den faktiske avregningen. Avregning er gulvet på 0 kr, siden minimumsleien allerede er sikret
+              gjennom vanlig fakturering. Minimumsleien på CC Vest settes hvert år lik fjorårets realiserte
+              omsetningsleie, så estimatet er svært følsomt for omsetningstallet - oppdater Omsetningsleie-fanen før
+              hver innlevering. Trykk en rad for kontraktsminimum, 2025-fasit fra Amesto og kommentarer. Kilde:{" "}
+              {snapshot?.kilde ?? "…"} (beregnet {snapshot?.sistOppdatert ?? "…"}).
+              {snapshot && snapshot.antallKrevManuellSjekk ? <> {snapshot.antallKrevManuellSjekk} leieforhold er merket for manuell sjekk.</> : null}
+              {snapshot && snapshot.antallGulvavvik ? (
+                <>
+                  {" "}
+                  {snapshot.antallGulvavvik} leieforhold har fakturert + gjenstår under kontraktsminimum (sum {formatKr(snapshot.sumGulvavvik ?? 0)}) -
+                  typisk fordi første kvartal ble fakturert etter fjorårets minimumsleie; differansen kommer inn via avregningen.
+                </>
+              ) : null}
+              {snapshot && snapshot.antallIkkeMatchet > 0 && <> {snapshot.antallIkkeMatchet} leieforhold er ikke funnet i leietaker-tabellen og har ingen avregning.</>}
               {snapshot && snapshot.antallUtelatt > 0 && (
                 <> {snapshot.antallUtelatt} leieforhold er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).</>
               )}
@@ -2574,8 +2634,8 @@ function KontrakterPaUtlopBlock({
         // drilldown for detaljer); (2) leietakeren har allerede fakturert mer enn kontraktens
         // egen sluttdato skulle tilsi (beregnet server-side i build-contract-expiry-2026.js,
         // se kontrakt.muligAlleredeDekket) - ekstraVedReforhandling kan da dobbeltelle en
-        // allerede realisert engangs-/dobbel-kvartal-betaling (bekreftet mønster for Follestad
-        // Trend AS).
+        // allerede realisert engangs-/dobbel-kvartal-betaling (bekreftet mønster hos en
+        // CC Vest-butikk, se minnenotat).
         const storAvvikSelvJustert = avvik !== null && tenantRow?.budsjett && Math.abs(avvik) > tenantRow.budsjett * 0.1 && Math.abs(avvik) > 50000;
         const varsler = [
           storAvvikSelvJustert ? `Stort avvik (${formatKr(avvik!, true)}) selv med valgt sannsynlighet - budsjett/kontraktsdata bør sjekkes.` : null,
