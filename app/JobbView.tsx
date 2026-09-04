@@ -51,6 +51,7 @@ import {
   FileSignature,
   Home,
   Newspaper,
+  ClipboardCheck,
   Receipt,
   ShieldCheck,
   TrendingUp,
@@ -68,6 +69,7 @@ import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import useSWR, { mutate } from "swr";
 import IncomeForecastSection from "./IncomeForecastSection";
+import FazilesjekkSection from "./FazilesjekkSection";
 import JobbTodaySummary from "./JobbTodaySummary";
 import JobbRemindersSection from "./JobbRemindersSection";
 import JobbEventsSection from "./JobbEventsSection";
@@ -2729,6 +2731,7 @@ const DEFAULT_JOBB_SECTION_ORDER = [
   "events",
   "oppslag",
   "income-forecast",
+  "fazilesjekk",
   "mustad-nyheter",
   "data-sources",
 ];
@@ -2748,6 +2751,7 @@ const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColor
   events: { label: "Hendelser", icon: CalendarPlus, iconColorClass: "text-emerald-400" },
   oppslag: { label: "Oppslag", icon: Users, iconColorClass: "text-violet-400" },
   "income-forecast": { label: "Inntektsprognose", icon: TrendingUp, iconColorClass: "text-yellow-400" },
+  fazilesjekk: { label: "Fazilesjekk", icon: ClipboardCheck, iconColorClass: "text-sky-400" },
   "mustad-nyheter": { label: "Mustad-nyheter", icon: Newspaper, iconColorClass: "text-cyan-400" },
   "data-sources": { label: "Datakilder", icon: Database, iconColorClass: "text-slate-400" },
 };
@@ -2763,6 +2767,7 @@ const JOBB_SECTION_NODES: Record<string, (today: string) => React.ReactNode> = {
   reminders: () => <JobbRemindersSection />,
   events: () => <JobbEventsSection />,
   "income-forecast": () => <IncomeForecastSection />,
+  fazilesjekk: () => <FazilesjekkSection />,
 };
 
 export default function JobbView({

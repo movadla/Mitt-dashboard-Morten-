@@ -15,3 +15,4 @@ forceAnon("widgets");
 forceAnon("incomeForecast");
 forceAnon("tenants");
 forceAnon("companyInfo");
+forceAnon("fazilesjekk");

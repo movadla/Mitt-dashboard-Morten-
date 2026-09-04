@@ -63,6 +63,7 @@ lib/widgets.local.ts
 lib/incomeForecast.local.ts
 lib/tenants.local.ts
 lib/companyInfo.local.ts
+lib/fazilesjekk.local.ts
 
 # ekte rådata brukt til å bygge Redis-snapshots (leietakernavn, beløp) - se
 # scripts/refresh-data/README.md for hvordan disse undermappene brukes/fylles ut på nytt
