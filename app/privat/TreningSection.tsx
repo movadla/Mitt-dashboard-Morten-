@@ -471,14 +471,16 @@ function StrengthSetRow({
 
   return (
     <SetRowShell index={index} done={!!set.done} previousLabel={previousLabel} pr={isPr} onToggleDone={onToggleDone} onRemove={onRemove}>
+      {/* Enhets-etiketten ligger UNDER feltet, ikke inni det. Et suffiks inni
+          krevde stor høyre-padding, og på en smal mobilkolonne ble det da for
+          lite plass igjen til to sifre — tallet forsvant bak "kg"/"reps".
+          Etiketten er samtidig alltid synlig nå (ikke bare når feltet er
+          tomt, som en placeholder ville vært). */}
       <div className={`grid gap-2 ${bodyweight ? "grid-cols-1" : "grid-cols-2"}`}>
         {!bodyweight && (
-          <div className="flex items-center gap-1">
-            <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
-            {/* Enhets-suffiks inni feltet (samme mønster som CardioSetRow) —
-                placeholder alene forsvant idet man skrev inn et tall, og
-                boksene ble da to like tall uten noe som skilte kg fra reps. */}
-            <div className="relative min-w-0 flex-1">
+          <div className="flex min-w-0 flex-col items-center gap-0.5">
+            <div className="flex w-full items-center gap-1">
+              <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
               <input
                 type="number"
                 step="0.5"
@@ -486,33 +488,29 @@ function StrengthSetRow({
                 value={kg}
                 onChange={(e) => setKg(e.target.value)}
                 onBlur={() => commit(kg, reps)}
-                placeholder="Kg"
-                className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-7 text-left text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
+                aria-label="Vekt i kg"
+                className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none focus:border-line-strong"
               />
-              {kg.trim() && (
-                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">kg</span>
-              )}
+              <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
             </div>
-            <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
+            <span className="text-2xs font-medium uppercase tracking-wide text-ink-4">kg</span>
           </div>
         )}
-        <div className="flex items-center gap-1">
-          <StepperButton symbol="−" label="Reduser reps" onClick={() => adjustReps(-1)} />
-          <div className="relative min-w-0 flex-1">
+        <div className="flex min-w-0 flex-col items-center gap-0.5">
+          <div className="flex w-full items-center gap-1">
+            <StepperButton symbol="−" label="Reduser reps" onClick={() => adjustReps(-1)} />
             <input
               type="number"
               inputMode="numeric"
               value={reps}
               onChange={(e) => setReps(e.target.value)}
               onBlur={() => commit(kg, reps)}
-              placeholder="Reps"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-12 text-left text-lg font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong"
+              aria-label="Antall reps"
+              className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none focus:border-line-strong"
             />
-            {reps.trim() && (
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">reps</span>
-            )}
+            <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
           </div>
-          <StepperButton symbol="+" label="Øk reps" onClick={() => adjustReps(1)} />
+          <span className="text-2xs font-medium uppercase tracking-wide text-ink-4">reps</span>
         </div>
       </div>
     </SetRowShell>
