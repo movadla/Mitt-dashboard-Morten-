@@ -311,8 +311,10 @@ function shortNewsTitle(item: NewsItem): string {
 
 // De 5 "viktigste" nyhetene — se isImportantNews. De vises direkte i "I dag"
 // uten et eget klikk (med en "Viktig"-markør + miniatyrbilde), resten ligger
-// bak en liten "flere nyheter"-knapp.
-function NewsPreview({ items }: { items: NewsItem[] }) {
+// bak en liten "flere nyheter"-knapp. Å trykke en sak hopper til hele
+// Nyheter-seksjonen (samme onJump som resten av "I dag") i stedet for å åpne
+// artikkelen direkte — "I dag" skal ikke være en blindvei ut av appen.
+function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: () => void }) {
   const [showAll, setShowAll] = useState(false);
   const ranked = [...items]
     .sort((a, b) => Number(isImportantNews(b)) - Number(isImportantNews(a)))
@@ -324,12 +326,7 @@ function NewsPreview({ items }: { items: NewsItem[] }) {
   function NewsLine({ item, dimmed }: { item: NewsItem; dimmed?: boolean }) {
     return (
       <li>
-        <a
-          href={item.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 hover:text-accent-privat"
-        >
+        <button type="button" onClick={onJump} className="flex w-full items-center gap-2 text-left hover:text-accent-privat">
           {item.image && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
@@ -342,7 +339,7 @@ function NewsPreview({ items }: { items: NewsItem[] }) {
             )}
             <span className="min-w-0 truncate">{shortNewsTitle(item)}</span>
           </span>
-        </a>
+        </button>
       </li>
     );
   }
@@ -909,7 +906,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               {isToday && (
                 <div className="py-2 last:pb-0">
                   <CategoryRow icon={Newspaper} colorClass="text-orange-400" label="Nyheter" onJump={() => onJump("news")}>
-                    <NewsPreview items={news} />
+                    <NewsPreview items={news} onJump={() => onJump("news")} />
                   </CategoryRow>
                 </div>
               )}

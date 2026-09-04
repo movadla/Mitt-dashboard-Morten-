@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { after } from "next/server";
 import { getJSON, setJSON } from "./kv";
 import { recordUsage } from "./aiUsage";
 
@@ -467,15 +468,24 @@ let refreshing = false;
 function refreshNewsInBackground(): void {
   if (refreshing) return;
   refreshing = true;
-  fetchAndEnrichNews()
-    .then((items) => setJSON<NewsCache>(CACHE_KEY, { items, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS))
-    .catch(() => {
+  // next/server sin after() — IKKE bare et fire-and-forget-kall. På Vercel
+  // (serverless) fryses/avsluttes funksjonsinstansen rett etter at responsen
+  // er sendt, så et rent .then()-kall uten after() ble drept midt i løpet før
+  // det rakk å skrive den ferske cachen tilbake — det var årsaken til at
+  // nyhetene sluttet å oppdatere seg i produksjon (fungerte fint lokalt, der
+  // Node-prosessen lever videre mellom forespørsler). after() ber plattformen
+  // holde funksjonen i live til denne callbacken er ferdig.
+  after(async () => {
+    try {
+      const items = await fetchAndEnrichNews();
+      await setJSON<NewsCache>(CACHE_KEY, { items, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS);
+    } catch {
       // Stille — neste forespørsel prøver igjen, og brukeren har uansett
       // allerede fått den stale (men brukbare) cachen servert.
-    })
-    .finally(() => {
+    } finally {
       refreshing = false;
-    });
+    }
+  });
 }
 
 // Stale-while-revalidate: en utløpt cache returneres UMIDDELBART (fortsatt
