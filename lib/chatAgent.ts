@@ -14,6 +14,10 @@ import {
 } from "@/lib/customSports";
 import { addShoppingItem } from "@/lib/shoppingList";
 import { getDiaryEntries, upsertDiaryEntry, type DiaryEntryInput } from "@/lib/diary";
+import { addChecklistItem, addProject, getProjects, setChecklistItemNote, toggleChecklistItem } from "@/lib/projects";
+import { getLoans, updateLoan } from "@/lib/loans";
+import { getSavings, updateSavings } from "@/lib/savings";
+import { addFplNote, deleteFplNote, getFplNotes } from "@/lib/fplNotes";
 import { recordQuickPickUsage } from "@/lib/shoppingQuickPicks";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
@@ -142,6 +146,127 @@ const ADD_DIARY_ITEM_TOOL: Anthropic.Tool = {
       text: { type: "string", description: "Selve punktet, kort (f.eks. 'Tur i parken', 'Bestemor', 'Kaffe med Ida')." },
     },
     required: ["category", "text"],
+  },
+};
+
+const ADD_PROJECT_ITEM_TOOL: Anthropic.Tool = {
+  name: "add_project_item",
+  description:
+    "Legg til et nytt UNDERPUNKT i et prosjekt (Prosjekter-seksjonen) — f.eks. 'Time med presten', " +
+    "'Bestille kake'. Identifiser prosjektet med navnet (delvis treff holder, f.eks. 'dåp'). Kan ta med et " +
+    "notat på punktet med det samme. VIKTIG: inneholder punktet et tidspunkt eller en dato (møte, avtale, " +
+    "frist), SPØR brukeren om det også skal legges inn i kalenderen — ikke legg det inn i kalenderen på " +
+    "eget initiativ, og ikke la det være usagt.",
+  input_schema: {
+    type: "object",
+    properties: {
+      projectMatch: { type: "string", description: "Del av prosjektnavnet, f.eks. 'dåp'." },
+      text: { type: "string", description: "Selve punktet, kort." },
+      note: { type: "string", description: "Valgfritt notat om punktet (detaljer, tidspunkt, avklaringer)." },
+    },
+    required: ["projectMatch", "text"],
+  },
+};
+
+const NOTE_ON_PROJECT_ITEM_TOOL: Anthropic.Tool = {
+  name: "note_on_project_item",
+  description:
+    "Legg et notat til et EKSISTERENDE underpunkt i et prosjekt. Legger til en ny linje i notatet — " +
+    "sletter ikke det som står der fra før. Bruk denne når brukeren utdyper eller oppdaterer status på et " +
+    "punkt som allerede finnes, i stedet for å opprette et nytt punkt.",
+  input_schema: {
+    type: "object",
+    properties: {
+      projectMatch: { type: "string", description: "Del av prosjektnavnet." },
+      itemMatch: { type: "string", description: "Del av teksten i underpunktet." },
+      note: { type: "string", description: "Notatet som skal legges til." },
+    },
+    required: ["projectMatch", "itemMatch", "note"],
+  },
+};
+
+const TOGGLE_PROJECT_ITEM_TOOL: Anthropic.Tool = {
+  name: "toggle_project_item",
+  description: "Huk et underpunkt i et prosjekt av eller på (ferdig/ikke ferdig).",
+  input_schema: {
+    type: "object",
+    properties: {
+      projectMatch: { type: "string", description: "Del av prosjektnavnet." },
+      itemMatch: { type: "string", description: "Del av teksten i underpunktet." },
+    },
+    required: ["projectMatch", "itemMatch"],
+  },
+};
+
+const ADD_PROJECT_TOOL: Anthropic.Tool = {
+  name: "add_project",
+  description: "Opprett et helt nytt prosjekt i Prosjekter-seksjonen. Bruk kun når prosjektet ikke finnes fra før.",
+  input_schema: {
+    type: "object",
+    properties: {
+      name: { type: "string", description: "Navn på prosjektet." },
+      targetDate: { type: "string", description: "Måldato, format YYYY-MM-DD. Valgfritt." },
+    },
+    required: ["name"],
+  },
+};
+
+const UPDATE_LOAN_TOOL: Anthropic.Tool = {
+  name: "update_loan",
+  description:
+    "Oppdater et lån i Økonomi-seksjonen — typisk gjenstående beløp etter en nedbetaling, eller ny rente. " +
+    "Identifiser lånet med navn eller bank (delvis treff holder). Endrer kun feltene du oppgir.",
+  input_schema: {
+    type: "object",
+    properties: {
+      loanMatch: { type: "string", description: "Del av lånets navn eller bank." },
+      remainingAmount: { type: "number", description: "Nytt gjenstående beløp i kroner. Valgfritt." },
+      nominalRate: { type: "number", description: "Ny nominell rente i prosent. Valgfritt." },
+      effectiveRate: { type: "number", description: "Ny effektiv rente i prosent. Valgfritt." },
+    },
+    required: ["loanMatch"],
+  },
+};
+
+const UPDATE_SAVINGS_TOOL: Anthropic.Tool = {
+  name: "update_savings",
+  description:
+    "Oppdater en sparekonto i Økonomi-seksjonen — typisk ny saldo. Identifiser kontoen med navn eller " +
+    "institusjon (delvis treff holder).",
+  input_schema: {
+    type: "object",
+    properties: {
+      accountMatch: { type: "string", description: "Del av kontoens navn eller institusjon." },
+      balance: { type: "number", description: "Ny saldo i kroner. Valgfritt." },
+      note: { type: "string", description: "Nytt notat på kontoen. Valgfritt." },
+    },
+    required: ["accountMatch"],
+  },
+};
+
+const ADD_FPL_NOTE_TOOL: Anthropic.Tool = {
+  name: "add_fpl_note",
+  description:
+    "Legg til et notat til Boko Haramsdale sitt årsmøte (FPL-seksjonen) — saker som dukker opp gjennom " +
+    "sesongen og skal diskuteres senere.",
+  input_schema: {
+    type: "object",
+    properties: {
+      text: { type: "string", description: "Innholdet i notatet." },
+    },
+    required: ["text"],
+  },
+};
+
+const DELETE_FPL_NOTE_TOOL: Anthropic.Tool = {
+  name: "delete_fpl_note",
+  description: "Slett et FPL-årsmøtenotat. Identifiser det med et utdrag av teksten.",
+  input_schema: {
+    type: "object",
+    properties: {
+      textMatch: { type: "string", description: "Del av teksten i notatet som skal slettes." },
+    },
+    required: ["textMatch"],
   },
 };
 
@@ -348,6 +473,52 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
   if (name === "add_note") {
     return addNote(input as Parameters<typeof addNote>[0]);
   }
+  if (name === "add_project") {
+    const { name: projectName, targetDate } = input as { name: string; targetDate?: string };
+    return addProject(projectName, targetDate);
+  }
+  if (name === "add_project_item") {
+    const { projectMatch, text, note } = input as { projectMatch: string; text: string; note?: string };
+    const project = findOneMatch(await getProjects(), (p) => p.name, projectMatch, "prosjekter");
+    return addChecklistItem(project.id, text, note);
+  }
+  if (name === "note_on_project_item") {
+    const { projectMatch, itemMatch, note } = input as { projectMatch: string; itemMatch: string; note: string };
+    const project = findOneMatch(await getProjects(), (p) => p.name, projectMatch, "prosjekter");
+    const item = findOneMatch(project.checklist ?? [], (i) => i.text, itemMatch, `underpunkter i «${project.name}»`);
+    return setChecklistItemNote(project.id, item.id, note, true);
+  }
+  if (name === "toggle_project_item") {
+    const { projectMatch, itemMatch } = input as { projectMatch: string; itemMatch: string };
+    const project = findOneMatch(await getProjects(), (p) => p.name, projectMatch, "prosjekter");
+    const item = findOneMatch(project.checklist ?? [], (i) => i.text, itemMatch, `underpunkter i «${project.name}»`);
+    return toggleChecklistItem(project.id, item.id);
+  }
+  if (name === "update_loan") {
+    const { loanMatch, ...updates } = input as {
+      loanMatch: string;
+      remainingAmount?: number;
+      nominalRate?: number;
+      effectiveRate?: number;
+    };
+    const loan = findOneMatch(await getLoans(), (l) => `${l.name} ${l.lender}`, loanMatch, "lån");
+    return updateLoan(loan.id, updates);
+  }
+  if (name === "update_savings") {
+    const { accountMatch, ...updates } = input as { accountMatch: string; balance?: number; note?: string };
+    const account = findOneMatch(await getSavings(), (s) => `${s.name} ${s.institution}`, accountMatch, "sparekontoer");
+    return updateSavings(account.id, updates);
+  }
+  if (name === "add_fpl_note") {
+    const { text } = input as { text: string };
+    return addFplNote(text);
+  }
+  if (name === "delete_fpl_note") {
+    const { textMatch } = input as { textMatch: string };
+    const note = findOneMatch(await getFplNotes(), (n) => n.text, textMatch, "FPL-notater");
+    await deleteFplNote(note.id);
+    return { ok: true, deleted: note.text };
+  }
   if (name === "add_diary_item") {
     const { date, category, text } = input as { date?: string; category: (typeof DIARY_CATEGORIES)[number]; text: string };
     const targetDate = date || localDateString();
@@ -488,7 +659,24 @@ export async function runChatTurn(
     "brukeren faktisk peker ut som viktige (ellers oversvømmer et fullt program 'I dag' med alt som skjer " +
     "en gitt dag), og legge til nye varer i Handleliste-seksjonen (add_shopping_item — velg butikkseksjon " +
     "ut fra hva slags vare det er), og legge punkter til dagens (eller en oppgitt dags) Dagbok-oppføring " +
-    "(add_diary_item — ett kall per punkt, legger TIL uten å overskrive resten av dagen). Du kan aktivt " +
+    "(add_diary_item — ett kall per punkt, legger TIL uten å overskrive resten av dagen).\n\n" +
+    "PROSJEKTER: du kan opprette prosjekter (add_project), legge til underpunkter (add_project_item), " +
+    "notere ting på et eksisterende underpunkt (note_on_project_item — legger til en linje, sletter ikke " +
+    "det som står der) og huke punkter av/på (toggle_project_item). Du har full oversikt over prosjektene " +
+    "og alle underpunktene med notater i PROSJEKTER-seksjonen under, så bruk den til å svare på spørsmål " +
+    "om status. VIKTIG REGEL: legger du inn et punkt som inneholder et tidspunkt eller en dato (møte, " +
+    "avtale, frist — f.eks. 'time med presten onsdag 16. september'), skal du ALLTID spørre brukeren om " +
+    "det også skal legges inn i kalenderen. Ikke legg det i kalenderen på eget initiativ, og ikke la " +
+    "spørsmålet være usagt. Svarer brukeren ja, bruk add_calendar_event.\n\n" +
+    "ØKONOMI: du kan oppdatere lån (update_loan — gjenstående beløp, rente) og sparekontoer " +
+    "(update_savings — saldo, notat). Tallene du ser under er de gjeldende.\n\n" +
+    "FPL: du kan legge til og slette notater til Boko Haramsdale sitt årsmøte (add_fpl_note/" +
+    "delete_fpl_note).\n\n" +
+    "TRENING: du kan LESE treningsloggen (siste sett per øvelse står under TRENING-seksjonen) og svare på " +
+    "spørsmål som 'hva tok jeg i benkpress sist?'. Du kan IKKE legge inn økter, sett eller øvelser — " +
+    "har du ikke tallet i konteksten, si at du ikke finner det, og be brukeren logge det i " +
+    "Trening-seksjonen selv i stedet for å gjette.\n\n" +
+    "Du kan aktivt " +
     "STILLE brukeren oppfølgingsspørsmål om dagen sin (f.eks. 'Hva gjorde du i dag?', 'Hvem var du sammen " +
     "med?') og legge svarene rett i dagboken med add_diary_item etter hvert som de kommer — samtalen " +
     "fortsetter på tvers av flere meldinger/talekommandoer (du har full historikk under), så det er helt " +
@@ -524,6 +712,14 @@ export async function runChatTurn(
     ADD_NOTE_TOOL,
     DELETE_NOTE_TOOL,
     ADD_DIARY_ITEM_TOOL,
+    ADD_PROJECT_TOOL,
+    ADD_PROJECT_ITEM_TOOL,
+    NOTE_ON_PROJECT_ITEM_TOOL,
+    TOGGLE_PROJECT_ITEM_TOOL,
+    UPDATE_LOAN_TOOL,
+    UPDATE_SAVINGS_TOOL,
+    ADD_FPL_NOTE_TOOL,
+    DELETE_FPL_NOTE_TOOL,
     TOGGLE_MILESTONE_TOOL,
     UPDATE_ALFRED_NOTE_TOOL,
     ADD_ALFRED_GROWTH_ENTRY_TOOL,

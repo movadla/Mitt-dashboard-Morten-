@@ -9,6 +9,9 @@ import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
 import { getShoppingItems } from "./shoppingList";
+import { getProjects } from "./projects";
+import { getFplNotes } from "./fplNotes";
+import { getWorkoutSessions } from "./workouts";
 import { getLifeEvents, isPaydayToday, nextOccurrence, nextPaydayFrom } from "./events";
 import { localDateString } from "./payday";
 import { formatKr } from "./widgets";
@@ -42,6 +45,9 @@ export async function buildPrivatContext(): Promise<string> {
     milestonesResult,
     shoppingResult,
     lifeEventsResult,
+    projectsResult,
+    fplNotesResult,
+    workoutsResult,
   ] = await Promise.allSettled([
     getSportEvents(),
     getFplData(),
@@ -56,6 +62,9 @@ export async function buildPrivatContext(): Promise<string> {
     getMilestones(),
     getShoppingItems(),
     getLifeEvents(),
+    getProjects(),
+    getFplNotes(),
+    getWorkoutSessions(),
   ]);
 
   const lines: string[] = [];
@@ -222,6 +231,63 @@ export async function buildPrivatContext(): Promise<string> {
     }
   } else {
     lines.push("- Ingen andre hendelser lagt inn ennå.");
+  }
+
+  lines.push("\nPROSJEKTER (ekte, med underpunkter og notater per punkt):");
+  if (projectsResult.status === "fulfilled" && projectsResult.value.length > 0) {
+    for (const p of projectsResult.value) {
+      lines.push(`- ${p.name} (${p.status}${p.targetDate ? `, mål: ${p.targetDate}` : ""})`);
+      for (const item of p.checklist ?? []) {
+        lines.push(`  - [${item.done ? "x" : " "}] ${item.text}${item.notes ? ` — notat: ${item.notes.replace(/\n/g, " / ")}` : ""}`);
+      }
+      const guestsComing = (p.guests ?? []).filter((g) => g.done).length;
+      if ((p.guests ?? []).length > 0) lines.push(`  Gjester: ${guestsComing}/${p.guests.length} har bekreftet.`);
+      const purchasesLeft = (p.purchases ?? []).filter((i) => !i.done);
+      if (purchasesLeft.length > 0) lines.push(`  Gjenstår å kjøpe: ${purchasesLeft.map((i) => i.name).join(", ")}.`);
+    }
+  } else {
+    lines.push("- Ingen prosjekter lagt inn ennå.");
+  }
+
+  lines.push("\nTRENING (siste loggførte sett per øvelse — kun lesing, du kan IKKE legge inn økter):");
+  if (workoutsResult.status === "fulfilled" && workoutsResult.value.length > 0) {
+    // Nyeste sett per øvelse på tvers av alle avsluttede økter — det er dette
+    // "hva tok jeg i benkpress sist?" faktisk spør om. Sesjonene er sortert
+    // nyest først (lib/workouts.ts), så første treff per øvelse er siste gang.
+    const seen = new Set<string>();
+    const rows: string[] = [];
+    for (const s of workoutsResult.value) {
+      if (!s.endedAt) continue;
+      const date = s.startedAt.slice(0, 10);
+      for (const e of s.entries ?? []) {
+        if (seen.has(e.exerciseName.toLowerCase())) continue;
+        const sets = (e.sets ?? [])
+          .map((set) => {
+            if (set.kg != null && set.reps != null) return `${set.kg}kg x ${set.reps}`;
+            if (set.reps != null) return `${set.reps} reps`;
+            if (set.minutes != null) return `${set.minutes} min`;
+            return null;
+          })
+          .filter(Boolean);
+        if (sets.length === 0) continue;
+        seen.add(e.exerciseName.toLowerCase());
+        rows.push(`- ${e.exerciseName}: ${sets.join(", ")} (${date})`);
+      }
+      if (rows.length >= 25) break;
+    }
+    if (rows.length > 0) lines.push(...rows);
+    else lines.push("- Ingen loggførte sett ennå.");
+  } else {
+    lines.push("- Ingen treningsøkter loggført ennå.");
+  }
+
+  lines.push("\nFPL-NOTATER (til Boko Haramsdale sitt årsmøte):");
+  if (fplNotesResult.status === "fulfilled" && fplNotesResult.value.length > 0) {
+    for (const n of fplNotesResult.value.slice(0, 20)) {
+      lines.push(`- ${n.text} (${(n.updatedAt ?? n.createdAt).slice(0, 10)})`);
+    }
+  } else {
+    lines.push("- Ingen FPL-notater lagt inn ennå.");
   }
 
   return lines.join("\n");

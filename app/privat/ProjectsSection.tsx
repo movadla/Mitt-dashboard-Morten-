@@ -63,7 +63,74 @@ function ProjectProgress({ done, total }: { done: number; total: number }) {
   );
 }
 
-type SimpleItem = { id: string; label: string; done: boolean; meta?: string };
+type SimpleItem = { id: string; label: string; done: boolean; meta?: string; note?: string };
+
+// Inline notat-redigering for ett punkt — kun brukt av sjekklisten (der
+// onSaveNote sendes inn), ikke gjesteliste/innkjøp. Notatet er også det
+// assistenten skriver til via note_on_project_item (lib/chatAgent.ts), så
+// dette er visningen som gjør de notatene synlige i appen.
+function ItemNote({ note, onSave }: { note?: string; onSave: (note: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note ?? "");
+
+  if (editing) {
+    return (
+      <div className="ml-7 flex flex-col gap-1.5">
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={2}
+          placeholder="Notat om dette punktet..."
+          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setEditing(false)} className="text-2xs font-medium text-ink-4 hover:text-ink-2">
+            Avbryt
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSave(draft);
+              setEditing(false);
+            }}
+            className="ml-auto rounded-lg bg-accent-privat px-2.5 py-1 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
+          >
+            Lagre
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!note) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setDraft("");
+          setEditing(true);
+        }}
+        className="ml-7 self-start text-2xs font-medium text-ink-4 hover:text-ink-2"
+      >
+        + Notat
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(note);
+        setEditing(true);
+      }}
+      className="ml-7 self-start text-left"
+    >
+      <p className="whitespace-pre-line text-2xs text-ink-3">{note}</p>
+    </button>
+  );
+}
 
 // Delt rad-/tillegg-mønster for de tre sub-listene (sjekkliste/gjesteliste/
 // innkjøp) — samme sirkel-avkrysning + X-slett-med-bekreftelse som
@@ -76,6 +143,7 @@ function ProjectListBlock({
   onAdd,
   onToggle,
   onRemove,
+  onSaveNote,
 }: {
   items: SimpleItem[];
   placeholder: string;
@@ -83,6 +151,8 @@ function ProjectListBlock({
   onAdd: (label: string, meta?: string) => void;
   onToggle: (id: string) => void;
   onRemove: (item: SimpleItem) => void;
+  // Kun satt for sjekklisten — gjesteliste/innkjøp har ingen notater.
+  onSaveNote?: (id: string, note: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("");
@@ -101,30 +171,33 @@ function ProjectListBlock({
       {items.length > 0 && (
         <ul className="flex flex-col gap-1">
           {items.map((item) => (
-            <li key={item.id} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onToggle(item.id)}
-                aria-pressed={item.done}
-                aria-label={item.done ? "Marker som ikke gjort" : "Marker som gjort"}
-                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
-                  item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
-                }`}
-              >
-                {item.done && <CheckIcon className="h-3 w-3 text-surface-0" />}
-              </button>
-              <p className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
-                {item.label}
-                {item.meta && <span className="ml-1.5 text-ink-4">· {item.meta}</span>}
-              </p>
-              <button
-                type="button"
-                onClick={() => onRemove(item)}
-                aria-label="Slett"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+            <li key={item.id} className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onToggle(item.id)}
+                  aria-pressed={item.done}
+                  aria-label={item.done ? "Marker som ikke gjort" : "Marker som gjort"}
+                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
+                    item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
+                  }`}
+                >
+                  {item.done && <CheckIcon className="h-3 w-3 text-surface-0" />}
+                </button>
+                <p className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+                  {item.label}
+                  {item.meta && <span className="ml-1.5 text-ink-4">· {item.meta}</span>}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onRemove(item)}
+                  aria-label="Slett"
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {onSaveNote && <ItemNote note={item.note} onSave={(note) => onSaveNote(item.id, note)} />}
             </li>
           ))}
         </ul>
@@ -363,6 +436,22 @@ export default function ProjectsSection() {
     }
   }
 
+  // Notat på ett sjekklistepunkt — samme PATCH-rute som avhukingen, men med
+  // body ({ notes }), se app/api/projects/[id]/checklist/[itemId]/route.ts.
+  async function handleSaveItemNote(projectId: string, itemId: string, note: string) {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/checklist/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: note }),
+      });
+      if (!res.ok) throw new Error("note failed");
+      updateLocal(await res.json());
+    } catch {
+      mutationError.show("Kunne ikke lagre notatet. Prøv igjen.");
+    }
+  }
+
   async function handleRemoveItem(projectId: string, kind: "checklist" | "guests" | "purchases", itemId: string) {
     try {
       const res = await fetch(`/api/projects/${projectId}/${kind}/${itemId}`, { method: "DELETE" });
@@ -475,11 +564,12 @@ export default function ProjectsSection() {
                       {project.description && <p className="text-sm text-ink-3">{project.description}</p>}
                       <ProjectSubSection title="Sjekkliste">
                         <ProjectListBlock
-                          items={project.checklist.map((i) => ({ id: i.id, label: i.text, done: i.done }))}
+                          items={project.checklist.map((i) => ({ id: i.id, label: i.text, done: i.done, note: i.notes }))}
                           placeholder="Nytt punkt..."
                           onAdd={(label) => handleAddItem(project.id, "checklist", label)}
                           onToggle={(id) => handleToggleItem(project.id, "checklist", id)}
                           onRemove={(item) => confirmDeleteItem.request({ projectId: project.id, kind: "checklist", itemId: item.id, preview: item.label })}
+                          onSaveNote={(id, note) => handleSaveItemNote(project.id, id, note)}
                         />
                       </ProjectSubSection>
                       <ProjectSubSection title="Gjesteliste">

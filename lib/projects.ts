@@ -12,6 +12,10 @@ export interface ProjectChecklistItem {
   id: string;
   text: string;
   done: boolean;
+  // Fritekstnotat om DETTE punktet (ikke hele prosjektet) — f.eks. detaljer,
+  // avklaringer eller status underveis. Skrives både fra UI-et og av
+  // assistenten (se add_project_item/note_on_project_item i lib/chatAgent.ts).
+  notes?: string;
 }
 
 export interface ProjectGuest {
@@ -111,12 +115,38 @@ export async function reorderProjects(ids: string[]): Promise<Project[]> {
   return getProjects();
 }
 
-export async function addChecklistItem(projectId: string, text: string): Promise<Project | null> {
+export async function addChecklistItem(projectId: string, text: string, notes?: string): Promise<Project | null> {
   if (!text.trim()) throw new Error("Punkt mangler tekst");
   const current = await hgetJSON<Project>(HASH_KEY, projectId);
   if (!current) return null;
-  const item: ProjectChecklistItem = { id: randomUUID(), text: text.trim(), done: false };
+  const item: ProjectChecklistItem = { id: randomUUID(), text: text.trim(), done: false, notes: notes?.trim() || undefined };
   const next: Project = { ...current, checklist: [...(current.checklist ?? []), item] };
+  await hsetJSON(HASH_KEY, projectId, next);
+  return next;
+}
+
+// Setter eller LEGGER TIL et notat på ett punkt. append=true skiller de to
+// bruksmåtene: UI-redigering erstatter teksten (append=false), mens
+// assistenten normalt legger til en ny linje uten å slette det som står der
+// (append=true) — samme "ikke overskriv det brukeren allerede har"-prinsipp
+// som add_diary_item i lib/chatAgent.ts.
+export async function setChecklistItemNote(
+  projectId: string,
+  itemId: string,
+  notes: string,
+  append = false,
+): Promise<Project | null> {
+  const current = await hgetJSON<Project>(HASH_KEY, projectId);
+  if (!current) return null;
+  const next: Project = {
+    ...current,
+    checklist: (current.checklist ?? []).map((i) => {
+      if (i.id !== itemId) return i;
+      const trimmed = notes.trim();
+      if (!trimmed) return { ...i, notes: undefined };
+      return { ...i, notes: append && i.notes ? `${i.notes}\n${trimmed}` : trimmed };
+    }),
+  };
   await hsetJSON(HASH_KEY, projectId, next);
   return next;
 }
