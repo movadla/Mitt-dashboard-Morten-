@@ -9,6 +9,7 @@ import { getSavings } from "./savings";
 import { getSalaryEntries } from "./salary";
 import { getAlfredProfile, getGrowthEntries, getMilestones } from "./alfred";
 import { getShoppingItems } from "./shoppingList";
+import { getAllComments } from "./comments";
 import { getProjects } from "./projects";
 import { getFplNotes } from "./fplNotes";
 import { getWorkoutSessions } from "./workouts";
@@ -48,6 +49,7 @@ export async function buildPrivatContext(): Promise<string> {
     projectsResult,
     fplNotesResult,
     workoutsResult,
+    commentsResult,
   ] = await Promise.allSettled([
     getSportEvents(),
     getFplData(),
@@ -65,7 +67,17 @@ export async function buildPrivatContext(): Promise<string> {
     getProjects(),
     getFplNotes(),
     getWorkoutSessions(),
+    getAllComments(),
   ]);
+
+  // Kommentarer per element ("calendar-event:<id>" osv.) — slås inn i
+  // listene under slik at assistenten kan lese dem, ikke bare skrive dem.
+  const commentsByKey = commentsResult.status === "fulfilled" ? commentsResult.value : {};
+  function commentSuffix(targetType: string, id: string): string {
+    const list = (commentsByKey[`${targetType}:${id}`] ?? []).filter((c) => !c.ikkeRelevant);
+    if (list.length === 0) return "";
+    return ` — kommentarer: ${list.map((c) => `"${c.tekst}" (${c.opprettet.slice(0, 10)})`).join("; ")}`;
+  }
 
   const lines: string[] = [];
 
@@ -99,7 +111,7 @@ export async function buildPrivatContext(): Promise<string> {
   if (remindersResult.status === "fulfilled" && remindersResult.value.length > 0) {
     for (const r of remindersResult.value) {
       lines.push(
-        `- [${r.done ? "Ferdig" : "Ikke ferdig"}] ${r.text}${r.dueDate ? ` (frist ${r.dueDate})` : ""}${r.recurrence !== "none" ? ` — gjentar ${r.recurrence}` : ""}`,
+        `- [${r.done ? "Ferdig" : "Ikke ferdig"}] ${r.text}${r.dueDate ? ` (frist ${r.dueDate})` : ""}${r.recurrence !== "none" ? ` — gjentar ${r.recurrence}` : ""}${commentSuffix("reminder", r.id)}`,
       );
     }
   } else {
@@ -110,7 +122,7 @@ export async function buildPrivatContext(): Promise<string> {
   if (eventsResult.status === "fulfilled" && eventsResult.value.length > 0) {
     for (const e of eventsResult.value) {
       lines.push(
-        `- ${e.date}${e.startTime ? ` ${e.startTime}` : ""}${e.endTime ? `–${e.endTime}` : ""} ${e.title}${e.note ? ` — ${e.note}` : ""}`,
+        `- ${e.date}${e.startTime ? ` ${e.startTime}` : ""}${e.endTime ? `–${e.endTime}` : ""} ${e.title}${e.note ? ` — ${e.note}` : ""}${commentSuffix("calendar-event", e.id)}`,
       );
     }
   } else {
@@ -227,7 +239,7 @@ export async function buildPrivatContext(): Promise<string> {
   lines.push(`- Neste lønningsdag: ${nextPaydayFrom(today)}${isPaydayToday(today) ? " (i dag)" : ""}.`);
   if (lifeEventsResult.status === "fulfilled" && lifeEventsResult.value.length > 0) {
     for (const e of lifeEventsResult.value) {
-      lines.push(`- ${e.title} (${e.category}) — ${nextOccurrence(e, today)}${e.recurrence !== "none" ? ` (${e.recurrence})` : ""}`);
+      lines.push(`- ${e.title} (${e.category}) — ${nextOccurrence(e, today)}${e.recurrence !== "none" ? ` (${e.recurrence})` : ""}${commentSuffix("life-event", e.id)}`);
     }
   } else {
     lines.push("- Ingen andre hendelser lagt inn ennå.");

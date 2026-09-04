@@ -18,6 +18,8 @@ import { addChecklistItem, addProject, getProjects, setChecklistItemNote, toggle
 import { getLoans, updateLoan } from "@/lib/loans";
 import { getSavings, updateSavings } from "@/lib/savings";
 import { addFplNote, deleteFplNote, getFplNotes } from "@/lib/fplNotes";
+import { addComment } from "@/lib/comments";
+import { getLifeEvents } from "@/lib/events";
 import { recordQuickPickUsage } from "@/lib/shoppingQuickPicks";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
@@ -66,7 +68,6 @@ const ADD_CALENDAR_EVENT_TOOL: Anthropic.Tool = {
       startTime: { type: "string", description: "Starttidspunkt, format HH:MM. Valgfritt." },
       endTime: { type: "string", description: "Sluttidspunkt, format HH:MM. Valgfritt." },
       location: { type: "string", description: "Sted for hendelsen. Valgfritt." },
-      note: { type: "string", description: "Valgfri merknad." },
     },
     required: ["title", "date"],
   },
@@ -146,6 +147,61 @@ const ADD_DIARY_ITEM_TOOL: Anthropic.Tool = {
       text: { type: "string", description: "Selve punktet, kort (f.eks. 'Tur i parken', 'Bestemor', 'Kaffe med Ida')." },
     },
     required: ["category", "text"],
+  },
+};
+
+// Kommentarer er ÉN samlet mekanisme for løpende notater på en påminnelse,
+// kalenderhendelse eller hendelse — tidsstemplet, flere per element, og
+// vist bak snakkeboble-ikonet på raden. Kalenderhendelsens gamle `note`-felt
+// er bevisst IKKE lenger noe assistenten skriver til (og er fjernet fra
+// redigeringsskjemaet), slik at det bare finnes én måte å notere på.
+// Eksplisitt "gi brukeren ordet"-signal. Erstatter den tidligere
+// heuristikken (svaret inneholder et spørsmålstegn), som slo inn på helt
+// vanlige høflighetsfraser — sa brukeren "beklager, trykket feil" og
+// assistenten svarte "ingen problem, noe annet?", åpnet mikrofonen seg på
+// nytt uten grunn. Nå må modellen BE om ordet bevisst, og alt annet
+// avslutter samtalen.
+const ASK_USER_TOOL: Anthropic.Tool = {
+  name: "ask_user",
+  description:
+    "Bruk KUN når du faktisk trenger et svar fra brukeren for å komme videre, og du vil at mikrofonen " +
+    "skal åpne seg igjen med det samme. Spørsmålet du oppgir er det som leses høyt. Typiske gyldige " +
+    "tilfeller: du mangler en opplysning for å utføre noe (dato, hvilket prosjekt, hvilken av flere " +
+    "treff), du gjennomfører en spørsmålsrunde brukeren selv har bedt om (f.eks. dagbok-gjennomgang), " +
+    "eller du må avklare om noe også skal i kalenderen. IKKE bruk den til høflighetsfraser som 'Noe " +
+    "mer?', 'Trenger du noe annet?' eller 'Var det alt?' — da skal du bare svare ferdig uten å kalle " +
+    "dette verktøyet, slik at samtalen avsluttes naturlig.",
+  input_schema: {
+    type: "object",
+    properties: {
+      question: { type: "string", description: "Ett kort spørsmål, det som leses høyt for brukeren." },
+    },
+    required: ["question"],
+  },
+};
+
+const ADD_COMMENT_TOOL: Anthropic.Tool = {
+  name: "add_comment",
+  description:
+    "Legg til en tidsstemplet kommentar på en påminnelse, kalenderhendelse eller hendelse — for løpende " +
+    "notater underveis ('ringte presten', 'bekreftet tid'). Flere kommentarer kan ligge på samme element, " +
+    "og en ny sletter ikke de gamle. Bruk denne til alt som er en merknad om noe som ALLEREDE finnes, i " +
+    "stedet for å opprette et nytt element eller overskrive noe.",
+  input_schema: {
+    type: "object",
+    properties: {
+      targetType: {
+        type: "string",
+        enum: ["calendar-event", "reminder", "life-event"],
+        description: "calendar-event = privat kalenderhendelse, reminder = påminnelse, life-event = hendelse.",
+      },
+      titleMatch: {
+        type: "string",
+        description: "Del av tittelen/teksten på elementet kommentaren skal legges på.",
+      },
+      text: { type: "string", description: "Selve kommentaren." },
+    },
+    required: ["targetType", "titleMatch", "text"],
   },
 };
 
@@ -473,6 +529,23 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
   if (name === "add_note") {
     return addNote(input as Parameters<typeof addNote>[0]);
   }
+  if (name === "add_comment") {
+    const { targetType, titleMatch, text } = input as {
+      targetType: "calendar-event" | "reminder" | "life-event";
+      titleMatch: string;
+      text: string;
+    };
+    if (targetType === "calendar-event") {
+      const event = findOneMatch(await getPrivatEvents(), (e) => e.title, titleMatch, "kalenderhendelser");
+      return addComment("calendar-event", event.id, text);
+    }
+    if (targetType === "reminder") {
+      const reminder = findOneMatch(await getReminders(), (r) => r.text, titleMatch, "påminnelser");
+      return addComment("reminder", reminder.id, text);
+    }
+    const lifeEvent = findOneMatch(await getLifeEvents(), (e) => e.title, titleMatch, "hendelser");
+    return addComment("life-event", lifeEvent.id, text);
+  }
   if (name === "add_project") {
     const { name: projectName, targetDate } = input as { name: string; targetDate?: string };
     return addProject(projectName, targetDate);
@@ -608,16 +681,11 @@ async function persistExchange(messages: Anthropic.MessageParam[], assistantText
 export interface ChatTurnResult {
   text: string;
   changed: boolean;
-  // true når svaret stiller brukeren et spørsmål og altså venter på svar —
-  // signalet iOS-snarveien bruker til å åpne mikrofonen på nytt i stedet for
-  // å avslutte, slik at samtalen kan gå frem og tilbake uten at man må
-  // trigge snarveien manuelt hver gang. Ren heuristikk (spørsmålstegn), som
-  // er pålitelig nok her fordi voiceMode-svar er maks én kort setning.
+  // true KUN når modellen bevisst kalte ask_user-verktøyet — signalet
+  // iOS-snarveien bruker til å åpne mikrofonen på nytt i stedet for å
+  // avslutte. Bevisst ikke en heuristikk på spørsmålstegn lenger: det slo
+  // inn på høflighetsfraser ("noe mer?") og åpnet mikrofonen uten grunn.
   awaitingReply: boolean;
-}
-
-function looksLikeQuestion(text: string): boolean {
-  return text.includes("?");
 }
 
 export async function runChatTurn(
@@ -631,17 +699,17 @@ export async function runChatTurn(
     `Dagens dato er ${today}.\n\n` +
     "Du er Mortens personlige assistent i mitt-dashboard. Svar kort og konkret på norsk.\n" +
     (opts?.voiceMode
-      ? "Dette svaret leses høyt av en telefon-snarvei, og snarveien åpner mikrofonen på nytt " +
-        "AUTOMATISK hvis svaret ditt inneholder et spørsmålstegn — du er altså en muntlig " +
-        "samtalepartner, ikke et engangs-svar. Regler for talemodus:\n" +
+      ? "Dette svaret leses høyt av en telefon-snarvei. Du er en muntlig samtalepartner, ikke et " +
+        "engangs-svar. Regler for talemodus:\n" +
         "- Svar EKSTRA kort, maks én til to korte setninger.\n" +
-        "- Stiller du et spørsmål: still KUN ETT, og avslutt svaret med det. Da får brukeren " +
-        "ordet igjen med det samme, og du fortsetter samtalen i neste runde.\n" +
-        "- Er du ferdig (ingenting mer du trenger fra brukeren): IKKE bruk spørsmålstegn i det " +
-        "hele tatt — da avsluttes samtalen. Ikke avslutt med høflighetsspørsmål som 'Noe mer?' " +
-        "med mindre du faktisk vil at brukeren skal svare.\n" +
-        "- Har brukeren bedt om en gjennomgang (f.eks. av dagen sin): oppsummer kort det du har " +
-        "fått, lagre det du kan med verktøyene, og still så neste enkeltspørsmål.\n"
+        "- Trenger du et svar fra brukeren for å komme videre: kall ask_user med ETT kort " +
+        "spørsmål. Da åpnes mikrofonen automatisk, og samtalen fortsetter i neste runde.\n" +
+        "- Trenger du IKKE noe mer: svar bare ferdig UTEN å kalle ask_user, så avsluttes " +
+        "samtalen. Dette gjelder også når brukeren bare bekrefter, takker, eller sier at de " +
+        "trykket feil — da svarer du kort og avslutter, du skal ALDRI kalle ask_user for å være " +
+        "høflig ('noe mer?').\n" +
+        "- Har brukeren bedt om en gjennomgang (f.eks. av dagen sin): lagre det du har fått med " +
+        "verktøyene og kall ask_user med neste enkeltspørsmål i samme trekk.\n"
       : "") +
     "Nye kontrakter, leieinntekt per bygg, dagens møter, garantioversikt og kundefordringer under er " +
     `EKTE data (Fazile, Outlook, Asana og Visma Business NXT — hentet ${today}). Sport, FPL, ` +
@@ -665,9 +733,14 @@ export async function runChatTurn(
     "det som står der) og huke punkter av/på (toggle_project_item). Du har full oversikt over prosjektene " +
     "og alle underpunktene med notater i PROSJEKTER-seksjonen under, så bruk den til å svare på spørsmål " +
     "om status. VIKTIG REGEL: legger du inn et punkt som inneholder et tidspunkt eller en dato (møte, " +
-    "avtale, frist — f.eks. 'time med presten onsdag 16. september'), skal du ALLTID spørre brukeren om " +
-    "det også skal legges inn i kalenderen. Ikke legg det i kalenderen på eget initiativ, og ikke la " +
-    "spørsmålet være usagt. Svarer brukeren ja, bruk add_calendar_event.\n\n" +
+    "avtale, frist — f.eks. 'time med presten onsdag 16. september'), skal du ALLTID spørre brukeren " +
+    "(bruk ask_user) om det også skal legges inn i kalenderen. Ikke legg det i kalenderen på eget " +
+    "initiativ, og ikke la spørsmålet være usagt. Svarer brukeren ja, bruk add_calendar_event.\n\n" +
+    "KOMMENTARER: løpende, tidsstemplede merknader på en påminnelse, kalenderhendelse eller hendelse " +
+    "legges til med add_comment (flere per element, en ny sletter ikke de gamle). Du ser eksisterende " +
+    "kommentarer i listene under, markert med 'kommentarer:'. Bruk add_comment til alt som er en merknad " +
+    "OM noe som allerede finnes, i stedet for å opprette et nytt element. Kalenderhendelser har ikke noe " +
+    "eget notat-felt du skal skrive til — kommentarer er den ene mekanismen.\n\n" +
     "ØKONOMI: du kan oppdatere lån (update_loan — gjenstående beløp, rente) og sparekontoer " +
     "(update_savings — saldo, notat). Tallene du ser under er de gjeldende.\n\n" +
     "FPL: du kan legge til og slette notater til Boko Haramsdale sitt årsmøte (add_fpl_note/" +
@@ -711,6 +784,8 @@ export async function runChatTurn(
     DELETE_CALENDAR_EVENT_TOOL,
     ADD_NOTE_TOOL,
     DELETE_NOTE_TOOL,
+    ASK_USER_TOOL,
+    ADD_COMMENT_TOOL,
     ADD_DIARY_ITEM_TOOL,
     ADD_PROJECT_TOOL,
     ADD_PROJECT_ITEM_TOOL,
@@ -749,23 +824,31 @@ export async function runChatTurn(
     const toolUseBlocks = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
     );
+    const responseText = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
 
     if (toolUseBlocks.length === 0) {
-      let text = response.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("\n");
+      let text = responseText;
       if (!text && response.stop_reason === "max_tokens") {
         text = "Svaret ble for langt og ble kappet av. Prøv å be om en mindre liste om gangen.";
       }
       await persistExchange(messages, text);
-      return { text, changed, awaitingReply: looksLikeQuestion(text) };
+      return { text, changed, awaitingReply: false };
     }
 
     convo.push({ role: "assistant", content: response.content });
 
+    // ask_user er terminalt: modellen har bedt om ordet, så vi svarer med
+    // spørsmålet i stedet for å kjøre nok en runde. Eventuelle ANDRE verktøy
+    // i samme svar kjøres først, slik at "lagre dette OG spør om det neste"
+    // fungerer i ett trekk.
+    const askBlock = toolUseBlocks.find((b) => b.name === "ask_user");
+
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of toolUseBlocks) {
+      if (block.name === "ask_user") continue;
       try {
         const result = await runTool(block.name, block.input);
         changed = true;
@@ -774,6 +857,14 @@ export async function runChatTurn(
         toolResults.push({ type: "tool_result", tool_use_id: block.id, content: String(err), is_error: true });
       }
     }
+
+    if (askBlock) {
+      const { question } = askBlock.input as { question?: string };
+      const text = [responseText, question].filter((s) => s && s.trim()).join(" ").trim();
+      await persistExchange(messages, text);
+      return { text, changed, awaitingReply: true };
+    }
+
     convo.push({ role: "user", content: toolResults });
 
     if (response.stop_reason === "max_tokens") {
