@@ -44,5 +44,13 @@ export async function POST(request: NextRequest) {
   // awaitingReply forteller snarveien om den skal åpne mikrofonen på nytt
   // (assistenten stilte et spørsmål) eller avslutte — det som gjør flyten til
   // en reell frem-og-tilbake-samtale i stedet for ett engangs-svar per trykk.
-  return NextResponse.json({ reply: result.text, changed: result.changed, awaitingReply: result.awaitingReply });
+  // `fortsett` er samme signal som ren tekst ("ja"/"nei"): iOS Snarveier har
+  // upålitelig håndtering av JSON-boolske verdier i "Hvis"-betingelser, så en
+  // tekstsammenligning er langt enklere å sette opp der.
+  return NextResponse.json({
+    reply: result.text,
+    changed: result.changed,
+    awaitingReply: result.awaitingReply,
+    fortsett: result.awaitingReply ? "ja" : "nei",
+  });
 }
