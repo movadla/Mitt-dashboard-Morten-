@@ -13,6 +13,7 @@ import {
   getCustomSportEvents,
 } from "@/lib/customSports";
 import { addShoppingItem } from "@/lib/shoppingList";
+import { getDiaryEntries, upsertDiaryEntry, type DiaryEntryInput } from "@/lib/diary";
 import { recordQuickPickUsage } from "@/lib/shoppingQuickPicks";
 import { appendChatMessages } from "@/lib/chatHistory";
 import { localDateString } from "@/lib/payday";
@@ -114,6 +115,33 @@ const ADD_NOTE_TOOL: Anthropic.Tool = {
       text: { type: "string", description: "Innholdet i notatet/ideen." },
     },
     required: ["text"],
+  },
+};
+
+const DIARY_CATEGORIES = ["morgen", "ettermiddag", "kveld", "personer", "steder", "notat"] as const;
+
+const ADD_DIARY_ITEM_TOOL: Anthropic.Tool = {
+  name: "add_diary_item",
+  description:
+    "Legg til ETT punkt i Dagbok-oppføringen for en dag (standard: i dag) — for ting brukeren forteller om " +
+    "dagen sin (hva som skjedde på morgenen/ettermiddagen/kvelden, hvem de var sammen med, hvor de var), typisk " +
+    "svar på spørsmål du selv har stilt eller ting de bare forteller løpende. Legger TIL i eksisterende " +
+    "oppføring for dagen — overskriver ikke det som allerede er der. Bruk denne gjentatte ganger for flere " +
+    "punkter i samme svar (ett kall per punkt), ikke prøv å slå sammen flere ting i én text-verdi.",
+  input_schema: {
+    type: "object",
+    properties: {
+      date: { type: "string", description: "Dato, format YYYY-MM-DD. Utelates for i dag." },
+      category: {
+        type: "string",
+        enum: [...DIARY_CATEGORIES],
+        description:
+          "morgen/ettermiddag/kveld = hva som skjedde da, personer = hvem de var sammen med, " +
+          "steder = hvor de var, notat = fritekst som ikke passer noen av de andre kategoriene.",
+      },
+      text: { type: "string", description: "Selve punktet, kort (f.eks. 'Tur i parken', 'Bestemor', 'Kaffe med Ida')." },
+    },
+    required: ["category", "text"],
   },
 };
 
@@ -320,6 +348,29 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
   if (name === "add_note") {
     return addNote(input as Parameters<typeof addNote>[0]);
   }
+  if (name === "add_diary_item") {
+    const { date, category, text } = input as { date?: string; category: (typeof DIARY_CATEGORIES)[number]; text: string };
+    const targetDate = date || localDateString();
+    const entries = await getDiaryEntries();
+    const current = entries.find((e) => e.date === targetDate);
+    const base: DiaryEntryInput = current
+      ? { morning: current.morning, afternoon: current.afternoon, evening: current.evening, people: current.people, places: current.places, notes: current.notes }
+      : { morning: [], afternoon: [], evening: [], people: [], places: [] };
+    if (category === "notat") {
+      base.notes = base.notes ? `${base.notes}\n${text}` : text;
+    } else {
+      const field = { morgen: "morning", ettermiddag: "afternoon", kveld: "evening", personer: "people", steder: "places" }[category] as
+        | "morning"
+        | "afternoon"
+        | "evening"
+        | "people"
+        | "places";
+      if (!base[field].some((l) => l.toLowerCase() === text.toLowerCase())) {
+        base[field] = [...base[field], text];
+      }
+    }
+    return upsertDiaryEntry(targetDate, base);
+  }
   if (name === "delete_note") {
     const { textMatch } = input as { textMatch: string };
     const note = findOneMatch(await getNotes(), (n) => n.text, textMatch, "notater");
@@ -416,7 +467,13 @@ export async function runChatTurn(
     "et helt program med mange kamper på én gang, og sett highlight=true kun på et fåtall hendelser " +
     "brukeren faktisk peker ut som viktige (ellers oversvømmer et fullt program 'I dag' med alt som skjer " +
     "en gitt dag), og legge til nye varer i Handleliste-seksjonen (add_shopping_item — velg butikkseksjon " +
-    "ut fra hva slags vare det er). Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
+    "ut fra hva slags vare det er), og legge punkter til dagens (eller en oppgitt dags) Dagbok-oppføring " +
+    "(add_diary_item — ett kall per punkt, legger TIL uten å overskrive resten av dagen). Du kan aktivt " +
+    "STILLE brukeren oppfølgingsspørsmål om dagen sin (f.eks. 'Hva gjorde du i dag?', 'Hvem var du sammen " +
+    "med?') og legge svarene rett i dagboken med add_diary_item etter hvert som de kommer — samtalen " +
+    "fortsetter på tvers av flere meldinger/talekommandoer (du har full historikk under), så det er helt " +
+    "greit å stille ETT spørsmål om gangen og vente på svar i stedet for å be om alt på én gang. " +
+    "Bruk verktøyene når brukeren ber om det — bekreft alltid kort i klartekst hva du gjorde " +
     "(for bulk: hvor mange som ble lagt til). Hvis et verktøy feiler fordi flere eller ingen elementer " +
     "matcher, forklar det kort til brukeren i stedet for å gjette. VIKTIG: Bekreft ALDRI at noe er lagt " +
     "til/oppdatert/slettet med mindre du faktisk har kalt det tilhørende verktøyet i denne runden — aldri " +
@@ -446,6 +503,7 @@ export async function runChatTurn(
     DELETE_CALENDAR_EVENT_TOOL,
     ADD_NOTE_TOOL,
     DELETE_NOTE_TOOL,
+    ADD_DIARY_ITEM_TOOL,
     TOGGLE_MILESTONE_TOOL,
     UPDATE_ALFRED_NOTE_TOOL,
     ADD_ALFRED_GROWTH_ENTRY_TOOL,
