@@ -20,14 +20,13 @@ function EventEditForm({
 }: {
   event: PrivatCalendarEvent;
   onCancel: () => void;
-  onSave: (updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string; note?: string }) => void;
+  onSave: (updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string }) => void;
 }) {
   const [title, setTitle] = useState(event.title);
   const [date, setDate] = useState(event.date);
   const [startTime, setStartTime] = useState(event.startTime ?? "");
   const [endTime, setEndTime] = useState(event.endTime ?? "");
   const [location, setLocation] = useState(event.location ?? "");
-  const [note, setNote] = useState(event.note ?? "");
 
   function save() {
     if (!title.trim() || !date) return;
@@ -37,7 +36,6 @@ function EventEditForm({
       startTime: startTime || undefined,
       endTime: endTime || undefined,
       location: location.trim() || undefined,
-      note: note.trim() || undefined,
     });
   }
 
@@ -77,13 +75,6 @@ function EventEditForm({
         value={location}
         onChange={(e) => setLocation(e.target.value)}
         placeholder="Sted..."
-        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <textarea
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        rows={2}
-        placeholder="Notat..."
         className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
       />
       <div className="flex items-center gap-2">
@@ -160,7 +151,7 @@ function EventRow({
   onCancelEdit: () => void;
   onSaveEdit: (
     id: string,
-    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string; note?: string },
+    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string },
   ) => void;
   comments: Comment[];
   onAddComment: (tekst: string) => Promise<boolean>;
@@ -346,7 +337,7 @@ export default function CalendarSection({
 
   async function handleSaveEdit(
     id: string,
-    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string; note?: string },
+    updates: { title: string; date: string; startTime?: string; endTime?: string; location?: string },
   ) {
     try {
       const res = await fetch(`/api/privat-calendar/${id}`, {
@@ -358,7 +349,6 @@ export default function CalendarSection({
           startTime: updates.startTime ?? null,
           endTime: updates.endTime ?? null,
           location: updates.location ?? null,
-          note: updates.note ?? null,
         }),
       });
       if (!res.ok) throw new Error("save failed");
