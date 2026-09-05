@@ -6,6 +6,9 @@
 // Hent på nytt slik (uten scope = hele porteføljen, ingen øvre grense når
 // inkluder_utlopte=true dekker hele 2026):
 //   fra_dato: "2026-01-01", maneder_frem: 12, inkluder_utlopte: true, max_rader: 5000
+// (Siden scriptet uansett filtrerer til linje_slutt >= i dag, er fra_dato = i dag og
+// maneder_frem = antall måneder igjen av året ekvivalent og gir et langt mindre svar -
+// brukt 2026-09-05: fra_dato "2026-09-05", maneder_frem 4, 455 rader.)
 // Lagre RAW JSON-resultatet (objektet med "rows"-arrayet) som
 // scripts/refresh-data/kontraktsutlop-raw-full.json - IKKE forhåndsfiltrer, dette
 // scriptet gjør all filtrering/gruppering selv (repeterbart, se ANONYMISERING.md
@@ -141,11 +144,29 @@ async function main() {
     // REMAINING sin fullA via en ny rad i fazile-remaining-tenants/Lilleakerveien-10-E.json. Uten
     // denne ville QN1867 sin ekstraI2026 (sep-des, ~822 848 kr) dobbelttalt samme periode.
     ["QN1867", "138800 (kontrakt_id, ikke-lenket fornyelse)"],
+    // Revisjon 2026-09-04 av hele utløpslisten (se
+    // [[project_income-forecast-contract-expiry-audit-2026-09-04]]): to ulenkede etterfølgere til.
+    // RS9012 (kontrakt_id 82058, Lilleakerveien 8, slutt 2026-09-30): etterfølger 138409 fra
+    // 2026-10-01 (SIGNED_BY_BOTH_PARTIES, husleie 1 200 000 kr/år) ligger allerede i REMAINING
+    // (gjenstår 300 000 = 3/12) - ekstraI2026 okt-des ville dobbelttalt.
+    ["RS9012", "138409 (kontrakt_id, ikke-lenket fornyelse)"],
+    // UC8685 (Vollsveien 13B/13C, slutt 2026-11-30): leietakeren flytter til Vollsveien 17 på ny
+    // kontrakt 127844 (start 2026-09-04, SIGNED_BY_BOTH_PARTIES, 2 028 695 kr/år minus rabatt),
+    // som allerede ligger i REMAINING som egen byggGruppe (gjenstår ~500 800). Relokasjon innen
+    // samme eiendom, ikke fornyelse av 13B/13C - ekstraI2026 des ville dobbelttalt. 60 %-signalet
+    // i jobb:inntektsprognose-signaler gjaldt denne avtalen før den ble signert.
+    ["UC8685", "127844 (kontrakt_id, relokasjon til Vollsveien 17, ikke-lenket)"],
   ]);
+
+  // Mustad sine egne selskaper som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
+  // build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen
+  // (2026-09-04: Mustad Eiendomsdrift ON2603, 12 704 kr lå inne som potensial).
+  const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as", "mustad eiendomsdrift as"]);
 
   let antallEierandelKorrigert = 0;
   const groups = new Map();
   for (const r of rows) {
+    if (INTERN_MUSTAD_NAMES.has(normalizeName(r.leietaker))) continue;
     const andel = r.bygg ? andelForBygg(r.bygg, shares) : 1;
     if (andel !== 1) antallEierandelKorrigert++;
     const totalArsleie = r.total_arsleie * andel;
