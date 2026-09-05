@@ -47,7 +47,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nb" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    // Bakgrunnsfargen settes inline på <html> (ikke bare via globals.css sin
+    // body-regel) slik at skjermen er mørk fra aller første maling — også i
+    // det korte vinduet før stilarket er brukt, og på PWA-oppstart fra
+    // hjem-skjermen. Uten dette blinket det hvitt før appen kom opp.
+    <html
+      lang="nb"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      style={{ backgroundColor: "#12161e" }}
+    >
       <body className="min-h-full">
         <OfflineBanner />
         <ServiceWorkerRegister />
