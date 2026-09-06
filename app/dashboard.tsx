@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import { Search } from "lucide-react";
 import type { Task } from "@/lib/tasks";
 import ChatWidget from "./ChatWidget";
 import ThemeToggle from "./ThemeToggle";
 import { SkeletonRows } from "./CardShell";
+import { APP_NAVIGATE_EVENT, type NavigationTarget } from "@/lib/appNavigation";
 
 type Mode = "jobb" | "privat";
 
@@ -23,6 +25,10 @@ const PrivatPanel = dynamic(() => import("./privat/PrivatPanel"), {
 const JobbView = dynamic(() => import("./JobbView"), {
   loading: () => <div className="mt-6"><SkeletonRows count={4} /></div>,
 });
+// Lazy: paletten importerer hele widget- og leietakerdatasettet for å kunne
+// søke i Jobb-tallene uten et eget API-kall. Det skal ikke ligge i
+// oppstartsbunten — den lastes først når man faktisk åpner søket.
+const CommandPalette = dynamic(() => import("./CommandPalette"));
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   return (
@@ -75,6 +81,7 @@ export default function Dashboard({
   // lazy-loadingen over ikke gitt noen reell gevinst for Jobb-brukere, siden
   // PrivatPanel uansett ville blitt lastet på aller første rendering.
   const [mode, setMode] = useState<Mode | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -98,12 +105,48 @@ export default function Dashboard({
     }
   }, [mode]);
 
+  // Et søketreff kan ligge i den ANDRE fanen. Her byttes bare fanen; hvilken
+  // seksjon som skal vises plukkes opp av PrivatPanel/JobbView selv (se
+  // lib/appNavigation.ts for hvorfor det er delt i to).
+  useEffect(() => {
+    function handler(e: Event) {
+      const target = (e as CustomEvent<NavigationTarget>).detail;
+      if (target?.mode) setMode(target.mode);
+    }
+    window.addEventListener(APP_NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(APP_NAVIGATE_EVENT, handler);
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-[1440px] md:px-8">
         <div className="sticky top-0 z-40 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)]">
           <div className="flex items-center justify-between gap-3">
-            <ThemeToggle />
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              {/* Synlig inngang til søket — Ctrl/Cmd+K finnes ikke på mobil,
+                  som er der appen faktisk brukes mest. */}
+              <button
+                type="button"
+                onClick={() => setPaletteOpen(true)}
+                aria-label="Søk i hele dashboardet"
+                title="Søk (Ctrl+K)"
+                className="nav-tile grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-2 transition hover:text-ink-1"
+              >
+                <Search className="h-4 w-4" />
+              </button>
+            </div>
             {mode && <ModeToggle mode={mode} onChange={setMode} />}
           </div>
         </div>
@@ -120,6 +163,7 @@ export default function Dashboard({
           </div>
         )}
       </div>
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
       <ChatWidget />
     </>
   );

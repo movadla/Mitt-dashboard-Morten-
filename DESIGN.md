@@ -83,6 +83,18 @@ Aldri `text-white` på en kortflate — kortene er hvite i dagmodus. Bruk
   lista; det er dette som skiller et dashboard fra en liste. Felles mønster:
   wrapperen får seksjonens `iconColorClass`, og alt inni tegnes med
   `currentColor` — da kan de ikke gli ut av sync med kortets identitet.
+- **`StaleSourceBanner`** (`app/StaleSourceBanner.tsx`) — varsel OVER kortet
+  når dataene er eldre enn kilden pleier å være. Styres av ett kart
+  (`SECTION_DATA_SOURCE` i `JobbView.tsx`) fra seksjon til kilde-id i
+  `/api/data-sources`. Viser ingenting når `lastModified` er null, som den
+  alltid er i produksjonsbygg (`.local.ts` følger ikke med dit) — et falskt
+  friskmeldings- eller varselsignal er verre enn ingen.
+- **`CommandPalette`** (`app/CommandPalette.tsx`, Ctrl/Cmd+K) — søk på tvers
+  av BEGGE faner. Lazy-lastet, fordi den importerer hele widget- og
+  leietakerdatasettet og ikke skal ligge i oppstartsbunten. Navigasjon
+  mellom fanene går via `lib/appNavigation.ts`: fanen byttes av
+  `dashboard.tsx`, mens seksjonen plukkes opp av panelet selv — panelet man
+  hopper TIL kan være avmontert i det øyeblikket eventet sendes.
 - **`CardHeader` sin `stat`-prop** — kortets nøkkeltall, stort og tynt
   (vekt 300, stram sperring) mot en bitteliten sperret etikett. Hierarkiet
   ligger i den kontrasten. Erstatter `subtitle`-plassen når begge er satt.

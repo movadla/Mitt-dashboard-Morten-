@@ -21,6 +21,7 @@ import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "
 import { SidebarNav, type NavItem } from "../SidebarNav";
 import PrivatSearch from "./PrivatSearch";
 import { localDateString } from "@/lib/payday";
+import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import type { ReminderLink } from "@/lib/reminders";
 import {
   Home,
@@ -138,6 +139,25 @@ export default function PrivatPanel() {
     }
     window.addEventListener("mitt-dashboard:privat-refresh", handler);
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", handler);
+  }, []);
+
+  // Søketreff fra kommandopaletten. To kilder, med vilje: `consumePendingNavigation`
+  // ved montering fanger opp et hopp som kom FRA Jobb-fanen (da fantes ikke
+  // dette panelet ennå da eventet ble sendt), lytteren fanger opp hopp mens
+  // panelet allerede står åpent.
+  useEffect(() => {
+    const pendingId = consumePendingNavigation("privat");
+    if (pendingId) setActiveId(pendingId);
+
+    function handler(e: Event) {
+      const target = (e as CustomEvent<NavigationTarget>).detail;
+      if (target?.mode === "privat") {
+        consumePendingNavigation("privat");
+        setActiveId(target.sectionId);
+      }
+    }
+    window.addEventListener(APP_NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(APP_NAVIGATE_EVENT, handler);
   }, []);
 
   // Flytter fokus til det nye panelet ved seksjonsbytte (museklikk), slik at

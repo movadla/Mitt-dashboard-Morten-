@@ -191,9 +191,19 @@ function ReminderRowContent({
   // raden ikke har et eget frist-redigeringsikon å farge.
   const overdue = !reminder.done && !!reminder.dueDate && reminder.dueDate < localDateString();
   const completedLabel = reminder.done && reminder.completedAt ? `Fullført ${formatDMY(reminder.completedAt.slice(0, 10))}` : null;
+  // Det som gjelder NÅ tones i seksjonsfargen; det som ligger frem i tid faller
+  // tilbake til en flat, rolig rad. Rammen beholdes på begge slik at ingenting
+  // flytter seg 1px når en påminnelse går fra "i morgen" til "i dag" — kun
+  // fyllet endrer seg. Avkryssingssirkelen til venstre er allerede radens
+  // markør, så den trenger ingen prikk i tillegg.
+  const aktivNa = !reminder.done && (!reminder.dueDate || reminder.dueDate <= localDateString());
   return (
     <div className="flex flex-col gap-1">
-    <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+    <div
+      className={`flex items-center gap-3 rounded-xl border px-3 py-2 transition-colors ${
+        aktivNa ? "border-accent-privat/25 bg-accent-privat/[0.07]" : "border-line bg-surface-2/50"
+      }`}
+    >
       <button
         type="button"
         onClick={() => onToggle(reminder.id)}

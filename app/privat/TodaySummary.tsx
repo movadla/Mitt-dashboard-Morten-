@@ -20,6 +20,7 @@ import { addDaysIso, isPaydayToday, localDateString, occursOnDate, toOsloDateStr
 import type { AiUsageSummary } from "@/lib/aiUsage";
 import { formatUsd } from "@/lib/widgets";
 import { vibrate } from "@/lib/haptics";
+import PushToggle from "./PushToggle";
 import {
   Sun,
   Cloud,
@@ -1002,6 +1003,14 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               )}
             </div>
           </div>
+        </div>
+      )}
+      {/* Morgenbriefen er nettopp DENNE boksen sendt som varsel kl. 07 — derfor
+          står av/på-knappen her og ikke gjemt i en innstillingsside appen ikke
+          har. Rendrer ingenting før den er brukbar (se PushToggle). */}
+      {isToday && (
+        <div className="mt-3 flex justify-start border-t border-line pt-3">
+          <PushToggle />
         </div>
       )}
     </div>

@@ -59,6 +59,8 @@ import {
   X,
 } from "lucide-react";
 import { CARD_SHELL, CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, SuggestionList, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
+import StaleSourceBanner from "./StaleSourceBanner";
+import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import type { JobbTaskState } from "@/lib/jobbTaskState";
@@ -2718,23 +2720,55 @@ function ReceivablesCard({ today, onJumpToOppslag }: { today: string; onJumpToOp
   );
 }
 
-const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v3";
+// v4: ny standardrekkefølge (Påminnelser/Kalender flyttet til plass 1-2 for å
+// matche Privat, Inntektsprognose til plass 3). usePersistedOrder beholder en
+// lagret rekkefølge og legger kun NYE id-er til på slutten — uten en bump
+// hadde den gamle v3-rekkefølgen fra localStorage overstyrt hele endringen.
+const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v4";
+// Påminnelser og Kalender ligger bevisst på plass 1 og 2, nøyaktig som i
+// Privat-fanen — de to seksjonene som finnes i begge faner skal sitte samme
+// sted uansett hvilken fane man er i, slik at muskelminnet virker på tvers.
+// (Dataene er fortsatt helt adskilte; det er kun plasseringen som er felles.)
+// Inntektsprognose står på plass 3 = øverste rad, høyre hjørne i mobilrutenettet.
 const DEFAULT_JOBB_SECTION_ORDER = [
   "today",
-  "oppgaver",
+  "reminders",
   "calendar",
+  "income-forecast",
+  "oppgaver",
   "contracts",
   "expiry",
   "guarantees",
   "receivables",
-  "reminders",
   "events",
-  "oppslag",
-  "income-forecast",
   "fazilesjekk",
+  "oppslag",
   "mustad-nyheter",
   "data-sources",
 ];
+
+// Bak "Mer"-flisen nederst til høyre. Med kun Datakilder og Mustad-nyheter
+// skjult ble det 13 fliser, altså fire rader, og "Mer" havnet alene på rad
+// fire i stedet for nederst til høyre. Oppslag ligger derfor også her: den
+// globale søkepaletten (Ctrl/Cmd+K) dekker det meste av samme behov.
+const JOBB_SECONDARY_NAV_IDS = ["oppslag", "mustad-nyheter", "data-sources"];
+
+// Hvilken manuelt oppdaterte datakilde hver seksjon faktisk viser tall fra —
+// id-ene matcher FILE_SOURCES i app/api/data-sources/route.ts. Brukes til
+// ferskhetsvarselet over kortet. Seksjoner uten oppføring (Påminnelser,
+// Kalender, Hendelser, Fazilesjekk) har egne, live data i Redis og kan ikke
+// bli "utdaterte" på samme måte.
+const SECTION_DATA_SOURCE: Record<string, string> = {
+  today: "tasks",
+  oppgaver: "tasks",
+  contracts: "widgets",
+  expiry: "widgets",
+  guarantees: "widgets",
+  receivables: "widgets",
+  "income-forecast": "incomeForecast",
+  oppslag: "tenants",
+  "mustad-nyheter": "companyNews",
+};
 
 // Ikon/farge per kategori — samme verdier som hvert kort allerede sender til
 // sin egen CardHeader, gjenbrukt her uendret slik at nav-elementet matcher
@@ -2788,6 +2822,23 @@ export default function JobbView({
   const hasNavigatedRef = useRef(false);
   const skipFocusMoveRef = useRef(false);
   const highlightTimerRef = useRef<number | null>(null);
+
+  // Søketreff fra kommandopaletten — se samme mønster i
+  // app/privat/PrivatPanel.tsx og begrunnelsen i lib/appNavigation.ts.
+  useEffect(() => {
+    const pendingId = consumePendingNavigation("jobb");
+    if (pendingId) setActiveId(pendingId);
+
+    function handler(e: Event) {
+      const target = (e as CustomEvent<NavigationTarget>).detail;
+      if (target?.mode === "jobb") {
+        consumePendingNavigation("jobb");
+        setActiveId(target.sectionId);
+      }
+    }
+    window.addEventListener(APP_NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(APP_NAVIGATE_EVENT, handler);
+  }, []);
 
   // Kun for varselboblen på "Påminnelser" i sidebaren — selve kortet
   // (JobbRemindersSection) henter og eier sin egen fulle liste uavhengig.
@@ -3411,6 +3462,7 @@ export default function JobbView({
           ariaLabel="Jobb-seksjoner"
           reorderMode={reorderMode}
           onReorder={setOrder}
+          secondaryIds={JOBB_SECONDARY_NAV_IDS}
         />
         <button
           type="button"
@@ -3424,13 +3476,20 @@ export default function JobbView({
           app/privat/PrivatPanel.tsx. Seksjonene her er bygget likt (en
           `border-t-2 border-t-X/60 p-4`-rot ment for en kortkant), og uten
           rammen ligger de løst på bakgrunnen i dagmodus. */}
-      <div
-        key={activeId}
-        ref={paneRef}
-        tabIndex={-1}
-        className={`${CARD_SHELL} tab-fade min-w-0 flex-1 overflow-hidden outline-none`}
-      >
-        <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* Ferskhetsvarsel FØR kortet, ikke inni: alle Jobb-seksjonene henter
+            tallene sine fra en manuelt oppdatert kilde, og et tall du tror er
+            dagens når det er tre uker gammelt er verre enn ingen tall. Én
+            kobling her dekker alle seksjoner i stedet for et innslag i hver. */}
+        <StaleSourceBanner sourceId={SECTION_DATA_SOURCE[activeId]} />
+        <div
+          key={activeId}
+          ref={paneRef}
+          tabIndex={-1}
+          className={`${CARD_SHELL} tab-fade min-w-0 overflow-hidden outline-none`}
+        >
+          <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
+        </div>
       </div>
     </div>
   );

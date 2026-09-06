@@ -173,10 +173,13 @@ function EventRow({
   return (
     <li ref={setRowRef ? (el) => setRowRef(event.id, el) : undefined}>
       <SwipeableRow onSwipeLeft={() => onRemove(event.id)} leftLabel="Slett">
+        {/* Samme grep som i Påminnelser: dagens hendelser tones i seksjonens
+            farge, senere hendelser faller tilbake til en rolig, flat rad — så
+            "hva skjer i dag" leses uten å måtte lese datokolonnen. */}
         <div
-          className={`flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2 transition ${
-            highlighted ? "ring-2 ring-accent-privat" : ""
-          }`}
+          className={`flex items-center gap-3 rounded-xl px-3 py-2 transition ${
+            event.date === localDateString() ? "bg-source-teams/[0.09]" : "bg-surface-2/50"
+          } ${highlighted ? "ring-2 ring-accent-privat" : ""}`}
         >
           <button
             type="button"

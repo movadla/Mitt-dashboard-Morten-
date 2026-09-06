@@ -2,7 +2,8 @@
 // cachen kan inneholde et innloggingssvar lagret av forrige versjon, som vi
 // nå bevisst aldri vil servere. activate-handleren under sletter alle
 // cacher som ikke matcher CACHE_NAME, så bumpen tømmer den gamle.
-const CACHE_NAME = "mitt-dashboard-v3";
+// v4: push- og notificationclick-håndterere lagt til (morgenbrief).
+const CACHE_NAME = "mitt-dashboard-v4";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 // Hvor lenge en oppstart maks skal vente på nettverket før vi viser cachen.
@@ -36,6 +37,44 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
+  );
+});
+
+// ─── Morgenbrief (web push) ────────────────────────────────────────────────
+// Sendt av /api/cron/morning-brief. Nyttelasten er JSON med title/body/url.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+  const title = payload.title || "Mitt dashboard";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: payload.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      // Fast tag: en ny morgenbrief skal ERSTATTE gårsdagens hvis den fortsatt
+      // ligger ulest, ikke stable seg opp til en liste med gamle dager.
+      tag: "morgenbrief",
+      data: { url: payload.url || "/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // Fokuser et allerede åpent vindu i stedet for å åpne enda et — på iOS
+      // ville hvert varseltrykk ellers startet PWA-en på nytt.
+      for (const client of clientList) {
+        if ("focus" in client) return client.focus();
+      }
+      return self.clients.openWindow(target);
+    }),
   );
 });
 
