@@ -216,6 +216,7 @@ export function CardHeader({
   iconColorClass = "text-ink-3",
   alwaysShowSubtitle = false,
   extraAction,
+  stat,
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -234,8 +235,14 @@ export function CardHeader({
   // Dagbok sitt innstillingshjul). Valgfri, ingen effekt på eksisterende
   // bruksseder som ikke setter den.
   extraAction?: { icon: React.ComponentType<{ className?: string }>; onClick: () => void; label: string };
+  // Kortets nøkkeltall, vist stort og tynt i seksjonens farge med en
+  // bitteliten sperret etikett under. Hele hierarkiet i kortet ligger i den
+  // kontrasten. Erstatter `subtitle`-plassen når den er satt, og skjules når
+  // kortet er kollapset (samme regel som subtitle).
+  stat?: { value: React.ReactNode; label: string };
 }) {
-  const showSubtitle = subtitle && (alwaysShowSubtitle || !collapsed);
+  const showStat = stat && !collapsed;
+  const showSubtitle = subtitle && !showStat && (alwaysShowSubtitle || !collapsed);
   // Avledet fra iconColorClass ("text-X" -> "bg-X/10") — gir ikonet en rund
   // fargechip-bakgrunn i samme aksentfarge i stedet for å flyte fritt, uten at
   // hvert kall-sted må sette to separate farge-props som uansett alltid skal
@@ -252,7 +259,21 @@ export function CardHeader({
         )}
         <h3 className="truncate text-sm font-semibold text-ink-1">{title}</h3>
       </div>
-      <div className="flex shrink-0 items-baseline gap-2">
+      {/* ml-auto: uten den havner denne midt i overskriften. Headeren er en
+          flex med justify-between og TRE barn (tittel, denne, handlingsknapper),
+          så midterste barn presses til midten i stedet for å legge seg inntil
+          knappene til høyre. */}
+      <div className={`ml-auto flex shrink-0 gap-2 ${showStat ? "items-center" : "items-baseline"}`}>
+        {showStat && (
+          <span className="text-right leading-none">
+            <span className={`block text-[27px] font-light leading-[0.85] tracking-[-0.05em] tabular-nums ${iconColorClass}`}>
+              {stat.value}
+            </span>
+            <span className="mt-1.5 block text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+              {stat.label}
+            </span>
+          </span>
+        )}
         {showSubtitle && <span className="text-xs tabular-nums text-ink-3">{subtitle}</span>}
         {onToggleCollapse && (
           <svg

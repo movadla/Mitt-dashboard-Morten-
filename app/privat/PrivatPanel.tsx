@@ -40,6 +40,11 @@ import {
 } from "lucide-react";
 
 const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
+
+// Ligger bak "Mer"-flisen nederst til høyre i mobil-rutenettet, slik at det
+// normalt er tre rader og ikke fire. Valgt fordi disse tre brukes sjeldnest —
+// ikke fordi de er mindre viktige.
+const SECONDARY_NAV_IDS = ["events", "alfred", "finance"];
 const DEFAULT_NAV_ORDER = [
   "today",
   "reminders",
@@ -75,7 +80,9 @@ export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; ic
   trening: { label: "Trening", icon: Dumbbell, iconColorClass: "text-emerald-400" },
   alfred: { label: "Alfred", icon: Bot, iconColorClass: "text-status-action" },
   shopping: { label: "Handleliste", icon: ShoppingCart, iconColorClass: "text-cyan-400" },
-  news: { label: "Nyheter", icon: Newspaper, iconColorClass: "text-white" },
+  // text-ink-1, ikke text-white: i dagmodus er kortene hvite, og et hvitt
+  // ikon på hvitt kort er usynlig. ink-1 følger temaet.
+  news: { label: "Nyheter", icon: Newspaper, iconColorClass: "text-ink-1" },
   fpl: { label: "FPL", icon: Shirt, iconColorClass: "text-lime-400" },
 };
 
@@ -245,6 +252,7 @@ export default function PrivatPanel() {
           ariaLabel="Privat-seksjoner"
           reorderMode={reorderMode}
           onReorder={setOrder}
+          secondaryIds={SECONDARY_NAV_IDS}
         />
         {/* Dra-håndtak for å endre rekkefølge er kun tilgjengelig på desktop-
             railen — drag-og-slipp av en horisontalt skrollet mobil-stripe
@@ -258,7 +266,20 @@ export default function PrivatPanel() {
           {reorderMode ? "Lagre" : "Endre rekkefølge"}
         </button>
       </div>
-      <div key={activeId} ref={paneRef} tabIndex={-1} className="tab-fade min-w-0 flex-1 outline-none">
+      {/* Seksjonene er hele tiden vært bygget som KORTINNHOLD (hver returnerer
+          en `border-t-2 border-t-X/60 p-4`-div, altså en aksentfarget
+          topplinje ment for en kortkant), men selve kortrammen lå ikke på noe.
+          På mørk bunn var det knapt synlig; i dagmodus ble det løst innhold
+          rett på bakgrunnen. CARD_SHELL her gir seksjonen den hvite,
+          skyggelagte flaten den var tegnet for. `overflow-hidden` kreves for
+          at topplinjen skal følge de avrundede hjørnene i stedet for å stikke
+          ut av dem. */}
+      <div
+        key={activeId}
+        ref={paneRef}
+        tabIndex={-1}
+        className={`${CARD_SHELL} tab-fade min-w-0 flex-1 overflow-hidden outline-none`}
+      >
         <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
       </div>
     </div>

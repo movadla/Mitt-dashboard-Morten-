@@ -4,12 +4,51 @@ Etablerte konvensjoner for dette prosjektet, samlet ett sted slik at nye
 seksjoner starter fra samme grunnlag i stedet for at stilen forhandles
 frem på nytt hver gang.
 
-## Design-tokens (`app/globals.css`)
+## To temaer: kveldsmodus og dagmodus
 
-Mørkt glassdesign, ingen lys/mørk-toggle — appen har bevisst bare én modus.
+Appen har **to** temaer, byttet med sol/måne-knappen øverst til venstre
+(`app/ThemeToggle.tsx`). Valget lagres i localStorage og settes på `<html>`
+som `data-theme` av et **synkront** script i `app/layout.tsx` — det MÅ kjøre
+før første maling, ellers blinker feil tema ved hver oppstart.
+
+- **kveld** (standard): appens opprinnelige mørke glassdesign. Uendret.
+- **dag**: lys "skifer" — tonet bakgrunn med dybde, hvite kort UTEN ramme
+  der skyggen alene gjør separasjonen.
+
+### Hvordan tema-bytting faktisk virker (viktig felle)
+
+`@theme inline` i Tailwind v4 legger **literalverdien** rett inn i hver
+utility-klasse: `--color-surface-1: #202838` gjorde at `bg-surface-1`
+kompilerte til `background-color:#202838`, og da hjelper det ikke å endre
+variabelen senere. Derfor peker hvert farge-token på en `--t-*`-variabel:
+
+```css
+@theme inline { --color-surface-1: var(--t-surface-1); }
+:root            { --t-surface-1: #202838; }   /* kveld */
+html[data-theme="dag"] { --t-surface-1: #ffffff; }
+```
+
+Selektoren er `html[data-theme="dag"]` (0,1,1) og ikke `[data-theme="dag"]`
+(0,1,0) — sistnevnte har nøyaktig samme spesifisitet som `:root`, og da
+hadde kildeordenen avgjort tilfeldig.
+
+**Nye farger må legges inn begge steder.** Det gjelder også rå
+Tailwind-skalaer (`text-emerald-400` o.l.): de brukes over 200 steder i
+appen og er derfor omdirigert til `--t-*` samlet i `@theme inline`, i
+stedet for å bli døpt om enkeltvis. Bruker du et trinn som ikke står i
+lista, blir det lyst på hvitt i dagmodus.
+
+Aldri `text-white` på en kortflate — kortene er hvite i dagmodus. Bruk
+`text-ink-1`.
+
+## Design-tokens (`app/globals.css`)
 
 - **Overflater**: `surface-0` (bakgrunn) → `surface-1` → `surface-2` →
   `surface-3` (lysere for hvert nivå/lag oppå hverandre).
+- **Dybde**: `--elev-1` (navigasjonsfliser) → `--elev-2` (kort) →
+  `--elev-3` (hero). Tre nivåer, ikke ett — det er høydeforskjellen som
+  gjør at rommet føles ekte. På mørk bunn leser skygge dårlig, så der gjør
+  `--elev-edge` (hårtynn lyskant) jobben i stedet.
 - **Tekst**: `ink-1` (mest kontrast) → `ink-2` → `ink-3` → `ink-4` (svakest,
   f.eks. tidsstempler/metadata).
 - **Linjer**: `line`, `line-strong` (border/divider).
@@ -34,6 +73,19 @@ Mørkt glassdesign, ingen lys/mørk-toggle — appen har bevisst bare én modus.
 - **`CARD_SHELL`** — delt klassestreng for kortrammen
   (`rounded-2xl border border-line bg-surface-1 ...` + `.card-shell`
   box-shadow-teknikk i globals.css for det lagvise "glass"-dybdepreget).
+  Ligger på **panelet** i `PrivatPanel.tsx`/`JobbView.tsx`, ikke inni hver
+  seksjon: seksjonene returnerer bare kortINNHOLD (en
+  `border-t-2 border-t-X/60 p-4`-rot, altså en aksentfarget topplinje ment
+  for en kortkant). `overflow-hidden` på panelet kreves for at topplinjen
+  skal følge de avrundede hjørnene.
+- **Datastriper** (`app/privat/DataStrips.tsx`) — `RatioBar`, `DayAxis`,
+  `WeekStrip`, `GroupLabel`. Hvert kort skal kode noe visuelt i tillegg til
+  lista; det er dette som skiller et dashboard fra en liste. Felles mønster:
+  wrapperen får seksjonens `iconColorClass`, og alt inni tegnes med
+  `currentColor` — da kan de ikke gli ut av sync med kortets identitet.
+- **`CardHeader` sin `stat`-prop** — kortets nøkkeltall, stort og tynt
+  (vekt 300, stram sperring) mot en bitteliten sperret etikett. Hierarkiet
+  ligger i den kontrasten. Erstatter `subtitle`-plassen når begge er satt.
 - **`SidebarNav`** (`app/SidebarNav.tsx`) — delt fane-/sidebar-navigasjon
   (desktop-rail + mobil-grid), gjenbrukt av både Privat og Jobb.
 - **`SwipeableRow`, `ConfirmDialog`, `SkeletonRows`** — egne, håndbygde

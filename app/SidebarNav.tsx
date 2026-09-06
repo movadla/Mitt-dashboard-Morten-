@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef } from "react";
-import { GripVertical } from "lucide-react";
+import { useRef, useState } from "react";
+import { GripVertical, MoreHorizontal } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -70,11 +70,12 @@ function NavButton({
       onClick={onSelect}
       onKeyDown={onKeyDown}
       className={`flex w-full min-w-0 items-center rounded-xl font-medium transition ${
-        dense ? "min-h-11 flex-col justify-center gap-1 px-1 py-1.5 text-center text-2xs" : "min-h-11 gap-2 px-3 text-sm"
+        dense ? "min-h-14 flex-col justify-center gap-1 px-1 py-1.5 text-center text-2xs" : "min-h-11 gap-2 px-3 text-sm"
       } ${
-        active
-          ? "bg-accent-privat/15 text-accent-privat ring-1 ring-accent-privat/40"
-          : "text-ink-3 hover:bg-surface-2/60 hover:text-ink-1"
+        // .nav-tile / .nav-tile-active (globals.css): halvgjennomsiktig glass
+        // som slipper bakgrunnsgradienten gjennom, slik at navigasjonen trer
+        // tilbake og bare den valgte flisen er en tett, opplyst flate.
+        active ? "nav-tile-active font-semibold text-accent-privat" : "nav-tile text-ink-3 hover:text-ink-1"
       }`}
     >
       <span
@@ -156,6 +157,7 @@ export function SidebarNav({
   ariaLabel,
   reorderMode = false,
   onReorder,
+  secondaryIds,
 }: {
   items: NavItem[];
   activeId: string;
@@ -163,17 +165,35 @@ export function SidebarNav({
   ariaLabel: string;
   reorderMode?: boolean;
   onReorder?: (order: string[]) => void;
+  // Seksjoner som skal ligge bak "Mer"-flisen nederst til høyre på mobil, i
+  // stedet for å ta plass i det faste rutenettet. Kun mobil — desktop-railen
+  // har vertikal plass til alle og viser dem alltid.
+  secondaryIds?: string[];
 }) {
   const railRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const stripRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const [showSecondary, setShowSecondary] = useState(false);
+
+  const secondarySet = new Set(secondaryIds ?? []);
+  const primaryItems = items.filter((i) => !secondarySet.has(i.id));
+  const secondaryItems = items.filter((i) => secondarySet.has(i.id));
+  const hasSecondary = secondaryItems.length > 0;
+  // Er en skjult seksjon valgt (f.eks. via søk eller en hopp-lenke), må raden
+  // åpnes — ellers står den aktive fanen usynlig og navigasjonen ser ut til å
+  // ikke ha noen markering i det hele tatt.
+  const activeInSecondary = secondarySet.has(activeId);
+  const secondaryOpen = showSecondary || activeInSecondary;
+  // Piltast-navigasjon på mobil skal bare treffe fliser som faktisk er synlige.
+  const stripItems = secondaryOpen ? [...primaryItems, ...secondaryItems] : primaryItems;
 
   // Piltast-navigasjon velger elementet umiddelbart (samme "automatic
   // activation"-mønster som ARIA-tabs anbefaler), men skal IKKE flytte fokus
   // inn i panelet slik et klikk gjør — det ville revet fokus bort fra
   // tablisten etter første piltrykk og gjort det umulig å fortsette å bla.
-  function moveFocus(refs: Record<string, HTMLButtonElement | null>, delta: number) {
-    const ids = items.map((i) => i.id);
+  function moveFocus(refs: Record<string, HTMLButtonElement | null>, delta: number, list: NavItem[] = items) {
+    const ids = list.map((i) => i.id);
+    if (ids.length === 0) return;
     const currentIndex = ids.indexOf(activeId);
     const nextIndex = (currentIndex + delta + ids.length) % ids.length;
     const nextId = ids[nextIndex];
@@ -203,10 +223,10 @@ export function SidebarNav({
   function handleStripKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowRight") {
       e.preventDefault();
-      moveFocus(stripRefs.current, 1);
+      moveFocus(stripRefs.current, 1, stripItems);
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
-      moveFocus(stripRefs.current, -1);
+      moveFocus(stripRefs.current, -1, stripItems);
     }
   }
 
@@ -266,16 +286,18 @@ export function SidebarNav({
 
       {/* Mobil: ekte grid (like brede kolonner) i stedet for flex-wrap — chips
           med tekst-bred bredde ga urolige, uinnrettede rader. 4 kolonner med
-          "dense" ikon-over-tekst-knapper for å få flere kategorier synlige
-          per skjerm. Fast rekkefølge (samme som railen sist lagret), ingen
-          dra — se komponent-kommentaren over. */}
+          "dense" ikon-over-tekst-knapper. Fast rekkefølge (samme som railen
+          sist lagret), ingen dra — se komponent-kommentaren over.
+
+          De tre sjeldnest brukte seksjonene ligger bak "Mer"-flisen nederst
+          til høyre, slik at rutenettet normalt er tre rader og ikke fire. */}
       <nav
         role="tablist"
         aria-label={ariaLabel}
         aria-orientation="horizontal"
         className="grid grid-cols-4 gap-1.5 md:hidden"
       >
-        {items.map((item) => {
+        {primaryItems.map((item) => {
           const active = item.id === activeId;
           return (
             <NavButton
@@ -292,6 +314,44 @@ export function SidebarNav({
             />
           );
         })}
+
+        {hasSecondary && (
+          // Ikke role="tab": dette velger ingen seksjon, den bare viser flere
+          // fliser. En tab uten tilhørende panel ville løyet til skjermlesere.
+          <button
+            type="button"
+            onClick={() => setShowSecondary((v) => !v)}
+            aria-expanded={secondaryOpen}
+            aria-label={secondaryOpen ? "Skjul flere seksjoner" : "Vis flere seksjoner"}
+            className={`flex min-h-14 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center text-2xs font-medium transition ${
+              secondaryOpen ? "nav-tile-active text-accent-privat" : "nav-tile text-ink-3 hover:text-ink-1"
+            }`}
+          >
+            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-3/10">
+              <MoreHorizontal className="h-3 w-3 text-ink-3" />
+            </span>
+            <span className="w-full truncate leading-tight">Mer</span>
+          </button>
+        )}
+
+        {secondaryOpen &&
+          secondaryItems.map((item) => {
+            const active = item.id === activeId;
+            return (
+              <NavButton
+                key={item.id}
+                item={item}
+                active={active}
+                tabIndex={active ? 0 : -1}
+                onSelect={() => onSelect(item.id)}
+                onKeyDown={handleStripKeyDown}
+                buttonRef={(el) => {
+                  stripRefs.current[item.id] = el;
+                }}
+                dense
+              />
+            );
+          })}
       </nav>
     </>
   );

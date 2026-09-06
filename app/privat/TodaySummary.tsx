@@ -660,6 +660,33 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
 
   const slideClass = slideDirection === "forward" ? "day-slide-in-right" : slideDirection === "backward" ? "day-slide-in-left" : "";
 
+  // ── Hero: dagens ene mettede felt ──
+  // Bevisst bare tre opplysninger: hvor mye som står igjen, hvor langt du er
+  // kommet, og hva som er neste holdepunkt. Alt annet finnes i listene under —
+  // en hero som gjentar hele dagen er ikke en hero, den er en ekstra liste.
+  const heroCompleted = reminders.filter((r) => r.done && (r.completedAt ?? "").slice(0, 10) === realToday).length;
+  const heroRemaining = reminderRows.length;
+  const heroTotal = heroRemaining + heroCompleted;
+  const heroNextEvent = eventsOnViewed.filter((e) => e.startTime).sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""))[0] ?? null;
+  // Mange kalendertitler har klokkeslettet i selve tittelen ("Reunion 3A -
+  // Fly 11:30"). Å legge på startTime igjen ga "... 11:30 11:30".
+  const heroNextLabel = heroNextEvent
+    ? heroNextEvent.title.includes(heroNextEvent.startTime ?? " ")
+      ? heroNextEvent.title
+      : `${heroNextEvent.title} ${heroNextEvent.startTime}`
+    : null;
+  const heroParts = [
+    heroNextLabel,
+    overdueReal.length > 0
+      ? overdueReal.length === 1
+        ? "én påminnelse er forfalt"
+        : `${overdueReal.length} påminnelser er forfalt`
+      : null,
+  ].filter(Boolean);
+  // Omkretsen av sirkelen i ringen under (r=18): 2·π·18 ≈ 113.
+  const HERO_RING_LENGTH = 113;
+  const heroRingOffset = heroTotal > 0 ? HERO_RING_LENGTH * (1 - heroCompleted / heroTotal) : HERO_RING_LENGTH;
+
   return (
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -716,6 +743,54 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
           </div>
         )}
       </div>
+
+      {isToday && !loading && (
+        <section className="hero-card card-rise relative mb-3 flex items-center gap-4 overflow-hidden rounded-[22px] p-5">
+          <span
+            className="pointer-events-none absolute -right-8 -top-9 h-32 w-32 rounded-full"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,.3), transparent 68%)" }}
+            aria-hidden
+          />
+          <div className="relative min-w-0 flex-1">
+            <p className="mb-2.5 text-[9px] font-bold uppercase tracking-[0.13em] opacity-80">Gjenstår i dag</p>
+            {/* Tynn vekt og stram sperring: det er dette som skiller en
+                raffinert tallsetting fra en som bare er stor og fet. */}
+            <p className="text-[54px] font-light leading-[0.82] tracking-[-0.055em] tabular-nums">
+              {heroRemaining}
+              <span className="ml-2.5 text-[13px] font-medium tracking-normal opacity-85">ting igjen</span>
+            </p>
+            <p className="mt-3 text-xs leading-snug opacity-90">
+              {heroParts.length > 0 ? heroParts.join(" · ") : "Ingenting står igjen i dag."}
+            </p>
+          </div>
+          {heroTotal > 0 && (
+            <svg
+              viewBox="0 0 44 44"
+              className="relative h-[68px] w-[68px] shrink-0"
+              role="img"
+              aria-label={`${heroCompleted} av ${heroTotal} fullført`}
+            >
+              <circle cx="22" cy="22" r="18" fill="none" strokeWidth="4" stroke="rgba(255,255,255,.22)" className="origin-center -rotate-90" />
+              <circle
+                cx="22"
+                cy="22"
+                r="18"
+                fill="none"
+                strokeWidth="4"
+                stroke="#fff"
+                strokeLinecap="round"
+                strokeDasharray={HERO_RING_LENGTH}
+                strokeDashoffset={heroRingOffset}
+                className="ring-draw origin-center -rotate-90"
+                style={{ ["--ring-len" as string]: `${HERO_RING_LENGTH}` }}
+              />
+              <text x="22" y="26.5" textAnchor="middle" fill="#fff" className="text-[11px] font-light tracking-tight">
+                {heroCompleted}/{heroTotal}
+              </text>
+            </svg>
+          )}
+        </section>
+      )}
 
       {weather && weatherInfoOpen && isToday && <WeatherInfo weather={weather} nowHour={nowHour} />}
 

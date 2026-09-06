@@ -168,7 +168,7 @@ export default function TeamPitch({ managerId, accent }: { managerId?: number; a
   if (!data || data.error || !data.players?.length) {
     return (
       <div className="flex items-center justify-center h-20">
-        <p className="text-[10px] text-white/25">Ingen lagdata tilgjengelig</p>
+        <p className="text-[10px] text-[color:var(--ds-faint)]">Ingen lagdata tilgjengelig</p>
       </div>
     );
   }

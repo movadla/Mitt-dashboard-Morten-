@@ -179,7 +179,7 @@ function BokoNotes() {
                   value={editDraft}
                   onChange={(e) => setEditDraft(e.target.value)}
                   rows={2}
-                  className="rounded-md px-2 py-1.5 text-[12px] text-white/85 outline-none"
+                  className="rounded-md px-2 py-1.5 text-[12px] text-[color:var(--ds-ink)] outline-none"
                   style={{ background: "rgba(255,255,255,0.06)" }}
                 />
                 <div className="flex items-center gap-2">
@@ -212,7 +212,7 @@ function BokoNotes() {
                   }}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <p className="whitespace-pre-line text-[12px] text-white/85">{note.text}</p>
+                  <p className="whitespace-pre-line text-[12px] text-[color:var(--ds-ink)]">{note.text}</p>
                   <p className="mt-0.5 text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
                     {formatDateTime(note.updatedAt ?? note.createdAt)}
                     {note.updatedAt ? " (redigert)" : ""}
@@ -240,7 +240,7 @@ function BokoNotes() {
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             placeholder="Skriv notat..."
-            className="rounded-md px-2 py-1.5 text-[12px] text-white/85 placeholder-white/30 outline-none"
+            className="rounded-md px-2 py-1.5 text-[12px] text-[color:var(--ds-ink)] placeholder-[color:var(--ds-muted)] outline-none"
             style={{ background: "rgba(255,255,255,0.06)" }}
           />
           <div className="flex items-center gap-2">
@@ -554,7 +554,7 @@ function LeaguesPanel({
                 aria-expanded={isExpanded}
                 className="w-full flex items-center px-3 py-2 text-left">
                 <div className="flex-1 min-w-0 pr-2">
-                  <p className="text-[11px] text-white/65 truncate leading-tight">{league.name}</p>
+                  <p className="text-[11px] text-[color:var(--ds-ink-2)] truncate leading-tight">{league.name}</p>
                 </div>
                 <div className="w-16 flex items-center justify-end gap-1 shrink-0">
                   {delta && (
@@ -667,7 +667,7 @@ function TeamPanel({
         )}
         <div className="absolute inset-0 pointer-events-none" style={{ background: th.glow }} />
         <div className="relative">
-          <p className="font-display text-[15px] font-bold text-white leading-tight truncate mb-3"
+          <p className="font-display text-[15px] font-bold text-[color:var(--ds-ink)] leading-tight truncate mb-3"
             style={{ letterSpacing: "-0.01em" }}>
             {team?.teamName ?? "—"}
           </p>

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
+import { RatioBar } from "./DataStrips";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -836,6 +837,13 @@ export default function RemindersSection({
     .filter((r) => r.done && r.completedAt)
     .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
 
+  // Dagens andel fullført, vist som stripe over lista. Nevneren er alt som
+  // sto på dagens plan: det som fortsatt gjenstår PLUSS det som allerede er
+  // huket av i dag. Påminnelser fullført tidligere dager teller ikke med —
+  // ellers ville stripa vokst i det uendelige og aldri blitt full.
+  const completedTodayCount = reminders.filter((r) => r.done && (r.completedAt ?? "").slice(0, 10) === today).length;
+  const totalToday = todays.length + completedTodayCount;
+
   function openAddForm() {
     setDueDate(localDateString());
     setDueTime("");
@@ -946,6 +954,20 @@ export default function RemindersSection({
                   Legg til
                 </button>
               </div>
+            </div>
+          )}
+
+          {!loading && totalToday > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+                {completedTodayCount} av {totalToday} fullført i dag
+              </p>
+              <RatioBar
+                done={completedTodayCount}
+                total={totalToday}
+                colorClass="text-accent-privat"
+                label={`${completedTodayCount} av ${totalToday} påminnelser fullført i dag`}
+              />
             </div>
           )}
 

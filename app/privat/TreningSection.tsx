@@ -16,7 +16,8 @@ import type { Exercise, ExerciseCategory } from "@/lib/exercises";
 import type { SetIntensity, SetLog, WorkoutEntry, WorkoutSession } from "@/lib/workouts";
 import type { Routine } from "@/lib/routines";
 import { vibrate } from "@/lib/haptics";
-import { localDateString, toOsloDateString } from "@/lib/payday";
+import { addDaysIso, localDateString, toOsloDateString, weekRangeContaining } from "@/lib/payday";
+import { WeekStrip } from "./DataStrips";
 import { Activity, ChevronLeft, ChevronRight, Dumbbell, GripVertical, Pencil, X } from "lucide-react";
 import SwipeableRow from "./SwipeableRow";
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
@@ -1656,6 +1657,16 @@ export default function TreningSection() {
     sessionsByDate.set(date, list);
   }
   const selectedDateSessions = selectedCalendarDate ? (sessionsByDate.get(selectedCalendarDate) ?? []) : [];
+  // Ukesstripa over lista: mandag til søndag i inneværende uke, med dagens dag
+  // markert. Bevisst binær (trent / ikke trent) og ikke høydekodet — antall
+  // øvelser sier lite om hvor hard økten var, så en søylehøyde ville vært en
+  // påstand dataen ikke dekker.
+  const treningToday = localDateString();
+  const { start: weekStart } = weekRangeContaining(treningToday);
+  const weekDayIsos = Array.from({ length: 7 }, (_, i) => addDaysIso(weekStart, i));
+  const weekActiveDays = weekDayIsos.map((d) => sessionsByDate.has(d));
+  const weekTodayIndex = weekDayIsos.indexOf(treningToday);
+  const weekSessionCount = weekActiveDays.filter(Boolean).length;
   const elapsed = useElapsed(activeSession?.startedAt);
   const restTimer = useRestTimer();
   // Sannsynligvis glemt å avslutte økten hvis den har vart urimelig lenge —
@@ -2186,12 +2197,25 @@ export default function TreningSection() {
     <div className="border-t-2 border-t-emerald-400/60 p-4">
       <CardHeader
         title="Trening"
-        subtitle={activeSession ? formatElapsed(elapsed) : pastSessions.length > 0 ? `${pastSessions.length} økter` : "Ingen økter"}
+        // Nøkkeltallet er økter denne uka, ikke totalt gjennom alle tider —
+        // det er tallet som faktisk sier noe om hvordan det går nå. Under en
+        // aktiv økt viker det for stoppeklokka.
+        stat={activeSession ? undefined : { value: weekSessionCount, label: "økter i uka" }}
+        subtitle={activeSession ? formatElapsed(elapsed) : undefined}
+        alwaysShowSubtitle={!!activeSession}
         icon={Dumbbell}
         iconColorClass="text-emerald-400"
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
+          {!loading && (
+            <WeekStrip
+              activeDays={weekActiveDays}
+              todayIndex={weekTodayIndex === -1 ? null : weekTodayIndex}
+              colorClass="text-emerald-400"
+              label={`${weekSessionCount} treningsøkter denne uken`}
+            />
+          )}
           {loading ? (
             <SkeletonRows count={2} />
           ) : (

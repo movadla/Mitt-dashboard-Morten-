@@ -4,6 +4,7 @@ import "./globals.css";
 import ServiceWorkerRegister from "./ServiceWorkerRegister";
 import OfflineBanner from "./OfflineBanner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { THEME_BG, THEME_INIT_SCRIPT } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +36,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#12161e",
+  // Startverdien er kveldsmodus (standardtemaet). Temascriptet under
+  // overskriver <meta name="theme-color"> synkront hvis dagmodus er lagret,
+  // og ThemeToggle holder den i sync ved bytte.
+  themeColor: THEME_BG.kveld,
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -48,15 +52,23 @@ export default function RootLayout({
 }>) {
   return (
     // Bakgrunnsfargen settes inline på <html> (ikke bare via globals.css sin
-    // body-regel) slik at skjermen er mørk fra aller første maling — også i
-    // det korte vinduet før stilarket er brukt, og på PWA-oppstart fra
+    // body-regel) slik at skjermen har riktig farge fra aller første maling —
+    // også i det korte vinduet før stilarket er brukt, og på PWA-oppstart fra
     // hjem-skjermen. Uten dette blinket det hvitt før appen kom opp.
+    // Verdien her er kveldsmodus; temascriptet nedenfor bytter den synkront
+    // til dagmodus-bunnen hvis det er det som er lagret.
     <html
       lang="nb"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      style={{ backgroundColor: "#12161e" }}
+      style={{ backgroundColor: THEME_BG.kveld }}
     >
       <body className="min-h-full">
+        {/* MÅ stå som aller første element i <body> og være et vanlig inline
+            <script> (ikke next/script): det kjøres synkront mens HTML-en
+            parses, altså før noe av innholdet under males. Et tema lest i en
+            useEffect ville gitt et synlig blink av feil tema ved hver
+            oppstart. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <OfflineBanner />
         <ServiceWorkerRegister />
         <TooltipProvider delay={300}>{children}</TooltipProvider>

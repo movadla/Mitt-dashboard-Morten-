@@ -58,7 +58,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, SuggestionList, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
+import { CARD_SHELL, CardErrorBoundary, CardHeader, ConfirmDialog, MutationError, SuggestionList, useConfirmDelete, useMutationError, usePersistedOrder } from "./CardShell";
 import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import type { JobbTaskState } from "@/lib/jobbTaskState";
@@ -3420,7 +3420,16 @@ export default function JobbView({
           {reorderMode ? "Lagre" : "Endre rekkefølge"}
         </button>
       </div>
-      <div key={activeId} ref={paneRef} tabIndex={-1} className="tab-fade min-w-0 flex-1 outline-none">
+      {/* Samme kortramme som Privat-panelet — se kommentaren i
+          app/privat/PrivatPanel.tsx. Seksjonene her er bygget likt (en
+          `border-t-2 border-t-X/60 p-4`-rot ment for en kortkant), og uten
+          rammen ligger de løst på bakgrunnen i dagmodus. */}
+      <div
+        key={activeId}
+        ref={paneRef}
+        tabIndex={-1}
+        className={`${CARD_SHELL} tab-fade min-w-0 flex-1 overflow-hidden outline-none`}
+      >
         <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
       </div>
     </div>

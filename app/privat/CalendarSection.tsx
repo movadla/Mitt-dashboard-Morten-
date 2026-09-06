@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
+import { DayAxis } from "./DataStrips";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
@@ -253,6 +254,19 @@ export default function CalendarSection({
   const [showRecentlyPast, setShowRecentlyPast] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  // "Nå"-streken på døgnaksen. Klokkeslettet leses i en effekt og ikke under
+  // render — `new Date()` i render er urent og feiler React Compiler. Ticker
+  // hvert minutt, så streken flytter seg mens kortet står åpent.
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
+  useEffect(() => {
+    function tick() {
+      const d = new Date();
+      setNowMinutes(d.getHours() * 60 + d.getMinutes());
+    }
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   function setRowRef(id: string, el: HTMLLIElement | null) {
     if (el) rowRefs.current.set(id, el);
@@ -382,6 +396,13 @@ export default function CalendarSection({
     .filter((e) => e.date < today && e.date >= addDaysIso(today, -14))
     .sort((a, b) => b.date.localeCompare(a.date) || (b.startTime ?? "").localeCompare(a.startTime ?? ""));
 
+  // Døgnaksen over lista. `startTime` er et VALGFRITT felt på en
+  // kalenderhendelse, så heldagshendelser har ingen posisjon å tegne på —
+  // de telles opp separat i stedet for å bli gjettet inn på aksen.
+  const todaysEvents = events.filter((e) => e.date === today);
+  const todaysTimes = todaysEvents.map((e) => e.startTime).filter((t): t is string => !!t);
+  const todaysAllDayCount = todaysEvents.length - todaysTimes.length;
+
   // Skroller til og fremhever raden når man hopper hit fra en lenket
   // påminnelse. Hvis raden ligger bak "Fremover"-paginering, bumpes
   // visibleCount først — effekten kjører på nytt (visibleCount er en
@@ -414,6 +435,7 @@ export default function CalendarSection({
     <div className="border-t-2 border-t-source-teams/60 p-4">
       <CardHeader
         title="Kalender"
+        stat={{ value: todaysEvents.length, label: "i dag" }}
         subtitle={thisWeek.length > 0 ? `${thisWeek.length} denne uken` : undefined}
         onAdd={handleAddClick}
         addLabel="Ny kalenderhendelse"
@@ -422,6 +444,21 @@ export default function CalendarSection({
       />
       <div className="flex flex-col gap-2">
         <MutationError message={mutationError.message} />
+        {!loading && todaysEvents.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <DayAxis
+              times={todaysTimes}
+              allDayCount={todaysAllDayCount}
+              nowMinutes={nowMinutes}
+              colorClass="text-source-teams"
+            />
+            {thisWeek.length > 0 && (
+              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+                {thisWeek.length} denne uken
+              </p>
+            )}
+          </div>
+        )}
         {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input

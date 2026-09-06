@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Task } from "@/lib/tasks";
 import ChatWidget from "./ChatWidget";
+import ThemeToggle from "./ThemeToggle";
 import { SkeletonRows } from "./CardShell";
 
 type Mode = "jobb" | "privat";
@@ -101,7 +102,8 @@ export default function Dashboard({
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-[1440px] md:px-8">
         <div className="sticky top-0 z-40 pb-3 pt-[calc(env(safe-area-inset-top)+1.5rem)] sm:pt-[calc(env(safe-area-inset-top)+2.5rem)]">
-          <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <ThemeToggle />
             {mode && <ModeToggle mode={mode} onChange={setMode} />}
           </div>
         </div>

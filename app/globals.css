@@ -13,18 +13,27 @@
   --text-md: 0.9375rem;
   --text-md--line-height: 1.375rem;
 
-  --color-surface-0: #12161e;
-  --color-surface-1: #202838;
-  --color-surface-2: #293244;
-  --color-surface-3: #333d52;
+  /* ─── Tema-indirektion (dagmodus/kveldsmodus) ───────────────────────────
+     `@theme inline` legger LITERALVERDIEN rett inn i hver utility-klasse:
+     med `--color-surface-1: #202838` kompilerte `bg-surface-1` til
+     `background-color:#202838`, og da hjelper det ikke å endre variabelen
+     senere. Derfor peker hvert farge-token nå på en `--t-*`-variabel som
+     defineres i `:root` (kveld) og overstyres i `[data-theme="dag"]` under.
+     Utility-klassen blir da `background-color: var(--t-surface-1)`, som
+     faktisk følger temaet. Samme mønster som shadcn-tokenene lenger nede
+     allerede bruker. Ingen klasse i appen trengte å endres. */
+  --color-surface-0: var(--t-surface-0);
+  --color-surface-1: var(--t-surface-1);
+  --color-surface-2: var(--t-surface-2);
+  --color-surface-3: var(--t-surface-3);
 
-  --color-ink-1: #f4f6f9;
-  --color-ink-2: #c7cdd9;
-  --color-ink-3: #8b93a3;
-  --color-ink-4: #5b6478;
+  --color-ink-1: var(--t-ink-1);
+  --color-ink-2: var(--t-ink-2);
+  --color-ink-3: var(--t-ink-3);
+  --color-ink-4: var(--t-ink-4);
 
-  --color-line: #313a4c;
-  --color-line-strong: #454f66;
+  --color-line: var(--t-line);
+  --color-line-strong: var(--t-line-strong);
 
   --color-chart-1: var(--color-accent);
 
@@ -32,19 +41,63 @@
      (adjacent-sjekk for kilde-fargene, egen sjekk for status-fargene) mot
      surface-0/surface-1. Kilde-fargene står i fast rekkefølge og gjenbrukes
      aldri som status; status-fargene er reservert og gjenbrukes aldri som
-     kilde-identitet. */
-  --color-accent: #3987e5;
-  --color-status-danger: #d03b3b;
-  --color-status-warning: #c08a0e;
-  --color-status-positive: #0e9e79;
-  --color-source-asana: #eb4a35;
-  --color-source-outlook: #199e70;
-  --color-source-teams: #8b5cf6;
-  --color-status-action: #c25a9e; /* "Din tur"/"Min tur" — egen nyanse, valgt for å ikke kollidere med source-outlook (aqua) som cyan gjorde tidligere */
+     kilde-identitet. Hver har nå en egen valør per tema — de mørke verdiene
+     er lyse nok for mørk bunn, men ville falt gjennom på hvitt kort. */
+  --color-accent: var(--t-accent);
+  --color-status-danger: var(--t-status-danger);
+  --color-status-warning: var(--t-status-warning);
+  --color-status-positive: var(--t-status-positive);
+  --color-source-asana: var(--t-source-asana);
+  --color-source-outlook: var(--t-source-outlook);
+  --color-source-teams: var(--t-source-teams);
+  --color-status-action: var(--t-status-action); /* "Din tur"/"Min tur" — egen nyanse, valgt for å ikke kollidere med source-outlook (aqua) som cyan gjorde tidligere */
 
   /* Privat-fanens egen aksent (varm, adskilt fra Jobb sin blå --color-accent)
      — en liten fargekode-ledetråd for hvilken fane man er i, uavhengig av toppbryteren. */
-  --color-accent-privat: #f59e0b;
+  --color-accent-privat: var(--t-accent-privat);
+
+  /* ─── Tailwind-palettens egne skalaer, omdirigert til tema ──────────────
+     Seksjonsfargene i NAV_META og en del kort bruker rå Tailwind-farger
+     (`text-emerald-400`, `text-violet-500`, ...) i stedet for app-tokens —
+     til sammen godt over 200 forekomster i 24 filer. I stedet for å døpe om
+     alle omdirigeres selve skalaverdiene her, slik at ETT sted styrer hvor
+     mørke de blir i dagmodus. Kun de trinnene appen faktisk bruker er
+     listet; resten av Tailwind-paletten er urørt. */
+  --color-emerald-200: var(--t-emerald-200);
+  --color-emerald-400: var(--t-emerald-400);
+  --color-emerald-500: var(--t-emerald-500);
+  --color-emerald-600: var(--t-emerald-600);
+  --color-emerald-700: var(--t-emerald-700);
+  --color-rose-400: var(--t-rose-400);
+  --color-rose-500: var(--t-rose-500);
+  --color-violet-200: var(--t-violet-200);
+  --color-violet-300: var(--t-violet-300);
+  --color-violet-400: var(--t-violet-400);
+  --color-violet-500: var(--t-violet-500);
+  --color-amber-200: var(--t-amber-200);
+  --color-amber-300: var(--t-amber-300);
+  --color-amber-400: var(--t-amber-400);
+  --color-amber-500: var(--t-amber-500);
+  --color-sky-300: var(--t-sky-300);
+  --color-sky-400: var(--t-sky-400);
+  --color-cyan-400: var(--t-cyan-400);
+  --color-cyan-500: var(--t-cyan-500);
+  --color-indigo-400: var(--t-indigo-400);
+  --color-lime-400: var(--t-lime-400);
+  --color-teal-400: var(--t-teal-400);
+  --color-orange-300: var(--t-orange-300);
+  --color-orange-400: var(--t-orange-400);
+  --color-red-400: var(--t-red-400);
+  --color-yellow-300: var(--t-yellow-300);
+  --color-yellow-400: var(--t-yellow-400);
+  --color-fuchsia-400: var(--t-fuchsia-400);
+  --color-pink-300: var(--t-pink-300);
+  --color-pink-400: var(--t-pink-400);
+  --color-blue-300: var(--t-blue-300);
+  --color-blue-500: var(--t-blue-500);
+  --color-slate-300: var(--t-slate-300);
+  --color-slate-400: var(--t-slate-400);
+  --color-slate-500: var(--t-slate-500);
 
   /* shadcn/ui-tokens — brukes av komponenter fra `npx shadcn add ...`
      (components/ui/*), mappet til de eksisterende --color-*-tokens over i
@@ -77,6 +130,223 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   KVELDSMODUS — appens opprinnelige mørke glassdesign, og fortsatt
+   standard. Verdiene her er nøyaktig de samme som før tema-omleggingen,
+   så et oppsett uten lagret valg (eller med JavaScript av) ser ut som før.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --t-surface-0: #12161e;
+  --t-surface-1: #202838;
+  --t-surface-2: #293244;
+  --t-surface-3: #333d52;
+
+  --t-ink-1: #f4f6f9;
+  --t-ink-2: #c7cdd9;
+  --t-ink-3: #8b93a3;
+  --t-ink-4: #5b6478;
+
+  --t-line: #313a4c;
+  --t-line-strong: #454f66;
+
+  --t-accent: #3987e5;
+  --t-accent-privat: #f59e0b;
+  --t-status-danger: #d03b3b;
+  --t-status-warning: #c08a0e;
+  --t-status-positive: #0e9e79;
+  --t-status-action: #c25a9e;
+  --t-source-asana: #eb4a35;
+  --t-source-outlook: #199e70;
+  --t-source-teams: #8b5cf6;
+
+  /* Tailwind-skalaene på sine ekte verdier — kveldsmodus endrer ingenting. */
+  --t-emerald-200: #a7f3d0;
+  --t-emerald-400: #34d399;
+  --t-emerald-500: #10b981;
+  --t-emerald-600: #059669;
+  --t-emerald-700: #047857;
+  --t-rose-400: #fb7185;
+  --t-rose-500: #f43f5e;
+  --t-violet-200: #ddd6fe;
+  --t-violet-300: #c4b5fd;
+  --t-violet-400: #a78bfa;
+  --t-violet-500: #8b5cf6;
+  --t-amber-200: #fde68a;
+  --t-amber-300: #fcd34d;
+  --t-amber-400: #fbbf24;
+  --t-amber-500: #f59e0b;
+  --t-sky-300: #7dd3fc;
+  --t-sky-400: #38bdf8;
+  --t-cyan-400: #22d3ee;
+  --t-cyan-500: #06b6d4;
+  --t-indigo-400: #818cf8;
+  --t-lime-400: #a3e635;
+  --t-teal-400: #2dd4bf;
+  --t-orange-300: #fdba74;
+  --t-orange-400: #fb923c;
+  --t-red-400: #f87171;
+  --t-yellow-300: #fde047;
+  --t-yellow-400: #facc15;
+  --t-fuchsia-400: #e879f9;
+  --t-pink-300: #f9a8d4;
+  --t-pink-400: #f472b6;
+  --t-blue-300: #93c5fd;
+  --t-blue-500: #3b82f6;
+  --t-slate-300: #cbd5e1;
+  --t-slate-400: #94a3b8;
+  --t-slate-500: #64748b;
+
+  /* ── Dybde og materiale ──
+     Tre nivåer, ikke ett: hero (e3) ligger høyere enn kort (e2), som ligger
+     høyere enn navigasjonsflisene (e1). På mørk bunn leser skygge dårlig,
+     så der gjør en hårtynn lyskant (--elev-edge) jobben i stedet. */
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --elev-2:
+    0 2px 6px rgba(0, 0, 0, 0.45),
+    0 14px 34px -16px rgba(0, 0, 0, 0.7);
+  --elev-2-hover:
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    0 18px 42px -16px rgba(0, 0, 0, 0.78);
+  --elev-3:
+    0 4px 10px rgba(0, 0, 0, 0.5),
+    0 24px 50px -20px rgba(0, 0, 0, 0.8);
+  --elev-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --elev-top-light: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  --card-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 42%);
+  --tile-bg: rgba(255, 255, 255, 0.035);
+  --tile-blur: 14px;
+
+  /* Kornstrukturen legges som ØVERSTE background-lag på body (ikke et eget
+     overlay-element), slik at den ikke kan komme i veien for noen
+     stablingskontekst i appen. */
+  --app-bg:
+    radial-gradient(ellipse 84% 52% at 50% 112%, rgba(57, 135, 229, 0.2), transparent 66%),
+    radial-gradient(ellipse 58% 38% at 6% -8%, rgba(139, 92, 246, 0.11), transparent 62%),
+    linear-gradient(180deg, #0f131b 0%, #12161e 58%, #0d1118 100%);
+
+  /* Farget venstrekant/markør på "i dag"-rader arver denne — settes per
+     seksjon slik at Kalender, Påminnelser og Trening får hver sin. */
+  --section-accent: var(--t-accent-privat);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DAGMODUS — lys "skifer": bakgrunn med dybde, hvite kort UTEN ramme der
+   skyggen alene skiller dem fra bunnen, og seksjonsfarger i mørkere valør
+   så de holder kontrast mot hvitt. Settes med data-theme="dag" på <html>
+   av det synkrone temascriptet i app/layout.tsx.
+
+   Selektoren er `html[data-theme="dag"]` (0,1,1) og ikke bare
+   `[data-theme="dag"]` (0,1,0), som ville hatt NØYAKTIG samme spesifisitet
+   som `:root` — da hadde kildeordenen avgjort, og `:root`-blokken med
+   --ds-*-tokenene lenger nede i filen ville vunnet tilfeldig.
+   ═══════════════════════════════════════════════════════════════════════ */
+html[data-theme="dag"] {
+  --t-surface-0: #dfe5ef;
+  --t-surface-1: #ffffff;
+  --t-surface-2: #e8edf6;
+  --t-surface-3: #dde4ef;
+
+  --t-ink-1: #0b1220;
+  --t-ink-2: #3d4a60;
+  --t-ink-3: #6b7890;
+  --t-ink-4: #98a4b8;
+
+  --t-line: rgba(15, 23, 42, 0.09);
+  --t-line-strong: rgba(15, 23, 42, 0.18);
+
+  --t-accent: #1d4ed8;
+  --t-accent-privat: #b45309;
+  --t-status-danger: #be2f26;
+  --t-status-warning: #a16207;
+  --t-status-positive: #047857;
+  --t-status-action: #a21caf;
+  --t-source-asana: #c2410c;
+  --t-source-outlook: #0f766e;
+  --t-source-teams: #6d28d9;
+
+  /* Samme kulør, lavere lyshet — de lyse trinnene ville forsvunnet på hvitt. */
+  --t-emerald-200: #065f46;
+  --t-emerald-400: #059669;
+  --t-emerald-500: #047857;
+  --t-emerald-600: #047857;
+  --t-emerald-700: #065f46;
+  --t-rose-400: #be123c;
+  --t-rose-500: #9f1239;
+  --t-violet-200: #5b21b6;
+  --t-violet-300: #6d28d9;
+  --t-violet-400: #7c3aed;
+  --t-violet-500: #6d28d9;
+  --t-amber-200: #78350f;
+  --t-amber-300: #92400e;
+  --t-amber-400: #b45309;
+  --t-amber-500: #a16207;
+  --t-sky-300: #075985;
+  --t-sky-400: #0369a1;
+  --t-cyan-400: #0e7490;
+  --t-cyan-500: #155e75;
+  --t-indigo-400: #4338ca;
+  --t-lime-400: #4d7c0f;
+  --t-teal-400: #0f766e;
+  --t-orange-300: #9a3412;
+  --t-orange-400: #c2410c;
+  --t-red-400: #b91c1c;
+  --t-yellow-300: #854d0e;
+  --t-yellow-400: #a16207;
+  --t-fuchsia-400: #a21caf;
+  --t-pink-300: #9d174d;
+  --t-pink-400: #be185d;
+  --t-blue-300: #1e40af;
+  --t-blue-500: #1d4ed8;
+  --t-slate-300: #475569;
+  --t-slate-400: #64748b;
+  --t-slate-500: #64748b;
+
+  --elev-1:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 3px 8px -4px rgba(15, 23, 42, 0.1);
+  --elev-2:
+    0 1px 2px rgba(15, 23, 42, 0.045),
+    0 8px 20px -8px rgba(15, 23, 42, 0.16),
+    0 28px 50px -32px rgba(15, 23, 42, 0.24);
+  --elev-2-hover:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 12px 26px -8px rgba(15, 23, 42, 0.2),
+    0 34px 60px -34px rgba(15, 23, 42, 0.3);
+  --elev-3:
+    0 2px 4px rgba(15, 23, 42, 0.07),
+    0 16px 34px -12px rgba(15, 23, 42, 0.3),
+    0 44px 70px -40px rgba(15, 23, 42, 0.4);
+  /* Ingen ramme i dagmodus — skyggen gjør hele separasjonsjobben. */
+  --elev-edge: 0 0 0 0 transparent;
+  --elev-top-light: inset 0 1px 0 #ffffff;
+
+  --card-sheen: linear-gradient(180deg, #ffffff, #fafbfd);
+  --tile-bg: rgba(255, 255, 255, 0.5);
+
+  --app-bg:
+    radial-gradient(ellipse 66% 44% at 8% -4%, rgba(124, 58, 237, 0.14), transparent 64%),
+    radial-gradient(ellipse 54% 38% at 96% 10%, rgba(13, 148, 136, 0.12), transparent 62%),
+    linear-gradient(177deg, #e9edf5 0%, #d6dde9 55%, #c9d3e3 100%);
+
+  /* De porterte Sport/FPL-komponentene bruker sitt eget --ds-*-sett i stedet
+     for app-tokenene — uten disse ville de blitt værende mørke kort på lys
+     bunn i dagmodus. */
+  --ds-bg: #dfe5ef;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #f1f4f9;
+  --ds-ink: rgba(11, 18, 32, 0.94);
+  --ds-ink-2: rgba(11, 18, 32, 0.66);
+  --ds-muted: rgba(11, 18, 32, 0.46);
+  --ds-faint: rgba(11, 18, 32, 0.22);
+  --ds-hairline: rgba(15, 23, 42, 0.09);
+  --ds-fpl: #047857;
+  --ds-vm: #b91c1c;
+  --ds-trips: #a16207;
+  --ds-sport: #1d4ed8;
+  --ds-wc: #a16207;
+}
+
 html,
 body {
   color: var(--color-ink-2);
@@ -106,13 +376,19 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+/* Fin, avmettet korning som ØVERSTE bakgrunnslag. Nesten usynlig alene, men
+   den tar bort det siste preget av "flat CSS-gradient" og gir bunnen
+   materiale. Samme lag i begge temaer — forskjellen i opplevd styrke kommer
+   av gradienten under. */
+:root {
+  --app-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.045'/%3E%3C/svg%3E");
+}
+
 body {
   min-height: 100vh;
   background-color: var(--color-surface-0);
-  background:
-    radial-gradient(ellipse 1100px 700px at 30% -10%, rgba(57, 135, 229, 0.07), transparent 55%),
-    radial-gradient(ellipse 900px 600px at 90% 110%, rgba(57, 135, 229, 0.035), transparent 60%),
-    linear-gradient(180deg, #171d29 0%, var(--color-surface-0) 100%);
+  background-image: var(--app-grain), var(--app-bg);
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat;
   background-attachment: fixed;
 }
 
@@ -167,10 +443,7 @@ body {
 
 .card {
   background: var(--ds-surface);
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 10px 30px -12px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--elev-2), var(--elev-edge), var(--elev-top-light);
 }
 
 /* Samme lagvis "glass"-skygge-teknikk som .card/.section over (indre høylys +
@@ -178,28 +451,28 @@ body {
    --ds-*-settet, slik at CARD_SHELL (brukt av så godt som alle kort i Jobb/
    Privat) får samme dybde/premium-preg som de portede Sport/FPL-seksjonene. */
 .card-shell {
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
-    0 1px 2px 0 rgba(0, 0, 0, 0.2),
-    0 14px 32px -16px rgba(0, 0, 0, 0.6);
+  background-image: var(--card-sheen);
+  box-shadow: var(--elev-2), var(--elev-edge), var(--elev-top-light);
 }
 .card-shell:hover {
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
-    0 1px 2px 0 rgba(0, 0, 0, 0.25),
-    0 18px 40px -16px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--elev-2-hover), var(--elev-edge), var(--elev-top-light);
+}
+
+/* I dagmodus skal skyggen gjøre HELE separasjonsjobben — en 1px-strek i
+   tillegg er nettopp det som får lyse dashboards til å se ut som bokser.
+   CARD_SHELL sin `border border-line` (og hover-variantene) nulles derfor
+   ut her, men beholdes som gjennomsiktig kant slik at ingenting flytter
+   seg 1px når man bytter tema. */
+html[data-theme="dag"] .card-shell,
+html[data-theme="dag"] .card-shell:hover {
+  border-color: transparent;
 }
 
 .section {
   position: relative;
   border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 40%),
-    var(--ds-surface);
-  box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 18px 44px -18px rgba(0, 0, 0, 0.75);
+  background: var(--card-sheen), var(--ds-surface);
+  box-shadow: var(--elev-2), var(--elev-edge), var(--elev-top-light);
 }
 
 .section::before {
@@ -262,6 +535,82 @@ body {
 }
 .day-slide-in-left {
   animation: day-slide-in-left 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Hero, glassfliser og innkomst — de tre visuelle grepene fra
+   design-gjennomgangen. Se DESIGN.md.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Skjermens ENE mettede felt, bevisst i én fargefamilie (rav inn i dypere
+   korall) i stedet for en tofarget diagonal gradient. Lysglimtet øverst til
+   venstre er det som gjør at flaten leser som belyst og ikke bare fylt. */
+:root {
+  --hero-bg:
+    radial-gradient(ellipse 120% 100% at 20% -40%, rgba(255, 255, 255, 0.2), transparent 58%),
+    linear-gradient(166deg, #e0912a 0%, #c26520 44%, #9c4520 100%);
+}
+html[data-theme="dag"] {
+  --hero-bg:
+    radial-gradient(ellipse 120% 100% at 20% -40%, rgba(255, 255, 255, 0.44), transparent 58%),
+    linear-gradient(166deg, #f2a828 0%, #e0731c 44%, #c44a20 100%);
+}
+
+.hero-card {
+  background: var(--hero-bg);
+  box-shadow: var(--elev-3);
+  color: #fff8f0;
+}
+
+/* Navigasjonen skal tre tilbake, ikke rope like høyt som innholdet:
+   halvgjennomsiktig glass som slipper bakgrunnsgradienten gjennom. */
+.nav-tile {
+  background: var(--tile-bg);
+  box-shadow: var(--elev-1), var(--elev-edge);
+  backdrop-filter: blur(var(--tile-blur, 14px));
+  -webkit-backdrop-filter: blur(var(--tile-blur, 14px));
+}
+.nav-tile-active {
+  background: var(--color-surface-1);
+  box-shadow:
+    var(--elev-2), var(--elev-top-light),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-accent-privat) 34%, transparent),
+    0 8px 22px -10px color-mix(in srgb, var(--color-accent-privat) 60%, transparent);
+}
+
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* `backwards` gjør at elementet holder start-tilstanden gjennom
+   animation-delay — uten den blinker kortet fram i full opasitet først. */
+.card-rise {
+  animation: card-rise 0.5s cubic-bezier(0.22, 0.7, 0.3, 1) backwards;
+}
+
+@keyframes ring-draw {
+  from {
+    stroke-dashoffset: var(--ring-len, 113);
+  }
+}
+.ring-draw {
+  animation: ring-draw 0.9s 0.25s cubic-bezier(0.3, 0.8, 0.3, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-rise,
+  .ring-draw,
+  .tab-fade,
+  .day-slide-in-right,
+  .day-slide-in-left {
+    animation: none;
+  }
 }
 
 @layer base {
