@@ -23,6 +23,30 @@ export interface TenantForecastLine {
   // leietaker-grupperingen (se buildLeietakerMap() i build-tenant-forecast-table.js) - bygg-/
   // leietype-grupperingen bruker linesA/linesB sin egen fordeling, ikke dette feltet.
   gjenstarShare?: number;
+  // Kun på gjenværende linjer i Ledig-rader (v15, 2026-09-06), hentet fra Finance sin egen
+  // månedlige prognoselogg (ledig-finance-juli-2026.json i scripts/refresh-data):
+  //  - ledigVurdering: "nullet" = Finance har tatt hele beløpet ut av prognosen (står ledig ut
+  //    året), "forventet" = fortsatt forventet utleid i år (helt eller delvis).
+  //  - financeEndring: Finance sin akkumulerte justering av linjen (jan-jul), kr/år, negativ =
+  //    nedjustert.
+  //  - financeKommentar: siste ikke-tomme månedskommentar, "mnd: tekst" (privatpersonnavn strippet
+  //    ved bygging).
+  ledigVurdering?: "forventet" | "nullet";
+  financeEndring?: number;
+  financeKommentar?: string;
+  // Budsjettets egen "Kommentar inntekt" (Excel kol. AE) for gjenværende Ledig-linjer - hva Finance
+  // budsjetterte utleid som ikke ble det. Samme tekst som suffikset i `beskrivelse` etter " — ".
+  budsjettKommentar?: string;
+}
+
+// Én post som er trukket ut av en Ledig-rad (v15): en leietaker som har tatt linjen(e) (budsjettet
+// er flyttet til leietakerens egen rad), internleie (flyttet til intern-raden) eller en
+// dobbeltbudsjettert linje som bare er fjernet (leietakeren har allerede egen budsjettrad).
+export interface LedigPost {
+  navn: string;
+  belop: number;
+  type: "leietaker" | "intern" | "usporet";
+  beskrivelse?: string;
 }
 
 export interface TenantForecastKonto {
@@ -59,12 +83,14 @@ export interface TenantForecastRow {
   // UI-en nester slike rader under riktig Ledig-rad i stedet for å vise dem løsrevet, se
   // app/IncomeForecastSection.tsx sin TenantForecastTable/TenantDrilldown/LedigeLokalerBlock.
   flyttetInnI?: string;
-  // Kun satt på Ledig-rader (v8, 2026-08-29): `budsjett` over er GJENSTÅENDE budsjett etter at
-  // bekreftet utleide arealer er trukket fra (gulvet på 0 ved overtrekk) - disse to feltene
-  // bevarer henholdsvis det opprinnelige budsjetterte beløpet og summen som er trukket fra, til
-  // bruk i den dedikerte "Ledige lokaler"-oversikten.
+  // Kun satt på Ledig-rader (v8, 2026-08-29; v15 2026-09-06 for alle Ledig-rader): `budsjett` over
+  // er GJENSTÅENDE budsjett = summen av de Ledig-linjene som ikke er tatt av noen (aldri negativt
+  // siden v15 - det som trekkes ut er eksakte linjeverdier). Disse feltene bevarer det opprinnelige
+  // budsjetterte beløpet, summen som er trukket ut, og hva/hvem den består av, til bruk i den
+  // dedikerte "Ledige lokaler"-oversikten.
   ledigOpprinneligBudsjett?: number;
   ledigTrukketUt?: number;
+  ledigPoster?: LedigPost[];
 }
 
 export interface TenantForecastGrupper {
@@ -103,12 +129,27 @@ function isSystemRow(navn: string): boolean {
   return SYSTEM_ROW_LABELS.has(navn) || navn.startsWith(LEDIG_ROW_PREFIX);
 }
 
+// Ledig-radenes auto-kommentar (settAutoKommentar i build-tenant-forecast-table.js) lister
+// postene ved navn - må bygges på nytt fra de anonymiserte postene i prod, ellers lekker
+// privatpersonnavn via kommentarteksten selv om `ledigPoster` er anonymisert.
+const LEDIG_AUTO_KOMMENTAR_PREFIX = "Utleid/trukket ut fra denne Ledig-raden";
+const nb = (n: number) => n.toLocaleString("nb-NO");
+
 function anonymizeRows(rows: TenantForecastRow[]): TenantForecastRow[] {
-  return rows.map((r) => ({
-    ...r,
-    navn: isSystemRow(r.navn) ? r.navn : anonymizeIfPerson(r.navn),
-    linjer: r.linjer.map((l) => (l.leietaker ? { ...l, leietaker: anonymizeIfPerson(l.leietaker) } : l)),
-  }));
+  return rows.map((r) => {
+    const ledigPoster = r.ledigPoster?.map((p) => (p.type === "leietaker" ? { ...p, navn: anonymizeIfPerson(p.navn) } : p));
+    const kommentar =
+      ledigPoster && r.kommentar?.startsWith(LEDIG_AUTO_KOMMENTAR_PREFIX)
+        ? `${LEDIG_AUTO_KOMMENTAR_PREFIX} (samlet ${nb(r.ledigTrukketUt ?? 0)} kr/år): ${ledigPoster.map((p) => `${p.navn} (${nb(p.belop)} kr)`).join("; ")}.`
+        : r.kommentar;
+    return {
+      ...r,
+      navn: isSystemRow(r.navn) ? r.navn : anonymizeIfPerson(r.navn),
+      linjer: r.linjer.map((l) => (l.leietaker ? { ...l, leietaker: anonymizeIfPerson(l.leietaker) } : l)),
+      ...(ledigPoster ? { ledigPoster } : {}),
+      ...(kommentar !== undefined ? { kommentar } : {}),
+    };
+  });
 }
 
 function anonymizeGrupper(grupper: TenantForecastGrupper): TenantForecastGrupper {
