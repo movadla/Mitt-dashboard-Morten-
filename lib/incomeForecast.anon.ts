@@ -370,12 +370,50 @@ export interface ManualNxtSnapshot {
   vouchers: ManualNxtVoucher[];
 }
 
-// Se lib/incomeForecast.local.ts for full metodikk-kommentar. Leietakernavn i bilagstekst
-// er anonymisert til "Demokunde N" (samme krysskobling som ellers) siden dette er en
-// leietaker-identifiserende tekststreng.
-// RE-VERIFISERT 2026-08-30 - se lib/incomeForecast.local.ts, identisk resultat, ingen endring.
+// OPPDATERT 2026-09-07 (helt ny metodikk - v22-runden fant at forrige metode, generalLedgerTransaction
+// joinet mot customerTransaction via voucherNo, var feil - se REMAINING sin v25-kommentar. Samme feil
+// gjaldt sannsynligvis IKKE denne lista direkte siden forrige runde brukte origin=ManuallyEntered, men
+// den metoden viste seg likevel util utilstrekkelig - se under). Ny, verifisert metode: `accountingTransaction`
+// filtrert på `accountType=3` (GL-siden), `accountNo` 3600-3699, `year=2026`, `voucherType _not_in [10,11]`
+// (10="Overført fra Fazile", 11="Utgående faktura" - Fazile sin normale automatiske fakturaflyt, IKKE
+// manuelle bilag, ekskludert per definisjon). Kjørt for alle 9 selskaper med reell 3600-3699-aktivitet
+// (se INVOICED sin kommentar for hvilke). Fant 110 linjer totalt (93 Mustad Eiendom AS, 9 Lilleaker
+// Sentrum AS, 3 Lilleakerveien 14 AS, 5 Mustadboliger AS, 0 i de øvrige 5), fordelt på voucherType
+// {1="Bank", 2="Sjekk", 12="Utgående kreditnota", 25="Innkjøps faktura", 39="Diverse"} - forekomsten
+// varierer per selskap. VESENTLIGHETSFILTER: kun linjer med |beløp| >= 50 000 kr er tatt med individuelt
+// under (mindre linjer - stort sett små parkeringsavregninger og kredittnotaer et par tusen kroner -
+// er utelatt; de netter til et lite, ikke vesentlig beløp per selskap og er ikke sporet videre). Linjer
+// som tydelig hører til samme bilag (samme voucherJournalNo OG samme bygg/orgUnit3) er slått sammen til
+// én oppføring (bilagsnr med "+" mellom auditNo). Bygg-navn slått opp via orgUnit3(...)-spørring per
+// selskap (orgUnit3-numre er selskaps-scoped, se REMAINING sin kommentar - IKKE antatt globale) og
+// kundenavn via associate(...) - alle nye linjer under er B2B-firmanavn, ingen privatpersoner funnet,
+// så INGEN anonymisering er nødvendig denne runden (i motsetning til de 4 eksisterende
+// "Tilskudd LTP"-linjene, som fortsatt er anonymisert til "Demokunde 40" her, se local.ts for ekte navn).
+// For linjer i et ANNET selskap enn Mustad Eiendom AS (som utgjør de aller fleste, som før) er
+// selskapsnavnet lagt til i parentes i `bygg`-feltet siden ManualNxtVoucher-interfacet ikke har et eget
+// selskapsfelt.
+//
+// FUNN VED VERIFISERING (oppgave fra Morten - sjekk om 2025-avsetningen fortsatt stemmer): bilag 28779-4
+// (-12 141 099 kr, konto 3632) BLE bekreftet og stemmer eksakt (samme voucherJournalNo/auditNo/beløp/
+// dato/konto som før) - bygg er nå oppdatert fra "Ukjent" til "CC Vest Senter" siden ny data viser
+// orgUnit3=16 direkte på raden (ikke synlig i forrige uttrekksmetode). MEN: fant SAMTIDIG to nye,
+// beslektede linjer på samme voucherJournalNo-familie (28799, samme dato 2025-12-31, samme konto 3632,
+// samme bygg CC Vest Senter) som IKKE var med i forrige liste: en reversering av nøyaktig 28779-4 sitt
+// beløp (+12 141 099 kr) og en ny, korrigert avsetning (-11 112 558 kr) - netto for disse to +1 028 541 kr.
+// Summert med 28779-4 gir de tre linjene sammen -11 112 558 kr netto, som stemmer EKSAKT med tallet som
+// allerede er dokumentert i REMAINING og RECONCILIATION ("stort-enkeltbilag"-sjekken) som den reelle,
+// endelige avsetningsreverseringen. Forrige MANUAL_NXT-liste viste altså kun ÉN av de tre linjene i denne
+// korrigeringskjeden (fortsatt korrekt isolert sett, bare ufullstendig) - lagt til de to manglende under.
+//
+// Fem linjer i forrige liste (bilagsnr 29478-6/10/14/3/18, "CC Vest senter/Granfoss Parkering ute/P-Bro
+// Parkering/Garasje") er FJERNET denne runden: verifisert direkte at disse faktisk er voucherType=11
+// ("Utgående faktura" - normal Fazile-fakturaflyt), ikke reelt manuelle bilag. Forrige rundes
+// origin=ManuallyEntered-filter fanget dem trolig opp fordi en Fazile-generert faktura ble
+// manuelt re-trigget/korrigert i NXT uten at voucherType endret seg - men per dagens strengere,
+// verifiserte definisjon (voucherType, ikke origin) hører de ikke hjemme her. De var uansett alle
+// under vesentlighetsgrensen (1 538-15 863 kr) så fjerningen endrer ingen vesentlig konklusjon.
 export const MANUAL_NXT: ManualNxtSnapshot = {
-  sistOppdatert: "2026-08-30",
+  sistOppdatert: "2026-09-07",
   ar: 2026,
   vouchers: [
     {
@@ -383,66 +421,169 @@ export const MANUAL_NXT: ManualNxtSnapshot = {
       dato: "2025-12-31",
       periode: "2026-01",
       konto: "3632",
-      bygg: "Ukjent (ikke spesifisert i bilagstekst)",
+      bygg: "CC Vest Senter",
       del: "A",
       belop: -12141099,
       kategori: "Omsetningsleie-avsetning (justering/reversering)",
       tekst: "Avsetning omsetningsleie 2025 iht vedlegg",
     },
     {
-      bilagsnr: "29478-6",
-      dato: "2026-02-19",
-      periode: "2026-03",
-      konto: "3640",
-      bygg: "CC Vest senter",
-      del: "B",
-      belop: 15863.2,
-      kategori: "Parkering",
-      tekst: "CC Vest senter - Parkering avg.pl. 3 pl",
-    },
-    {
-      bilagsnr: "29478-10",
-      dato: "2026-02-19",
-      periode: "2026-03",
-      konto: "3640",
-      bygg: "Granfoss Parkering ute",
-      del: "B",
-      belop: 1538.4,
-      kategori: "Parkering",
-      tekst: "Granfoss Parkering ute - Parkering avg.pl fri-flyt",
-    },
-    {
-      bilagsnr: "29478-14",
-      dato: "2026-02-19",
-      periode: "2026-03",
-      konto: "3640",
-      bygg: "Granfoss Parkering ute",
-      del: "B",
-      belop: 2167.2,
-      kategori: "Parkering",
-      tekst: "Granfoss Parkering ute - Parkering avg.pl fri-flyt",
-    },
-    {
-      bilagsnr: "29478-3",
-      dato: "2026-02-20",
-      periode: "2026-03",
-      konto: "3601",
-      bygg: "P-Bro",
+      bilagsnr: "28799-4+8",
+      dato: "2025-12-31",
+      periode: "2026-01",
+      konto: "3632",
+      bygg: "CC Vest Senter",
       del: "A",
-      belop: 4140,
-      kategori: "Garasje",
-      tekst: "P-Bro - Garasje avg.pl. 2 pl",
+      belop: 1028541,
+      kategori:
+        "Omsetningsleie-avsetning for 2025 korrigert (reversering av 28779-4 over pluss ny, endelig avsetning) - nettoeffekt av alle tre linjene til sammen er -11 112 558 kr, i tråd med tidligere dokumentert nettobeløp i REMAINING/RECONCILIATION",
+      tekst: "Tbf avsetning omsetningsleie 2025 iht vedlegg (reversering) + Avsetning omsetningsleie 2025 iht vedlegg (ny sats)",
     },
     {
-      bilagsnr: "29478-18",
-      dato: "2026-03-01",
-      periode: "2026-03",
-      konto: "3640",
-      bygg: "Granfoss Parkering ute",
+      bilagsnr: "28516-29",
+      dato: "2026-01-09",
+      periode: "2026-01",
+      konto: "3650",
+      bygg: "Vollsveien 17",
+      del: "A",
+      belop: -103949,
+      kategori: "Basestasjon (leieinntekt fra teleoperatør)",
+      tekst: "Vollsveien 17 - Basestasjon avg.pl.",
+    },
+    {
+      bilagsnr: "28611-11",
+      dato: "2026-01-16",
+      periode: "2026-01",
+      konto: "3630",
+      bygg: "Lilleakerveien 14",
+      del: "A",
+      belop: -1058813,
+      kategori: "Minimumsleie-avregning",
+      tekst: "Lilleakerveien 14 - Minimumsleie avg.pl.",
+    },
+    {
+      bilagsnr: "28612-13",
+      dato: "2026-01-16",
+      periode: "2026-01",
+      konto: "3630",
+      bygg: "CC Vest Senter",
+      del: "A",
+      belop: -4545059,
+      kategori: "Minimumsleie-avregning (omsetningsleie-leietaker)",
+      tekst: "CC Vest senter - Minimumsleie avg.pl.",
+    },
+    {
+      bilagsnr: "28615-3",
+      dato: "2026-01-21",
+      periode: "2026-01",
+      konto: "3641",
+      bygg: "Lilleakerveien 14",
       del: "B",
-      belop: 2167.2,
+      belop: -52577,
       kategori: "Parkering",
-      tekst: "Granfoss Parkering ute - Parkering avg.pl fri-flyt",
+      tekst: "Lilleakerveien 14 - Parkering avg.fritt 20 pl",
+    },
+    {
+      bilagsnr: "28681-40",
+      dato: "2026-01-27",
+      periode: "2026-01",
+      konto: "3630",
+      bygg: "Lilleakerveien 2E",
+      del: "A",
+      belop: -119636,
+      kategori: "Minimumsleie-avregning",
+      tekst: "Lilleakerveien 2E - Minimumsleie avg.pl.",
+    },
+    {
+      bilagsnr: "28684-3",
+      dato: "2026-01-27",
+      periode: "2026-01",
+      konto: "3690",
+      bygg: "Lilleakerveien 2 - Felles",
+      del: "A",
+      belop: -50000,
+      kategori:
+        "Parkering (motpart er Lilleaker Parkering AS, et konsernselskap - fremstår som en internpostering, ikke undersøkt videre)",
+      tekst: "Lilleakerveien 2 - Parkering avg.pl.",
+    },
+    {
+      bilagsnr: "28683-4",
+      dato: "2026-02-01",
+      periode: "2026-02",
+      konto: "3630",
+      bygg: "Lilleakerveien 2E",
+      del: "A",
+      belop: -119636,
+      kategori:
+        "Minimumsleie-avregning (identisk beløp og leietaker som linjen 5 dager før - trolig to separate periodeoppgjør, ikke bekreftet)",
+      tekst: "Lilleakerveien 2E - Minimumsleie avg.pl.",
+    },
+    {
+      bilagsnr: "28978-51+53+55",
+      dato: "2026-02-09",
+      periode: "2026-02",
+      konto: "3600",
+      bygg: "Lilleakerveien 2C",
+      del: "A",
+      belop: -800532,
+      kategori: "Husleie, etterfakturert/korrigert - fordelt på tre plan (5/6/7) i samme bygg, tre posteringer samme dag",
+      tekst: "Lilleakerveien 2C - Husleie avg.pl. Plan 5/6/7",
+    },
+    {
+      bilagsnr: "28898-1",
+      dato: "2026-02-11",
+      periode: "2026-02",
+      konto: "3615",
+      bygg: "Lilleakerveien 2C",
+      del: "A",
+      belop: 2261627,
+      kategori: "Exit fee / oppsigelsesgebyr ved flytting før kontraktsslutt",
+      tekst: "Exit fee ved flytting før utløp kontrakt - Quantafuel AS",
+    },
+    {
+      bilagsnr: "29354-3",
+      dato: "2026-03-26",
+      periode: "2026-03",
+      konto: "3650",
+      bygg: "Vollsveien 13D",
+      del: "A",
+      belop: -68107,
+      kategori: "Kreditnota-reversering, lagerleie",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29355-3",
+      dato: "2026-03-26",
+      periode: "2026-03",
+      konto: "3630",
+      bygg: "Lilleakerveien 18",
+      del: "A",
+      belop: -93282,
+      kategori: "Kreditnota-reversering, husleie (uklar bilagstekst utover 'Utgående kreditnota')",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29356-3+29357-3",
+      dato: "2026-03-26",
+      periode: "2026-03",
+      konto: "3630",
+      bygg: "CC Vest Senter",
+      del: "A",
+      belop: -186564,
+      kategori: "Kreditnota-reversering, husleie (to identiske posteringer samme dag, samme leietaker/bygg)",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29358-3+29359-4+29360-3",
+      dato: "2026-03-26",
+      periode: "2026-03",
+      konto: "3630",
+      bygg: "CC Vest Senter",
+      del: "A",
+      belop: -747453,
+      kategori:
+        "Kreditnota-reversering, husleie - største av flere posteringer samme dag til samme leietaker (se 29354-3/29355-3/29356-3+29357-3 for resten av oppgjøret, samlet -1 095 406 kr til denne leietakeren på tvers av tre bygg)",
+      tekst: "Utgående kreditnota",
     },
     {
       bilagsnr: "19644-15",
@@ -456,6 +597,62 @@ export const MANUAL_NXT: ManualNxtSnapshot = {
       tekst: "Tilskudd LTP CC Vest - Demokunde 40",
     },
     {
+      bilagsnr: "29451-3",
+      dato: "2026-04-08",
+      periode: "2026-04",
+      konto: "3621",
+      bygg: "CC Vest Senter",
+      del: "A",
+      belop: -53805,
+      kategori: "Utgående kreditnota (uklar bilagstekst, ingen ytterligere forklaring tilgjengelig)",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29485-7",
+      dato: "2026-04-13",
+      periode: "2026-04",
+      konto: "3600",
+      bygg: "Lilleakerveien 6D",
+      del: "A",
+      belop: -185986,
+      kategori:
+        "Utgående kreditnota (ser ut til å bli reversert/korrigert av bilag 29548-7 én uke senere - se den linjen, netter til 0 samlet)",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29548-7",
+      dato: "2026-04-20",
+      periode: "2026-04",
+      konto: "3600",
+      bygg: "Lilleakerveien 6D",
+      del: "A",
+      belop: 185986,
+      kategori: "Reversering/korrigering av kreditnota i bilag 29485-7 over (samme kunde/bygg)",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29549-3",
+      dato: "2026-04-20",
+      periode: "2026-04",
+      konto: "3600",
+      bygg: "Lilleakerveien 4A",
+      del: "A",
+      belop: -126000,
+      kategori: "Utgående kreditnota (uklar bilagstekst, ingen ytterligere forklaring tilgjengelig)",
+      tekst: "Utgående kreditnota",
+    },
+    {
+      bilagsnr: "29609-1",
+      dato: "2026-04-29",
+      periode: "2026-04",
+      konto: "3615",
+      bygg: "Lilleakerveien 8",
+      del: "A",
+      belop: 919312.11,
+      kategori: "Sluttoppgjør/termination agreement ved kontraktsslutt",
+      tekst: "Termination agreement Obrascón Huarte Lain (OHLA)",
+    },
+    {
       bilagsnr: "19644-17",
       dato: "2026-06-30",
       periode: "2026-06",
@@ -465,6 +662,30 @@ export const MANUAL_NXT: ManualNxtSnapshot = {
       belop: -107142.86,
       kategori: "Tilskudd til leietaker (LTP)",
       tekst: "Tilskudd LTP CC Vest - Demokunde 40",
+    },
+    {
+      bilagsnr: "15594-5",
+      dato: "2023-06-30",
+      periode: "2026-12",
+      konto: "3652",
+      bygg: "Lilleakerveien 4C",
+      del: "A",
+      belop: -800000,
+      kategori:
+        "Periodisert leierabatt (avtale fra 2023, gjelder 2026) - bokført med historisk bilagsdato 2023-06-30 men landet i regnskapsperiode 2026-12",
+      tekst: "Periodisering leierabatter PGS ny avtale 2026",
+    },
+    {
+      bilagsnr: "30531-3",
+      dato: "2026-08-31",
+      periode: "2026-08",
+      konto: "3601",
+      bygg: "Arnstein Arnebergs vei 4",
+      del: "A",
+      belop: -63851,
+      kategori:
+        "Utgående kreditnota - megleroppgjør for Arnstein Arnebergs vei 4 (eid av Mustadboliger AS), bokført med Mustadboliger AS som kunde - fremstår som en konsernintern postering, se tilsvarende linjer i Mustadboliger AS' egne bøker under",
+      tekst: "Utgående kreditnota - Utleiemegleren AA 2-4 aug-sept",
     },
     {
       bilagsnr: "19644-19",
@@ -487,6 +708,74 @@ export const MANUAL_NXT: ManualNxtSnapshot = {
       belop: -107142.86,
       kategori: "Tilskudd til leietaker (LTP) - forhåndsbokført",
       tekst: "Tilskudd LTP CC Vest - Demokunde 40",
+    },
+    {
+      bilagsnr: "1227-3",
+      dato: "2026-05-05",
+      periode: "2026-05",
+      konto: "3640",
+      bygg: "Lilleakerveien 31 (Lilleaker Sentrum AS)",
+      del: "B",
+      belop: -50765,
+      kategori: "Parkering-kreditnota (dobbeltfakturerte parkeringsplasser)",
+      tekst: "Utgående kreditnota - kredit doble parkeringsplasser",
+    },
+    {
+      bilagsnr: "1097-4",
+      dato: "2026-01-01",
+      periode: "2026-01",
+      konto: "3600",
+      bygg: "Lilleakerveien 31 (Lilleaker Sentrum AS)",
+      del: "A",
+      belop: -69576,
+      kategori:
+        "Kontorleie (nytt leieforhold - bilagsdato 1.1. er trolig systemets standarddato ved kontraktsoppstart, ikke nødvendigvis reell faktureringsdato)",
+      tekst: "Lilleakerveien 31 - Kontorleie avg.pl.",
+    },
+    {
+      bilagsnr: "59-20",
+      dato: "2026-02-16",
+      periode: "2026-02",
+      konto: "3620",
+      bygg: "Lilleakerveien 14 (Lilleakerveien 14 AS)",
+      del: "A",
+      belop: -157457,
+      kategori: "Leie handel (avgiftsfritt)",
+      tekst: "Lilleakerveien 14 - Leie handel avg.fritt",
+    },
+    {
+      bilagsnr: "25-22",
+      dato: "2026-01-27",
+      periode: "2026-01",
+      konto: "3621",
+      bygg: "Lilleakerveien 14 (Lilleakerveien 14 AS)",
+      del: "A",
+      belop: -366693,
+      kategori: "Leie handel (avgiftspliktig)",
+      tekst: "Lilleakerveien 14 - Leie handel avg.pl.",
+    },
+    {
+      bilagsnr: "4682-6",
+      dato: "2026-06-30",
+      periode: "2026-06",
+      konto: "3651",
+      bygg: "Arnstein Arnebergs vei 4 (Mustadboliger AS)",
+      del: "A",
+      belop: 157500,
+      kategori:
+        "Megleroppgjør 'Utleiemegleren AA 2-4' (uklart hvorfor bokført på inntektskonto 3651 - se tilsvarende posteringer i Mustad Eiendom AS' bøker for samme bygg over, bilag 30531-3)",
+      tekst: "Utleiemegleren AA 2-4",
+    },
+    {
+      bilagsnr: "4731-1",
+      dato: "2026-06-30",
+      periode: "2026-07",
+      konto: "3651",
+      bygg: "Arnstein Arnebergs vei 4 (Mustadboliger AS)",
+      del: "A",
+      belop: -70000,
+      kategori: "Megleroppgjør 'Utleiemegleren AA 2-4' (samme uklarhet som linjen over)",
+      tekst: "Utleiemegleren AA 2-4",
     },
   ],
 };
@@ -715,14 +1004,14 @@ export interface ReconciliationSnapshot {
 }
 
 export const RECONCILIATION: ReconciliationSnapshot = {
-  sistOppdatert: "2026-08-24",
+  sistOppdatert: "2026-09-07",
   checks: [
     {
       id: "totalsum-plausibel",
       label: "Total prognose 2026 er i rimelig størrelsesorden",
       status: "ok",
       notat:
-        "Del A ~645,7 mill kr + Del B ~55,8 mill kr = ~701,5 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Del A gikk opp fra ~634,1 mill kr til ~645,7 mill kr 2026-08-25 da konto 3632 (avregning av 2025-omsetningsleien, IKKE en 2026-inntekt - se REMAINING sin kommentar) ble ekskludert fra leietakernes 'allerede fakturert' - løftet gjenstår-siden med 11 596 749,38 kr og forklarer samtidig hvorfor mange CC Vest-leietakere tidligere viste negativ gjenstår. Før det gikk Del B opp fra ~51,0 mill kr til ~55,8 mill kr 2026-08-25 da Onepark-parkeringsestimatet (4 834 585,44 kr, årsestimat fra Inntektsprognose-arket minus allerede fakturert) ble lagt til. Før det igjen gikk totalen ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen.",
+        "Del A ~645,7 mill kr + Del B ~55,8 mill kr = ~701,5 mill kr totalt for 2026 (fakturert hittil + gjenstående + manuelle bilag). Del A gikk opp fra ~634,1 mill kr til ~645,7 mill kr 2026-08-25 da konto 3632 (avregning av 2025-omsetningsleien, IKKE en 2026-inntekt - se REMAINING sin kommentar) ble ekskludert fra leietakernes 'allerede fakturert' - løftet gjenstår-siden med 11 596 749,38 kr og forklarer samtidig hvorfor mange CC Vest-leietakere tidligere viste negativ gjenstår. Før det gikk Del B opp fra ~51,0 mill kr til ~55,8 mill kr 2026-08-25 da Onepark-parkeringsestimatet (4 834 585,44 kr, årsestimat fra Inntektsprognose-arket minus allerede fakturert) ble lagt til. Før det igjen gikk totalen ned fra ~686,6 mill kr etter en videre gjennomgang av de 120 flaggede leieforholdene 2026-08-24 (kjerne-navn-fallback utvidet til å bytte bindestrek/punktum med mellomrom i stedet for å fjerne dem - løste 3 til), fra ~713,7 mill kr etter en dypere gjennomgang av leieforhold-matchingen (bygg-navn-alias, kjerne-navn-fallback, Del A/B-nettingsfiks - se 'leieforhold-avvik-forklart'-sjekken), fra ~813,7 mill kr da metodikken ble lagt om til leieforhold-nivå, og fra ~844,4 mill kr før eierandel-korreksjonen. OPPDATERT 2026-09-07 etter dagens NXT-kobling-fiks (v21-v25, se REMAINING sin metodikk-kommentar) og Fazile-flerpunkts-refresh (v23-v24): Del A (bokført BOOKED_3600_3699 + gjenstår REMAINING) ~660,9 mill kr + Del B ~57,4 mill kr = ~718,3 mill kr totalt for 2026, opp fra ~701,5 mill kr sist dokumentert 2026-08-25. Økningen skyldes flere uavhengige, allerede dokumenterte oppdateringer siden da - ikke én enkelt endring - blant annet at BOOKED_3600_3699/INVOICED ble hentet på nytt med eksplisitt periode<=9-filter, at REMAINING sitt Fazile-uttrekk ble gjort flerpunkts/mer komplett (v23-v24), og at NXT-koblingsmetoden for leietakeres 'allerede fakturert' ble rettet fra en feilaktig voucherNo-join til en direkte accountingTransaction-kobling (v25) - se REMAINING sin egen kommentar for detaljene. Beløpet over er bokført+gjenstår alene (samme metodikk som tidligere for kontinuitet), IKKE inkludert de separate 'mine manuelle linjer' fra Tillegg-fanen (exit fee/konkursrisiko, se 'avvik-juli-2026-kryssjekk'-sjekken) eller MANUAL_NXT-lista (som per lib/incomeForecastCompute.ts sin computeForecastRollup IKKE lenger summeres inn i totalen - kun bokført+gjenstår teller, se manueltNxtHittil-kommentaren der).",
     },
     {
       id: "avvik-juli-2026-kryssjekk",
@@ -754,10 +1043,10 @@ export const RECONCILIATION: ReconciliationSnapshot = {
     },
     {
       id: "leieforhold-avvik-forklart",
-      label: "117 av 729 leieforhold er flagget til gjennomgang - 0 uforklarte",
+      label: "82 av 724 leieforhold er flagget til gjennomgang - 0 uforklarte",
       status: "ok",
       notat:
-        "Etter Morten sin oppfølging 2026-08-24 ('finn hva de heter i NXT, snevre ned antallet') ble 297 opprinnelig flaggede leieforhold undersøkt på nytt: 5 nye bygg-navn-aliaser (bl.a. 'Lilleakerveien 2 Garasje'→'Lilleakerveien 2 - Garasje', fant 44 skjulte treff) og en kjerne-navn-fallback (stavevarianter, 15 treff totalt inkl. bindestrek-/punktumvarianter) løste 85 av 110 'ikke matchet'-tilfeller. En Del A/B-nettingsfiks fjernet 101 falske 'kontraktsendring'/'omsetningsleie'-flagg forårsaket av at Fazile og NXT klassifiserer leie vs. parkering ulikt for samme leieforhold. Resultat: 25 fortsatt uten NXT-treff (ny kontrakt eller gjenstående navn-/bygg-mismatch - se REMAINING sin kommentar for videre inndeling: privatpersoner, kjente firma på ekstra underseksjoner, ett leieforhold med et Mustad-slektsnavn som mulig familietilknytning, reelt nye leietakere, og 2 med 0 kr), 12 CC Vest-leieforhold med trolig omsetningsleie-avregning i NXT (bekreftet for én leietaker; NED TIL 3 stk 2026-08-25 etter at konto 3632/2025-avsetningen ble identifisert og ekskludert separat - se 'stort-enkeltbilag'-sjekken - de resterende 9 var altså denne samme mekanismen, ikke et eget fenomen), 49 med trolig kontraktsendring/indeksregulering i året (bekreftet for én leietaker, IKKE individuelt verifisert for alle 49), 10 allerede avsluttet i Fazile og nullstilt til 0 (hvorav én enkelt leietaker alene utgjør 6 stk og 4,6 mill kr - stort nok til at Morten bør sjekke det spesielt). I tillegg er 21 leieforhold der 'leietaker' er Mustad selv (egne lokaler) flagget separat som 'intern-mustad' - ikke reelle eksterne leieforhold. 0 uforklarte avvik gjenstår.",
+        "Etter Morten sin oppfølging 2026-08-24 ('finn hva de heter i NXT, snevre ned antallet') ble 297 opprinnelig flaggede leieforhold undersøkt på nytt: 5 nye bygg-navn-aliaser (bl.a. 'Lilleakerveien 2 Garasje'→'Lilleakerveien 2 - Garasje', fant 44 skjulte treff) og en kjerne-navn-fallback (stavevarianter, 15 treff totalt inkl. bindestrek-/punktumvarianter) løste 85 av 110 'ikke matchet'-tilfeller. En Del A/B-nettingsfiks fjernet 101 falske 'kontraktsendring'/'omsetningsleie'-flagg forårsaket av at Fazile og NXT klassifiserer leie vs. parkering ulikt for samme leieforhold. Resultat: 25 fortsatt uten NXT-treff (ny kontrakt eller gjenstående navn-/bygg-mismatch - se REMAINING sin kommentar for videre inndeling: privatpersoner, kjente firma på ekstra underseksjoner, ett leieforhold med et Mustad-slektsnavn som mulig familietilknytning, reelt nye leietakere, og 2 med 0 kr), 12 CC Vest-leieforhold med trolig omsetningsleie-avregning i NXT (bekreftet for én leietaker; NED TIL 3 stk 2026-08-25 etter at konto 3632/2025-avsetningen ble identifisert og ekskludert separat - se 'stort-enkeltbilag'-sjekken - de resterende 9 var altså denne samme mekanismen, ikke et eget fenomen), 49 med trolig kontraktsendring/indeksregulering i året (bekreftet for én leietaker, IKKE individuelt verifisert for alle 49), 10 allerede avsluttet i Fazile og nullstilt til 0 (hvorav én enkelt leietaker alene utgjør 6 stk og 4,6 mill kr - stort nok til at Morten bør sjekke det spesielt). I tillegg er 21 leieforhold der 'leietaker' er Mustad selv (egne lokaler) flagget separat som 'intern-mustad' - ikke reelle eksterne leieforhold. 0 uforklarte avvik gjenstår. OPPDATERT 2026-09-07 (kun opptelling, ingen ny individuell gjennomgang av sakene under - kategoriene/metodikken over står som historisk dokumentasjon av undersøkelsene fra 2026-08-24): REMAINING sitt nyeste uttrekk (v21-v25 NXT-kobling-fiks + v23-v24 Fazile-flerpunkts-refresh) teller nå 724 leieforhold totalt, hvorav 82 flagget - antallIkkeMatchetFlagget=14, antallForklartOmsetningsleie=5, antallForklartKontraktsendring=43, antallAvsluttetNullstilt=8, antallInternMustad=12. uforklarteAvvik er fortsatt tom (0 uforklarte). Tallene har endret seg vesentlig siden 2026-08-24 (særlig antallForklartOmsetningsleie og antallForklartKontraktsendring, se REMAINING sin v25-kommentar) som følge av at NXT-koblingsmetoden for 'allerede fakturert' ble rettet - IKKE fordi de underliggende sakene er undersøkt på nytt.",
     },
     {
       id: "del-ab-metodikk-ulik",
