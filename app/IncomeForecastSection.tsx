@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   Building2,
@@ -12,8 +12,10 @@ import {
   DoorOpen,
   Info,
   MessageSquare,
+  Minus,
   Search,
   ShoppingBag,
+  TrendingDown,
   TrendingUp,
   Users,
   XCircle,
@@ -44,6 +46,7 @@ import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
 import type { TenantSignal, TenantSignalType } from "@/lib/tenantSignals";
 import { computeForecastRollup, type ForecastRollup, type PartTotals } from "@/lib/incomeForecastCompute";
 import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
+import type { HistoryPoint } from "@/lib/incomeForecastHistory";
 import { vibrate } from "@/lib/haptics";
 
 const CONFIDENCE_STYLE: Record<ManualLineConfidence, string> = {
@@ -839,21 +842,24 @@ function VacantAreasBuildingRow({ building }: { building: VacantAreasSnapshot["b
   );
 }
 
-function VacantAreasBlock() {
+// v17 (2026-09-07): tar nå snapshot/loading som props (hentet i IncomeForecastSection) i stedet
+// for egen fetch - totalLedigKvm trengs OGSÅ av LedigeLokalerBlock (Prognose-fanen) for
+// kryssreferansen mot ledighet i kr, se dens `vacantKvm`-prop. Unngår å hente samme snapshot to
+// ganger.
+function VacantAreasBlock({
+  snapshot,
+  loading,
+  totalLedigKr,
+}: {
+  snapshot: VacantAreasSnapshot | null;
+  loading: boolean;
+  totalLedigKr: number | null;
+}) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige arealer", true);
-  const [snapshot, setSnapshot] = useState<VacantAreasSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(15);
   const [utleieSignaler, setUtleieSignaler] = useState<TenantSignal[]>([]);
 
   useEffect(() => {
-    fetch("/api/income-forecast/vacant-areas")
-      .then((r) => r.json())
-      .then((data) => {
-        setSnapshot(data.snapshot ?? null);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
     fetch("/api/income-forecast/tenant-signals")
       .then((r) => r.json())
       .then((data) => setUtleieSignaler(((data.signals ?? []) as TenantSignal[]).filter((s) => s.type === "utleie")))
@@ -896,6 +902,12 @@ function VacantAreasBlock() {
                 fellesareal-andel). Datagrunnlag for &quot;Potensiell inntekt: ledige lokaler&quot;-boksen over — ingen
                 kvm-pris er lagt inn ennå, så den boksen forblir et manuelt anslag til videre.
               </p>
+              {totalLedigKr !== null && (
+                <p className="mb-2 text-2xs text-ink-4">
+                  Til sammenligning: {formatKr(totalLedigKr)} gjenstående budsjett i &quot;Ledige lokaler&quot; (Prognose-fanen,
+                  tenantForecastTable-kilde) for samme kvm. To uavhengige kilder, ikke slått sammen.
+                </p>
+              )}
               {utleieSignaler.length > 0 && (
                 <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3">
                   <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">
@@ -995,22 +1007,14 @@ function ReviewRowItem({ row }: { row: ReviewRow }) {
   );
 }
 
-function LeieforholdReviewBlock() {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Leieforhold til gjennomgang", true);
-  const [snapshot, setSnapshot] = useState<RemainingTenantsSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
+// v17 (2026-09-07): flyttet fra Tillegg-fanen til Prognose-fanen - dette ER den reelle
+// avstemmings-arbeidslisten, ikke en budsjett-detalj, så en kontrollør bør se den uten å bytte
+// fane. Henter ikke lenger sitt eget snapshot (lastet én gang i IncomeForecastSection, delt med
+// KpiStrip sin "til gjennomgang"-tall - unngår duplikate fetch av samme data).
+function LeieforholdReviewBlock({ snapshot, loading }: { snapshot: RemainingTenantsSnapshot | null; loading: boolean }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Leieforhold til gjennomgang", false);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(30);
-
-  useEffect(() => {
-    fetch("/api/income-forecast/remaining-tenants")
-      .then((r) => r.json())
-      .then((data) => {
-        setSnapshot(data.snapshot ?? null);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
 
   const rows = useMemo<ReviewRow[]>(() => {
     if (!snapshot) return [];
@@ -1046,7 +1050,7 @@ function LeieforholdReviewBlock() {
   }, [rows]);
 
   return (
-    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+    <div id="leieforhold-til-gjennomgang" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Leieforhold til gjennomgang"
         subtitle={`${rows.length} av ${snapshot ? snapshot.tenants.reduce((s, t) => s + t.byggGrupper.length, 0) : "…"} leieforhold`}
@@ -1926,24 +1930,52 @@ function OwnershipShareBlock() {
   );
 }
 
-function ReconciliationPanel() {
-  if (RECONCILIATION.checks.length === 0) {
+// v17 (2026-09-07): "advarsler" er sum-garanti-/datakvalitetsvarsler fra SISTE kjøring av
+// build-remaining-summary.js/build-tenant-forecast-table.js (tidligere kun console.warn, nå med i
+// de to Redis-snapshotene sine `advarsler`-felt) - i motsetning til RECONCILIATION.checks under
+// (håndskrevne, daterte undersøkelser Morten/Claude har gjort manuelt) er disse regnet ut PÅ NYTT
+// hver gang dataene oppdateres, og kan derfor aldri gå stille ut av synk med de faktiske tallene
+// slik en håndskrevet sjekk kan.
+function ReconciliationPanel({ advarsler }: { advarsler: string[] }) {
+  if (RECONCILIATION.checks.length === 0 && advarsler.length === 0) {
     return <p className="text-sm text-ink-3">Ingen avstemmingskontroller kjørt ennå.</p>;
   }
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {RECONCILIATION.checks.map((c) => {
-        const Icon = RECONCILIATION_ICON[c.status];
-        return (
-          <div key={c.id} className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-            <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${RECONCILIATION_COLOR[c.status]}`} />
-            <div className="min-w-0">
-              <p className="text-sm text-ink-1">{c.label}</p>
-              <p className="mt-0.5 text-2xs text-ink-4">{c.notat}</p>
-            </div>
+    <div className="flex flex-col gap-3">
+      {advarsler.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-status-warning">
+            <AlertTriangle className="h-3.5 w-3.5" /> Live varsler fra siste datakjøring ({advarsler.length})
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {advarsler.map((msg, i) => (
+              <div key={i} className="flex items-start gap-2 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
+                <p className="min-w-0 text-2xs text-ink-2">{msg}</p>
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      )}
+      {RECONCILIATION.checks.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {advarsler.length > 0 && <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Undersøkte kontroller (historikk)</p>}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {RECONCILIATION.checks.map((c) => {
+              const Icon = RECONCILIATION_ICON[c.status];
+              return (
+                <div key={c.id} className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${RECONCILIATION_COLOR[c.status]}`} />
+                  <div className="min-w-0">
+                    <p className="text-sm text-ink-1">{c.label}</p>
+                    <p className="mt-0.5 text-2xs text-ink-4">{c.notat}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2112,6 +2144,48 @@ function beregnEkstraVedReforhandlingByNavn(snapshot: ContractExpiry2026Snapshot
   return result;
 }
 
+export interface Hovedprognose {
+  bokfort: number;
+  gjenstar: number;
+  reforhandlingFull: number;
+  potensiellEkstrainntektReforhandling100: number;
+  omsetningsavregningSum: number;
+  potensiellFremtidig: number;
+  ledigeLokaler: number;
+  annet: number;
+  total: number;
+}
+
+// v17 (2026-09-07): utledet av MainForecastBox sin tidligere lokale beregning - løftet ut hit
+// slik at den nye KpiStrip (alltid synlig, ikke bak et klikk) kan vise NØYAKTIG samme totaltall
+// som toppboksens breakdown, uten å regne det ut på nytt et annet sted (samme "én kilde til
+// sannhet"-prinsipp som beregnVektetReforhandlingTotal over).
+function beregnHovedprognose(
+  rollup: ForecastRollup,
+  contractExpiry2026: ContractExpiry2026Snapshot | null,
+  tenantSignals: TenantSignal[],
+  omsetningsavregning: OmsetningsavregningSnapshot | null,
+  potential: PotentialIncomeSnapshot | null,
+): Hovedprognose {
+  const bokfort =
+    rollup.delA.fakturertHittil +
+    rollup.delB.fakturertHittil +
+    rollup.delA.manueltNxtHittil +
+    rollup.delB.manueltNxtHittil +
+    rollup.delA.manuelleLinjer +
+    rollup.delB.manuelleLinjer;
+  const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
+  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
+  const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
+  const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
+  const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
+  const potensiellFremtidig = potentialByKey.get("potensiell-fremtidig-inntekt")?.belop ?? 0;
+  const ledigeLokaler = potentialByKey.get("ledige-lokaler")?.belop ?? 0;
+  const annet = potentialByKey.get("annet")?.belop ?? 0;
+  const total = bokfort + gjenstar + reforhandlingFull + omsetningsavregningSum + potensiellFremtidig + ledigeLokaler + annet;
+  return { bokfort, gjenstar, reforhandlingFull, potensiellEkstrainntektReforhandling100, omsetningsavregningSum, potensiellFremtidig, ledigeLokaler, annet, total };
+}
+
 interface WaterfallSegment {
   label: string;
   value: number;
@@ -2182,49 +2256,26 @@ function IncomeWaterfall({ segments, total }: { segments: WaterfallSegment[]; to
 }
 
 function MainForecastBox({
-  rollup,
-  contractExpiry2026,
-  omsetningsavregning,
+  prognose,
   potential,
-  tenantSignals,
   onPotentialUpdated,
 }: {
-  rollup: ForecastRollup;
-  contractExpiry2026: ContractExpiry2026Snapshot | null;
-  omsetningsavregning: OmsetningsavregningSnapshot | null;
+  prognose: Hovedprognose;
   potential: PotentialIncomeSnapshot | null;
-  tenantSignals: TenantSignal[];
   onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
 }) {
   const [open, setOpen] = useState(false);
-
-  const bokfort =
-    rollup.delA.fakturertHittil +
-    rollup.delB.fakturertHittil +
-    rollup.delA.manueltNxtHittil +
-    rollup.delB.manueltNxtHittil +
-    rollup.delA.manuelleLinjer +
-    rollup.delB.manuelleLinjer;
-  const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
-  // v2 (2026-08-29): RETTET - viste tidligere `contractExpiry2026?.totalEkstraI2026` direkte, et
-  // tall som antar 100 % sannsynlighet for ALLE åpne kontrakter uansett hva Morten faktisk har
-  // satt pr. kontrakt i "Kontrakter på utløp" (Prognose-fanen). Bruker nå samme sannsynlighets-
-  // vektede beregning som den seksjonen selv viser - de to skal ALLTID vise samme tall.
-  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
-  // NYTT 2026-08-30 (Morten: "et eget punkt ... hva den potensielle ekstrainntekten kan bli hvis
-  // alle reforhandles til samme vilkår") - samler ALLE åpne (ikke reforhandlede) kontrakter på
-  // 36-serien som utløper i 2026, og viser hva de ville gitt i ekstra 2026-inntekt HVIS alle ble
-  // reforhandlet til akkurat samme vilkår som i dag (dvs. sluttdato = 31.12.2026 eller senere) -
-  // 100 %-scenario, IKKE sannsynlighetsvektet (det er "Reforhandling"-linjen over).
-  // BEVISST IKKE lagt til `total` under - dette er et øvre-grense-scenario for referanse, ikke et
-  // sannsynlighetsjustert bidrag til selve prognosen (som ville dobbelttalt mot linjen over).
-  const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
-  const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
-  const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
-  const potensiellFremtidig = potentialByKey.get("potensiell-fremtidig-inntekt")?.belop ?? 0;
-  const ledigeLokaler = potentialByKey.get("ledige-lokaler")?.belop ?? 0;
-  const annet = potentialByKey.get("annet")?.belop ?? 0;
-  const total = bokfort + gjenstar + reforhandlingFull + omsetningsavregningSum + potensiellFremtidig + ledigeLokaler + annet;
+  const {
+    bokfort,
+    gjenstar,
+    reforhandlingFull,
+    potensiellEkstrainntektReforhandling100,
+    omsetningsavregningSum,
+    potensiellFremtidig,
+    ledigeLokaler,
+    annet,
+    total,
+  } = prognose;
 
   // Waterfall-segmentene i samme rekkefølge som lista under, sortert fra mest
   // til minst sikre. `sikkerhet` styrer hvor tett fylt søylen tegnes — se
@@ -2298,6 +2349,145 @@ function MainForecastBox({
           <p className="mt-1 text-2xs text-ink-4">Bokført + Gjenstår er avstemt mot NXT/Fazile.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+export interface DataSourceFreshness {
+  label: string;
+  dato: string;
+}
+
+// v17 (2026-09-07): "hvor gammel er den ELDSTE kilden" (oldestSnapshotDate over) sier ALDRI hvilken
+// kilde som faktisk er gammel - en kontrollør trenger å vite HVILKEN, ikke bare AT. Denne bygger
+// listen KpiStrip sin datakilde-tile viser i tooltipen, sortert eldst først.
+function dataSourceFreshnessList(extra: DataSourceFreshness[]): DataSourceFreshness[] {
+  const base: DataSourceFreshness[] = [
+    { label: "Fakturert (Visma NXT)", dato: INVOICED.sistOppdatert },
+    { label: "Bokført konto 3600-3699", dato: BOOKED_3600_3699.sistOppdatert },
+    { label: "Gjenstår (Fazile)", dato: REMAINING.sistOppdatert },
+    { label: "Manuelle bilag i NXT", dato: MANUAL_NXT.sistOppdatert },
+    { label: "Avstemmingskontroller", dato: RECONCILIATION.sistOppdatert },
+    ...extra,
+  ].filter((d) => d.dato && d.dato.length > 0);
+  return base.sort((a, b) => a.dato.localeCompare(b.dato));
+}
+
+// v17: samme filter som LeieforholdReviewBlock bruker for å telle rader - lagt i en egen
+// funksjon slik at KpiStrip kan vise ANTALLET uten å duplisere selve filterlogikken.
+function tellLeieforholdTilGjennomgang(snapshot: RemainingTenantsSnapshot | null): number {
+  if (!snapshot) return 0;
+  let n = 0;
+  for (const t of snapshot.tenants) {
+    for (const b of t.byggGrupper) {
+      if ((REVIEW_STATUSES as readonly string[]).includes(b.status)) n++;
+    }
+  }
+  return n;
+}
+
+// Finner punktet nærmest `dagerTilbake` dager før `fraDato` (ikke nødvendigvis eksakt, siden
+// punkter kun finnes for dager noen faktisk åpnet siden) - eldste punkt ELDRE ELLER LIK målet,
+// slik at en "7 dager siden"-sammenligning fortsatt fungerer selv om ingen så på siden akkurat
+// den dagen. Ren funksjon, bevisst holdt HER (ikke i lib/incomeForecastHistory.ts) - den filen
+// importerer kv.ts (server-only), og en verdi-import derfra ville dratt Redis-klienten inn i
+// klient-bundlen hvis noe herfra importeres som annet enn `import type`.
+function finnSammenligningspunkt(punkter: HistoryPoint[], fraDato: string, dagerTilbake: number): HistoryPoint | null {
+  const mal = new Date(fraDato + "T00:00:00Z");
+  mal.setUTCDate(mal.getUTCDate() - dagerTilbake);
+  const malIso = mal.toISOString().slice(0, 10);
+  const kandidater = punkter.filter((p) => p.dato <= malIso && p.dato !== fraDato).sort((a, b) => b.dato.localeCompare(a.dato));
+  return kandidater[0] ?? null;
+}
+
+function TrendIndicator({ history, fraDato, naverendeTotal }: { history: HistoryPoint[]; fraDato: string; naverendeTotal: number }) {
+  const sammenligning = useMemo(() => finnSammenligningspunkt(history, fraDato, 7), [history, fraDato]);
+  if (!sammenligning) return <p className="mt-1 text-2xs text-ink-4">Ingen tidligere målepunkt ennå - kommer etter noen dagers bruk.</p>;
+  const delta = Math.round(naverendeTotal - sammenligning.kjerneTotal);
+  const Icon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
+  return (
+    <p className="mt-1 flex items-center gap-1 text-2xs text-ink-3">
+      <Icon className="h-3 w-3 shrink-0" />
+      {delta === 0 ? "Uendret" : formatKr(delta, true)} siden {formatDateDMY(sammenligning.dato)}
+      <span className="text-ink-4"> (bokført+gjenstår)</span>
+    </p>
+  );
+}
+
+// v17 (2026-09-07, "gjør som en inntektskontroller"-gjennomgangen): alltid synlig oppsummerings-
+// stripe øverst på Prognose-fanen. Før dette var MainForecastBox og alle undertabeller kollapset
+// som default (usePersistedCollapse(..., true)) - siden viste i praksis kun ETT tall (totalen) før
+// man klikket seg gjennom flere kort. Denne viser de fire tallene en kontrollør ser på FØRST: total,
+// avvik mot budsjett, antall leieforhold som krever manuell sjekk, og hvilken datakilde som er eldst
+// - uten at noe må åpnes.
+function KpiStrip({
+  prognose,
+  avvikTotal,
+  budsjettTotal,
+  antallTilGjennomgang,
+  freshness,
+  history,
+  idagIso,
+}: {
+  prognose: Hovedprognose;
+  avvikTotal: number;
+  budsjettTotal: number;
+  antallTilGjennomgang: number;
+  freshness: DataSourceFreshness[];
+  history: HistoryPoint[];
+  idagIso: string;
+}) {
+  const avvikPct = budsjettTotal !== 0 ? (avvikTotal / budsjettTotal) * 100 : null;
+  const eldste = freshness[0] ?? null;
+  const dagerGammel = eldste ? Math.round((new Date(idagIso).getTime() - new Date(eldste.dato).getTime()) / 86400000) : null;
+  const eldsteErGammel = dagerGammel !== null && dagerGammel >= 14;
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div>
+        <SummaryTile label="Total prognose 2026" belop={prognose.total} emphasize />
+        <TrendIndicator history={history} fraDato={idagIso} naverendeTotal={prognose.bokfort + prognose.gjenstar} />
+      </div>
+      <a href="#leieinntekter" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition hover:border-line-strong">
+        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avvik mot budsjett</p>
+        <p className={`mt-1 text-lg font-semibold tabular-nums ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+          {formatKr(avvikTotal, true)}
+        </p>
+        <p className="mt-1 text-2xs text-ink-4">{avvikPct === null ? "Uten budsjettgrunnlag" : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toFixed(1)} % av budsjett`}</p>
+      </a>
+      <a
+        href="#leieforhold-til-gjennomgang"
+        className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition hover:border-line-strong"
+      >
+        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Til gjennomgang</p>
+        <p className={`mt-1 text-lg font-semibold tabular-nums ${antallTilGjennomgang > 0 ? "text-status-warning" : "text-status-positive"}`}>
+          {antallTilGjennomgang}
+        </p>
+        <p className="mt-1 text-2xs text-ink-4">leieforhold flagget</p>
+      </a>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button type="button" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition hover:border-line-strong">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Eldste datakilde</p>
+              <p className={`mt-1 text-lg font-semibold tabular-nums ${eldsteErGammel ? "text-status-warning" : "text-ink-1"}`}>
+                {eldste ? formatDateDMY(eldste.dato) : "—"}
+              </p>
+              <p className="mt-1 text-2xs text-ink-4">{eldste ? eldste.label : "Ingen data"}</p>
+            </button>
+          }
+        />
+        <TooltipContent>
+          <div className="flex flex-col gap-1">
+            <p className="font-medium">Alle datakilder, eldst først:</p>
+            {freshness.map((f) => (
+              <p key={f.label}>
+                {formatDateDMY(f.dato)} — {f.label}
+              </p>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -2562,7 +2752,13 @@ function LedigGruppeTittel({ tittel, belop, colorClass }: { tittel: string; belo
 // fortsatt utleie i år) eller nullet (Finance har tatt beløpet ut av prognosen). Finance sin
 // siste månedskommentar vises pr. gjenværende linje. Se kobleFlyttetInnOgTrekkFra() i
 // scripts/build-tenant-forecast-table.js for hvordan feltene settes.
-function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
+// v17 (2026-09-07): `vacantKvm` er totalLedigKvm fra VacantAreasSnapshot (Fazile arealoversikt,
+// Tillegg-fanen) - en HELT uavhengig datakilde fra denne blokkens kr-tall (tenantForecastTable).
+// De to har aldri vært vist sammen eller kryssjekket mot hverandre (se controller-gjennomgangen
+// 2026-09-07: "ledighet vises som kvm ett sted og kr et annet sted uten kobling"). Viser dem side
+// om side her, ikke en full sammenslåing av datamodellene - de to kildene har ulik bygg-matching
+// og granularitet, en fullstendig kobling er en egen jobb.
+function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; vacantKvm: number | null }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige lokaler", true);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -2676,6 +2872,13 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
       />
       {!collapsed && (
         <>
+          {vacantKvm !== null && vacantKvm > 0 && (
+            <p className="text-2xs text-ink-4">
+              Til sammenligning: {vacantKvm.toLocaleString("nb-NO")} kvm ledig areal i &quot;Ledige arealer&quot; (Fazile arealoversikt, Tillegg-fanen) — ≈{" "}
+              {formatKr(Math.round((total.forventet + total.nullet) / vacantKvm))}/kvm/år av gjenstående budsjett under. To uavhengige kilder,
+              ikke slått sammen.
+            </p>
+          )}
           {/* Sammendragsstripe: hvor de opprinnelig budsjetterte ledig-kronene har havnet. */}
           <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-1 px-3 py-2">
             <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
@@ -3394,7 +3597,10 @@ function TenantForecastTable({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
+    <div
+      id={title === "Leieinntekter" ? "leieinntekter" : undefined}
+      className="scroll-mt-4 flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3"
+    >
       <CardHeader
         title={title}
         subtitle={formatKr(totalFakturert + totalGjenstar)}
@@ -3961,6 +4167,16 @@ export default function IncomeForecastSection() {
   const [loadingOmsetningsavregning, setLoadingOmsetningsavregning] = useState(true);
   const [tenantForecastTable, setTenantForecastTable] = useState<TenantForecastTableSnapshot | null>(null);
   const [activeTab, setActiveTab] = useState<"prognose" | "tillegg">("prognose");
+  // v17 (2026-09-07, "gjør som en inntektskontroller"-gjennomgangen): løftet opp fra
+  // LeieforholdReviewBlock/VacantAreasBlock sine egne fetch-kall - trengs nå OGSÅ av KpiStrip
+  // (antall til gjennomgang, datakilde-alder) og LedigeLokalerBlock (kvm-kryssreferanse), så
+  // snapshotet hentes én gang her og deles i stedet for å dupliseres.
+  const [remainingTenantsSnapshot, setRemainingTenantsSnapshot] = useState<RemainingTenantsSnapshot | null>(null);
+  const [loadingRemainingTenants, setLoadingRemainingTenants] = useState(true);
+  const [vacantAreas, setVacantAreas] = useState<VacantAreasSnapshot | null>(null);
+  const [loadingVacantAreas, setLoadingVacantAreas] = useState(true);
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const historyRecordedRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/income-forecast/contract-expiry-2026")
@@ -3988,6 +4204,24 @@ export default function IncomeForecastSection() {
     fetch("/api/income-forecast/tenant-forecast-table")
       .then((r) => r.json())
       .then((data) => setTenantForecastTable(data.snapshot ?? null))
+      .catch(() => {});
+    fetch("/api/income-forecast/remaining-tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        setRemainingTenantsSnapshot(data.snapshot ?? null);
+        setLoadingRemainingTenants(false);
+      })
+      .catch(() => setLoadingRemainingTenants(false));
+    fetch("/api/income-forecast/vacant-areas")
+      .then((r) => r.json())
+      .then((data) => {
+        setVacantAreas(data.snapshot ?? null);
+        setLoadingVacantAreas(false);
+      })
+      .catch(() => setLoadingVacantAreas(false));
+    fetch("/api/income-forecast/history")
+      .then((r) => r.json())
+      .then((data) => setHistory(data.punkter ?? []))
       .catch(() => {});
   }, []);
 
@@ -4078,6 +4312,76 @@ export default function IncomeForecastSection() {
     [contractExpiry2026, tenantSignals],
   );
 
+  // v17: hovedprognosen regnes ut ÉN gang her og deles av MainForecastBox (breakdown) og KpiStrip
+  // (alltid synlig total) - se beregnHovedprognose sin kommentar.
+  const prognose = useMemo(
+    () => beregnHovedprognose(rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential),
+    [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential],
+  );
+
+  // v17: samme avvik-sum som Leieinntekter/Parkering-tabellenes egne Totalt-rader (avvik = null
+  // ekskluderes - Del B sine pr.-rad-budsjetter er alltid null, kun totallinjen har budsjett der).
+  const { avvikTotal, budsjettTotal } = useMemo(() => {
+    const delARows = tenantForecastTable?.delA.leietaker ?? [];
+    const delBRows = tenantForecastTable?.delB.leietaker ?? [];
+    const delAAvvik = delARows.reduce((s, r) => s + (r.avvik ?? 0), 0);
+    const delABudsjett = delARows.reduce((s, r) => s + (r.budsjett ?? 0), 0);
+    const delBFakturertGjenstar = delBRows.reduce((s, r) => s + r.fakturert + r.gjenstar, 0);
+    const delBBudsjett = tenantForecastTable?.delBBudsjettTotal ?? 0;
+    return {
+      avvikTotal: delAAvvik + (delBFakturertGjenstar - delBBudsjett),
+      budsjettTotal: delABudsjett + delBBudsjett,
+    };
+  }, [tenantForecastTable]);
+
+  const antallTilGjennomgang = useMemo(() => tellLeieforholdTilGjennomgang(remainingTenantsSnapshot), [remainingTenantsSnapshot]);
+
+  const advarslerLive = useMemo(
+    () => [...(remainingTenantsSnapshot?.advarsler ?? []), ...(tenantForecastTable?.advarsler ?? [])],
+    [remainingTenantsSnapshot, tenantForecastTable],
+  );
+
+  // v17: gjenstående budsjett (kr) for alle "Ledig <bygg>"-radene samlet - kryssreferansen
+  // LedigeLokalerBlock/VacantAreasBlock viser mot hverandre (kvm vs. kr, to uavhengige kilder).
+  const totalLedigKr = useMemo(() => {
+    const rows = tenantForecastTable?.delA.leietaker;
+    if (!rows) return null;
+    return rows.filter((r) => r.navn.startsWith("Ledig")).reduce((s, r) => s + (r.budsjett ?? 0), 0);
+  }, [tenantForecastTable]);
+
+  const dataSourceFreshness = useMemo(
+    () =>
+      dataSourceFreshnessList(
+        [
+          remainingTenantsSnapshot ? { label: "Leieforhold-detalj (Fazile)", dato: remainingTenantsSnapshot.sistOppdatert } : null,
+          tenantForecastTable ? { label: "Leietaker-/budsjettabell", dato: tenantForecastTable.sistOppdatert } : null,
+          omsetningsavregning ? { label: "Omsetningsavregning", dato: omsetningsavregning.sistOppdatert } : null,
+          contractExpiry2026 ? { label: "Kontrakter på utløp", dato: contractExpiry2026.sistOppdatert } : null,
+          vacantAreas ? { label: "Ledige arealer (kvm)", dato: vacantAreas.sistOppdatert } : null,
+        ].filter((d): d is DataSourceFreshness => d !== null),
+      ),
+    [remainingTenantsSnapshot, tenantForecastTable, omsetningsavregning, contractExpiry2026, vacantAreas],
+  );
+
+  const idagIso = localDateString();
+
+  // v17: registrerer dagens kjernetall (bokført+gjenstår) i kjørehistorikken - ÉN gang pr. faktisk
+  // besøk (ikke pr. re-render), og kun etter at rollup faktisk har reelle tall (unngår å lagre et
+  // falskt 0-punkt før snapshottene er hentet ferdig). Se lib/incomeForecastHistory.ts.
+  useEffect(() => {
+    if (historyRecordedRef.current) return;
+    if (prognose.bokfort === 0 && prognose.gjenstar === 0) return;
+    historyRecordedRef.current = true;
+    fetch("/api/income-forecast/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dato: idagIso, kjerneTotal: prognose.bokfort + prognose.gjenstar }),
+    })
+      .then((r) => r.json())
+      .then((data) => setHistory(data.punkter ?? []))
+      .catch(() => {});
+  }, [prognose.bokfort, prognose.gjenstar, idagIso]);
+
   return (
     <div className="border-t-2 border-t-yellow-400/60 p-4">
       <CardHeader
@@ -4113,14 +4417,19 @@ export default function IncomeForecastSection() {
 
           {activeTab === "prognose" ? (
             <>
-              <MainForecastBox
-                rollup={rollup}
-                contractExpiry2026={contractExpiry2026}
-                omsetningsavregning={omsetningsavregning}
-                potential={potential}
-                tenantSignals={tenantSignals}
-                onPotentialUpdated={handlePotentialUpdated}
+              <KpiStrip
+                prognose={prognose}
+                avvikTotal={avvikTotal}
+                budsjettTotal={budsjettTotal}
+                antallTilGjennomgang={antallTilGjennomgang}
+                freshness={dataSourceFreshness}
+                history={history}
+                idagIso={idagIso}
               />
+
+              <MainForecastBox prognose={prognose} potential={potential} onPotentialUpdated={handlePotentialUpdated} />
+
+              <LeieforholdReviewBlock snapshot={remainingTenantsSnapshot} loading={loadingRemainingTenants} />
 
               <TenantForecastTable
                 title="Leieinntekter"
@@ -4140,7 +4449,7 @@ export default function IncomeForecastSection() {
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
               />
-              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
+              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} vacantKvm={vacantAreas?.totalLedigKvm ?? null} />
             </>
           ) : (
             <>
@@ -4150,7 +4459,7 @@ export default function IncomeForecastSection() {
 
               <div className="flex flex-col gap-1.5">
                 <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
-                <ReconciliationPanel />
+                <ReconciliationPanel advarsler={advarslerLive} />
               </div>
 
               <InvoicedBlock />
@@ -4159,9 +4468,8 @@ export default function IncomeForecastSection() {
               <BookedTenantsBlock />
               <RemainingBlock />
               <LeietypeBreakdownBlock />
-              <VacantAreasBlock />
+              <VacantAreasBlock snapshot={vacantAreas} loading={loadingVacantAreas} totalLedigKr={totalLedigKr} />
               <RemainingTenantsFullBlock />
-              <LeieforholdReviewBlock />
               <ContractExpiry2026Block
                 snapshot={contractExpiry2026}
                 loading={loadingContractExpiry2026}

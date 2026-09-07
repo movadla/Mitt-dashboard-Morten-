@@ -189,6 +189,15 @@ const FAZILE_KONTRAKT_CROSSWALK_FILE = path.join(__dirname, "refresh-data", "faz
 const REDIS_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REDIS_FIELD = "snapshot";
 
+// v17 (2026-09-07): samler ADVARSEL-linjene som tidligere kun gikk til konsollen i en array som
+// legges ved i snapshotet - se RemainingTenantsSnapshot sitt `advarsler`-felt og
+// ReconciliationPanel i app/IncomeForecastSection.tsx, som viser dem som "Live varsler".
+const ADVARSLER = [];
+function varsel(msg) {
+  console.log(msg);
+  ADVARSLER.push(msg);
+}
+
 // Se punkt 3 i scripts/refresh-fazile-remaining-tenants.js sin header-kommentar.
 const STRANDVEIEN_4_8_MANUAL_HALVING = "Strandveien 4-8_E";
 
@@ -663,7 +672,7 @@ function main() {
       }
     }
   } else {
-    console.log("ADVARSEL: fant ikke crosswalk-fil og/eller nxt-booked-tenants/-mappen - ID-basert matching hoppes over, kun navnematching brukes.");
+    varsel("ADVARSEL: fant ikke crosswalk-fil og/eller nxt-booked-tenants/-mappen - ID-basert matching hoppes over, kun navnematching brukes.");
   }
 
   // v13 B) 3630/3632-PARING - se filhodet. Kreditnotaen for en 2025-omsetningsavregning (positiv
@@ -720,7 +729,7 @@ function main() {
       countAvregning3630Noytralisert++;
     }
   } else {
-    console.log("ADVARSEL: fant ikke nxt-3630-3632-detalj/ - 3630-kreditnotaer for 2025-avregningen nøytraliseres IKKE (gjenstår blir for høyt for berørte leietakere).");
+    varsel("ADVARSEL: fant ikke nxt-3630-3632-detalj/ - 3630-kreditnotaer for 2025-avregningen nøytraliseres IKKE (gjenstår blir for høyt for berørte leietakere).");
   }
   // Slår opp NXT-bokføring for et leieforhold via kontrakt_id -> customerNo -> selskap+bygg.
   // Returnerer null (ikke funnet/usikkert) i stedet for å kaste - kalleren faller da tilbake til
@@ -1486,7 +1495,7 @@ function main() {
     const planLinjeSlutt = fs.existsSync(path.join(FAZILE_FAKTURAPLAN_DIR, "contract-lines.json")) ? les("contract-lines.json") : {};
     const planCacheDato = planMeta.nxtCacheDato || nxtCacheDato;
     if (nxtCacheDato && planMeta.nxtCacheDato && planMeta.nxtCacheDato !== nxtCacheDato) {
-      console.log(`ADVARSEL: fakturaplanens nxtCacheDato (${planMeta.nxtCacheDato}) != nxt-booked-tenants/meta.json (${nxtCacheDato}) - "allerede i NXT"-grensen kan være feil, hent fakturaplanen på nytt.`);
+      varsel(`ADVARSEL: fakturaplanens nxtCacheDato (${planMeta.nxtCacheDato}) != nxt-booked-tenants/meta.json (${nxtCacheDato}) - "allerede i NXT"-grensen kan være feil, hent fakturaplanen på nytt.`);
     }
     // Planens første periode = måneden etter NXT-cachen. Alt før det som fortsatt ikke er sendt, er
     // tilbakedaterte/ubehandlede utkast - regnes med (Fazile VIL sende dem), men rapporteres separat.
@@ -1770,13 +1779,16 @@ function main() {
     if (manglerLinjeSlutt.length) {
       console.log(`  ADVARSEL: ${manglerLinjeSlutt.length} ekstrapoleringskandidater uten rent_roll-rad og uten oppslag i fazile-fakturaplan/contract-lines.json - forlenget til 31.12 uten sjekk av kontraktslinjens end_date. Slå opp cl_id-ene i Fazile (contract_lines) og legg dem til:`);
       for (const m of manglerLinjeSlutt) console.log(`    cl_id ${m.clId} | ${m.leietaker} | ${m.desc}`);
+      varsel(
+        `ADVARSEL: ${manglerLinjeSlutt.length} ekstrapoleringskandidater uten rent_roll-rad og uten oppslag i contract-lines.json - forlenget til 31.12 uten sjekk av kontraktslinjens end_date: ${manglerLinjeSlutt.map((m) => `cl_id ${m.clId} (${m.leietaker})`).join(", ")}`,
+      );
     }
     if (delvisDekning.length) {
       console.log(`  ${delvisDekning.length} aktive kontraktslinjer UTEN planlinje i leieforhold som ellers har plan (merket i forklaringen, IKKE lagt til):`);
       for (const d of delvisDekning.sort((a, b) => b.arsleie - a.arsleie)) console.log(`    ${d.leietaker} | ${d.bygg} | ${d.desc} | kontrakt ${d.kontrakt} | årsleie ${fmtKr(d.arsleie)} | ${d.periode}`);
     }
   } else {
-    console.log("ADVARSEL: fant ikke fazile-fakturaplan/ - gjenstår beregnes KUN med årsverdi-modellen (v12-metodikk).");
+    varsel("ADVARSEL: fant ikke fazile-fakturaplan/ - gjenstår beregnes KUN med årsverdi-modellen (v12-metodikk).");
   }
 
   // v12 opprydding - interne felt, skal aldri havne i det publiserte Redis-snapshotet.
@@ -1817,7 +1829,7 @@ function main() {
       forklaring: `Onepark-parkering faktureres etter omsetningsrapport, utenfor vanlig Fazile-kontrakt (derfor "avsluttet" på de 6 byggene over). Årsestimat fra Inntektsprognose-arket: ${ONEPARK_ESTIMAT_2026.toLocaleString("nb-NO")} kr, minus allerede fakturert i NXT i år (${alleredeFakturertOnepark.toLocaleString("nb-NO")} kr, se de 6 byggene over) = ${oneparkKorreksjon.toLocaleString("nb-NO")} kr gjenstår. Lagt til Del B som ett samlet tillegg, ikke bygg-fordelt.`,
     });
   } else {
-    console.log('ADVARSEL: fant ikke "Onepark AS" i leieforhold-datasettet - Onepark-korreksjonen ble IKKE lagt til.');
+    varsel('ADVARSEL: fant ikke "Onepark AS" i leieforhold-datasettet - Onepark-korreksjonen ble IKKE lagt til.');
   }
 
   // v15: leietaker-merger (Head, Medu->Metesa) kan gi to byggGrupper med SAMME bygg på én
@@ -1927,6 +1939,7 @@ function main() {
     },
     // v13 - metadata om fakturaplan-kilden (null hvis mappen manglet og modellen ble brukt alene)
     fazileFakturaplan: fakturaplanInfo,
+    ...(ADVARSLER.length ? { advarsler: ADVARSLER } : {}),
   };
 
   console.log(`Leieforhold: ${leieforhold.size} (matchet=${countMatched}, ikke matchet=${countUnmatched})`);

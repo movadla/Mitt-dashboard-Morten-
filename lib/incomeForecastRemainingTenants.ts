@@ -110,6 +110,11 @@ export interface RemainingTenantsSnapshot {
   tenants: RemainingTenant[];
   omsetningsavregning2025: Omsetningsavregning2025Info;
   fazileFakturaplan?: FazileFakturaplanInfo | null;
+  // v17 (2026-09-07): data-kvalitetsvarsler fra scripts/build-remaining-summary.js sin egen
+  // kjøring (manglende crosswalk/detaljfiler, ekstrapoleringskandidater uten kontraktslinje-
+  // sluttdato, o.l.) - tidligere kun synlig i konsollen til den som kjørte scriptet, nå med i
+  // snapshotet slik at ReconciliationPanel (app/IncomeForecastSection.tsx) kan vise dem.
+  advarsler?: string[];
 }
 
 const HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";

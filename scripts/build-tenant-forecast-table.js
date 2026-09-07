@@ -47,6 +47,16 @@ const REMAINING_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const BUDGET_KEY = "jobb:inntektsprognose-leietaker-budsjett";
 const OUT_KEY = "jobb:inntektsprognose-leietaker-tabell";
 const FIELD = "snapshot";
+
+// v17 (2026-09-07): samler ADVARSEL-linjene som tidligere kun gikk til konsollen (synlig bare
+// for den som kjørte scriptet) i en array som legges ved i snapshotet - se
+// lib/tenantForecastTable.ts sitt `advarsler`-felt og ReconciliationPanel i
+// app/IncomeForecastSection.tsx, som viser dem som "Live varsler" i avstemmingspanelet.
+const ADVARSLER = [];
+function varsel(msg) {
+  console.warn(msg);
+  ADVARSLER.push(msg);
+}
 const EXCEL_RAW_FILE = path.join(__dirname, "refresh-data", "budsjett-2026-excel-raw.json");
 
 // Må matche MUSTAD_INTERN_LABEL i build-tenant-budget.js. Denne raden har budsjett men ALDRI
@@ -106,7 +116,7 @@ const LEDIG_FINANCE_FILE = path.join(__dirname, "refresh-data", "ledig-finance-j
 const HALVBYGG_50 = new Set(["Lilleakerveien 20 Audi", "Lilleakerveien 22 VW", "Strandveien 10", "Strandveien 4-8"]);
 function lastFinanceLedigIndeks() {
   if (!fs.existsSync(LEDIG_FINANCE_FILE)) {
-    console.warn(`ADVARSEL: ${path.basename(LEDIG_FINANCE_FILE)} mangler - Ledig-linjene får ingen Finance-vurdering/-kommentar.`);
+    varsel(`ADVARSEL: ${path.basename(LEDIG_FINANCE_FILE)} mangler - Ledig-linjene får ingen Finance-vurdering/-kommentar.`);
     return null;
   }
   const data = JSON.parse(fs.readFileSync(LEDIG_FINANCE_FILE, "utf8"));
@@ -554,7 +564,7 @@ async function main() {
       for (const m of Array.isArray(linjeMatch) ? linjeMatch : [linjeMatch]) {
         const mm = m.toLowerCase();
         const funnet = ledigRad.linjer.filter((l) => normalizeName(l.bygg) === normalizeName(fulltBygg) && l.beskrivelse.toLowerCase().includes(mm));
-        if (funnet.length === 0) console.warn(`ADVARSEL: fant ingen linje som matcher "${m}" i "${ledigRad.navn}" - sjekk om teksten er endret.`);
+        if (funnet.length === 0) varsel(`ADVARSEL: fant ingen linje som matcher "${m}" i "${ledigRad.navn}" - sjekk om teksten er endret.`);
         for (const l of funnet) if (!treff.includes(l)) treff.push(l);
       }
       return treff;
@@ -575,7 +585,7 @@ async function main() {
       for (const spec of liste) {
         const ledigRad = finnLedigRad(ledigRader, spec.bygg);
         if (!ledigRad) {
-          console.warn(`ADVARSEL: fant ingen Ledig-rad for bygg "${spec.bygg}" (manuell override for "${rad.navn}") - sjekk stavemåte.`);
+          varsel(`ADVARSEL: fant ingen Ledig-rad for bygg "${spec.bygg}" (manuell override for "${rad.navn}") - sjekk stavemåte.`);
           continue;
         }
         if (!rad.flyttetInnI) rad.flyttetInnI = ledigRad.navn;
@@ -588,7 +598,7 @@ async function main() {
       }
     }
     for (const nokkel of Object.keys(MANUAL_FLYTTET_INN_OVERRIDES)) {
-      if (!brukteOverrides.has(nokkel)) console.warn(`ADVARSEL: override "${nokkel}" treffer ingen leietaker-rad i Del A - utgått navn (merge/rebrand) eller stavefeil?`);
+      if (!brukteOverrides.has(nokkel)) varsel(`ADVARSEL: override "${nokkel}" treffer ingen leietaker-rad i Del A - utgått navn (merge/rebrand) eller stavefeil?`);
     }
     for (const [linje, { ledigRad, rader }] of krav) {
       const andel = round2(linje.fullArsverdi2026 / rader.length);
@@ -648,7 +658,7 @@ async function main() {
     for (const [fulltBygg, poster] of Object.entries(MANUAL_UNTRACKED_OVERTAKELSER)) {
       const ledigRad = finnLedigRad(ledigRader, fulltBygg);
       if (!ledigRad) {
-        console.warn(`ADVARSEL: fant ingen Ledig-rad for bygg "${fulltBygg}" (usporet overtakelse) - sjekk stavemåte.`);
+        varsel(`ADVARSEL: fant ingen Ledig-rad for bygg "${fulltBygg}" (usporet overtakelse) - sjekk stavemåte.`);
         continue;
       }
       for (const p of poster) {
@@ -663,7 +673,7 @@ async function main() {
             oppdaterAvvik(mottaker);
             type = "intern";
           } else {
-            console.warn(`ADVARSEL: fant ingen rad "${p.overforTil}" å overføre ${belop} kr fra "${ledigRad.navn}" til - beholdt som usporet.`);
+            varsel(`ADVARSEL: fant ingen rad "${p.overforTil}" å overføre ${belop} kr fra "${ledigRad.navn}" til - beholdt som usporet.`);
           }
         }
         leggTilOverforing(ledigRad, p.kort, belop, type, p.beskrivelse);
@@ -694,7 +704,7 @@ async function main() {
       ledigRad.ledigPoster = o ? o.poster.sort((a, b) => b.belop - a.belop) : [];
       const sumLinjer = round2(ledigRad.linjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
       if (Math.abs(sumLinjer - ledigRad.budsjett) > 1) {
-        console.warn(`ADVARSEL: ${ledigRad.navn}: gjenstående budsjett ${fmt(ledigRad.budsjett)} kr != sum gjenværende linjer ${fmt(sumLinjer)} kr - avrunding/deling gikk galt.`);
+        varsel(`ADVARSEL: ${ledigRad.navn}: gjenstående budsjett ${fmt(ledigRad.budsjett)} kr != sum gjenværende linjer ${fmt(sumLinjer)} kr - avrunding/deling gikk galt.`);
       }
       for (const linje of ledigRad.linjer) {
         linje.beskrivelse = stripp(linje.beskrivelse);
@@ -704,7 +714,7 @@ async function main() {
         if (linje._kommentarRaw) linje.budsjettKommentar = stripp(linje._kommentarRaw);
         const fin = finnFinanceLinje(financeIndeks, linje);
         if (!fin) {
-          if (financeIndeks) console.warn(`ADVARSEL: ${ledigRad.navn}: ingen Finance-linje for "${linje.beskrivelse}" (${fmt(linje.fullArsverdi2026)} kr) - uten vurdering/kommentar.`);
+          if (financeIndeks) varsel(`ADVARSEL: ${ledigRad.navn}: ingen Finance-linje for "${linje.beskrivelse}" (${fmt(linje.fullArsverdi2026)} kr) - uten vurdering/kommentar.`);
           continue;
         }
         linje.financeEndring = round2((fin.sumEndring || 0) * fin.faktor);
@@ -875,6 +885,7 @@ async function main() {
     delBBudsjettTotal: budget.totalDelB,
     delA,
     delB,
+    ...(ADVARSLER.length ? { advarsler: ADVARSLER } : {}),
   };
 
   return pushToRedis(OUT_KEY, FIELD, snapshot, "tenant-forecast-table-snapshot.json");

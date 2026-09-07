@@ -122,6 +122,10 @@ export interface TenantForecastTableSnapshot {
   // se build-tenant-budget.js) - delB sine rader har derfor alltid budsjett=null, og denne
   // verdien brukes i stedet for én samlet Totalt-rad i UI-en.
   delBBudsjettTotal: number;
+  // v17 (2026-09-07): sum-garanti-/data-kvalitetsvarsler fra scripts/build-tenant-forecast-table.js
+  // sin egen kjøring ("fant ingen linje som matcher", "gjenstående budsjett != sum linjer", o.l.) -
+  // tidligere kun console.warn, nå med i snapshotet slik at ReconciliationPanel kan vise dem.
+  advarsler?: string[];
 }
 
 const HASH_KEY = "jobb:inntektsprognose-leietaker-tabell";
