@@ -5,8 +5,9 @@
 
 // Kategorier som alltid vises som enkeltkamper (fremhevet), aldri gruppert i
 // en liga-runde — Viking, Man Utd (uansett hvilken turnering de spiller i),
-// Norges landslag, og norske klubber i UEFA-cupene (sjeldne, viktige kamper).
-export const HIGHLIGHT_CATEGORIES = new Set(["football", "football_manu", "football_norway", "football_no_uefa"]);
+// Norges landslag, norske klubber i UEFA-cupene (sjeldne, viktige kamper), og
+// Lyn sine hjemmekamper (Morten 2026-09-07: spiller i nabolaget hans).
+export const HIGHLIGHT_CATEGORIES = new Set(["football", "football_manu", "football_norway", "football_no_uefa", "football_lyn"]);
 
 // Fulle liga-/turnerings-runder — mange kamper samme dag, skal grupperes bak
 // en "X-runde"-samlelinje man kan drille ned i, ikke listes ut enkeltvis.

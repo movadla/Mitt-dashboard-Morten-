@@ -252,6 +252,38 @@ async function fetchTsdbTeamEuropean(teamName: string, category: string, limit =
     }));
 }
 
+// ── TheSportsDB: neste HJEMMEkamper for et enkelt lag ────────────────────────
+// Samme lag-baserte oppslag som fetchTsdbTeamEuropean, men filtrert til KUN
+// hjemmekamper (Morten 2026-09-07: Lyn spiller i nabolaget hans - han trenger
+// bare vite når de spiller hjemme, uansett hvilken divisjon de ligger i akkurat
+// denne sesongen). Lag-basert oppslag (ikke en ESPN-liga-slug) fordi ESPN ikke
+// dekker de norske lavere divisjonene Lyn beveger seg mellom.
+async function fetchTsdbTeamHome(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
+  const sRes = await fetchTsdbWithRetry(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`);
+  if (!sRes) return [];
+  const sJson = await sRes.json();
+  const team: TsdbTeam | undefined = (sJson.teams ?? []).find((t: TsdbTeam) => t.strSport === "Soccer");
+  if (!team) return [];
+
+  const eRes = await fetchTsdbWithRetry(`${TSDB}/eventsnext.php?id=${team.idTeam}`);
+  if (!eRes) return [];
+  const eJson = await eRes.json();
+  const today = localDateString();
+  const teamNameLower = team.strTeam?.toLowerCase();
+  return ((eJson.events ?? []) as TsdbEvent[])
+    .filter(e => e.dateEvent >= today && !!teamNameLower && e.strHomeTeam?.toLowerCase() === teamNameLower)
+    .slice(0, limit)
+    .map(e => ({
+      id:          `${category}-${e.idEvent}`,
+      category,
+      name:        e.strEvent,
+      venue:       e.strVenue || undefined,
+      date:        e.dateEvent,
+      time:        e.strTime ? norwayTime(e.dateEvent, e.strTime) : undefined,
+      competition: e.strLeague ?? teamName,
+    }));
+}
+
 // Klubber som jevnlig kvalifiserer til europeisk klubbfotball — løs liste,
 // kan trenge justering fra sesong til sesong (se Morten). Viking har alltid
 // prioritet i visningen (se HIGHLIGHT_CATEGORIES/splitDayEvents i
@@ -350,6 +382,7 @@ const SOURCES: Array<() => Promise<SportEvent[]>> = [
   () => fetchESPN("uefa.champions", "football_manu", "Champions League", "Manchester United", 10),
   () => fetchTsdbTeam("Norway", "football_norway", 5),
   ...NORWEGIAN_EUROPEAN_CLUBS.map(name => () => fetchTsdbTeamEuropean(name, "football_no_uefa", 5)),
+  () => fetchTsdbTeamHome("Lyn", "football_lyn", 5),
   () => fetchTsdbLeague("Darts", "PDC", "darts", 10),
   () => Promise.resolve(getAthleticsCalendar()),
   () => Promise.resolve(getGolfMajors()),
@@ -408,8 +441,8 @@ interface EspnEvent {
   }>;
 }
 interface TsdbLeague { idLeague: string; strLeague: string }
-interface TsdbTeam { idTeam: string; strSport?: string }
+interface TsdbTeam { idTeam: string; strTeam?: string; strSport?: string }
 interface TsdbEvent {
   idEvent: string; strEvent: string; dateEvent: string;
-  strTime?: string; strVenue?: string; strLeague?: string;
+  strTime?: string; strVenue?: string; strLeague?: string; strHomeTeam?: string;
 }
