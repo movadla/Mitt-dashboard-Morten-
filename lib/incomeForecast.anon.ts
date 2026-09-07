@@ -251,15 +251,22 @@ export interface RemainingSnapshot {
 // til årsslutt. Nå slås contract_line.end_date opp (scripts/refresh-data/fazile-fakturaplan/
 // contract-lines.json) og brukes som horisont. Ett leieforhold berørt. totalDelA OPP til
 // 164 104 418,33 kr (+275 000), totalDelB uendret.
+// OPPDATERT 2026-09-07 (v21, fersk NXT-uttrekk): "alleredeFakturert"-siden hentet på nytt fra NXT
+// (9 selskaper, generalLedgerTransaction joinet mot customerTransaction for kundenummer - se
+// scripts/refresh-data/nxt-booked-tenants/, verifyTotal-kontrollsum bestått mot uttrekksfilas eget
+// totalBelop). Fazile-siden (fakturaplan) IKKE oppdatert i denne runden - sistOppdatert forblir
+// fakturaplanens egen uttrekksdato. totalDelA NED til 164 065 688,99 kr, totalDelB NED til
+// 17 128 652,57 kr. antallForklartOmsetningsleie/antallForklartKontraktsendring endret vesentlig
+// (3→32, 45→52) som følge av bedre NXT-matching mot fersk data.
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-09-06",
+  sistOppdatert: "2026-09-04",
   ar: 2026,
-  totalDelA: 164104418.33,
-  totalDelB: 17270022.27,
+  totalDelA: 164065688.99,
+  totalDelB: 17128652.57,
   antallLeieforhold: 726,
-  antallIkkeMatchetFlagget: 16,
-  antallForklartOmsetningsleie: 3,
-  antallForklartKontraktsendring: 45,
+  antallIkkeMatchetFlagget: 14,
+  antallForklartOmsetningsleie: 32,
+  antallForklartKontraktsendring: 52,
   antallAvsluttetNullstilt: 8,
   antallInternMustad: 12,
   uforklarteAvvik: [],
