@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { CardHeader, ConfirmDialog } from "./CardShell";
+import {
+  CardHeader,
+  ConfirmDialog,
+  MutationError,
+  useMutationError,
+} from "./CardShell";
 import { RatioBar } from "./privat/DataStrips";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
 import {
   GUARANTEES,
-  GUARANTEE_TOTAL,
   type Guarantee,
   type GuaranteeStatus,
   formatDateDMY,
@@ -92,22 +96,51 @@ function GuaranteeRow({
 
 export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
+  const mutationError = useMutationError();
+
+  // Samme feilhåndtering som Nye kontrakter (2026-09-07): useComments ruller tilbake den
+  // optimistiske endringen selv, men returverdien ble kastet — en mislykket kommentar
+  // forsvant lydløst fra skjermen uten at brukeren fikk vite at den ikke ble lagret.
+  async function handleAdd(id: string, tekst: string): Promise<boolean> {
+    const ok = await addComment("guarantee", id, tekst);
+    if (!ok) mutationError.show("Kunne ikke legge til kommentaren. Prøv igjen.");
+    return ok;
+  }
+
+  async function handleToggleRelevance(id: string, commentId: string, ikkeRelevant: boolean) {
+    const ok = await toggleRelevance("guarantee", id, commentId, ikkeRelevant);
+    if (!ok) mutationError.show("Kunne ikke oppdatere kommentaren. Prøv igjen.");
+  }
+
+  async function handleConfirmDelete() {
+    const pending = confirmDelete.pending;
+    if (!pending) return;
+    const ok = await removeComment(pending.targetType, pending.targetId, pending.commentId);
+    if (!ok) mutationError.show("Kunne ikke slette kommentaren. Prøv igjen.");
+    confirmDelete.cancel();
+  }
+
   // GUARANTEES sporer KUN innflyttinger Asana har flagget for garanti-oppfølging
   // (ikke porteføljens totale antall leieforhold — det tallet finnes ikke i denne
   // datakilden), så "totalt" under må nødvendigvis være denne oppfølgingslista
   // selv, ikke alle leieforhold hos Mustad. "Med garanti" = status "Kommer"
   // (garantien er sikret/på vei), altså den delen av oppfølgingssakene som ikke
-  // lenger er et åpent problem — det ærlige komplementet til GUARANTEE_TOTAL
-  // som faktisk kan utledes av dataene vi har.
+  // lenger er et åpent problem.
   const sikret = GUARANTEES.filter((g) => g.status === "Kommer").length;
+  // Utledes av lista i stedet for den hånd-vedlikeholdte GUARANTEE_TOTAL i datafilen
+  // (2026-09-07) — samme feilklasse som Fazilesjekk-tellingene: konstanten kan drifte fra
+  // radene den står over. "Mangler garanti" er komplementet til `sikret`, altså alt som
+  // ennå er en åpen sak ("Mangler" + "Forespurt").
+  const mangler = GUARANTEES.length - sikret;
   return (
     <div className="border-t-2 border-t-teal-400/60 p-4">
       <CardHeader
         title="Garantioversikt"
-        stat={{ value: GUARANTEE_TOTAL, label: "mangler garanti" }}
+        stat={{ value: mangler, label: "mangler garanti" }}
         icon={ShieldCheck}
         iconColorClass="text-teal-400"
       />
+        <MutationError message={mutationError.message} />
         <div className="mb-3">
           <RatioBar
             done={sikret}
@@ -128,14 +161,23 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
               </tr>
             </thead>
             <tbody>
+              {/* Tomtilstand (2026-09-07): ingen åpne garantisaker er GOD nyhet, men en
+                  tabell uten rader og uten tekst leste som en lastefeil. */}
+              {GUARANTEES.length === 0 && (
+                <tr className="border-t border-line">
+                  <td colSpan={5} className="px-3 py-2 text-sm text-ink-3">
+                    Ingen innflyttinger venter på bankgaranti eller depositum.
+                  </td>
+                </tr>
+              )}
               {GUARANTEES.map((g) => (
                 <GuaranteeRow
                   key={g.id}
                   guarantee={g}
                   comments={comments[commentKey("guarantee", g.id)] ?? []}
-                  onAdd={(tekst) => addComment("guarantee", g.id, tekst)}
+                  onAdd={(tekst) => handleAdd(g.id, tekst)}
                   onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
-                  onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("guarantee", g.id, commentId, ikkeRelevant)}
+                  onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(g.id, commentId, ikkeRelevant)}
                   onJumpToOppslag={onJumpToOppslag}
                 />
               ))}
@@ -146,12 +188,7 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
         onCancel={confirmDelete.cancel}
-        onConfirm={() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return;
-          removeComment(pending.targetType, pending.targetId, pending.commentId);
-          confirmDelete.cancel();
-        }}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );

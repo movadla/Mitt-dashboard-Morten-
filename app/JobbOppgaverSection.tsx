@@ -1,19 +1,47 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClipboardList } from "lucide-react";
+import useSWR, { mutate } from "swr";
 import {
   AMESTO_RECIPIENT,
   PRIORITY_META,
+  SOURCE_META,
   TOPIC_META,
   type AmestoEmail,
   type CaseDetails,
+  type OutlookCategory,
   type Priority,
   type Source,
   type Task,
 } from "@/lib/tasks";
-import type { SfBucket } from "./JobbView";
+import type { SfBucket, TaskFilter } from "@/lib/taskTypes";
+import type { JobbTaskState } from "@/lib/jobbTaskState";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CardHeader, CheckIcon } from "./CardShell";
 
 const LONG_PRESS_MS = 600;
+const HIGHLIGHT_MS = 2500;
+const SECTION_SHELL = "border-t border-line pt-3 mt-3";
+
+type OutlookBucket = OutlookCategory;
+
+const FILTERS: TaskFilter[] = ["all", "salesforce", "asana", "outlook", "teams"];
+const SF_BUCKETS: SfBucket[] = ["alle", "faktura", "kreditnota", "garanti", "annet"];
+const OUTLOOK_BUCKETS: OutlookBucket[] = ["trenger-oppfolging", "kopi", "til-info"];
+const OUTLOOK_BUCKET_LABEL: Record<OutlookBucket, string> = {
+  "trenger-oppfolging": "Oppfølging",
+  "kopi": "Kopi",
+  "til-info": "Til info",
+};
+
+const SF_BUCKET_LABEL: Record<SfBucket, string> = {
+  alle: "Alle",
+  faktura: "Faktura",
+  kreditnota: "Kreditnota",
+  garanti: "Garanti",
+  annet: "Annet",
+};
 
 type SourceAccent = {
   dot: string;
@@ -219,9 +247,14 @@ export function actionOwnerRank(task: Task): number {
   return 2;
 }
 
+// Semantiske tokens (DESIGN.md) i stedet for rå Tailwind-skalaer: "Ny" er en
+// sak der ballen ligger hos deg — nøyaktig samme betydning som "Din tur"-
+// merket, og deler derfor status-action. "Iverksettes" vises som "Venter" og
+// er et pågående steg som fortsatt krever oppmerksomhet → status-warning
+// (samme gule valør som amber-300 hadde, men nå styrt av temaet). (2026-09-07)
 function statusColorClass(status: string | undefined): string {
-  if (status === "Ny") return "text-sky-300";
-  if (status === "Iverksettes") return "text-amber-300";
+  if (status === "Ny") return "text-status-action";
+  if (status === "Iverksettes") return "text-status-warning";
   if (status === "Avventer kunde" || status === "Avventer Kunde")
     return "text-ink-3";
   return "text-ink-3";
@@ -585,7 +618,7 @@ function TaskCard({
             </svg>
           )}
         </div>
-        {(caseInfo.customer || caseInfo.status || due || task.awaiting || task.closeable || priority === "high") && (
+        {(caseInfo.customer || caseInfo.status || due || task.awaiting || task.closeable || isSnoozedExternally || priority === "high") && (
           <div className="mt-1.5 flex min-w-0 items-center gap-2 text-xs">
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="truncate font-medium text-accent">
@@ -595,13 +628,23 @@ function TaskCard({
                 <span className="shrink-0 text-2xs font-semibold text-status-danger">Kritisk</span>
               )}
             </div>
+            {/* Utsatt og "avventer kunde" var visuelt identiske (begge kun
+                opacity-50), selv om den ene er noe DU har valgt å skyve på og
+                kan hente fram igjen. Et eget merke skiller dem uten å innføre
+                et nytt fargespråk. (2026-09-07) */}
+            {isSnoozedExternally && (
+              <span className="shrink-0 inline-flex items-center rounded-full bg-surface-2 px-2 py-0.5 text-2xs font-semibold text-ink-3 ring-1 ring-line-strong">
+                Utsatt
+              </span>
+            )}
             {task.closeable ? (
-              <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/25">
-                ✓ Kan lukkes
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/25">
+                <CheckIcon className="h-3 w-3" />
+                Kan lukkes
               </span>
             ) : task.awaiting === "deg!" || task.awaiting === "Morten" || (!task.awaiting && actionOwnerRank(task) === 0) ? (
               <span className="shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-medium bg-status-action/12 text-status-action">
-                ▸ Din tur
+                Din tur
               </span>
             ) : task.awaiting ? (
               <span className="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold ring-1 bg-surface-2 text-ink-3 ring-line-strong">
@@ -671,7 +714,9 @@ function TaskCard({
             onPointerLeave={cancelLongPress}
             onPointerCancel={cancelLongPress}
             aria-expanded={isExpanded}
-            title="Hold inne for å utsette"
+            // Langt trykk veksler snooze begge veier — teksten må derfor si
+            // hva som faktisk skjer nå, ikke alltid "utsett". (2026-09-07)
+            title={isSnoozedExternally ? "Hold inne for å hente fram igjen" : "Hold inne for å utsette"}
             className="-m-1 flex min-w-0 flex-1 items-start gap-2 rounded-xl p-1 text-left active:bg-surface-2"
           >
             <div className="min-w-0 flex-1">{body}</div>
@@ -1277,4 +1322,630 @@ function TaskCard({
   );
 }
 
-export default TaskCard;
+export { TaskCard };
+
+// ─── Delt oppgavetilstand (server-lagret) ──────────────────────────────────
+
+const TASK_STATE_KEY = "/api/jobb-task-state";
+const EMPTY_TASK_STATE: JobbTaskState = { done: [], priorityOverrides: {}, snoozed: {} };
+
+// Server-lagret (Redis) i stedet for localStorage — "ferdig"/prioritet/snooze
+// skal overleve enhetsbytte (telefon <-> laptop), ikke låses til nettleseren
+// man satt i da man merket noe.
+//
+// Tilstanden bor i SWR-cachen og ikke i lokal React-state: JobbView trenger
+// antallet åpne oppgaver til nav-boblen HELE tiden, mens dette panelet er
+// avmontert så lenge en annen seksjon er valgt. Én cache-nøkkel gir begge
+// nøyaktig samme tall uten at tellingen finnes to steder, og optimistisk
+// mutate + POST gir samme semantikk som den gamle "hydrer til state og skriv
+// tilbake i en effekt"-runden (samme endepunkt, samme body). (2026-09-07)
+export function useJobbTaskState() {
+  const { data } = useSWR<JobbTaskState>(TASK_STATE_KEY, jsonFetcher);
+  const state = data ?? EMPTY_TASK_STATE;
+  const done = useMemo(() => new Set(state.done), [state]);
+
+  // Skriv aldri før GET-en har svart: da er `state` fortsatt tom, og en POST
+  // ville nullstilt alt som allerede ligger i Redis. (Den gamle
+  // hydrer-i-effekt-varianten kastet på sin side bort et klikk gjort i det
+  // samme vinduet — begge tilfeller er de første ~100 ms etter innlasting.)
+  const loaded = data !== undefined;
+  const write = useCallback((next: JobbTaskState) => {
+    if (!loaded) return;
+    mutate(TASK_STATE_KEY, next, { revalidate: false });
+    fetch(TASK_STATE_KEY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next),
+    }).catch(() => {
+      /* ignorer forbigående nettverksfeil — tilstanden er fortsatt korrekt lokalt */
+    });
+  }, [loaded]);
+
+  const toggleDone = useCallback(
+    (id: string) => {
+      const next = new Set(state.done);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      write({ ...state, done: [...next] });
+    },
+    [state, write],
+  );
+
+  const toggleSnooze = useCallback(
+    (id: string, lastModifiedAt: string | undefined) => {
+      const snoozed = { ...state.snoozed };
+      if (snoozed[id]) delete snoozed[id];
+      else snoozed[id] = lastModifiedAt ?? new Date().toISOString();
+      write({ ...state, snoozed });
+    },
+    [state, write],
+  );
+
+  return {
+    done,
+    priorityOverrides: state.priorityOverrides as Record<string, Priority>,
+    snoozed: state.snoozed,
+    toggleDone,
+    toggleSnooze,
+  };
+}
+
+// Én telling, to kallesteder: panelet bruker hele oppslaget til kildefanene,
+// JobbView bruker kun .all til nav-boblen.
+export function useOpenTaskCounts(tasks: Task[]): Record<TaskFilter, number> {
+  const { done } = useJobbTaskState();
+  return useMemo(() => {
+    const c: Record<TaskFilter, number> = {
+      all: 0,
+      salesforce: 0,
+      asana: 0,
+      outlook: 0,
+      teams: 0,
+    };
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      c.all += 1;
+      c[t.source] += 1;
+    }
+    return c;
+  }, [tasks, done]);
+}
+
+// ─── Panel ─────────────────────────────────────────────────────────────────
+
+// Hva JobbView ber om når man hopper hit fra en annen seksjon: en konkret sak
+// (fra "I dag"-kortet) og/eller et forhåndsvalgt kildefilter.
+export type OppgaverFocus = { taskId?: string; filter?: TaskFilter };
+
+type OppgaverViewState = {
+  filter: TaskFilter;
+  sfBucket: SfBucket;
+  outlookBucket: OutlookBucket;
+  expandedId: string | null;
+  detailsOpen: boolean;
+  collapsedGroups: Set<string>;
+  search: string;
+};
+
+// JobbView rendrer kun den aktive seksjonen (og ruten har key={activeId}), så
+// panelet monteres på nytt hver gang man bytter fane. Denne rent visuelle
+// tilstanden lå tidligere i JobbView og overlevde derfor fanebytte; en
+// modul-lokal kopi holder på det uten å flytte state tilbake til
+// orkestratoren. Den er bevisst IKKE persistert noe sted — den lever like
+// lenge som fanen er åpen, akkurat som før. (2026-09-07)
+const viewState: OppgaverViewState = {
+  filter: "all",
+  sfBucket: "faktura",
+  outlookBucket: "trenger-oppfolging",
+  expandedId: null,
+  detailsOpen: false,
+  collapsedGroups: new Set(),
+  search: "",
+};
+
+function useViewState<K extends keyof OppgaverViewState>(key: K) {
+  const [value, setValue] = useState<OppgaverViewState[K]>(viewState[key]);
+  const set = useCallback(
+    (next: OppgaverViewState[K] | ((prev: OppgaverViewState[K]) => OppgaverViewState[K])) => {
+      const resolved =
+        typeof next === "function"
+          ? (next as (prev: OppgaverViewState[K]) => OppgaverViewState[K])(viewState[key])
+          : next;
+      viewState[key] = resolved;
+      setValue(resolved);
+    },
+    [key],
+  );
+  return [value, set] as const;
+}
+
+function isDimmedCard(task: Task): boolean {
+  return actionOwnerRank(task) === 1;
+}
+
+export function JobbOppgaverPanel({
+  tasks,
+  today,
+  nowMs,
+  focus,
+}: {
+  tasks: Task[];
+  today: string;
+  nowMs: number;
+  focus?: OppgaverFocus | null;
+}) {
+  // Fryses ved montering: JobbView nullstiller focus ved neste fanebytte, og
+  // da skal ikke et allerede utført hopp kjøre om igjen.
+  const [initialFocus] = useState(() => {
+    if (focus?.filter) viewState.filter = focus.filter;
+    if (focus?.taskId) {
+      viewState.expandedId = focus.taskId;
+      viewState.detailsOpen = false;
+    }
+    return focus ?? null;
+  });
+
+  const [filter, setFilter] = useViewState("filter");
+  const [sfBucket, setSfBucket] = useViewState("sfBucket");
+  const [outlookBucket, setOutlookBucket] = useViewState("outlookBucket");
+  const [expandedId, setExpandedId] = useViewState("expandedId");
+  const [detailsOpen, setDetailsOpen] = useViewState("detailsOpen");
+  const [collapsedGroups, setCollapsedGroups] = useViewState("collapsedGroups");
+  const [search, setSearch] = useViewState("search");
+  const [highlightId, setHighlightId] = useState<string | null>(initialFocus?.taskId ?? null);
+  const highlightTimerRef = useRef<number | null>(null);
+
+  const { done, priorityOverrides, snoozed, toggleDone, toggleSnooze } = useJobbTaskState();
+  const counts = useOpenTaskCounts(tasks);
+
+  // Hopp hit fra en annen seksjon: panelet monteres først etter fanebyttet, så
+  // scrollingen må skje her. Dobbel rAF venter til kortet faktisk er rendret.
+  useEffect(() => {
+    const taskId = initialFocus?.taskId;
+    if (!taskId) return;
+    const timer = window.setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById(`task-${taskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+    return () => window.clearTimeout(timer);
+  }, [initialFocus]);
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
+
+  function toggleGroup(g: string) {
+    setCollapsedGroups((prev) => {
+      const s = new Set(prev);
+      if (s.has(g)) s.delete(g);
+      else s.add(g);
+      return s;
+    });
+  }
+
+  function isSnoozed(task: Task): boolean {
+    const since = snoozed[task.id];
+    if (!since) return false;
+    if (!task.lastModifiedAt) return true;
+    return task.lastModifiedAt <= since;
+  }
+
+  function handleToggleSnooze(taskId: string) {
+    toggleSnooze(taskId, tasks.find((t) => t.id === taskId)?.lastModifiedAt);
+  }
+
+  // Hopp til en annen sak hos samme kunde (fra detaljpanelet) — samme
+  // markering/scrolling som når JobbView sender oss hit utenfra.
+  function focusTask(id: string) {
+    setExpandedId(id);
+    setDetailsOpen(false);
+    setHighlightId(id);
+    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = window.setTimeout(() => setHighlightId(null), HIGHLIGHT_MS);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+  }
+
+  const priorityCounts = useMemo(() => {
+    const c: Record<Priority, number> = { high: 0, medium: 0, low: 0 };
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      const p = priorityOverrides[t.id] ?? t.priority;
+      if (p) c[p] += 1;
+    }
+    return c;
+  }, [tasks, done, priorityOverrides]);
+
+  const sortFn = useCallback(
+    (a: Task, b: Task): number => {
+      const effectiveRank = (t: Task) => {
+        const r = actionOwnerRank(t);
+        return t.closeable && r > 0 ? 0.5 : r;
+      };
+      const ao = effectiveRank(a) - effectiveRank(b);
+      if (ao !== 0) return ao;
+      // I "alle"-fanen: Teams øverst, så Salesforce, så Outlook
+      if (filter === "all") {
+        const sourceOrder: Partial<Record<Source, number>> = { teams: 0, salesforce: 1, outlook: 2 };
+        const as = sourceOrder[a.source] ?? 3;
+        const bs = sourceOrder[b.source] ?? 3;
+        if (as !== bs) return as - bs;
+      }
+      // Within rank 0: explicit "deg!" above status-based items
+      const aDeg = a.awaiting === "deg!" ? 0 : 1;
+      const bDeg = b.awaiting === "deg!" ? 0 : 1;
+      if (aDeg !== bDeg) return aDeg - bDeg;
+      // Innen seksjon: tydelige (ikke dempet) først
+      const ad = isDimmedCard(a) ? 1 : 0;
+      const bd = isDimmedCard(b) ? 1 : 0;
+      if (ad !== bd) return ad - bd;
+      const ap = priorityRank(priorityOverrides[a.id] ?? a.priority);
+      const bp = priorityRank(priorityOverrides[b.id] ?? b.priority);
+      if (ap !== bp) return ap - bp;
+      return lastModifiedTime(a) - lastModifiedTime(b);
+    },
+    [filter, priorityOverrides],
+  );
+
+  const tasksByCustomer = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      const customer = getCaseInfo(t).customer;
+      if (!customer) continue;
+      const list = map.get(customer) ?? [];
+      list.push(t);
+      map.set(customer, list);
+    }
+    return map;
+  }, [tasks, done]);
+
+  function relatedCasesFor(task: Task): Task[] {
+    const customer = getCaseInfo(task).customer;
+    if (!customer) return [];
+    return (tasksByCustomer.get(customer) ?? []).filter((t) => t.id !== task.id);
+  }
+
+  const sfBucketCounts = useMemo(() => {
+    const c: Record<SfBucket, number> = {
+      alle: 0,
+      faktura: 0,
+      kreditnota: 0,
+      garanti: 0,
+      annet: 0,
+    };
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      const b = bucketFor(t);
+      if (b) { c[b] += 1; c.alle += 1; }
+    }
+    return c;
+  }, [tasks, done]);
+
+  const outlookBucketCounts = useMemo(() => {
+    const c: Record<OutlookBucket, number> = {
+      "trenger-oppfolging": 0,
+      "kopi": 0,
+      "til-info": 0,
+    };
+    for (const t of tasks) {
+      if (done.has(t.id)) continue;
+      if (t.source === "outlook" && t.outlookCategory) c[t.outlookCategory] += 1;
+    }
+    return c;
+  }, [tasks, done]);
+
+  const visibleSf = useMemo(() => {
+    return tasks.filter(
+      (t) => t.source === "salesforce" && (sfBucket === "alle" || bucketFor(t) === sfBucket),
+    );
+  }, [tasks, sfBucket]);
+
+  const visible = useMemo(() => {
+    let list: Task[];
+    if (filter === "all") list = tasks;
+    else if (filter === "salesforce") list = visibleSf;
+    else if (filter === "outlook") list = tasks.filter((t) => t.source === "outlook" && t.outlookCategory === outlookBucket);
+    else list = tasks.filter((t) => t.source === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.context?.toLowerCase().includes(q) ||
+          t.details?.kunde?.toLowerCase().includes(q) ||
+          t.caseNumber?.toLowerCase().includes(q)
+      );
+    }
+    return list.slice().sort(sortFn);
+  }, [tasks, filter, visibleSf, outlookBucket, search, sortFn]);
+
+  function toggleExpanded(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+    setDetailsOpen(false);
+  }
+
+  function toggleDetails() {
+    setDetailsOpen((prev) => !prev);
+  }
+
+  const showSfTabs = filter === "salesforce";
+  const showOutlookTabs = filter === "outlook";
+
+  return (
+    <div className="border-t-2 border-t-accent/60 p-4">
+      <CardHeader
+        title="Oppgaver"
+        stat={{ value: counts.all, label: counts.all === 1 ? "oppgave igjen" : "oppgaver igjen" }}
+        icon={ClipboardList}
+        iconColorClass="text-accent"
+      />
+      {/* Prioritetsfordelingen var kun tre fargede prikker+tall - en proporsjonal stolpe gir
+          samme informasjon på ett blikk i stedet for at man må lese tre tall og regne selv.
+          Skjules når alt er ferdig (counts.all=0), samme mønster som resten av appen. */}
+      {counts.all > 0 && (
+        <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-ink-4/15">
+          {priorityCounts.high > 0 && (
+            <div className="h-full bg-status-danger" style={{ width: `${(priorityCounts.high / counts.all) * 100}%` }} />
+          )}
+          {priorityCounts.medium > 0 && (
+            <div className="h-full bg-status-warning" style={{ width: `${(priorityCounts.medium / counts.all) * 100}%` }} />
+          )}
+          {priorityCounts.low > 0 && (
+            <div className="h-full bg-status-positive" style={{ width: `${(priorityCounts.low / counts.all) * 100}%` }} />
+          )}
+        </div>
+      )}
+    <div className="mt-3 flex flex-col gap-3">
+      <div>
+        <div className="flex justify-end">
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+            </svg>
+            <input
+              type="search"
+              placeholder="Søk..."
+              aria-label="Søk i oppgaver"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setSearch("");
+              }}
+              className="w-32 rounded-full border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong focus:w-44 transition-all duration-200"
+            />
+          </div>
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
+          <span>
+            {counts.all} {counts.all === 1 ? "oppgave igjen" : "oppgaver igjen"}
+          </span>
+          {priorityCounts.high > 0 && (
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <span className="h-2 w-2 rounded-full bg-status-danger" />
+              {priorityCounts.high}
+            </span>
+          )}
+          {priorityCounts.medium > 0 && (
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <span className="h-2 w-2 rounded-full bg-status-warning" />
+              {priorityCounts.medium}
+            </span>
+          )}
+          {priorityCounts.low > 0 && (
+            <span className="inline-flex items-center gap-1.5 tabular-nums">
+              <span className="h-2 w-2 rounded-full bg-status-positive" />
+              {priorityCounts.low}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 leading-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="tablist"
+        aria-label="Kilder"
+      >
+        {FILTERS.filter((f) => f === "all" || counts[f] > 0).map((f) => {
+          const active = filter === f;
+          const label = f === "all" ? "Alle" : SOURCE_META[f].label;
+          const accent = f !== "all" ? SOURCE_ACCENT[f] : null;
+          const tabClass = accent
+            ? active
+              ? `rounded-full border border-transparent ${accent.soft} ${accent.softText} ring-1 ${accent.softRing}`
+              : "rounded-full border border-line bg-surface-1 text-ink-2 hover:bg-surface-2 hover:text-ink-1"
+            : active
+              ? "rounded-full border border-line-strong bg-surface-3 text-ink-1"
+              : "rounded-full border border-line bg-surface-1 text-ink-3 hover:text-ink-1";
+          const badgeClass = accent
+            ? active ? accent.softText : "text-ink-3"
+            : active ? "text-ink-2" : "text-ink-3";
+          return (
+            <button
+              key={f}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setFilter(f)}
+              className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-medium transition ${tabClass}`}
+            >
+              {f !== "all" && (
+                <SourceIcon source={f} className={`h-3.5 w-3.5 shrink-0 ${accent!.icon}`} />
+              )}
+              <span>{label}</span>
+              <span className={`text-xs tabular-nums ${badgeClass}`}>
+                {counts[f]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={SECTION_SHELL}>
+      {showSfTabs && (
+        <div
+          className="mb-5 flex gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-line"
+          role="tablist"
+          aria-label="Salesforce-kategori"
+        >
+          {SF_BUCKETS.map((bucket) => {
+            const active = sfBucket === bucket;
+            return (
+              <button
+                key={bucket}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setSfBucket(bucket)}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? `${SOURCE_ACCENT.salesforce.soft} ${SOURCE_ACCENT.salesforce.softText} ring-1 ${SOURCE_ACCENT.salesforce.softRing}`
+                    : "text-ink-3 hover:text-ink-1"
+                }`}
+              >
+                <span>{SF_BUCKET_LABEL[bucket]}</span>
+                <span
+                  className={`tabular-nums ${
+                    active ? SOURCE_ACCENT.salesforce.softText : "text-ink-3"
+                  }`}
+                >
+                  {sfBucketCounts[bucket]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {showOutlookTabs && (
+        <div
+          className="mb-5 flex gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-line"
+          role="tablist"
+          aria-label="Outlook-kategori"
+        >
+          {OUTLOOK_BUCKETS.map((bucket) => {
+            const active = outlookBucket === bucket;
+            return (
+              <button
+                key={bucket}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setOutlookBucket(bucket)}
+                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
+                  active
+                    ? `${SOURCE_ACCENT.outlook.soft} ${SOURCE_ACCENT.outlook.softText} ring-1 ${SOURCE_ACCENT.outlook.softRing}`
+                    : "text-ink-3 hover:text-ink-1"
+                }`}
+              >
+                <span>{OUTLOOK_BUCKET_LABEL[bucket]}</span>
+                <span className={`tabular-nums ${active ? SOURCE_ACCENT.outlook.softText : "text-ink-3"}`}>
+                  {outlookBucketCounts[bucket]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {visible.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-ink-3">
+          Ingen oppgaver her.
+        </div>
+      ) : (
+        (() => {
+          const minTur = visible.filter((t) => actionOwnerRank(t) === 0);
+          const venter = visible.filter((t) => actionOwnerRank(t) === 1);
+          const ukjent = visible.filter((t) => actionOwnerRank(t) === 2);
+          const renderCard = (task: Task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              isDone={done.has(task.id)}
+              isExpanded={expandedId === task.id}
+              detailsOpen={detailsOpen && expandedId === task.id}
+              onToggleDone={toggleDone}
+              onToggleExpanded={toggleExpanded}
+              onToggleDetails={toggleDetails}
+              onJumpToCase={focusTask}
+              onToggleSnooze={handleToggleSnooze}
+              isSnoozedExternally={isSnoozed(task)}
+              priority={priorityOverrides[task.id] ?? task.priority}
+              relatedCases={relatedCasesFor(task)}
+              today={today}
+              nowMs={nowMs}
+              highlighted={highlightId === task.id}
+            />
+          );
+          return (
+            <div className="flex flex-col gap-5">
+              {minTur.length > 0 && (
+                <section>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("min-tur")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-status-action hover:text-status-action/80"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-status-action" />
+                    Min tur
+                    <span className="text-status-action/70">({minTur.length})</span>
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("min-tur") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("min-tur") && (
+                    <ul className="flex flex-col gap-2">{minTur.map(renderCard)}</ul>
+                  )}
+                </section>
+              )}
+              {venter.length > 0 && (
+                <section>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("avventer")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-ink-3 hover:text-ink-1"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-line-strong" />
+                    Avventer
+                    <span className="text-ink-4">({venter.length})</span>
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("avventer") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("avventer") && (
+                    <ul className="flex flex-col gap-2">{venter.map(renderCard)}</ul>
+                  )}
+                </section>
+              )}
+              {ukjent.length > 0 && (
+                <section>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup("annet")}
+                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-ink-3 hover:text-ink-1"
+                  >
+                    Annet ({ukjent.length})
+                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("annet") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {!collapsedGroups.has("annet") && (
+                    <ul className="flex flex-col gap-2">{ukjent.map(renderCard)}</ul>
+                  )}
+                </section>
+              )}
+            </div>
+          );
+        })()
+      )}
+      </div>
+    </div>
+    </div>
+  );
+}
+
+export default JobbOppgaverPanel;

@@ -99,7 +99,7 @@ function EventRow({
         type="button"
         onClick={() => onRemove(event.id)}
         aria-label="Slett hendelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
       >
         <X className="h-4 w-4" />
       </button>
@@ -132,22 +132,33 @@ export default function JobbEventsSection() {
   );
   const suggestions = (suggestionData?.suggestions ?? []).filter((s) => s.target === "event");
 
+  // Forslaget slettes FØRST når hendelsen faktisk er opprettet (2026-09-07).
+  // Før lå DELETE-kallet utenfor res.ok-sjekken, så en feilet POST betydde at
+  // forslaget var borte for godt uten at noe ble laget — og uten feilmelding.
   async function handleAcceptSuggestion(s: Suggestion) {
+    let previous: Suggestion[] = [];
     mutateSuggestions(
-      (current) => current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) },
+      (current) => {
+        previous = current?.suggestions ?? [];
+        return current && { suggestions: current.suggestions.filter((x) => x.id !== s.id) };
+      },
       { revalidate: false },
     );
-    const res = await fetch("/api/jobb-events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: s.title, date: s.date || localDateString(), note: s.note }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/jobb-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: s.title, date: s.date || localDateString(), note: s.note }),
+      });
+      if (!res.ok) throw new Error("create failed");
       const created: JobbEvent = await res.json();
       mutateEvents((current) => current && { events: [...current.events, created] }, { revalidate: false });
+      await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutateSuggestions({ suggestions: previous }, { revalidate: false });
+      mutationError.show("Kunne ikke opprette hendelsen fra forslaget. Prøv igjen.");
     }
-    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
   }
 
   async function handleDeclineSuggestion(s: Suggestion) {

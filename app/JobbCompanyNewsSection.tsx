@@ -8,6 +8,7 @@ import type { NewNewsItemInput, NewsCategory, NewsImportance, NewsItem, NewsSour
 import { localDateString, relativeDayLabel } from "@/lib/payday";
 import { formatDateDMY } from "@/lib/widgets";
 import { timeAgo } from "@/lib/timeAgo";
+import SwipeableRow from "./privat/SwipeableRow";
 import { Cloud, FileText, Globe, Mail, MessageSquare, Newspaper, X } from "lucide-react";
 
 const CATEGORY_LABEL: Record<NewsCategory, string> = {
@@ -64,8 +65,8 @@ function NewsRow({
   onRemove: () => void;
 }) {
   const SourceIcon = SOURCE_ICON[item.sourceType];
-  return (
-    <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
+  const content = (
+    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <div className="flex items-center gap-2">
         <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
           <ImportanceDot importance={item.importance} />
@@ -108,6 +109,18 @@ function NewsRow({
           )}
         </div>
       )}
+    </div>
+  );
+
+  // Sveip-til-slett i tillegg til X-knappen (2026-09-07), likt
+  // JobbRemindersSection/JobbEventsSection. Trykk-for-utvid kolliderer ikke:
+  // SwipeableRow låser aksen først etter 8 px, så et rent trykk går uendret
+  // gjennom til utvid-knappen.
+  return (
+    <li>
+      <SwipeableRow onSwipeLeft={onRemove} leftLabel="Fjern">
+        {content}
+      </SwipeableRow>
     </li>
   );
 }
@@ -148,6 +161,10 @@ function NewsForm({ onCancel, onSave }: { onCancel: () => void; onSave: (input: 
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") onCancel();
+        }}
         placeholder="Tittel (den ene linjen som vises)"
         className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
       />
@@ -239,8 +256,13 @@ export default function JobbCompanyNewsSection() {
   // IKKE nyeste "date" (som kan være en gammel hendelse funnet nylig, eller
   // motsatt en fersk hendelse lagt inn for lenge siden) — dette er hva som
   // faktisk svarer på "hvor fersk er denne oversikten totalt sett".
-  const lastResearchAt = news.length > 0 ? Math.max(...news.map((n) => Date.parse(n.createdAt))) : null;
+  // Filtrer bort ugyldige createdAt før Math.max (2026-09-07): én uparsbar
+  // dato ga NaN for hele feltet, som timeAgo rendret som «NaN min siden».
+  const createdAtStamps = news.map((n) => Date.parse(n.createdAt)).filter(Number.isFinite);
+  const lastResearchAt = createdAtStamps.length > 0 ? Math.max(...createdAtStamps) : null;
 
+  // Dispatcher jobb-refresh etter mutasjon (2026-09-07) som de tre andre
+  // Jobb-kortene — SWR-nøkkelen deles med JobbTodaySummary.
   async function handleAdd(input: NewNewsItemInput): Promise<boolean> {
     try {
       const res = await fetch("/api/company-news", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: [input] }) });
@@ -251,6 +273,7 @@ export default function JobbCompanyNewsSection() {
       const { created } = await res.json();
       mutateNews((current) => current && { news: [...current.news, ...created] }, { revalidate: false });
       setShowForm(false);
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
       return true;
     } catch {
       mutationError.show("Kunne ikke legge til nyheten. Prøv igjen.");
@@ -270,6 +293,7 @@ export default function JobbCompanyNewsSection() {
     try {
       const res = await fetch(`/api/company-news/${item.date}/${item.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
     } catch {
       mutateNews({ news: previous }, { revalidate: false });
       mutationError.show("Kunne ikke fjerne nyheten. Prøv igjen.");

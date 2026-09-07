@@ -25,9 +25,13 @@ function CategoryLabel({
   count?: number;
 }) {
   return (
-    <div className="mb-1 flex items-center gap-1.5" title={label}>
-      <Icon className={`h-4 w-4 ${colorClass}`} />
-      <span className="sr-only">{label}</span>
+    // Etiketten var tidligere KUN sr-only + en title-attributt (2026-09-07): usynlig for øyet,
+    // og title vises ikke i det hele tatt på touch. Fargen på ikonet alene er et tynt signal for
+    // et verktøy som sjekkes daglig på mobil - teksten står nå synlig, slik Privat-fanens
+    // CategoryRow allerede gjorde.
+    <div className="mb-1 flex items-center gap-1.5">
+      <Icon className={`h-4 w-4 shrink-0 ${colorClass}`} />
+      <span className={`text-2xs font-semibold uppercase tracking-wide ${colorClass}`}>{label}</span>
       {count !== undefined && <span className={`text-2xs font-semibold tabular-nums ${colorClass}`}>{count}</span>}
     </div>
   );
@@ -72,7 +76,11 @@ export default function JobbTodaySummary({
   // "I dag"-forhåndsvisningen skal kun vise viktig/relevant og fersk nyheter
   // (ikke "lav" viktighet, ikke eldre enn en uke) — selve Mustad-nyheter-fanen
   // viser fortsatt ALT, uendret (se JobbCompanyNewsSection.tsx).
-  const oneWeekAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  // Date.now() leses i en lazy useState-initialisator, ikke rått under render (2026-09-07):
+  // et rått kall er urent og ga en react-hooks/purity-feil - og et ukesvindu trenger uansett
+  // ikke oppdatere seg mens kortet står åpent. Samme mønster som privat/TodaySummary bruker.
+  const [mountedAtMs] = useState(() => Date.now());
+  const oneWeekAgoMs = mountedAtMs - 7 * 24 * 60 * 60 * 1000;
   const allNews = newsData?.news ?? [];
   const relevantNews = allNews
     .filter((n) => n.importance !== "lav" && Date.parse(n.date) >= oneWeekAgoMs)
@@ -117,7 +125,11 @@ export default function JobbTodaySummary({
     }
   }
   for (const t of tasks) {
-    if (t.priority === "high" && t.dueAt && t.dueAt <= today) {
+    // Outlook-oppgaver merket "trenger-oppfolging" har allerede sin egen kategori under
+    // (viktigsteMailene) - uten dette unntaket havnet en høyprioritert slik oppgave i BEGGE
+    // listene samtidig: vist som to rader, og telt to ganger i hero-tallet (2026-09-07).
+    const alleredeIViktigsteMailene = t.source === "outlook" && t.outlookCategory === "trenger-oppfolging" && !t.cc;
+    if (t.priority === "high" && t.dueAt && t.dueAt <= today && !alleredeIViktigsteMailene) {
       oppfolging.push({ key: `task-${t.id}`, text: t.title, onClick: () => onJumpToTask(t.id) });
     }
   }
@@ -161,7 +173,11 @@ export default function JobbTodaySummary({
               farge (colorClass) er allerede signalet for hvilken kategori det er. */}
           <div className="flex flex-col divide-y divide-line">
             <div className="pb-2 first:pt-0">
-              <CategoryLabel icon={Calendar} colorClass="text-source-teams" label="Kalender" />
+              {/* indigo-400, ikke source-teams (2026-09-07): source-* er KILDE-identitetsfarger og
+                  skal aldri brukes som seksjonsfarge - og kalenderdataene kommer dessuten fra
+                  Outlook, ikke Teams. Kalender-seksjonen er indigo overalt ellers (NAV_META +
+                  CalendarCard sin egen CardHeader/topplinje). */}
+              <CategoryLabel icon={Calendar} colorClass="text-indigo-400" label="Kalender" />
               {todaysMeetings.length > 0 ? (
                 <ul className="flex flex-col gap-1">
                   {todaysMeetings.map((m) => (
@@ -193,7 +209,9 @@ export default function JobbTodaySummary({
 
             {todaysEvents.length > 0 && (
               <div className="py-2 last:pb-0">
-                <CategoryLabel icon={PartyPopper} colorClass="text-status-warning" label="Hendelser" />
+                {/* emerald-400, ikke status-warning: Hendelser-seksjonen er emerald i både
+                    NAV_META og JobbEventsSection sin egen CardHeader (2026-09-07). */}
+                <CategoryLabel icon={PartyPopper} colorClass="text-emerald-400" label="Hendelser" />
                 <ul className="flex flex-col gap-1">
                   {todaysEvents.map((e) => (
                     <li key={e.id} className="text-sm text-ink-1">

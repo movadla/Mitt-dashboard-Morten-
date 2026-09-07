@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CardHeader, ConfirmDialog, SkeletonRows, SuggestionList, useConfirmDelete } from "./CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, SuggestionList, useConfirmDelete, useMutationError } from "./CardShell";
 import type { LeasingManager } from "@/lib/leasingManagers";
 import type { Employee } from "@/lib/employees";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import { TENANTS, type Tenant } from "@/lib/tenants";
 import { COMPANY_INFO, type CompanyInfoEntry } from "@/lib/companyInfo";
+import { formatDMY } from "@/lib/payday";
+import SwipeableRow from "./privat/SwipeableRow";
 import { Users, X } from "lucide-react";
 
 const MUSTAD_CATEGORY_LABEL: Record<CompanyInfoEntry["category"] | "ansatte", string> = {
@@ -29,10 +31,8 @@ function matchesEmployee(e: Employee, q: string): boolean {
   );
 }
 
-function formatDateDMY(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
-}
+// formatDateDMY lå tidligere som en byte-identisk kopi her (2026-09-07) —
+// bruker nå den eksporterte formatDMY i lib/payday.ts.
 
 function matchesTenant(t: Tenant, query: string): boolean {
   const q = query.toLowerCase();
@@ -124,7 +124,7 @@ function TenantRow({ tenant }: { tenant: Tenant }) {
                     )}
                     <span className="text-ink-4">
                       {" "}
-                      · {c.status} · {formatDateDMY(c.dato)}
+                      · {c.status} · {formatDMY(c.dato)}
                     </span>
                   </li>
                 ))}
@@ -229,7 +229,7 @@ function ManagerRow({
     return <ManagerForm initial={manager} onCancel={onCancelEdit} onSave={(input) => onSaveEdit(manager.id, input)} />;
   }
 
-  return (
+  const content = (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button type="button" onClick={() => onStartEdit(manager.id)} className="min-w-0 flex-1 text-left">
         <p className="text-sm font-medium text-ink-1">{manager.name}</p>
@@ -265,11 +265,20 @@ function ManagerRow({
         type="button"
         onClick={() => onRemove(manager)}
         aria-label="Slett utleieansvarlig"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
       >
-        ×
+        <X className="h-4 w-4" />
       </button>
     </div>
+  );
+
+  // Sveip-til-slett i tillegg til X-knappen (2026-09-07), likt de andre
+  // Jobb-kortene. Trykk-for-rediger består: SwipeableRow låser aksen først
+  // etter 8 px bevegelse.
+  return (
+    <SwipeableRow onSwipeLeft={() => onRemove(manager)} leftLabel="Slett">
+      {content}
+    </SwipeableRow>
   );
 }
 
@@ -289,6 +298,7 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const confirmDeleteEmployee = useConfirmDelete<Employee>();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const mutationError = useMutationError();
 
   const load = useCallback(() => {
     fetch("/api/leasing-managers")
@@ -310,30 +320,53 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
     return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
 
+  // Forslaget slettes FØRST når den ansatte faktisk er opprettet (2026-09-07).
+  // Før lå DELETE-kallet utenfor res.ok-sjekken, så en feilet POST betydde at
+  // forslaget var borte for godt uten at noe ble laget — og uten feilmelding.
   async function handleAcceptEmployeeSuggestion(s: Suggestion) {
+    const previous = suggestions;
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
-    const res = await fetch("/api/employees", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: s.title, title: s.note }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/employees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: s.title, title: s.note }),
+      });
+      if (!res.ok) throw new Error("create failed");
       const created: Employee = await res.json();
       setEmployees((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setSuggestions(previous);
+      mutationError.show("Kunne ikke legge til den ansatte fra forslaget. Prøv igjen.");
     }
-    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
   }
 
   async function handleDeclineEmployeeSuggestion(s: Suggestion) {
+    const previous = suggestions;
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
-    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    try {
+      const res = await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("decline failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setSuggestions(previous);
+      mutationError.show("Kunne ikke avvise forslaget. Prøv igjen.");
+    }
   }
 
   async function handleRemoveEmployee(employee: Employee) {
+    const previous = employees;
     setEmployees((prev) => prev.filter((e) => e.id !== employee.id));
-    await fetch(`/api/employees/${employee.id}`, { method: "DELETE" });
+    try {
+      const res = await fetch(`/api/employees/${employee.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setEmployees(previous);
+      mutationError.show("Kunne ikke slette den ansatte. Prøv igjen.");
+    }
   }
 
   const tenantResults = useMemo(() => {
@@ -348,38 +381,54 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
   const showEmployees = mustadCategory === "ansatte" || (mustadCategory === "alle" && mustadQ.length > 0);
   const employeeResults = showEmployees ? employees.filter((e) => !mustadQ || matchesEmployee(e, mustadQ)) : [];
 
+  // Alle mutasjonene under fikk try/catch + mutationError + tilbakerulling
+  // (2026-09-07) — kortet var det eneste av Jobb-kortene der en feilet
+  // forespørsel var helt taus.
   async function handleAdd(input: { name: string; ansvar: string; email?: string }) {
-    const res = await fetch("/api/leasing-managers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/leasing-managers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) throw new Error("create failed");
       const created: LeasingManager = await res.json();
       setManagers((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
       setShowForm(false);
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke legge til utleieansvarlig. Prøv igjen.");
     }
   }
 
   async function handleSaveEdit(id: string, input: { name: string; ansvar: string; email?: string }) {
-    const res = await fetch(`/api/leasing-managers/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...input, email: input.email ?? null }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`/api/leasing-managers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...input, email: input.email ?? null }),
+      });
+      if (!res.ok) throw new Error("save failed");
       const updated: LeasingManager = await res.json();
       setManagers((prev) => prev.map((m) => (m.id === id ? updated : m)).sort((a, b) => a.name.localeCompare(b.name)));
       setEditingId(null);
       window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
     }
   }
 
   async function handleRemove(manager: LeasingManager) {
+    const previous = managers;
     setManagers((prev) => prev.filter((m) => m.id !== manager.id));
-    await fetch(`/api/leasing-managers/${manager.id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    try {
+      const res = await fetch(`/api/leasing-managers/${manager.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setManagers(previous);
+      mutationError.show("Kunne ikke slette utleieansvarlig. Prøv igjen.");
+    }
   }
 
   return (
@@ -401,6 +450,7 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
       <p className="text-2xs text-ink-4">
         {managers.length} utleieansvarlige · {employees.length} ansatte
       </p>
+      <MutationError message={mutationError.message} />
 
       <div className="flex flex-col gap-2">
         <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Leietakersøk</p>
@@ -514,22 +564,27 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
               <SkeletonRows count={1} />
             ) : (
               employeeResults.map((e) => (
-                <div key={e.id} className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-ink-1">{e.name}</p>
-                    <p className="mt-0.5 text-2xs text-ink-4">
-                      {[e.title, e.department].filter(Boolean).join(" · ") || "—"}
-                    </p>
+                // Sveip-til-slett i tillegg til X-knappen (2026-09-07), likt de
+                // andre Jobb-kortene. Raden har ingen egen trykkflate, så
+                // ingenting konkurrerer med det horisontale draget.
+                <SwipeableRow key={e.id} onSwipeLeft={() => confirmDeleteEmployee.request(e)} leftLabel="Slett">
+                  <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-ink-1">{e.name}</p>
+                      <p className="mt-0.5 text-2xs text-ink-4">
+                        {[e.title, e.department].filter(Boolean).join(" · ") || "—"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => confirmDeleteEmployee.request(e)}
+                      aria-label="Slett ansatt"
+                      className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => confirmDeleteEmployee.request(e)}
-                    aria-label="Slett ansatt"
-                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                </SwipeableRow>
               ))
             )}
           </div>

@@ -1,13 +1,8 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import {
-  SOURCE_META,
-  type OutlookCategory,
-  type Priority,
-  type Source,
-  type Task,
-} from "@/lib/tasks";
+import { Fragment, useEffect, useRef, useState } from "react";
+import type { Task } from "@/lib/tasks";
+import type { TaskFilter } from "@/lib/taskTypes";
 import {
   CALENDAR_EVENTS,
   EXPIRIES,
@@ -38,7 +33,6 @@ import StaleSourceBanner, { MAX_AGE_DAYS, sourceAgeDays } from "./StaleSourceBan
 import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
-import type { JobbTaskState } from "@/lib/jobbTaskState";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { setAppBadgeCount } from "@/lib/appBadge";
 import { relativeDayLabel } from "@/lib/payday";
@@ -55,40 +49,12 @@ import JobbContractsSection from "./JobbContractsSection";
 import JobbExpirySection from "./JobbExpirySection";
 import JobbGuaranteesSection from "./JobbGuaranteesSection";
 import JobbReceivablesSection from "./JobbReceivablesSection";
-import TaskCard, {
-  SOURCE_ACCENT,
-  SourceIcon,
-  actionOwnerRank,
-  bucketFor,
-  getCaseInfo,
-  lastModifiedTime,
-  priorityRank,
+import JobbOppgaverPanel, {
+  useOpenTaskCounts,
+  type OppgaverFocus,
 } from "./JobbOppgaverSection";
 
-type Filter = Source | "all";
-export type SfBucket = "alle" | "faktura" | "kreditnota" | "garanti" | "annet";
-type OutlookBucket = OutlookCategory;
-
-const SECTION_SHELL = "border-t border-line pt-3 mt-3";
-
 const CALENDAR_NOTES_KEY = "mitt-dashboard:calendar-notes:v1";
-
-const FILTERS: Filter[] = ["all", "salesforce", "asana", "outlook", "teams"];
-const SF_BUCKETS: SfBucket[] = ["alle", "faktura", "kreditnota", "garanti", "annet"];
-const OUTLOOK_BUCKETS: OutlookBucket[] = ["trenger-oppfolging", "kopi", "til-info"];
-const OUTLOOK_BUCKET_LABEL: Record<OutlookBucket, string> = {
-  "trenger-oppfolging": "Oppfølging",
-  "kopi": "Kopi",
-  "til-info": "Til info",
-};
-
-const SF_BUCKET_LABEL: Record<SfBucket, string> = {
-  alle: "Alle",
-  faktura: "Faktura",
-  kreditnota: "Kreditnota",
-  garanti: "Garanti",
-  annet: "Annet",
-};
 
 function useCalendarNotes(): [Record<string, string[]>, (id: string, value: string) => void, (id: string, index: number) => void] {
   const [notes, setNotes] = useState<Record<string, string[]>>({});
@@ -518,11 +484,12 @@ export default function JobbView({
   const [order, setOrder] = usePersistedOrder(JOBB_SECTION_ORDER_KEY, DEFAULT_JOBB_SECTION_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   const [activeId, setActiveId] = useState("today");
-  const [highlightId, setHighlightId] = useState<string | null>(null);
+  // Hoppønske som JobbOppgaverPanel plukker opp når det monteres (se
+  // handleSelect/jumpToCase under) — panelet eier selv all Oppgaver-tilstand.
+  const [oppgaverFocus, setOppgaverFocus] = useState<OppgaverFocus | null>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const hasNavigatedRef = useRef(false);
   const skipFocusMoveRef = useRef(false);
-  const highlightTimerRef = useRef<number | null>(null);
 
   // Samme SWR-nøkkel som StaleSourceBanner/JobbDataSourcesCard bruker - ett delt nettverkskall.
   // Brukes KUN til å varsle på selve "Mer"-flisen når en av de skjulte seksjonene bak den
@@ -603,530 +570,42 @@ export default function JobbView({
     paneRef.current?.focus({ preventScroll: true });
   }, [activeId]);
 
-  useEffect(() => {
-    return () => {
-      if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    };
-  }, []);
-
   function handleSelect(id: string, opts?: { keepFocus?: boolean }) {
     skipFocusMoveRef.current = !!opts?.keepFocus;
+    // Et hoppønske gjelder kun selve fanebyttet det ble bestilt sammen med —
+    // nullstilles her slik at neste manuelle bytte tilbake til Oppgaver ikke
+    // scroller/markerer en gammel sak om igjen. jumpToCase/jumpToOppgaver
+    // setter derfor fokus ETTER at de har kalt handleSelect. (2026-09-07)
+    setOppgaverFocus(null);
     setActiveId(id);
   }
 
-  const [filter, setFilter] = useState<Filter>("all");
-  const [sfBucket, setSfBucket] = useState<SfBucket>("faktura");
-  const [outlookBucket, setOutlookBucket] = useState<OutlookBucket>("trenger-oppfolging");
-  const [done, setDone] = useState<Set<string>>(new Set());
-  const [priorityOverrides, setPriorityOverrides] = useState<
-    Record<string, Priority>
-  >({});
-  const [snoozed, setSnoozed] = useState<Record<string, string>>({});
-  const [hydrated, setHydrated] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const toggleGroup = (g: string) =>
-    setCollapsedGroups((prev) => { const s = new Set(prev); s.has(g) ? s.delete(g) : s.add(g); return s; });
-  const [search, setSearch] = useState("");
   const [oppslagQuery, setOppslagQuery] = useState("");
+
+  // Antall åpne oppgaver til nav-boblen. Samme hook (og samme SWR-nøkkel for
+  // den server-lagrede "ferdig"-listen) som selve panelet bruker, slik at
+  // tellingen finnes ett sted og boblen oppdateres i samme øyeblikk som man
+  // huker av en oppgave — også mens Oppgaver-panelet er avmontert. (2026-09-07)
+  const openTaskCounts = useOpenTaskCounts(tasks);
 
   function jumpToOppslag(name: string) {
     setOppslagQuery(name);
     handleSelect("oppslag");
   }
 
-  // Server-lagret (Redis) i stedet for localStorage — "ferdig"/prioritet/
-  // snooze skal overleve enhetsbytte (telefon <-> laptop), ikke låses til
-  // nettleseren man satt i da man merket noe.
-  const { data: taskStateData } = useSWR<JobbTaskState>("/api/jobb-task-state", jsonFetcher);
-  useEffect(() => {
-    if (!taskStateData || hydrated) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDone(new Set(taskStateData.done));
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPriorityOverrides(taskStateData.priorityOverrides as Record<string, Priority>);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSnoozed(taskStateData.snoozed);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setHydrated(true);
-  }, [taskStateData, hydrated]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    fetch("/api/jobb-task-state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ done: [...done], priorityOverrides, snoozed }),
-    }).catch(() => {
-      /* ignorer forbigående nettverksfeil — tilstanden er fortsatt korrekt lokalt */
-    });
-  }, [done, priorityOverrides, snoozed, hydrated]);
-
-  function isSnoozed(task: Task): boolean {
-    const since = snoozed[task.id];
-    if (!since) return false;
-    if (!task.lastModifiedAt) return true;
-    return task.lastModifiedAt <= since;
-  }
-
-  function toggleSnooze(taskId: string) {
-    setSnoozed((prev) => {
-      if (prev[taskId]) {
-        const next = { ...prev };
-        delete next[taskId];
-        return next;
-      }
-      const task = tasks.find((t) => t.id === taskId);
-      const since = task?.lastModifiedAt ?? new Date().toISOString();
-      return { ...prev, [taskId]: since };
-    });
-  }
-
-  const counts = useMemo(() => {
-    const c: Record<Filter, number> = {
-      all: 0,
-      salesforce: 0,
-      asana: 0,
-      outlook: 0,
-      teams: 0,
-    };
-    for (const t of tasks) {
-      if (done.has(t.id)) continue;
-      c.all += 1;
-      c[t.source] += 1;
-    }
-    return c;
-  }, [tasks, done]);
-
-  const priorityCounts = useMemo(() => {
-    const c: Record<Priority, number> = { high: 0, medium: 0, low: 0 };
-    for (const t of tasks) {
-      if (done.has(t.id)) continue;
-      const p = priorityOverrides[t.id] ?? t.priority;
-      if (p) c[p] += 1;
-    }
-    return c;
-  }, [tasks, done, priorityOverrides]);
-
-  const isDimmedCard = (task: Task): boolean => {
-    return actionOwnerRank(task) === 1;
-  };
-
-  const sortFn = (a: Task, b: Task): number => {
-    const effectiveRank = (t: Task) => {
-      const r = actionOwnerRank(t);
-      return t.closeable && r > 0 ? 0.5 : r;
-    };
-    const ao = effectiveRank(a) - effectiveRank(b);
-    if (ao !== 0) return ao;
-    // I "alle"-fanen: Teams øverst, så Salesforce, så Outlook
-    if (filter === "all") {
-      const sourceOrder: Partial<Record<Source, number>> = { teams: 0, salesforce: 1, outlook: 2 };
-      const as = sourceOrder[a.source] ?? 3;
-      const bs = sourceOrder[b.source] ?? 3;
-      if (as !== bs) return as - bs;
-    }
-    // Within rank 0: explicit "deg!" above status-based items
-    const aDeg = a.awaiting === "deg!" ? 0 : 1;
-    const bDeg = b.awaiting === "deg!" ? 0 : 1;
-    if (aDeg !== bDeg) return aDeg - bDeg;
-    // Innen seksjon: tydelige (ikke dempet) først
-    const ad = isDimmedCard(a) ? 1 : 0;
-    const bd = isDimmedCard(b) ? 1 : 0;
-    if (ad !== bd) return ad - bd;
-    const ap = priorityRank(priorityOverrides[a.id] ?? a.priority);
-    const bp = priorityRank(priorityOverrides[b.id] ?? b.priority);
-    if (ap !== bp) return ap - bp;
-    return lastModifiedTime(a) - lastModifiedTime(b);
-  };
-
-  const tasksByCustomer = useMemo(() => {
-    const map = new Map<string, Task[]>();
-    for (const t of tasks) {
-      if (done.has(t.id)) continue;
-      const customer = getCaseInfo(t).customer;
-      if (!customer) continue;
-      const list = map.get(customer) ?? [];
-      list.push(t);
-      map.set(customer, list);
-    }
-    return map;
-  }, [tasks, done]);
-
-  function relatedCasesFor(task: Task): Task[] {
-    const customer = getCaseInfo(task).customer;
-    if (!customer) return [];
-    return (tasksByCustomer.get(customer) ?? []).filter(
-      (t) => t.id !== task.id,
-    );
-  }
-
   // "Oppgaver" er nå en egen fane (ikke lenger et anker på en lang side) —
-  // hopp dit betyr fanebytte + vent på at panelet rekker å montere før vi
-  // scroller/highlighter riktig oppgave (dobbel rAF, samme knep som brukes
-  // andre steder i appen for "vent til neste commit har rendret").
+  // hopp dit betyr fanebytte, og selve markeringen/scrollingen gjøres av
+  // JobbOppgaverPanel når det monteres (se OppgaverFocus). Fokus settes ETTER
+  // handleSelect, som nullstiller et eventuelt tidligere hoppønske.
   function jumpToCase(id: string) {
-    setExpandedId(id);
-    setDetailsOpen(false);
-    setHighlightId(id);
     handleSelect("oppgaver");
-    if (highlightTimerRef.current !== null) window.clearTimeout(highlightTimerRef.current);
-    highlightTimerRef.current = window.setTimeout(() => setHighlightId(null), 2500);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        document.getElementById(`task-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-    });
+    setOppgaverFocus({ taskId: id });
   }
 
-  function jumpToOppgaver(sourceFilter?: Filter) {
-    if (sourceFilter) setFilter(sourceFilter);
+  function jumpToOppgaver(sourceFilter?: TaskFilter) {
     handleSelect("oppgaver");
+    if (sourceFilter) setOppgaverFocus({ filter: sourceFilter });
   }
-
-  const sfBucketCounts = useMemo(() => {
-    const c: Record<SfBucket, number> = {
-      alle: 0,
-      faktura: 0,
-      kreditnota: 0,
-      garanti: 0,
-      annet: 0,
-    };
-    for (const t of tasks) {
-      if (done.has(t.id)) continue;
-      const b = bucketFor(t);
-      if (b) { c[b] += 1; c.alle += 1; }
-    }
-    return c;
-  }, [tasks, done]);
-
-  const outlookBucketCounts = useMemo(() => {
-    const c: Record<OutlookBucket, number> = {
-      "trenger-oppfolging": 0,
-      "kopi": 0,
-      "til-info": 0,
-    };
-    for (const t of tasks) {
-      if (done.has(t.id)) continue;
-      if (t.source === "outlook" && t.outlookCategory) c[t.outlookCategory] += 1;
-    }
-    return c;
-  }, [tasks, done]);
-
-  const visibleSf = useMemo(() => {
-    return tasks.filter(
-      (t) => t.source === "salesforce" && (sfBucket === "alle" || bucketFor(t) === sfBucket),
-    );
-  }, [tasks, sfBucket]);
-
-  const visible = useMemo(() => {
-    let list: Task[];
-    if (filter === "all") list = tasks;
-    else if (filter === "salesforce") list = visibleSf;
-    else if (filter === "outlook") list = tasks.filter((t) => t.source === "outlook" && t.outlookCategory === outlookBucket);
-    else list = tasks.filter((t) => t.source === filter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.context?.toLowerCase().includes(q) ||
-          t.details?.kunde?.toLowerCase().includes(q) ||
-          t.caseNumber?.toLowerCase().includes(q)
-      );
-    }
-    return list.slice().sort(sortFn);
-  }, [tasks, filter, visibleSf, outlookBucket, priorityOverrides, search]);
-
-  function toggleDone(id: string) {
-    setDone((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleExpanded(id: string) {
-    setExpandedId((prev) => (prev === id ? null : id));
-    setDetailsOpen(false);
-  }
-
-  function toggleDetails() {
-    setDetailsOpen((prev) => !prev);
-  }
-
-  const showSfTabs = filter === "salesforce";
-  const showOutlookTabs = filter === "outlook";
-
-  const oppgaverNode = (
-    <div className="border-t-2 border-t-accent/60 p-4">
-      <CardHeader
-        title="Oppgaver"
-        stat={{ value: counts.all, label: counts.all === 1 ? "oppgave igjen" : "oppgaver igjen" }}
-        icon={ClipboardList}
-        iconColorClass="text-accent"
-      />
-      {/* Prioritetsfordelingen var kun tre fargede prikker+tall - en proporsjonal stolpe gir
-          samme informasjon på ett blikk i stedet for at man må lese tre tall og regne selv.
-          Skjules når alt er ferdig (counts.all=0), samme mønster som resten av appen. */}
-      {counts.all > 0 && (
-        <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full bg-ink-4/15">
-          {priorityCounts.high > 0 && (
-            <div className="h-full bg-status-danger" style={{ width: `${(priorityCounts.high / counts.all) * 100}%` }} />
-          )}
-          {priorityCounts.medium > 0 && (
-            <div className="h-full bg-status-warning" style={{ width: `${(priorityCounts.medium / counts.all) * 100}%` }} />
-          )}
-          {priorityCounts.low > 0 && (
-            <div className="h-full bg-status-positive" style={{ width: `${(priorityCounts.low / counts.all) * 100}%` }} />
-          )}
-        </div>
-      )}
-    <div className="mt-3 flex flex-col gap-3">
-      <div>
-        <div className="flex justify-end">
-          <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-            <input
-              type="search"
-              placeholder="Søk..."
-              aria-label="Søk i oppgaver"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setSearch("");
-              }}
-              className="w-32 rounded-full border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong focus:w-44 transition-all duration-200"
-            />
-          </div>
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
-          <span>
-            {counts.all} {counts.all === 1 ? "oppgave igjen" : "oppgaver igjen"}
-          </span>
-          {priorityCounts.high > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-danger" />
-              {priorityCounts.high}
-            </span>
-          )}
-          {priorityCounts.medium > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-warning" />
-              {priorityCounts.medium}
-            </span>
-          )}
-          {priorityCounts.low > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-positive" />
-              {priorityCounts.low}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div
-        className="-mx-4 mb-0 flex gap-2 overflow-x-auto px-4 pb-0 leading-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        role="tablist"
-        aria-label="Kilder"
-      >
-        {FILTERS.filter((f) => f === "all" || counts[f] > 0).map((f) => {
-          const active = filter === f;
-          const label = f === "all" ? "Alle" : SOURCE_META[f].label;
-          const accent = f !== "all" ? SOURCE_ACCENT[f] : null;
-          const tabClass = accent
-            ? active
-              ? `rounded-full border border-transparent ${accent.soft} ${accent.softText} ring-1 ${accent.softRing}`
-              : "rounded-full border border-line bg-surface-1 text-ink-2 hover:bg-surface-2 hover:text-ink-1"
-            : active
-              ? "rounded-full border border-line-strong bg-surface-3 text-ink-1"
-              : "rounded-full border border-line bg-surface-1 text-ink-3 hover:text-ink-1";
-          const badgeClass = accent
-            ? active ? accent.softText : "text-ink-3"
-            : active ? "text-ink-2" : "text-ink-3";
-          return (
-            <button
-              key={f}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setFilter(f)}
-              className={`flex shrink-0 items-center gap-2 px-4 py-2 text-sm font-medium transition ${tabClass}`}
-            >
-              {f !== "all" && (
-                <SourceIcon source={f} className={`h-3.5 w-3.5 shrink-0 ${accent!.icon}`} />
-              )}
-              <span>{label}</span>
-              <span className={`text-xs tabular-nums ${badgeClass}`}>
-                {counts[f]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className={SECTION_SHELL}>
-      {showSfTabs && (
-        <div
-          className="mb-5 flex gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-line"
-          role="tablist"
-          aria-label="Salesforce-kategori"
-        >
-          {SF_BUCKETS.map((bucket) => {
-            const active = sfBucket === bucket;
-            return (
-              <button
-                key={bucket}
-                role="tab"
-                aria-selected={active}
-                onClick={() => setSfBucket(bucket)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
-                  active
-                    ? `${SOURCE_ACCENT.salesforce.soft} ${SOURCE_ACCENT.salesforce.softText} ring-1 ${SOURCE_ACCENT.salesforce.softRing}`
-                    : "text-ink-3 hover:text-ink-1"
-                }`}
-              >
-                <span>{SF_BUCKET_LABEL[bucket]}</span>
-                <span
-                  className={`tabular-nums ${
-                    active ? SOURCE_ACCENT.salesforce.softText : "text-ink-3"
-                  }`}
-                >
-                  {sfBucketCounts[bucket]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {showOutlookTabs && (
-        <div
-          className="mb-5 flex gap-1 rounded-xl bg-surface-2 p-1 ring-1 ring-line"
-          role="tablist"
-          aria-label="Outlook-kategori"
-        >
-          {OUTLOOK_BUCKETS.map((bucket) => {
-            const active = outlookBucket === bucket;
-            return (
-              <button
-                key={bucket}
-                role="tab"
-                aria-selected={active}
-                onClick={() => setOutlookBucket(bucket)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition ${
-                  active
-                    ? `${SOURCE_ACCENT.outlook.soft} ${SOURCE_ACCENT.outlook.softText} ring-1 ${SOURCE_ACCENT.outlook.softRing}`
-                    : "text-ink-3 hover:text-ink-1"
-                }`}
-              >
-                <span>{OUTLOOK_BUCKET_LABEL[bucket]}</span>
-                <span className={`tabular-nums ${active ? SOURCE_ACCENT.outlook.softText : "text-ink-3"}`}>
-                  {outlookBucketCounts[bucket]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {visible.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-ink-3">
-          Ingen oppgaver her.
-        </div>
-      ) : (
-        (() => {
-          const minTur = visible.filter((t) => actionOwnerRank(t) === 0);
-          const venter = visible.filter((t) => actionOwnerRank(t) === 1);
-          const ukjent = visible.filter((t) => actionOwnerRank(t) === 2);
-          const renderCard = (task: Task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              isDone={done.has(task.id)}
-              isExpanded={expandedId === task.id}
-              detailsOpen={detailsOpen && expandedId === task.id}
-              onToggleDone={toggleDone}
-              onToggleExpanded={toggleExpanded}
-              onToggleDetails={toggleDetails}
-              onJumpToCase={jumpToCase}
-              onToggleSnooze={toggleSnooze}
-              isSnoozedExternally={isSnoozed(task)}
-              priority={priorityOverrides[task.id] ?? task.priority}
-              relatedCases={relatedCasesFor(task)}
-              today={today}
-              nowMs={nowMs}
-              highlighted={highlightId === task.id}
-            />
-          );
-          return (
-            <div className="flex flex-col gap-5">
-              {minTur.length > 0 && (
-                <section>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup("min-tur")}
-                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-status-action hover:text-status-action/80"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-status-action" />
-                    Min tur
-                    <span className="text-status-action/70">({minTur.length})</span>
-                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("min-tur") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 6l4 4 4-4" />
-                    </svg>
-                  </button>
-                  {!collapsedGroups.has("min-tur") && (
-                    <ul className="flex flex-col gap-2">{minTur.map(renderCard)}</ul>
-                  )}
-                </section>
-              )}
-              {venter.length > 0 && (
-                <section>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup("avventer")}
-                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-ink-3 hover:text-ink-1"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-line-strong" />
-                    Avventer
-                    <span className="text-ink-4">({venter.length})</span>
-                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("avventer") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 6l4 4 4-4" />
-                    </svg>
-                  </button>
-                  {!collapsedGroups.has("avventer") && (
-                    <ul className="flex flex-col gap-2">{venter.map(renderCard)}</ul>
-                  )}
-                </section>
-              )}
-              {ukjent.length > 0 && (
-                <section>
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup("annet")}
-                    className="mb-2 flex w-full items-center gap-2 px-1 text-xs font-semibold text-ink-3 hover:text-ink-1"
-                  >
-                    Annet ({ukjent.length})
-                    <svg viewBox="0 0 16 16" className={`ml-auto h-3 w-3 transition-transform ${collapsedGroups.has("annet") ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M4 6l4 4 4-4" />
-                    </svg>
-                  </button>
-                  {!collapsedGroups.has("annet") && (
-                    <ul className="flex flex-col gap-2">{ukjent.map(renderCard)}</ul>
-                  )}
-                </section>
-              )}
-            </div>
-          );
-        })()
-      )}
-      </div>
-    </div>
-    </div>
-  );
 
   // Samme "krever oppfølging"-kriterier som JobbTodaySummary sin oppfolging-
   // liste bruker (utløp <10d ekskl. reforhandlet, garanti-frist ≤10d), pluss
@@ -1152,7 +631,7 @@ export default function JobbView({
   }, [expiryUrgentCount, guaranteeUrgentCount, receivableHighRiskCount]);
 
   const navBadges: Partial<Record<string, number>> = {
-    oppgaver: counts.all,
+    oppgaver: openTaskCounts.all,
     reminders: dueRemindersCount + suggestionCounts.reminder,
     events: suggestionCounts.event,
     calendar: suggestionCounts["calendar-note"],
@@ -1175,7 +654,9 @@ export default function JobbView({
         onJumpToContracts={() => handleSelect("contracts")}
       />
     ),
-    oppgaver: oppgaverNode,
+    oppgaver: (
+      <JobbOppgaverPanel tasks={tasks} today={today} nowMs={nowMs} focus={oppgaverFocus} />
+    ),
     "mustad-nyheter": <JobbCompanyNewsSection />,
     "data-sources": <JobbDataSourcesCard />,
     calendar: JOBB_SECTION_NODES.calendar(today),

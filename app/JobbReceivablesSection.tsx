@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CardHeader, ConfirmDialog } from "./CardShell";
+import {
+  CardHeader,
+  ConfirmDialog,
+  MutationError,
+  useMutationError,
+} from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
@@ -92,7 +97,7 @@ function ReceivableRow({
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="max-w-0 px-2 py-1.5">
+        <td className="max-w-0 px-3 py-2">
           <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
@@ -100,23 +105,33 @@ function ReceivableRow({
             aria-expanded={detailsOpen}
             className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-ink-2 hover:text-ink-1"
           >
-            {underInkasso && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger" title="Under inkasso" />}
+            {/* role="img" + aria-label (2026-09-07): en tom, ikke-interaktiv <span> med kun
+                `title` blir ikke pålitelig lest opp av skjermlesere, så inkasso-flagget var
+                usynlig for dem. `title` beholdes for musepekeren. */}
+            {underInkasso && (
+              <span
+                role="img"
+                aria-label="Under inkasso"
+                title="Under inkasso"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger"
+              />
+            )}
             <span className="min-w-0 truncate">{r.leietaker}</span>
           </button>
           <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="max-w-0 truncate px-2 py-1.5 text-2xs text-ink-3">
+        <td className="max-w-0 truncate px-3 py-2 text-2xs text-ink-3">
           {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
         </td>
-        <td className="whitespace-nowrap px-2 py-1.5 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
+        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
           {band6190 > 0 ? formatKr(band6190) : "–"}
         </td>
-        <td className={`whitespace-nowrap px-2 py-1.5 tabular-nums text-right ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
+        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
           {overdue91 > 0 ? formatKr(overdue91) : "–"}
         </td>
-        <td className="whitespace-nowrap px-1 py-1.5">
+        <td className="whitespace-nowrap px-1 py-2">
           <select
             value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
@@ -128,7 +143,7 @@ function ReceivableRow({
             <option value="hoy">Høy{effectiveRisk === "hoy" && !isOverride ? " (auto)" : ""}</option>
           </select>
         </td>
-        <td className="whitespace-nowrap px-2 py-1.5">
+        <td className="whitespace-nowrap px-3 py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
@@ -290,8 +305,13 @@ function ReceivableChangeRow({ change }: { change: ReceivableChange }) {
 // som computeAging pr. rad) - egne statusfarger, ikke en kopi av LedigStolpe i
 // IncomeForecastSection: 91+ dager er den alarmerende enden og får status-danger, resten
 // trappes ned derfra (ikke-forfalt er grønt, 0-30 er nøytralt grått).
+// Kun bøttene — ikke `forfalt`/`forfalt30Plus` fra ReceivableAging (2026-09-07). Den
+// aggregerte stolpen summerer bare de fem bøttene, og de to avledede feltene lå igjen som
+// evige nuller i aggregatet uten at noe leste dem. Egen type i stedet for de døde feltene.
+type AgingBuckets = Pick<ReceivableAging, "ikkeForfalt" | "d0_30" | "d31_60" | "d61_90" | "d91Plus">;
+
 const AGING_BUCKETS: {
-  key: keyof Pick<ReceivableAging, "ikkeForfalt" | "d0_30" | "d31_60" | "d61_90" | "d91Plus">;
+  key: keyof AgingBuckets;
   label: string;
   colorClass: string;
   // Egen, alltid full-styrke tekstfarge (2026-09-07): colorClass sin /60-uttoning på 31-60-
@@ -308,7 +328,7 @@ const AGING_BUCKETS: {
   { key: "d91Plus", label: "91+ dager", colorClass: "text-status-danger", textColorClass: "text-status-danger" },
 ];
 
-function ReceivablesAgingBar({ aging, total }: { aging: ReceivableAging; total: number }) {
+function ReceivablesAgingBar({ aging, total }: { aging: AgingBuckets; total: number }) {
   if (total <= 0) return null;
   return (
     <div className="flex flex-col gap-1.5">
@@ -360,7 +380,7 @@ function ReceivablesSortHeader({
   className?: string;
 }) {
   return (
-    <th className={`px-2 py-1.5 text-2xs font-medium ${className}`}>
+    <th className={`px-3 py-2 text-2xs font-medium ${className}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
@@ -378,26 +398,68 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
   const [showTrend, setShowTrend] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
   const [risks, setRisks] = useState<Record<string, ReceivableRiskLevel>>({});
+  const [risikoLastFeil, setRisikoLastFeil] = useState(false);
   const [snapshots, setSnapshots] = useState<ReceivableSnapshot[]>([]);
+  const [snapshotLastFeil, setSnapshotLastFeil] = useState(false);
   const [snapshotConfirmOpen, setSnapshotConfirmOpen] = useState(false);
   const [snapshotStatus, setSnapshotStatus] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: ReceivableSortKey; dir: "asc" | "desc" } | null>(null);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
+  const mutationError = useMutationError();
 
+  // Feilen sies fra om i stedet for å svelges (2026-09-07): et .catch(() => {}) her betydde
+  // at tidligere satte risikovurderinger bare forsvant fra kolonnen, og radene falt tilbake
+  // til auto-risiko uten et eneste tegn på at noe var galt. !res.ok sjekkes også — API-et
+  // svarer med JSON ({ error }) på 500, så `d.risks` ville ellers gitt et tomt, "vellykket" sett.
   useEffect(() => {
     fetch("/api/receivables/risk")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("kunne ikke hente risikovurderinger");
+        return r.json();
+      })
       .then((d) => setRisks((d.risks ?? {}) as Record<string, ReceivableRiskLevel>))
-      .catch(() => {});
+      .catch(() => setRisikoLastFeil(true));
   }, []);
 
+  // Samme feilhåndtering som Nye kontrakter: useComments ruller tilbake den optimistiske
+  // endringen selv, men returverdien ble kastet — en mislykket kommentar forsvant lydløst
+  // fra skjermen uten at brukeren fikk vite at den ikke ble lagret.
+  async function handleAdd(id: string, tekst: string): Promise<boolean> {
+    const ok = await addComment("receivable", id, tekst);
+    if (!ok) mutationError.show("Kunne ikke legge til kommentaren. Prøv igjen.");
+    return ok;
+  }
+
+  async function handleToggleRelevance(id: string, commentId: string, ikkeRelevant: boolean) {
+    const ok = await toggleRelevance("receivable", id, commentId, ikkeRelevant);
+    if (!ok) mutationError.show("Kunne ikke oppdatere kommentaren. Prøv igjen.");
+  }
+
+  async function handleConfirmDelete() {
+    const pending = confirmDelete.pending;
+    if (!pending) return;
+    const ok = await removeComment(pending.targetType, pending.targetId, pending.commentId);
+    if (!ok) mutationError.show("Kunne ikke slette kommentaren. Prøv igjen.");
+    confirmDelete.cancel();
+  }
+
+  // Samme resonnement som risikoLastFeil over (2026-09-07): en svelget GET her betød at
+  // historikk-grafen bare uteble, visuelt identisk med "ingen perioder lagret ennå" - man kunne
+  // ikke se forskjell på tom historikk og en feilet henting. Egen, vedvarende feiltilstand
+  // (ikke useMutationError, som selvtømmes etter 4 s og er feil for en lastefeil).
   function refreshSnapshots() {
     fetch("/api/receivables/snapshot")
-      .then((r) => r.json())
-      .then((d) => setSnapshots((d.snapshots ?? []) as ReceivableSnapshot[]))
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) throw new Error("snapshot-henting feilet");
+        return r.json();
+      })
+      .then((d) => {
+        setSnapshots((d.snapshots ?? []) as ReceivableSnapshot[]);
+        setSnapshotLastFeil(false);
+      })
+      .catch(() => setSnapshotLastFeil(true));
   }
 
   useEffect(refreshSnapshots, []);
@@ -413,7 +475,7 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
   }, [today]);
 
   const totalAging = useMemo(() => {
-    const agg: ReceivableAging = { ikkeForfalt: 0, d0_30: 0, d31_60: 0, d61_90: 0, d91Plus: 0, forfalt: 0, forfalt30Plus: 0 };
+    const agg: AgingBuckets = { ikkeForfalt: 0, d0_30: 0, d31_60: 0, d61_90: 0, d91Plus: 0 };
     for (const v of agingById.values()) {
       agg.ikkeForfalt += v.ikkeForfalt;
       agg.d0_30 += v.d0_30;
@@ -463,13 +525,30 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
     });
   }
 
+  // Optimistisk oppdatering med tilbakerulling (2026-09-07): uten try/catch ble en feilet
+  // PATCH stående igjen i UI-et som en lagret risikoklassifisering — brukeren trodde
+  // vurderingen var lagret, og oppdaget først noe var galt ved neste sidelasting.
+  // `forrige === undefined` betyr at raden ikke hadde noen manuell overstyring før, og da
+  // må nøkkelen fjernes helt (ikke settes til null) så auto-risikoen slår inn igjen.
   async function handleSetRisk(id: string, risk: ReceivableRiskLevel) {
+    const forrige = risks[id];
     setRisks((prev) => ({ ...prev, [id]: risk }));
-    await fetch("/api/receivables/risk", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, risk }),
-    });
+    try {
+      const res = await fetch("/api/receivables/risk", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, risk }),
+      });
+      if (!res.ok) throw new Error("kunne ikke lagre risiko");
+    } catch {
+      setRisks((prev) => {
+        const neste = { ...prev };
+        if (forrige === undefined) delete neste[id];
+        else neste[id] = forrige;
+        return neste;
+      });
+      mutationError.show("Kunne ikke lagre risikovurderingen. Prøv igjen.");
+    }
   }
 
   async function handleStartNewPeriod() {
@@ -504,6 +583,17 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
       <p className="mb-2 text-2xs text-ink-4">
         {RECEIVABLES.length} leietakere{antallUnderInkasso > 0 ? ` · ${antallUnderInkasso} under inkasso` : ""}
       </p>
+      {risikoLastFeil && (
+        <p className="mb-2 text-xs text-status-danger">
+          Kunne ikke hente lagrede risikovurderinger. Kolonnen viser automatisk risiko til siden lastes på nytt.
+        </p>
+      )}
+      {snapshotLastFeil && (
+        <p className="mb-2 text-xs text-status-danger">
+          Kunne ikke hente lagrede perioder. Trend og endring siden forrige periode er skjult til siden lastes på nytt.
+        </p>
+      )}
+      <MutationError message={mutationError.message} />
       <div className="mb-3">
         <ReceivablesAgingBar aging={totalAging} total={total} />
       </div>
@@ -513,21 +603,21 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
               <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
                   <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[22%]" />
-                  <th className="w-[16%] px-2 py-1.5 text-2xs font-medium">Selskap</th>
+                  <th className="w-[16%] px-3 py-2 text-2xs font-medium">Selskap</th>
                   <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[14%] text-right" />
                   <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
                   <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
                   <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[16%] px-1" />
-                  <th className="w-[8%] px-2 py-1.5 text-2xs font-medium">Notat</th>
+                  <th className="w-[8%] px-3 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
-                  <td className="px-2 py-1.5">Totalt</td>
-                  <td className="px-2 py-1.5"></td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums">{formatKr(total)}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-status-warning">{formatKr(totalAging.d61_90)}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
-                  <td className="px-1 py-1.5"></td>
-                  <td className="px-2 py-1.5"></td>
+                  <td className="px-3 py-2">Totalt</td>
+                  <td className="px-3 py-2"></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatKr(total)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.d61_90)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
+                  <td className="px-1 py-2"></td>
+                  <td className="px-3 py-2"></td>
                 </tr>
               </thead>
               <tbody>
@@ -539,9 +629,9 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
                     comments={comments[commentKey("receivable", r.id)] ?? []}
                     risk={risks[r.id] ?? null}
                     onSetRisk={(risk) => handleSetRisk(r.id, risk)}
-                    onAdd={(tekst) => addComment("receivable", r.id, tekst)}
+                    onAdd={(tekst) => handleAdd(r.id, tekst)}
                     onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "receivable", targetId: r.id, commentId, preview })}
-                    onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("receivable", r.id, commentId, ikkeRelevant)}
+                    onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(r.id, commentId, ikkeRelevant)}
                     onJumpToOppslag={onJumpToOppslag}
                   />
                 ))}
@@ -611,12 +701,7 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
         onCancel={confirmDelete.cancel}
-        onConfirm={() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return;
-          removeComment(pending.targetType, pending.targetId, pending.commentId);
-          confirmDelete.cancel();
-        }}
+        onConfirm={handleConfirmDelete}
       />
       <ConfirmDialog
         open={snapshotConfirmOpen}

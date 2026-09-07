@@ -14,6 +14,11 @@ const STATUS_META: Record<FazilesjekkStatus, { label: string; text: string; bg: 
   "kan-ikke-sjekkes": { label: "Kan ikke sjekkes", text: "text-ink-4", bg: "bg-surface-3" },
 };
 
+// Fast visningsrekkefølge for status-fordelingen (stolpe + tekstlinje) — mildest til
+// alvorligst. Egen konstant slik at tellingene under kan bygges opp med samme rekkefølge
+// uten å skrives ut fem ganger.
+const STATUS_REKKEFOLGE: FazilesjekkStatus[] = ["ok", "delvis-ok", "avvik", "finnes-ikke", "kan-ikke-sjekkes"];
+
 const AVVIKSTYPE_LABEL: Record<string, string> = {
   startdato: "Startdato",
   sluttdato: "Sluttdato",
@@ -200,21 +205,38 @@ export default function FazilesjekkSection() {
   const sumUnder = rows.reduce((sum, r) => sum + (r.belopspavirkning != null && r.belopspavirkning > 0 ? r.belopspavirkning : 0), 0);
   const sumOver = rows.reduce((sum, r) => sum + (r.belopspavirkning != null && r.belopspavirkning < 0 ? -r.belopspavirkning : 0), 0);
 
-  // Samme fem tellinger som tekstlinja under - kun omformet til stolpe-input, ingen ny kilde.
-  const statusFordeling = [
-    { status: "ok" as const, count: s.antallOk },
-    { status: "delvis-ok" as const, count: s.antallDelvisOk },
-    { status: "avvik" as const, count: s.antallAvvik },
-    { status: "finnes-ikke" as const, count: s.antallFinnesIkke },
-    { status: "kan-ikke-sjekkes" as const, count: s.antallKanIkkeSjekkes },
-  ];
+  // Radene er fasit for avviks-siden (2026-09-07). Sammendragets tellinger er hånd-
+  // vedlikeholdte og hadde drevet fra lista under (antallAvvik: 21 mot 23 faktiske rader),
+  // så kortet motsa seg selv. De statusene som FAKTISK finnes som rader telles derfor opp
+  // fra FAZILESJEKK_ROWS. `antallOk`/`antallDelvisOk`/`unikeKontrakter` kan IKKE utledes:
+  // detaljradene dekker med hensikt bare avvikene (se lib/fazilesjekkTypes.ts), og der er
+  // sammendraget fortsatt eneste kilde. Er de to uenige, vinner radene — det er dem
+  // brukeren faktisk blar i — og differansen skrives ut under i stedet for å skjules.
+  const sammendragTelling: Record<FazilesjekkStatus, number> = {
+    ok: s.antallOk,
+    "delvis-ok": s.antallDelvisOk,
+    avvik: s.antallAvvik,
+    "finnes-ikke": s.antallFinnesIkke,
+    "kan-ikke-sjekkes": s.antallKanIkkeSjekkes,
+  };
+  const radTelling = rows.reduce<Partial<Record<FazilesjekkStatus, number>>>((acc, r) => {
+    acc[r.status] = (acc[r.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const tell = (status: FazilesjekkStatus) => radTelling[status] ?? sammendragTelling[status];
+  const statusFordeling = STATUS_REKKEFOLGE.map((status) => ({
+    status,
+    count: tell(status),
+    fraSammendrag: sammendragTelling[status],
+  }));
   const totalKontrakter = statusFordeling.reduce((sum, c) => sum + c.count, 0);
+  const uenigeTellinger = statusFordeling.filter((c) => c.count !== c.fraSammendrag);
 
   return (
     <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Fazilesjekk"
-        stat={{ value: s.antallAvvik, label: `avvik av ${s.unikeKontrakter}` }}
+        stat={{ value: tell("avvik"), label: `avvik av ${s.unikeKontrakter}` }}
         icon={ClipboardCheck}
         iconColorClass="text-sky-400"
       />
@@ -244,12 +266,23 @@ export default function FazilesjekkSection() {
         <StatusFordelingBar counts={statusFordeling} total={totalKontrakter} />
 
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-2xs text-ink-3">
-          <span className="text-status-positive">{s.antallOk} OK</span>
-          <span>{s.antallDelvisOk} delvis OK</span>
-          <span className="text-status-warning">{s.antallAvvik} avvik</span>
-          <span className="text-status-danger">{s.antallFinnesIkke} finnes ikke</span>
-          <span className="text-ink-4">{s.antallKanIkkeSjekkes} kan ikke sjekkes</span>
+          <span className="text-status-positive">{tell("ok")} OK</span>
+          <span>{tell("delvis-ok")} delvis OK</span>
+          <span className="text-status-warning">{tell("avvik")} avvik</span>
+          <span className="text-status-danger">{tell("finnes-ikke")} finnes ikke</span>
+          <span className="text-ink-4">{tell("kan-ikke-sjekkes")} kan ikke sjekkes</span>
         </div>
+
+        {/* Siste utvei mot stille drift (2026-09-07): der radene og sammendraget teller
+            ulikt, står differansen her i klartekst i stedet for at kortet velger ett tall
+            uten å si fra. Vises kun når de faktisk spriker. */}
+        {uenigeTellinger.length > 0 && (
+          <p className="text-2xs leading-relaxed text-ink-4">
+            Tellingene over er talt opp fra radene under. Sammendraget fra {formatDato(s.kjortDato)} oppga{" "}
+            {uenigeTellinger.map((c) => `${c.fraSammendrag} ${STATUS_META[c.status].label.toLowerCase()}`).join(", ")} av{" "}
+            {s.unikeKontrakter} kontrakter. Differansen er ikke avklart.
+          </p>
+        )}
 
         {/* Areal-ID-funnet er en systemsvakhet, ikke et enkelt avvik — det
             hører derfor på toppen og ikke bare som en merkelapp per rad. */}
@@ -271,18 +304,29 @@ export default function FazilesjekkSection() {
           </p>
         </div>
 
-        <ul className="flex flex-col gap-1.5">
-          {synlige.map((row) => (
-            <KontraktRad key={kontraktRadKey(row)} row={row} />
-          ))}
-        </ul>
+        {/* Tomtilstand (2026-09-07): standardfilteret kan i prinsippet tømme lista helt
+            (ingen rader med beregnet beløpskonsekvens), og en tom <ul> uten tekst leste
+            som at kortet var i stykker. */}
+        {synlige.length === 0 ? (
+          <p className="text-sm text-ink-3">
+            {visAlle ? "Ingen avvik i denne gjennomgangen." : "Ingen av avvikene har en beregnet beløpskonsekvens."}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {synlige.map((row) => (
+              <KontraktRad key={kontraktRadKey(row)} row={row} />
+            ))}
+          </ul>
+        )}
 
+        {/* "rader", ikke "avvik": lista inneholder også «finnes ikke» og «kan ikke
+            sjekkes», så rows.length er større enn avviks-tallet i toppen (2026-09-07). */}
         <button
           type="button"
           onClick={() => setVisAlle((v) => !v)}
           className="self-start text-xs font-medium text-accent hover:text-accent/80"
         >
-          {visAlle ? "Vis bare de med beløpskonsekvens" : `Vis alle ${rows.length} avvik`}
+          {visAlle ? "Vis bare de med beløpskonsekvens" : `Vis alle ${rows.length} rader`}
         </button>
 
         <p className="text-2xs leading-relaxed text-ink-4">

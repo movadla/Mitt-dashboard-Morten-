@@ -32,19 +32,19 @@ function ContractRow({
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="whitespace-nowrap px-2 py-2 text-ink-2">
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">
           <div className="flex items-center gap-1">
             <span className="truncate">{c.kunde}</span>
             <OppslagLink name={c.kunde} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
-        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.bygg}</td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-right text-ink-2">{c.kvm}</td>
-        <td className="whitespace-nowrap px-2 py-2 text-ink-2">{c.leietype}</td>
-        <td className="whitespace-nowrap px-2 py-2">
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.bygg}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{c.kvm}</td>
+        <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.leietype}</td>
+        <td className="whitespace-nowrap px-3 py-2">
           {c.sfUrl ? (
             <a
               href={c.sfUrl}
@@ -59,13 +59,13 @@ function ContractRow({
             <span className="text-ink-4">—</span>
           )}
         </td>
-        <td className="whitespace-nowrap px-2 py-2">
+        <td className="whitespace-nowrap px-3 py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={9} className="px-2 py-2 pl-9">
+          <td colSpan={9} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
@@ -85,10 +85,16 @@ function yearStartCutoff(todayISO: string): string {
   return `${effectiveYear}-01-01`;
 }
 
+// Regnes i UTC, uten lokale get/set-tidspunkter (2026-09-07): `new Date(iso)` tolkes som
+// midnatt UTC, mens setMonth/getMonth jobber i lokal tid — over en sommertidsovergang
+// forskjøv den kombinasjonen datoen én dag (oneMonthBack("2026-11-07") ga "2026-10-06" i
+// Europe/Oslo), og det flyttet grensen for hva som telles som "signert siste måned".
+// Overflyt i måneden (31. mars → 3. mars) oppfører seg som før; kun tidssonefeilen er borte.
+// yearStartCutoff over har ikke samme feil — den regner rent på ISO-strengen og rører
+// aldri et Date-objekt.
 function oneMonthBack(todayISO: string): string {
-  const d = new Date(todayISO);
-  d.setMonth(d.getMonth() - 1);
-  return d.toISOString().slice(0, 10);
+  const [year, month, day] = todayISO.split("-").map((n) => parseInt(n, 10));
+  return new Date(Date.UTC(year, month - 2, day)).toISOString().slice(0, 10);
 }
 
 export default function JobbContractsSection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
@@ -140,18 +146,29 @@ export default function JobbContractsSection({ today, onJumpToOppslag }: { today
           <table className="w-full min-w-[620px] text-sm">
             <thead>
               <tr className="text-left text-ink-4">
-                <th className="px-2 py-2 text-2xs font-medium">Kunde</th>
-                <th className="px-2 py-2 text-2xs font-medium text-right">Signert</th>
-                <th className="px-2 py-2 text-2xs font-medium text-right">Start</th>
-                <th className="px-2 py-2 text-2xs font-medium text-right">Beløp</th>
-                <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
-                <th className="px-2 py-2 text-2xs font-medium text-right">Kvm</th>
-                <th className="px-2 py-2 text-2xs font-medium">Type</th>
-                <th className="px-2 py-2 text-2xs font-medium">Kontrakt</th>
-                <th className="px-2 py-2 text-2xs font-medium">Notat</th>
+                <th className="px-3 py-2 text-2xs font-medium">Kunde</th>
+                <th className="px-3 py-2 text-2xs font-medium text-right">Signert</th>
+                <th className="px-3 py-2 text-2xs font-medium text-right">Start</th>
+                <th className="px-3 py-2 text-2xs font-medium text-right">Beløp</th>
+                <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
+                <th className="px-3 py-2 text-2xs font-medium text-right">Kvm</th>
+                <th className="px-3 py-2 text-2xs font-medium">Type</th>
+                <th className="px-3 py-2 text-2xs font-medium">Kontrakt</th>
+                <th className="px-3 py-2 text-2xs font-medium">Notat</th>
               </tr>
             </thead>
             <tbody>
+              {/* Tomtilstand (2026-09-07): en rolig måned ga tidligere en tom tabell uten
+                  et ord — det leste som en lastefeil, ikke som "ingenting signert". */}
+              {visibleRows.length === 0 && (
+                <tr className="border-t border-line">
+                  <td colSpan={9} className="px-3 py-2 text-sm text-ink-3">
+                    {expanded
+                      ? `Ingen kontrakter signert siden ${yearCutoff.slice(0, 4)}.`
+                      : "Ingen kontrakter signert siste måned."}
+                  </td>
+                </tr>
+              )}
               {visibleRows.map((c) => (
                 <ContractRow
                   key={c.id}

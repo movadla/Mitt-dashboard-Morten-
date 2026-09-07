@@ -5,7 +5,7 @@ import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, Sugg
 import type { Recurrence, JobbReminder } from "@/lib/jobbReminders";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import { vibrate } from "@/lib/haptics";
-import { localDateString } from "@/lib/payday";
+import { formatDMY, localDateString } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./privat/SwipeableRow";
 import { Bell, GripVertical, X } from "lucide-react";
@@ -31,10 +31,8 @@ const RECURRENCE_LABEL: Record<Recurrence, string> = {
   monthly: "Månedlig",
 };
 
-function formatDMY(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
-}
+// formatDMY lå tidligere som en byte-identisk kopi her (2026-09-07) — bruker
+// nå den eksporterte i lib/payday.ts, som filen allerede henter localDateString fra.
 
 function isDueToday(r: JobbReminder, today: string): boolean {
   if (r.done) return false;
@@ -160,7 +158,7 @@ function ReminderRowContent({
         type="button"
         onClick={() => onRemove(reminder.id)}
         aria-label="Slett påminnelse"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
       >
         <X className="h-4 w-4" />
       </button>
@@ -300,19 +298,27 @@ export default function JobbRemindersSection() {
     return () => window.removeEventListener("mitt-dashboard:jobb-refresh", load);
   }, [load]);
 
+  // Forslaget slettes FØRST når påminnelsen faktisk er opprettet (2026-09-07).
+  // Før lå DELETE-kallet utenfor res.ok-sjekken, så en feilet POST betydde at
+  // forslaget var borte for godt uten at noe ble laget — og uten feilmelding.
   async function handleAcceptSuggestion(s: Suggestion) {
+    const previous = suggestions;
     setSuggestions((prev) => prev.filter((x) => x.id !== s.id));
-    const res = await fetch("/api/jobb-reminders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: s.title, dueDate: s.date || undefined }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch("/api/jobb-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: s.title, dueDate: s.date || undefined }),
+      });
+      if (!res.ok) throw new Error("create failed");
       const created: JobbReminder = await res.json();
       setReminders((prev) => [...prev, created].sort(sortReminders));
+      await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
+      window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
+    } catch {
+      setSuggestions(previous);
+      mutationError.show("Kunne ikke opprette påminnelsen fra forslaget. Prøv igjen.");
     }
-    await fetch(`/api/jobb-suggestions/${s.id}`, { method: "DELETE" });
-    window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
   }
 
   async function handleDeclineSuggestion(s: Suggestion) {
@@ -413,32 +419,30 @@ export default function JobbRemindersSection() {
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    setReminders((prev) => {
-      const todaysIds = prev
-        .filter((r) => isDueToday(r, today))
-        .sort((a, b) => a.order - b.order)
-        .map((r) => r.id);
-      const oldIndex = todaysIds.indexOf(activeId);
-      const newIndex = todaysIds.indexOf(overId);
-      if (oldIndex === -1 || newIndex === -1) return prev;
+    // Sorter mot NØYAKTIG den lista som rendres (`todays`), ikke en nybygd
+    // isDueToday-liste (2026-09-07): den rendrede inkluderer også nettopp
+    // avhukede via justToggled, så en drag i fade-vinduet ga oldIndex/newIndex
+    // = -1 og en stille no-op. Samme grep som app/privat/RemindersSection.tsx.
+    const todaysIds = todays.map((r) => r.id);
+    const oldIndex = todaysIds.indexOf(activeId);
+    const newIndex = todaysIds.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1) return;
 
-      const reordered = arrayMove(todaysIds, oldIndex, newIndex);
-      const orderOf = new Map(reordered.map((id, i) => [id, i]));
-      const next = prev.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r));
+    const reordered = arrayMove(todaysIds, oldIndex, newIndex);
+    const orderOf = new Map(reordered.map((id, i) => [id, i]));
+    setReminders((prev) => prev.map((r) => (orderOf.has(r.id) ? { ...r, order: orderOf.get(r.id)! } : r)));
 
-      fetch("/api/jobb-reminders/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: reordered }),
+    fetch("/api/jobb-reminders/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: reordered }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("reorder failed");
+        window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
       })
-        .then((res) => {
-          if (!res.ok) throw new Error("reorder failed");
-          window.dispatchEvent(new Event("mitt-dashboard:jobb-refresh"));
-        })
-        .catch(() => mutationError.show("Kunne ikke lagre ny rekkefølge."));
+      .catch(() => mutationError.show("Kunne ikke lagre ny rekkefølge."));
 
-      return next;
-    });
     vibrate(10);
   }
 

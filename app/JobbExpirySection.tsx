@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { CardHeader, ConfirmDialog } from "./CardShell";
+import {
+  CardHeader,
+  ConfirmDialog,
+  MutationError,
+  useMutationError,
+} from "./CardShell";
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
 import {
   EXPIRIES,
-  EXPIRIES_REELL_EKSPONERING,
-  EXPIRIES_TOTAL_ARSLEIE,
   EXPIRIES_WINDOW,
   type ExpiringTenant,
   type ExpiryStatus,
@@ -16,6 +19,18 @@ import {
   formatKr,
 } from "@/lib/widgets";
 import { ArrowUpRight, CalendarClock } from "lucide-react";
+
+// Summeres fra EXPIRIES her i stedet for å importere EXPIRIES_TOTAL_ARSLEIE/
+// EXPIRIES_REELL_EKSPONERING (2026-09-07): de er hånd-vedlikeholdte konstanter i datafilen
+// og kan drifte fra tabellen de står under, på samme måte som Fazilesjekk-tellingene gjorde.
+// Reell eksponering = linjer UTEN signert etterfølger-kontrakt (reforhandlet=true er reelt
+// sikret, se merknaden over EXPIRIES i lib/widgets). EXPIRIES_WINDOW importeres fortsatt —
+// uttrekksvinduet er en egenskap ved spørringen mot Fazile og finnes ikke i radene.
+const TOTAL_ARSLEIE = EXPIRIES.reduce((sum, t) => sum + t.totalArsleie, 0);
+const REELL_EKSPONERING = EXPIRIES.reduce(
+  (sum, t) => sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet ? linjeSum : linjeSum + l.totalArsleie), 0),
+  0,
+);
 
 const EXPIRY_STATUS_STYLE: Record<ExpiryStatus, string> = {
   Reforhandlet: "bg-status-positive/12 text-status-positive",
@@ -118,7 +133,7 @@ function ExpiryTenantRow({
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left"
           >
             <svg
               viewBox="0 0 16 16"
@@ -136,13 +151,13 @@ function ExpiryTenantRow({
           <OppslagLink name={tenant.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="whitespace-nowrap px-2 py-2 text-2xs text-ink-4">{tenant.bygg}</td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-ink-3">{tenant.lines.length}</td>
-        <td className="whitespace-nowrap px-2 py-2 tabular-nums font-medium text-ink-1">{formatKr(tenant.totalArsleie)}</td>
-        <td className={`whitespace-nowrap px-2 py-2 tabular-nums ${utlopUrgent ? "font-medium text-status-danger" : "text-ink-3"}`}>
+        <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">{tenant.bygg}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-ink-3">{tenant.lines.length}</td>
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums font-medium text-ink-1">{formatKr(tenant.totalArsleie)}</td>
+        <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${utlopUrgent ? "font-medium text-status-danger" : "text-ink-3"}`}>
           {formatDateDMY(nearestLine.slutt)}
         </td>
-        <td className="whitespace-nowrap px-2 py-2">
+        <td className="whitespace-nowrap px-3 py-2">
           <span
             title={tenant.statusKilde}
             className={`inline-flex items-center rounded-full px-2 py-1 text-2xs font-medium ${EXPIRY_STATUS_STYLE[tenant.status]}`}
@@ -150,13 +165,13 @@ function ExpiryTenantRow({
             {tenant.status}
           </span>
         </td>
-        <td className="whitespace-nowrap px-2 py-2">
+        <td className="whitespace-nowrap px-3 py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={7} className="px-2 py-2 pl-9">
+          <td colSpan={7} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
@@ -164,7 +179,7 @@ function ExpiryTenantRow({
       {open &&
         tenant.lines.map((l) => (
           <tr key={l.linjeId} className="border-t border-line border-l-2 border-l-line-strong bg-surface-3/50">
-            <td colSpan={7} className="px-2 py-2 pl-8">
+            <td colSpan={7} className="px-3 py-2 pl-8">
               <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-baseline gap-x-4 gap-y-1 text-sm">
                 <span className="min-w-0 truncate text-ink-2">
                   {l.beskrivelse}
@@ -196,6 +211,30 @@ function ExpiryTenantRow({
 
 export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
+  const mutationError = useMutationError();
+
+  // Samme feilhåndtering som Nye kontrakter (2026-09-07): useComments ruller tilbake den
+  // optimistiske endringen selv, men returverdien ble kastet — en mislykket kommentar
+  // forsvant lydløst fra skjermen uten at brukeren fikk vite at den ikke ble lagret.
+  async function handleAdd(targetId: string, tekst: string): Promise<boolean> {
+    const ok = await addComment("expiry-tenant", targetId, tekst);
+    if (!ok) mutationError.show("Kunne ikke legge til kommentaren. Prøv igjen.");
+    return ok;
+  }
+
+  async function handleToggleRelevance(targetId: string, commentId: string, ikkeRelevant: boolean) {
+    const ok = await toggleRelevance("expiry-tenant", targetId, commentId, ikkeRelevant);
+    if (!ok) mutationError.show("Kunne ikke oppdatere kommentaren. Prøv igjen.");
+  }
+
+  async function handleConfirmDelete() {
+    const pending = confirmDelete.pending;
+    if (!pending) return;
+    const ok = await removeComment(pending.targetType, pending.targetId, pending.commentId);
+    if (!ok) mutationError.show("Kunne ikke slette kommentaren. Prøv igjen.");
+    confirmDelete.cancel();
+  }
+
   return (
     <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
@@ -205,6 +244,7 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
         iconColorClass="text-orange-400"
       />
         <>
+          <MutationError message={mutationError.message} />
           <div className="mb-3">
             <ExpiryUrgencyBar tenants={EXPIRIES} colorClass="text-orange-400" />
           </div>
@@ -212,16 +252,25 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
             <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="text-left text-ink-4">
-                  <th className="px-2 py-2 text-2xs font-medium">Leietaker</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Bygg</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Lin.</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Årsleie</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Utløp</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Status</th>
-                  <th className="px-2 py-2 text-2xs font-medium">Notat</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Lin.</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Årsleie</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Utløp</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Status</th>
+                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
                 </tr>
               </thead>
               <tbody>
+                {/* Tomtilstand (2026-09-07): en tom utløpsliste er GOD nyhet, men en tabell
+                    uten rader og uten tekst leste som en lastefeil. */}
+                {EXPIRIES.length === 0 && (
+                  <tr className="border-t border-line">
+                    <td colSpan={7} className="px-3 py-2 text-sm text-ink-3">
+                      Ingen kontraktslinjer utløper i dette vinduet.
+                    </td>
+                  </tr>
+                )}
                 {EXPIRIES.map((t) => {
                   const targetId = String(t.customerId);
                   return (
@@ -229,11 +278,11 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
                       key={t.customerId}
                       tenant={t}
                       comments={comments[commentKey("expiry-tenant", targetId)] ?? []}
-                      onAdd={(tekst) => addComment("expiry-tenant", targetId, tekst)}
+                      onAdd={(tekst) => handleAdd(targetId, tekst)}
                       onRequestDelete={(commentId, preview) =>
                         confirmDelete.request({ targetType: "expiry-tenant", targetId, commentId, preview })
                       }
-                      onToggleRelevance={(commentId, ikkeRelevant) => toggleRelevance("expiry-tenant", targetId, commentId, ikkeRelevant)}
+                      onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(targetId, commentId, ikkeRelevant)}
                       onJumpToOppslag={onJumpToOppslag}
                     />
                   );
@@ -243,19 +292,14 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
           </div>
           <p className="mt-3 text-2xs text-ink-4">
             {formatDateDMY(EXPIRIES_WINDOW.fraDato)}–{formatDateDMY(EXPIRIES_WINDOW.tilDato)} · Total eksponering{" "}
-            {formatKr(EXPIRIES_TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet) {formatKr(EXPIRIES_REELL_EKSPONERING)}
+            {formatKr(TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet) {formatKr(REELL_EKSPONERING)}
           </p>
         </>
       <ConfirmDialog
         open={confirmDelete.isOpen}
         message={confirmDelete.pending ? `Slette kommentaren «${confirmDelete.pending.preview}»?` : ""}
         onCancel={confirmDelete.cancel}
-        onConfirm={() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return;
-          removeComment(pending.targetType, pending.targetId, pending.commentId);
-          confirmDelete.cancel();
-        }}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   );
