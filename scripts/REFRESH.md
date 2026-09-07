@@ -30,8 +30,24 @@ default.
 
 Rå-uttrekksfilene i `scripts/refresh-data/` (Fazile rent_roll, NXT booked-tenants, Excel-budsjett
 osv.) må være ferske FØR du kjører - byggeskriptene selv henter ikke noe live fra Fazile/NXT-API-et,
-de leser kun det som allerede ligger som JSON/Excel i den mappen. Se de enkelte scriptenes
-filhoder for hvilken rå-fil hvert av dem forventer.
+de leser kun det som allerede ligger som JSON/Excel i den mappen. Å hente FERSK rådata kan IKKE
+automatiseres i et script - det krever Claude sin interaktive Fazile/NXT MCP-tilkobling. Be Claude
+følge oppskriften i:
+- `scripts/refresh-fazile-remaining-tenants.js` (Fazile rent_roll for gjenstår)
+- `scripts/refresh-nxt-booked-tenants.js` (NXT bokført pr. leietaker)
+- `scripts/refresh-fazile-kontrakt-crosswalk.js` (kontrakt_id → NXT customerNo)
+
+Se ellers de enkelte byggeskriptenes filhoder for hvilken rå-fil hvert av dem forventer.
+
+## Etter du kjører: lim inn de hardkodede konstantene
+
+`npm run refresh:income-forecast` oppdaterer KUN Redis-snapshotene (drilldown-blokkene i
+Tillegg-fanen). Selve hovedprognosen (KpiStrip/toppboksen) bruker i tillegg noen konstanter limt
+inn for hånd i `lib/incomeForecast.local.ts`/`.anon.ts` (`REMAINING`, `BOOKED_3600_3699`,
+`INVOICED`, `RECONCILIATION`) - byggeskriptenes konsoll-output sier eksplisitt hva som skal limes
+inn ("REMAINING-aggregat (lim inn i ...)"). **Glemmes dette steget, viser toppen av siden et
+gammelt tall mens detaljene under viser et nytt** - appen varsler nå om akkurat dette
+(SyncVarsel, øverst på Prognose-fanen, vises kun når de faktisk er ute av synk).
 
 ## Hvis et script feiler
 

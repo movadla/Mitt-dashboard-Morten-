@@ -430,22 +430,13 @@ function BookedTenantRow({ tenant }: { tenant: BookedTenantsSnapshot["tenants"][
   );
 }
 
-function BookedTenantsBlock() {
+// v19 (2026-09-07): tar nå snapshot/loading som props (hentet i IncomeForecastSection) i stedet
+// for egen fetch - trengs OGSÅ av SyncVarsel (kryssjekker sistOppdatert mot den hardkodede
+// BOOKED_3600_3699-konstanten), se der.
+function BookedTenantsBlock({ snapshot, loading }: { snapshot: BookedTenantsSnapshot | null; loading: boolean }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Bokført per leietaker", true);
-  const [snapshot, setSnapshot] = useState<BookedTenantsSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(30);
-
-  useEffect(() => {
-    fetch("/api/income-forecast/booked-tenants")
-      .then((r) => r.json())
-      .then((data) => {
-        setSnapshot(data.snapshot ?? null);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
 
   const filtered = useMemo(() => {
     if (!snapshot) return [];
@@ -896,18 +887,25 @@ function VacantAreasBlock({
             <p className="text-sm text-ink-3">Ingen arealdata funnet.</p>
           ) : (
             <>
-              <p className="mb-2 text-2xs text-ink-4">
-                Kilde: Fazile arealoversikt, status Ledig, hele porteføljen ({snapshot.sistOppdatert}).{" "}
-                {snapshot.antallArealer} ledige arealer i {snapshot.antallBygg} bygg, eksklusivt kvm (ikke inkl.
-                fellesareal-andel). Datagrunnlag for &quot;Potensiell inntekt: ledige lokaler&quot;-boksen over — ingen
-                kvm-pris er lagt inn ennå, så den boksen forblir et manuelt anslag til videre.
+              <p className="mb-2 flex items-center gap-1 text-2xs text-ink-4">
+                Kilde: Fazile arealoversikt, status Ledig ({snapshot.sistOppdatert}) — {snapshot.antallArealer} arealer i{" "}
+                {snapshot.antallBygg} bygg.
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button type="button" aria-label="Om datagrunnlaget" className="shrink-0 text-ink-4 hover:text-ink-1">
+                        <Info className="h-3 w-3" />
+                      </button>
+                    }
+                  />
+                  <TooltipContent>
+                    Eksklusivt kvm (ikke inkl. fellesareal-andel). Datagrunnlag for &quot;Potensiell inntekt: ledige
+                    lokaler&quot;-boksen over — ingen kvm-pris er lagt inn ennå, så den boksen forblir et manuelt anslag.
+                    {totalLedigKr !== null &&
+                      ` Til sammenligning: ${formatKr(totalLedigKr)} gjenstående budsjett i "Ledige lokaler" (Prognose-fanen) for samme areal - to uavhengige kilder, ikke slått sammen.`}
+                  </TooltipContent>
+                </Tooltip>
               </p>
-              {totalLedigKr !== null && (
-                <p className="mb-2 text-2xs text-ink-4">
-                  Til sammenligning: {formatKr(totalLedigKr)} gjenstående budsjett i &quot;Ledige lokaler&quot; (Prognose-fanen,
-                  tenantForecastTable-kilde) for samme kvm. To uavhengige kilder, ikke slått sammen.
-                </p>
-              )}
               {utleieSignaler.length > 0 && (
                 <div className="mb-3 rounded-xl border border-line bg-surface-2 p-3">
                   <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">
@@ -1062,15 +1060,13 @@ function LeieforholdReviewBlock({ snapshot, loading }: { snapshot: RemainingTena
       {!collapsed && (
         <>
           <p className="mb-2 text-2xs text-ink-4">
-            Alle leieforhold der beløpet er usikkert eller bør sjekkes manuelt — ikke matchet mot NXT, mistenkt
-            omsetningsleie-avregning, mistenkt kontraktsendring i året, eller allerede avsluttet og nullstilt. Ikke feil i seg
-            selv, men verdt en manuell kontroll. Eksporter til Excel for gjennomgang utenfor appen.
+            Leieforhold der beløpet er usikkert eller bør sjekkes manuelt — ikke feil i seg selv, men verdt en manuell kontroll.
           </p>
           <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-ink-4">
-            {REVIEW_STATUSES.map((s) => (
+            {REVIEW_STATUSES.filter((s) => (counts[s] ?? 0) > 0).map((s) => (
               <span key={s} className="flex items-center gap-1">
                 <span className={`rounded-full px-2 py-0.5 font-medium ${BYGG_STATUS_STYLE[s]}`}>{BYGG_STATUS_LABEL[s]}</span>
-                <span className="tabular-nums">{counts[s] ?? 0}</span>
+                <span className="tabular-nums">{counts[s]}</span>
               </span>
             ))}
           </div>
@@ -1951,7 +1947,9 @@ function ReconciliationPanel({ advarsler }: { advarsler: string[] }) {
             {advarsler.map((msg, i) => (
               <div key={i} className="flex items-start gap-2 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
-                <p className="min-w-0 text-2xs text-ink-2">{msg}</p>
+                {/* "ADVARSEL: "-prefikset i selve strengen er redundant her - varseltrekanten og
+                    seksjonsoverskriften sier allerede at dette er et varsel. */}
+                <p className="min-w-0 text-2xs text-ink-2">{msg.replace(/^ADVARSEL:\s*/, "")}</p>
               </div>
             ))}
           </div>
@@ -2384,6 +2382,53 @@ function tellLeieforholdTilGjennomgang(snapshot: RemainingTenantsSnapshot | null
     }
   }
   return n;
+}
+
+interface SyncAvvik {
+  label: string;
+  hardkodetDato: string;
+  liveDato: string;
+}
+
+// v19 (2026-09-07, "avstemming"-gjennomgangen): REMAINING og BOOKED_3600_3699 er konstanter limt
+// inn for hånd i lib/incomeForecast.local.ts/.anon.ts etter en skriptkjøring - toppboksen/KpiStrip
+// bruker DEM, mens drilldown-blokkene ("Gjenstår per leietaker", "Bokført per leietaker") leser
+// live fra Redis. `npm run refresh:income-forecast` oppdaterer KUN Redis, ikke disse konstantene -
+// glemmes lim-inn-steget, viser toppen og detaljen to ulike tall UTEN at noe sier ifra. Denne
+// sammenligner sistOppdatert-datoene og gir et konkret, synlig varsel når de ikke stemmer.
+function finnUsynkroniserteKonstanter(
+  remainingTenantsSnapshot: RemainingTenantsSnapshot | null,
+  bookedTenantsSnapshot: BookedTenantsSnapshot | null,
+): SyncAvvik[] {
+  const ut: SyncAvvik[] = [];
+  if (remainingTenantsSnapshot && remainingTenantsSnapshot.sistOppdatert !== REMAINING.sistOppdatert) {
+    ut.push({ label: "Gjenstår å fakturere", hardkodetDato: REMAINING.sistOppdatert, liveDato: remainingTenantsSnapshot.sistOppdatert });
+  }
+  if (bookedTenantsSnapshot && bookedTenantsSnapshot.sistOppdatert !== BOOKED_3600_3699.sistOppdatert) {
+    ut.push({ label: "Bokført", hardkodetDato: BOOKED_3600_3699.sistOppdatert, liveDato: bookedTenantsSnapshot.sistOppdatert });
+  }
+  return ut;
+}
+
+// Vises KUN når det faktisk er et avvik - normaltilstanden er at denne ikke tegner noe som helst,
+// slik at den ikke legger til støy når alt er i synk (se DESIGN-notatet ved IncomeWaterfall).
+function SyncVarsel({ avvik }: { avvik: SyncAvvik[] }) {
+  if (avvik.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-status-danger/40 bg-status-danger/5 p-3">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-status-danger">
+        <AlertTriangle className="h-4 w-4 shrink-0" /> Hovedtallet er ute av synk med detaljen
+      </p>
+      <div className="mt-1.5 flex flex-col gap-1 text-2xs text-ink-2">
+        {avvik.map((a) => (
+          <p key={a.label}>
+            {a.label}: totalen øverst er fra {formatDateDMY(a.hardkodetDato)}, men leietaker-detaljen i Tillegg-fanen er fra{" "}
+            {formatDateDMY(a.liveDato)}. Lim inn nye tall i lib/incomeForecast.local.ts/.anon.ts etter neste refresh - se scripts/REFRESH.md.
+          </p>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Finner punktet nærmest `dagerTilbake` dager før `fraDato` (ikke nødvendigvis eksakt, siden
@@ -2945,10 +2990,22 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
       {!collapsed && (
         <>
           {vacantKvm !== null && vacantKvm > 0 && (
-            <p className="text-2xs text-ink-4">
-              Til sammenligning: {vacantKvm.toLocaleString("nb-NO")} kvm ledig areal i &quot;Ledige arealer&quot; (Fazile arealoversikt, Tillegg-fanen) — ≈{" "}
-              {formatKr(Math.round((total.forventet + total.nullet) / vacantKvm))}/kvm/år av gjenstående budsjett under. To uavhengige kilder,
-              ikke slått sammen.
+            <p className="flex items-center gap-1 text-2xs text-ink-4">
+              {vacantKvm.toLocaleString("nb-NO")} kvm ledig areal i &quot;Ledige arealer&quot; (Tillegg-fanen)
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button type="button" aria-label="Om kryssreferansen mot kvm" className="shrink-0 text-ink-4 hover:text-ink-1">
+                      <Info className="h-3 w-3" />
+                    </button>
+                  }
+                />
+                <TooltipContent>
+                  Fazile arealoversikt, uavhengig av tallene under. ≈{" "}
+                  {formatKr(Math.round((total.forventet + total.nullet) / vacantKvm))}/kvm/år av gjenstående budsjett under - to
+                  uavhengige kilder, ikke slått sammen.
+                </TooltipContent>
+              </Tooltip>
             </p>
           )}
           {/* Sammendragsstripe: hvor de opprinnelig budsjetterte ledig-kronene har havnet. */}
@@ -4247,6 +4304,11 @@ export default function IncomeForecastSection() {
   const [loadingRemainingTenants, setLoadingRemainingTenants] = useState(true);
   const [vacantAreas, setVacantAreas] = useState<VacantAreasSnapshot | null>(null);
   const [loadingVacantAreas, setLoadingVacantAreas] = useState(true);
+  // v19 (2026-09-07, "avstemming"-gjennomgangen): løftet fra BookedTenantsBlock sin egen fetch -
+  // trengs OGSÅ av SyncVarsel, som kryssjekker denne live-snapshotens sistOppdatert mot den
+  // hardkodede BOOKED_3600_3699-konstanten (lim-inn-i-kildekode-tallet toppboksen faktisk bruker).
+  const [bookedTenantsSnapshot, setBookedTenantsSnapshot] = useState<BookedTenantsSnapshot | null>(null);
+  const [loadingBookedTenants, setLoadingBookedTenants] = useState(true);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const historyRecordedRef = useRef(false);
 
@@ -4291,6 +4353,13 @@ export default function IncomeForecastSection() {
         setLoadingVacantAreas(false);
       })
       .catch(() => setLoadingVacantAreas(false));
+    fetch("/api/income-forecast/booked-tenants")
+      .then((r) => r.json())
+      .then((data) => {
+        setBookedTenantsSnapshot(data.snapshot ?? null);
+        setLoadingBookedTenants(false);
+      })
+      .catch(() => setLoadingBookedTenants(false));
     fetch("/api/income-forecast/history")
       .then((r) => r.json())
       .then((data) => setHistory(data.punkter ?? []))
@@ -4391,12 +4460,20 @@ export default function IncomeForecastSection() {
     [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential],
   );
 
-  // v17: samme avvik-sum som Leieinntekter/Parkering-tabellenes egne Totalt-rader (avvik = null
-  // ekskluderes - Del B sine pr.-rad-budsjetter er alltid null, kun totallinjen har budsjett der).
+  // v19 (2026-09-07, "visuell/avstemming"-gjennomgangen): samme avvik-sum som Leieinntekter/
+  // Parkering-tabellenes egne Totalt-rader - MÅ inkludere samme pr.-rad reforhandlingsjustering
+  // (ekstraVedReforhandlingByNavn) som TenantForecastTable selv legger til for "Leieinntekter" når
+  // gruppering="leietaker". Uten den viste KpiStrip og tabellen rett under den to ULIKE avvikstall
+  // for samme begrep - forskjellen var nøyaktig prognose.reforhandlingFull. Kopierer tabellens
+  // egen pr.-rad-oppslagslogikk (ikke bare += reforhandlingFull) slik at tallene er GARANTERT like
+  // selv i kantsaker (et navn i justerings-Mapet uten noen tilsvarende rad).
   const { avvikTotal, budsjettTotal } = useMemo(() => {
     const delARows = tenantForecastTable?.delA.leietaker ?? [];
     const delBRows = tenantForecastTable?.delB.leietaker ?? [];
-    const delAAvvik = delARows.reduce((s, r) => s + (r.avvik ?? 0), 0);
+    const delAAvvik = delARows.reduce((s, r) => {
+      const justering = ekstraVedReforhandlingByNavn.get(r.navn.trim().toLowerCase()) ?? 0;
+      return s + (r.avvik ?? 0) + justering;
+    }, 0);
     const delABudsjett = delARows.reduce((s, r) => s + (r.budsjett ?? 0), 0);
     const delBFakturertGjenstar = delBRows.reduce((s, r) => s + r.fakturert + r.gjenstar, 0);
     const delBBudsjett = tenantForecastTable?.delBBudsjettTotal ?? 0;
@@ -4404,9 +4481,14 @@ export default function IncomeForecastSection() {
       avvikTotal: delAAvvik + (delBFakturertGjenstar - delBBudsjett),
       budsjettTotal: delABudsjett + delBBudsjett,
     };
-  }, [tenantForecastTable]);
+  }, [tenantForecastTable, ekstraVedReforhandlingByNavn]);
 
   const antallTilGjennomgang = useMemo(() => tellLeieforholdTilGjennomgang(remainingTenantsSnapshot), [remainingTenantsSnapshot]);
+
+  const syncAvvik = useMemo(
+    () => finnUsynkroniserteKonstanter(remainingTenantsSnapshot, bookedTenantsSnapshot),
+    [remainingTenantsSnapshot, bookedTenantsSnapshot],
+  );
 
   const advarslerLive = useMemo(
     () => [...(remainingTenantsSnapshot?.advarsler ?? []), ...(tenantForecastTable?.advarsler ?? [])],
@@ -4489,6 +4571,7 @@ export default function IncomeForecastSection() {
 
           {activeTab === "prognose" ? (
             <>
+              <SyncVarsel avvik={syncAvvik} />
               <KpiStrip
                 prognose={prognose}
                 avvikTotal={avvikTotal}
@@ -4533,23 +4616,34 @@ export default function IncomeForecastSection() {
               <div className="flex flex-col gap-1.5">
                 <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
                 <ReconciliationPanel advarsler={advarslerLive} />
-                <a
-                  href="/api/income-forecast/backup"
-                  download={`inntektsprognose-backup-${idagIso}.json`}
-                  className="mt-0.5 inline-flex w-fit items-center gap-1 text-2xs font-medium text-accent hover:text-accent/80"
-                >
-                  Last ned backup av manuelt innhold (JSON)
-                </a>
-                <p className="text-2xs text-ink-4">
-                  Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler - finnes KUN i Redis, ikke re-utledbart fra
-                  Fazile/NXT. Ta en kopi av og til.
+                <p className="mt-0.5 flex w-fit items-center gap-1">
+                  <a
+                    href="/api/income-forecast/backup"
+                    download={`inntektsprognose-backup-${idagIso}.json`}
+                    className="text-2xs font-medium text-accent hover:text-accent/80"
+                  >
+                    Last ned backup av manuelt innhold (JSON)
+                  </a>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button type="button" aria-label="Om backupen" className="shrink-0 text-ink-4 hover:text-ink-1">
+                          <Info className="h-3 w-3" />
+                        </button>
+                      }
+                    />
+                    <TooltipContent>
+                      Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler - finnes KUN i Redis, ikke
+                      re-utledbart fra Fazile/NXT. Ta en kopi av og til.
+                    </TooltipContent>
+                  </Tooltip>
                 </p>
               </div>
 
               <InvoicedBlock />
               <BookedAccountRangeBlock />
               <NxtBudgetBlock rollup={rollup} />
-              <BookedTenantsBlock />
+              <BookedTenantsBlock snapshot={bookedTenantsSnapshot} loading={loadingBookedTenants} />
               <RemainingBlock />
               <LeietypeBreakdownBlock />
               <VacantAreasBlock snapshot={vacantAreas} loading={loadingVacantAreas} totalLedigKr={totalLedigKr} />
