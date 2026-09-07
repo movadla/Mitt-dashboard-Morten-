@@ -267,15 +267,61 @@ export interface RemainingSnapshot {
 // fakturaplanens egen uttrekksdato. totalDelA NED til 164 065 688,99 kr, totalDelB NED til
 // 17 128 652,57 kr. antallForklartOmsetningsleie/antallForklartKontraktsendring endret vesentlig
 // (3→32, 45→52) som følge av bedre NXT-matching mot fersk data.
+// OPPDATERT 2026-09-07 (v23, fersk Fazile rent_roll for alle 55 eiendommer): rådataen i
+// scripts/refresh-data/fazile-remaining-tenants/ hentet på nytt for samtlige 55 eiendommer (samme
+// NXT-uttrekk og fakturaplan som v21/v22, uendret). Leieforhold-antallet falt fra 726 til 674
+// (−52) fordi et fersk rent_roll-uttrekk kun fanger kontraktslinjer aktive PÅ UTTREKKSDATOEN
+// (i dag), mens forrige uttrekk (2026-08-29) var et fullstendig historisk 2026-sweep (12
+// månedlige øyeblikksbilder pr. eiendom) som også fanget kontrakter som er utløpt tidligere i
+// år uten fornyelse - et kjent, dokumentert gap (se punkt 3 i
+// scripts/refresh-fazile-remaining-tenants.js sin header). totalDelA NED 1 716 701,34 til
+// 162 348 987,65 kr, totalDelB NED 96 416,23 til 17 032 236,34 kr. antallIkkeMatchetFlagget NED
+// til 9 (fra 14), antallForklartOmsetningsleie NED til 31 (fra 32) - færre rader å matche mot
+// NXT når færre historiske leieforhold er med. Strandveien 4-8 sin eierandel-bug (Fazile viser 1
+// i stedet for 0,5) er FORTSATT TIL STEDE - STRANDVEIEN_4_8_MANUAL_HALVING i
+// build-remaining-summary.js beholdt uendret. Ingen eiendommer traff 2000-raders-grensen
+// (største var Lilleakerveien 16 mm/CC Vest med 221 rader).
+// OPPDATERT 2026-09-07 (v24, fersk Fazile rent_roll MED flerpunkts-dekning): v23 sitt
+// enkelt-tidspunkts rent_roll-uttrekk (aktiv_dato = i dag, 2026-09-07) viste seg å systematisk
+// MISTE tre typer kontraktslinjer, verifisert med tre konkrete eksempler: (1) Rema 1000 Norge AS
+// (Vollsveien 13D) - signert kontrakt med start_dato 2026-10-01, altså IKKE aktiv ennå på
+// uttreksdatoen, manglet derfor helt selv om den skal telle for okt-des 2026; (2) K&C Factory AS
+// (Lilleakerveien 4CDEF) - kontrakten løp ut 2026-02-28 (med en oppfølgende linje ut 2026-06-30),
+// altså ALLEREDE utløpt på uttrekksdatoen, manglet derfor selv om den skal telle for deler av
+// året; (3) Reitan Convenience Norway AS/Kiosk 814 (Lilleakerveien 16 mm/CC Vest) - kontrakten
+// løp ut 2026-08-31, kun 7 dager før uttrekksdatoen, samme mønster. Løsningen: rent_roll ble kjørt
+// på nytt for alle 55 eiendommer ved 5 sjekkpunkter spredt over hele 2026 (2026-01-15, 04-01,
+// 07-01, 09-07, 10-01), og resultatene ble slått sammen (union) og deduplisert på linje_id (verdier
+// er identiske uansett hvilket tidspunkt en linje ble hentet på). Fant samtidig en beslektet,
+// tidligere ukjent bug: flere eiendommer har DOBBELT mellomrom i sitt interne Fazile-navn
+// (Lilleakerveien  2 Garasje/2AB/2CD/2E/2F/2G/4A/4CDEF/6/8_E) - rent_roll sitt eiendom-filter
+// krever eksakt mellomrom-match, ikke bare substring, så et enkelt-mellomroms-søk på disse gir
+// stille 0 treff. Rådataen for disse 10 eiendommene ble derfor hentet på nytt med korrekt
+// dobbelt-mellomrom for å unngå at HELE eiendommen falt ut (ikke bare et fåtall linjer). Totalt
+// 192 nye kontraktslinjer lagt til på tvers av alle 55 filer (1 208 -> 1 400 rader). Leieforhold-
+// antallet OPP fra 674 til 724 - nærmere (2 under) det opprinnelig committede 726-tallet fra
+// 2026-09-04-uttrekket, og godt over det forkastede 674-tallet, som forventet nå som hullene i
+// stor grad er tettet. totalDelA OPP 1 320 347,69 fra 674-uttrekket til 163 669 335,34 kr (fortsatt
+// 396 353,65 UNDER 726-uttrekkets 164 065 688,99 kr - andre, uavhengige NXT-/fakturaplan-endringer
+// siden 2026-09-04 forklarer resten av avviket, ikke denne fiksen). totalDelB UENDRET på
+// 17 128 652,57 kr - identisk med 726-uttrekket, altså var Del B allerede upåvirket av
+// enkelt-snapshot-bugen (parkeringslinjene som manglet var stort sett Del A-linjer).
+// antallIkkeMatchetFlagget OPP til 14 (fra 9) - tilbake på samme nivå som 726-uttrekket, som
+// forventet med flere leieforhold å matche. antallForklartOmsetningsleie OPP til 34 (fra 31),
+// antallForklartKontraktsendring NED til 48 (fra 52) - begge nærmere 726-uttrekkets 32/52 enn
+// 674-uttrekkets tall. Strandveien 4-8 sin eierandel-bug (Fazile viser 1 i stedet for 0,5) er
+// FORTSATT TIL STEDE - STRANDVEIEN_4_8_MANUAL_HALVING i build-remaining-summary.js beholdt
+// uendret. Ingen eiendommer traff 2000-raders-grensen (største var fortsatt Lilleakerveien 16
+// mm/CC Vest, nå med 240 rader mot 221 før).
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-09-04",
+  sistOppdatert: "2026-09-07",
   ar: 2026,
-  totalDelA: 164065688.99,
+  totalDelA: 163669335.34,
   totalDelB: 17128652.57,
-  antallLeieforhold: 726,
+  antallLeieforhold: 724,
   antallIkkeMatchetFlagget: 14,
-  antallForklartOmsetningsleie: 32,
-  antallForklartKontraktsendring: 52,
+  antallForklartOmsetningsleie: 34,
+  antallForklartKontraktsendring: 48,
   antallAvsluttetNullstilt: 8,
   antallInternMustad: 12,
   uforklarteAvvik: [],
