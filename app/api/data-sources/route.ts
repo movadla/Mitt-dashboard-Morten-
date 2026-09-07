@@ -18,6 +18,7 @@ const FILE_SOURCES: { id: string; label: string; file: string }[] = [
   { id: "widgets", label: "Kontrakter / Utløp / Garantier / Kundefordringer / Kalender", file: "widgets.local.ts" },
   { id: "incomeForecast", label: "Inntektsprognose", file: "incomeForecast.local.ts" },
   { id: "companyInfo", label: "Mustad — oppslagsverk", file: "companyInfo.local.ts" },
+  { id: "fazilesjekk", label: "Fazilesjekk", file: "fazilesjekk.local.ts" },
 ];
 
 export async function GET() {

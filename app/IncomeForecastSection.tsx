@@ -39,6 +39,7 @@ import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
 import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
+import { isSystemRow } from "@/lib/tenantForecastTable";
 import type { TenantForecastGrupper, TenantForecastGruppering, TenantForecastRow, TenantForecastTableSnapshot } from "@/lib/tenantForecastTable";
 import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
 import type { NxtBudgetSnapshot } from "@/lib/nxtBudget";
@@ -507,7 +508,14 @@ function BookedTenantsBlock({ snapshot, loading }: { snapshot: BookedTenantsSnap
   );
 }
 
-const BYGG_STATUS_LABEL: Record<string, string> = {
+// Record<RemainingByggStatus, string> (ikke Record<string, string>) - eksplisitt eksaustiv mot
+// unionen i lib/incomeForecastRemainingTenants.ts. Var tidligere Record<string, string>, som lot
+// "forklart-historisk-kundenummer"/"forklart-manglende-linje" mangle helt uten at TypeScript sa
+// ifra - de fantes i typen og ble produsert av datapipelinen, men rendret som en tom/ustylet
+// badge her og falt samtidig ut av REVIEW_STATUSES-arbeidslisten under. Samme mangel fantes IKKE
+// i Excel-eksporten (app/api/income-forecast/remaining-tenants/export/route.ts), som allerede
+// bruker nøyaktig denne eksaustive Record-formen - portert etikettene derfra.
+const BYGG_STATUS_LABEL: Record<RemainingByggStatus, string> = {
   ok: "OK",
   avsluttet: "Avsluttet, nullstilt",
   "ikke-matchet-i-nxt": "Ikke funnet i NXT",
@@ -515,6 +523,8 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "forklart-kontraktsendring": "Kontraktsendring i år",
   "forklart-engangsgebyr": "Engangsgebyr (exit fee)",
   "forklart-nxt-feilkoding": "Feilkoding i NXT",
+  "forklart-historisk-kundenummer": "Overtatt fra gammelt kundenummer",
+  "forklart-manglende-linje": "Manglende linje lagt til",
   "intern-mustad": "Intern (Mustad selv)",
   "intern-egenleie": "Egenleie, nullstilt",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
@@ -522,7 +532,7 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
 };
 
-const BYGG_STATUS_STYLE: Record<string, string> = {
+const BYGG_STATUS_STYLE: Record<RemainingByggStatus, string> = {
   ok: "bg-surface-3 text-ink-3",
   avsluttet: "bg-status-danger/12 text-status-danger",
   "ikke-matchet-i-nxt": "bg-accent/15 text-accent",
@@ -530,6 +540,8 @@ const BYGG_STATUS_STYLE: Record<string, string> = {
   "forklart-kontraktsendring": "bg-status-warning/15 text-status-warning",
   "forklart-engangsgebyr": "bg-status-warning/15 text-status-warning",
   "forklart-nxt-feilkoding": "bg-status-warning/15 text-status-warning",
+  "forklart-historisk-kundenummer": "bg-status-warning/15 text-status-warning",
+  "forklart-manglende-linje": "bg-status-warning/15 text-status-warning",
   "intern-mustad": "bg-surface-3 text-ink-4",
   "intern-egenleie": "bg-surface-3 text-ink-4",
   "forklart-parkering-onepark": "bg-status-positive/12 text-status-positive",
@@ -543,13 +555,23 @@ const REVIEW_STATUSES = [
   "forklart-kontraktsendring",
   "forklart-engangsgebyr",
   "forklart-nxt-feilkoding",
+  "forklart-historisk-kundenummer",
+  "forklart-manglende-linje",
   "avsluttet",
   "intern-mustad",
   "intern-egenleie",
   "forklart-parkering-onepark",
   "forklart-parkering-uten-fazile-linje",
   "fazile-plan-mangler",
-] as const;
+] as const satisfies readonly RemainingByggStatus[];
+
+// row.remainingStatuser (TenantForecastRow) er en løs string[] - satt av scripts/build-tenant-
+// forecast-table.js, ikke garantert nøyaktig RemainingByggStatus ved kompileringstidspunktet -
+// derfor en trygg oppslagsfunksjon med fallback her, i stedet for å løsne hele BYGG_STATUS_LABEL
+// tilbake til Record<string, string> (som var nettopp det som skjulte funn #1).
+function bygStatusLabel(status: string): string {
+  return (BYGG_STATUS_LABEL as Record<string, string>)[status] ?? status;
+}
 
 function RemainingTenantsFullRow({ tenant }: { tenant: RemainingTenantsSnapshot["tenants"][number] }) {
   const [open, setOpen] = useState(false);
@@ -1562,6 +1584,30 @@ function ContractExpiryRow({
               {CONTRACT_EXPIRY_STATUS_LABEL[contract.status as ContractExpiryStatus]}
             </span>
             {signal && <span className="shrink-0 text-2xs text-ink-4">{signal.sannsynlighetProsent}%</span>}
+            {/* Samme muligAlleredeDekket-varsel som KontrakterPaUtlopBlock (Prognose-fanen) viser
+                for samme kontrakt - manglet her i Tillegg-fanens eldre visning (2026-09-07). Laget
+                etter et bekreftet dobbelttellingsmønster hos en CC Vest-butikk, se minnenotat. */}
+            {contract.muligAlleredeDekket && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Varsel"
+                      className="shrink-0 text-status-warning hover:text-status-warning/80"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </button>
+                  }
+                />
+                <TooltipContent className="max-w-xs">
+                  {`Allerede fakturert ${formatKr(contract.muligAlleredeDekket.faktiskFakturert)} i bygget — ${formatKr(
+                    contract.muligAlleredeDekket.overskudd,
+                  )} mer enn kontraktens sluttdato skulle tilsi. "Ekstra ved reforhandling" kan dobbeltelle dette.`}
+                </TooltipContent>
+              </Tooltip>
+            )}
           </span>
           <span className="truncate text-2xs text-ink-4">
             {contract.bygg} · Utløp {utlop}
@@ -1716,11 +1762,16 @@ function ContractExpiry2026Block({
   loading,
   signals,
   onSignalUpdated,
+  prognoseTotal,
 }: {
   snapshot: ContractExpiry2026Snapshot | null;
   loading: boolean;
   signals: TenantSignal[];
   onSignalUpdated: (next: TenantSignal) => void;
+  // Hovedprognosens total (Hovedprognose.total, se beregnHovedprognose) - var tidligere en
+  // hardkodet tekststreng ("685,2 mill kr") her, som gikk stille foreldet i det øyeblikket noe
+  // av grunnlaget (bokført/gjenstår/reforhandling/omsetningsavregning/potensial) endret seg.
+  prognoseTotal: number;
 }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter som utløper i 2026", true);
   const [search, setSearch] = useState("");
@@ -1780,7 +1831,7 @@ function ContractExpiry2026Block({
             <div className="mb-2 rounded-xl border border-status-warning/30 bg-status-warning/5 p-3">
               <p className="text-2xs text-ink-3">
                 <span className="font-semibold text-ink-1">{formatKr(snapshot.totalEkstraI2026)}</span> er IKKE med i
-                prognosetotalen (685,2 mill kr) — dette er dagene fra utløpsdato til 31.12.2026 for de{" "}
+                prognosetotalen ({formatKr(prognoseTotal)}) — dette er dagene fra utløpsdato til 31.12.2026 for de{" "}
                 {snapshot.ekstraI2026PerLeietaker.length} leietakerne under, betinget oppside som først blir reell inntekt
                 hvis kontrakten faktisk fornyes uendret.
               </p>
@@ -2152,6 +2203,9 @@ function beregnEkstraVedReforhandlingByNavn(snapshot: ContractExpiry2026Snapshot
 
 export interface Hovedprognose {
   bokfort: number;
+  // Del av `bokfort` (ikke i tillegg til) - eget felt kun slik at waterfallen kan tegne det som
+  // en synlig, lavere-sikkerhet søyle i stedet for usynlig blandet inn i "Bokført".
+  manuelleLinjer: number;
   gjenstar: number;
   reforhandlingFull: number;
   potensiellEkstrainntektReforhandling100: number;
@@ -2173,13 +2227,20 @@ function beregnHovedprognose(
   omsetningsavregning: OmsetningsavregningSnapshot | null,
   potential: PotentialIncomeSnapshot | null,
 ): Hovedprognose {
+  // manuelleLinjer holdes også som EGET felt (under) i tillegg til å telle med i `bokfort` under -
+  // `bokfort` (og dermed `total`/"kjernetallet" kjørehistorikken sporer, se lib/incomeForecastHistory.ts)
+  // er UENDRET og skal fortsatt inkludere manuelle linjer. Det som var galt (2026-09-07) var at
+  // MainForecastBox sin waterfall tegnet dem inn i SAMME "Bokført"-søyle med samme sikkerhet=1 som
+  // ekte NXT-bokførte tall - visuelt umulig å skille et manuelt anslag fra et bokført faktum. Fikset
+  // ved å gi waterfallen et eget `manuelleLinjer`-felt å tegne som egen, lavere-sikkerhet søyle -
+  // se `manuelleLinjer` i Hovedprognose og bruken i MainForecastBox.
+  const manuelleLinjer = rollup.delA.manuelleLinjer + rollup.delB.manuelleLinjer;
   const bokfort =
     rollup.delA.fakturertHittil +
     rollup.delB.fakturertHittil +
     rollup.delA.manueltNxtHittil +
     rollup.delB.manueltNxtHittil +
-    rollup.delA.manuelleLinjer +
-    rollup.delB.manuelleLinjer;
+    manuelleLinjer;
   const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
   const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
   const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
@@ -2189,7 +2250,7 @@ function beregnHovedprognose(
   const ledigeLokaler = potentialByKey.get("ledige-lokaler")?.belop ?? 0;
   const annet = potentialByKey.get("annet")?.belop ?? 0;
   const total = bokfort + gjenstar + reforhandlingFull + omsetningsavregningSum + potensiellFremtidig + ledigeLokaler + annet;
-  return { bokfort, gjenstar, reforhandlingFull, potensiellEkstrainntektReforhandling100, omsetningsavregningSum, potensiellFremtidig, ledigeLokaler, annet, total };
+  return { bokfort, manuelleLinjer, gjenstar, reforhandlingFull, potensiellEkstrainntektReforhandling100, omsetningsavregningSum, potensiellFremtidig, ledigeLokaler, annet, total };
 }
 
 interface WaterfallSegment {
@@ -2273,6 +2334,7 @@ function MainForecastBox({
   const [open, setOpen] = useState(false);
   const {
     bokfort,
+    manuelleLinjer,
     gjenstar,
     reforhandlingFull,
     potensiellEkstrainntektReforhandling100,
@@ -2286,8 +2348,12 @@ function MainForecastBox({
   // Waterfall-segmentene i samme rekkefølge som lista under, sortert fra mest
   // til minst sikre. `sikkerhet` styrer hvor tett fylt søylen tegnes — se
   // IncomeWaterfall for hvorfor det er opasitet og ikke ulike farger.
+  // "Bokført" splittes fra "Mine manuelle linjer" (2026-09-07) - begge inngår i `bokfort` (se
+  // beregnHovedprognose), men et manuelt anslag er ikke det samme som et NXT-bokført faktum, og
+  // så tidligere visuelt identisk ut (samme søyle, samme sikkerhet=1).
   const waterfallSegments: WaterfallSegment[] = [
-    { label: "Bokført", value: bokfort, sikkerhet: 1 },
+    { label: "Bokført (NXT)", value: bokfort - manuelleLinjer, sikkerhet: 1 },
+    { label: "Mine manuelle linjer", value: manuelleLinjer, sikkerhet: 0.75 },
     { label: "Gjenstår", value: gjenstar, sikkerhet: 0.82 },
     { label: "Omsetningsavregning", value: omsetningsavregningSum, sikkerhet: 0.62 },
     { label: "Reforhandling (vektet)", value: reforhandlingFull, sikkerhet: 0.46 },
@@ -2305,7 +2371,11 @@ function MainForecastBox({
         className="flex w-full flex-col gap-1 text-left"
       >
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold uppercase tracking-wide text-ink-4">Inntektsprognose 2026</p>
+          {/* "Full prognose", ikke samme tittel som kortets egen "Inntektsprognose 2026" over -
+              denne summen (Hovedprognose.total) er BREDERE enn kortets kjernetall (rollup.totalt):
+              den inkluderer også reforhandling/omsetningsavregning/potensial. Samme tittel med to
+              ulike tall forvirret tidligere (2026-09-07). */}
+          <p className="text-sm font-semibold uppercase tracking-wide text-ink-4">Full prognose 2026</p>
           {open ? <ChevronUp className="h-4 w-4 shrink-0 text-ink-4" /> : <ChevronDown className="h-4 w-4 shrink-0 text-ink-4" />}
         </div>
         <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
@@ -2585,7 +2655,10 @@ function StorstAvvikBlock({ rows }: { rows: TenantForecastRow[] }) {
   const topp = useMemo(
     () =>
       rows
-        .filter((r) => r.avvik !== null && Math.round(r.avvik) !== 0)
+        // isSystemRow ekskluderer syntetiske rader (Ledig-rader, intern Mustad-bruk,
+        // avstemmingsdifferanse-pluggen) - ingen av dem er en ekte leietaker, og en stor
+        // pluggpost så tidligere ut som en reell "leietaker med stort avvik" i denne lista.
+        .filter((r) => !isSystemRow(r.navn) && r.avvik !== null && Math.round(r.avvik) !== 0)
         .sort((a, b) => Math.abs(b.avvik ?? 0) - Math.abs(a.avvik ?? 0))
         .slice(0, 8),
     [rows],
@@ -3099,6 +3172,10 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
                               {d.poster.map((p) => {
                                 const leietaker = p.type === "leietaker" ? rowByNavn.get(p.navn) : undefined;
                                 const faktisk = leietaker ? leietaker.fakturert + leietaker.gjenstar : null;
+                                // v16 match-kvalitet (2026-09-07): denne visningen slo opp samme leietaker-
+                                // rad uten selv å vise noe om koblingen kan være fuzzy (samme gap som
+                                // KontrakterPaUtlopBlock hadde).
+                                const matchVarsel = leietaker ? matchKvalitetTekst(leietaker) : null;
                                 return (
                                   <div key={`${p.type}-${p.navn}`} className="flex items-baseline justify-between gap-2 text-2xs">
                                     <span className="flex min-w-0 items-center gap-1 text-ink-2">
@@ -3112,6 +3189,18 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
                                         <Tooltip>
                                           <TooltipTrigger render={<Info className="h-3 w-3 shrink-0 text-ink-4" />} />
                                           <TooltipContent className="max-w-xs">{p.beskrivelse}</TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                      {matchVarsel && (
+                                        <Tooltip>
+                                          <TooltipTrigger
+                                            render={
+                                              <button type="button" aria-label="Usikker kobling" className="shrink-0 text-status-warning hover:text-status-warning/80">
+                                                <AlertTriangle className="h-3 w-3" />
+                                              </button>
+                                            }
+                                          />
+                                          <TooltipContent className="max-w-xs">{matchVarsel}</TooltipContent>
                                         </Tooltip>
                                       )}
                                     </span>
@@ -3295,6 +3384,10 @@ function KontrakterPaUtlopBlock({
           kontrakt.muligAlleredeDekket
             ? `Allerede fakturert ${formatKr(kontrakt.muligAlleredeDekket.faktiskFakturert)} i bygget - ${formatKr(kontrakt.muligAlleredeDekket.overskudd)} mer enn kontraktens sluttdato skulle tilsi. "Ekstra ved reforhandling" kan dobbeltelle dette.`
             : null,
+          // v16 match-kvalitet (2026-09-07): denne visningen slår opp samme leietaker-rad som
+          // Leieinntekter-tabellen, uten selv å vise noe om at koblingen kan være fuzzy - en stor,
+          // usikkert koblet leietaker så like troverdig ut her som en sikker kundenummer-match.
+          tenantRow ? matchKvalitetTekst(tenantRow) : null,
         ].filter((v): v is string => v !== null);
         return {
           kontrakt,
@@ -3523,6 +3616,41 @@ function KontrakterPaUtlopBlock({
 // reforhandlingByNavn (se TenantForecastTable) - brukes til å vise et infoikon i UI-en.
 type DisplayTenantRow = TenantForecastRow & { _reforhandlingsjustering?: number };
 
+// Delt mellom TenantForecastTable (Leieinntekter-tabellen) og StorstAvvikBlock/LedigeLokalerBlock
+// (2026-09-07: de to sistnevnte viste tidligere UJUSTERTE avvik/gjenstår-tall for de samme
+// radene tabellen viser JUSTERT - en leietaker med høy reforhandlingssannsynlighet kunne dermed
+// se ut som et stort avvik i "Størst avvik mot budsjett", mens tabellen rett under viste nesten
+// null). Samme "kopier tabellens egen pr.-rad-logikk"-prinsipp som v19 sin KpiStrip-fiks brukte
+// for SUMMEN - dette er den generelle, per-rad varianten alle tre kan dele.
+function applyReforhandlingJustering(rows: TenantForecastRow[], reforhandlingByNavn?: Map<string, number>): DisplayTenantRow[] {
+  if (!reforhandlingByNavn || reforhandlingByNavn.size === 0) return rows;
+  return rows.map((r): DisplayTenantRow => {
+    const justering = reforhandlingByNavn.get(r.navn.trim().toLowerCase());
+    if (!justering) return r;
+    const gjenstar = Math.round((r.gjenstar + justering) * 100) / 100;
+    const avvik = r.budsjett !== null ? Math.round((r.fakturert + gjenstar - r.budsjett) * 100) / 100 : null;
+    // Justeringen er et EKSTRA beløp pr. leietaker (ikke knyttet til én bestemt Fazile-linje) -
+    // uten en synlig linje her ville drilldownen sin "Fazile-linje → Gjenstår"-sum (basert på
+    // de ORIGINALE linjenes gjenstarShare) ikke stemt overens med raden sin egen, justerte
+    // Gjenstår-verdi (Morten 2026-08-29 sitt "linjer/kontoer skal stemme"-krav gjelder også her).
+    const linjer = [
+      ...r.linjer,
+      {
+        eiendom: "",
+        bygg: "",
+        linjetype: "",
+        beskrivelse: "Ekstra ved reforhandling (se Kontrakter på utløp)",
+        del: "A" as const,
+        fullArsverdi2026: 0,
+        startDato: null,
+        sluttDato: null,
+        gjenstarShare: justering,
+      },
+    ];
+    return { ...r, gjenstar, avvik, linjer, _reforhandlingsjustering: justering };
+  });
+}
+
 const GRUPPERING_LABEL: Record<TenantForecastGruppering, string> = { leietaker: "Leietaker", bygg: "Bygg", leietype: "Leietype" };
 const GRUPPERINGER: TenantForecastGruppering[] = ["leietaker", "bygg", "leietype"];
 const EMPTY_GRUPPER: TenantForecastGrupper = { leietaker: [], bygg: [], leietype: [] };
@@ -3558,7 +3686,7 @@ function matchKvalitetTekst(row: TenantForecastRow): string | null {
   }
   if (row.excelNavn && row.excelNavn.length > 0) deler.push(`Excel-navn: ${row.excelNavn.join(", ")}`);
   if (row.remainingStatuser && row.remainingStatuser.length > 0) {
-    deler.push(`Status: ${row.remainingStatuser.map((s) => BYGG_STATUS_LABEL[s] ?? s).join(", ")}`);
+    deler.push(`Status: ${row.remainingStatuser.map(bygStatusLabel).join(", ")}`);
   }
   if (deler.length === 0) return null;
   return `Usikker kobling mellom kildene — ${deler.join(". ")}.`;
@@ -3592,32 +3720,8 @@ function TenantForecastTable({
   // beregnEkstraVedReforhandlingByNavn(). Ingen justering ved bygg-/leietype-gruppering (Map er
   // navnebasert) eller for leietakere uten en åpen 2026-kontrakt i snapshotet.
   const rows: DisplayTenantRow[] = useMemo(() => {
-    if (gruppering !== "leietaker" || !reforhandlingByNavn || reforhandlingByNavn.size === 0) return rawRows;
-    return rawRows.map((r): DisplayTenantRow => {
-      const justering = reforhandlingByNavn.get(r.navn.trim().toLowerCase());
-      if (!justering) return r;
-      const gjenstar = Math.round((r.gjenstar + justering) * 100) / 100;
-      const avvik = r.budsjett !== null ? Math.round((r.fakturert + gjenstar - r.budsjett) * 100) / 100 : null;
-      // Justeringen er et EKSTRA beløp pr. leietaker (ikke knyttet til én bestemt Fazile-linje) -
-      // uten en synlig linje her ville drilldownen sin "Fazile-linje → Gjenstår"-sum (basert på
-      // de ORIGINALE linjenes gjenstarShare) ikke stemt overens med raden sin egen, justerte
-      // Gjenstår-verdi (Morten 2026-08-29 sitt "linjer/kontoer skal stemme"-krav gjelder også her).
-      const linjer = [
-        ...r.linjer,
-        {
-          eiendom: "",
-          bygg: "",
-          linjetype: "",
-          beskrivelse: "Ekstra ved reforhandling (se Kontrakter på utløp)",
-          del: "A" as const,
-          fullArsverdi2026: 0,
-          startDato: null,
-          sluttDato: null,
-          gjenstarShare: justering,
-        },
-      ];
-      return { ...r, gjenstar, avvik, linjer, _reforhandlingsjustering: justering };
-    });
+    if (gruppering !== "leietaker") return rawRows;
+    return applyReforhandlingJustering(rawRows, reforhandlingByNavn);
   }, [rawRows, gruppering, reforhandlingByNavn]);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(20);
@@ -4495,6 +4599,16 @@ export default function IncomeForecastSection() {
     };
   }, [tenantForecastTable, ekstraVedReforhandlingByNavn]);
 
+  // Samme reforhandlingsjustering som Leieinntekter-tabellen (TenantForecastTable) og KpiStrip
+  // (avvikTotal over) bruker for delA/leietaker - delt via applyReforhandlingJustering slik at
+  // StorstAvvikBlock og LedigeLokalerBlock viser SAMME justerte gjenstår/avvik for en leietaker
+  // som tabellen rett under dem, i stedet for tabellens tall og en ujustert, mer alarmerende
+  // versjon side om side (2026-09-07-gjennomgangen).
+  const justertDelALeietakerRader = useMemo(
+    () => applyReforhandlingJustering(tenantForecastTable?.delA.leietaker ?? [], ekstraVedReforhandlingByNavn),
+    [tenantForecastTable, ekstraVedReforhandlingByNavn],
+  );
+
   const antallTilGjennomgang = useMemo(() => tellLeieforholdTilGjennomgang(remainingTenantsSnapshot), [remainingTenantsSnapshot]);
 
   const syncAvvik = useMemo(
@@ -4561,7 +4675,11 @@ export default function IncomeForecastSection() {
         title="Inntektsprognose 2026"
         subtitle={
           <>
-            {formatKr(rollup.totalt)}
+            {/* "Kjernetall" - presiserer at dette er rollup.totalt (bokført+gjenstår+manuelle
+                linjer), IKKE samme tall som "Full prognose 2026" lenger ned i Prognose-fanen
+                (som i tillegg inkluderer reforhandling/omsetningsavregning/potensial) - samme
+                tittel med to ulike kronebeløp uten forklaring forvirret tidligere (2026-09-07). */}
+            Kjernetall {formatKr(rollup.totalt)}
             {lastUpdated ? ` · sist oppdatert ${formatDateDMY(lastUpdated)}` : " · ingen data ennå"}
           </>
         }
@@ -4604,7 +4722,7 @@ export default function IncomeForecastSection() {
               <MainForecastBox prognose={prognose} potential={potential} onPotentialUpdated={handlePotentialUpdated} />
 
               <LeieforholdReviewBlock snapshot={remainingTenantsSnapshot} loading={loadingRemainingTenants} />
-              <StorstAvvikBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
+              <StorstAvvikBlock rows={justertDelALeietakerRader} />
 
               <TenantForecastTable
                 title="Leieinntekter"
@@ -4624,7 +4742,7 @@ export default function IncomeForecastSection() {
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
               />
-              <LedigeLokalerBlock rows={tenantForecastTable?.delA.leietaker ?? []} vacantKvm={vacantAreas?.totalLedigKvm ?? null} />
+              <LedigeLokalerBlock rows={justertDelALeietakerRader} vacantKvm={vacantAreas?.totalLedigKvm ?? null} />
             </>
           ) : (
             <>
@@ -4672,6 +4790,7 @@ export default function IncomeForecastSection() {
                 loading={loadingContractExpiry2026}
                 signals={tenantSignals}
                 onSignalUpdated={handleSignalUpdated}
+                prognoseTotal={prognose.total}
               />
               <ManualNxtBlock />
 

@@ -3,7 +3,11 @@ import { localDateString } from "./payday";
 
 export function formatKr(n: number, signed = false): string {
   const sign = signed && n > 0 ? "+" : "";
-  return `${sign}${n.toLocaleString("nb-NO")} kr`;
+  // maximumFractionDigits: 0 - uten denne kunne et avviks-/justeringstall rundet til øre (mange
+  // steder gjør Math.round(x*100)/100) vises med inntil 2-3 desimaler ("1 234,57 kr") ved siden
+  // av hele kronebeløp andre steder på samme side (2026-09-07). Appen viser ellers konsekvent
+  // heltallskroner - dette runder kun VISNINGEN, ikke det underliggende tallet.
+  return `${sign}${n.toLocaleString("nb-NO", { maximumFractionDigits: 0 })} kr`;
 }
 
 export function formatDateDMY(iso: string): string {

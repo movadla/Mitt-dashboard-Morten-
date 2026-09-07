@@ -17,11 +17,15 @@ interface DataSource {
 // (som Datakilder-kortet bruker) er derfor for slapp for de ferske kildene —
 // "Oppgaver oppdatert for 25 dager siden" passerte den uten et pip, og sto
 // bare som grå småtekst under "I dag".
-const MAX_AGE_DAYS: Record<string, number> = {
+export const MAX_AGE_DAYS: Record<string, number> = {
   tasks: 7,
   widgets: 14,
   incomeForecast: 14,
   companyNews: 30,
+  // Fazilesjekk er en manuell engangs-avstemming (Asana mot Fazile), ikke noe som friskes opp
+  // rutinemessig som Oppgaver - samme størrelsesorden som Leietakersøk, men vises i tillegg med
+  // sin egen eksakte "Øyeblikksbilde <dato>"-tekst i FazilesjekkSection selv.
+  fazilesjekk: 30,
   tenants: 45,
   companyInfo: 90,
 };

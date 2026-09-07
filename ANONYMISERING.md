@@ -13,12 +13,13 @@ inn i en kode-kommentar under en full ombygging av Kundefordringer.
   forskjell, ikke en glipp. Kun leietaker/kunde-data anonymiseres, ikke
   interne Mustad-ansatte.
 
-## De 5 pointer-filene — aldri `git add` når de peker på `.local`
+## De 6 pointer-filene — aldri `git add` når de peker på `.local`
 - lib/tasks.ts
 - lib/tenants.ts
 - lib/widgets.ts
 - lib/incomeForecast.ts
 - lib/companyInfo.ts
+- lib/fazilesjekk.ts
 
 Hver av disse er en re-export-shim (`export * from "./X.local"` eller
 `"./X.anon"`) som `scripts/use-local-data.js` (predev) og

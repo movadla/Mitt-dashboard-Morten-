@@ -14,13 +14,27 @@ export function looksLikeOrganization(navn: string): boolean {
 }
 
 // Deterministisk basert på navnet (samme leietaker => samme Demokunde-nummer hver gang),
-// uavhengig av de andre Demokunde-nummerseriene brukt andre steder i appen.
+// uavhengig av de andre Demokunde-nummerseriene brukt andre steder i appen. Modulus bumpet
+// fra 500 til 100 000 (2026-09-07): med trolig flere hundre reelle privatperson-leietakere
+// var kollisjon (to ulike ekte leietakere => samme Demokunde-nummer, altså slått sammen til
+// én rad i den anonymiserte prod-visningen) statistisk sannsynlig i et 500-stort romm
+// (bursdagsparadokset). Påvirker kun demo-/prod-visningen, ikke Mortens egen ekte visning.
 export function anonymizeTenantName(navn: string): string {
   let hash = 0;
   for (let i = 0; i < navn.length; i++) hash = (hash * 31 + navn.charCodeAt(i)) >>> 0;
-  return `Demokunde ${(hash % 500) + 1}`;
+  return `Demokunde ${(hash % 100_000) + 1}`;
 }
 
 export function anonymizeIfPerson(navn: string): string {
   return looksLikeOrganization(navn) ? navn : anonymizeTenantName(navn);
+}
+
+// Delt vakt for "anonymiser KUN i produksjon" - samme Redis brukes lokalt (ekte data ønsket)
+// og på den offentlige Vercel-siden (kun demokunder tillatt), se ANONYMISERING.md. Var
+// tidligere en nesten ordrett kopiert `if (NODE_ENV === "production") return anonymize(x)`
+// i 4+ lib-filer (contractExpiry2026.ts, omsetningsavregning.ts, tenantForecastTable.ts,
+// incomeForecastRemainingTenants.ts) - én delt hjelper her fjerner duplisering OG hindrer
+// strukturelt at en NY snapshot-getter glemmer sjekken.
+export function withProdAnonymization<T>(value: T, anonymize: (value: T) => T): T {
+  return process.env.NODE_ENV === "production" ? anonymize(value) : value;
 }

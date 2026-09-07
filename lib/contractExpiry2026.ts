@@ -1,5 +1,5 @@
 import { hgetJSON } from "./kv";
-import { anonymizeIfPerson } from "./tenantAnonymize";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 export type ContractExpiryStatus = "apen" | "reforhandlet";
 
@@ -68,6 +68,5 @@ export async function getContractExpiry2026Snapshot(): Promise<ContractExpiry202
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden
   // (kun demokunder tillatt) mot SAMME Redis - anonymiser derfor privatpersoner i farten
   // her, ikke ved lagring, se ANONYMISERING.md.
-  if (process.env.NODE_ENV === "production") return anonymizeSnapshot(snapshot);
-  return snapshot;
+  return withProdAnonymization(snapshot, anonymizeSnapshot);
 }

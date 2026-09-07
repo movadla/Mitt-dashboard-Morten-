@@ -1,5 +1,5 @@
 import { hgetJSON } from "./kv";
-import { anonymizeIfPerson } from "./tenantAnonymize";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 export interface OmsetningsavregningButikk {
   butikk: string;
@@ -81,6 +81,5 @@ export async function getOmsetningsavregningSnapshot(): Promise<Omsetningsavregn
   const snapshot = await hgetJSON<OmsetningsavregningSnapshot>(HASH_KEY, FIELD);
   if (!snapshot) return null;
   // Samme Redis brukes lokalt (ekte data) og i prod (kun demokunder) - se ANONYMISERING.md.
-  if (process.env.NODE_ENV === "production") return anonymizeSnapshot(snapshot);
-  return snapshot;
+  return withProdAnonymization(snapshot, anonymizeSnapshot);
 }

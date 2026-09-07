@@ -1,5 +1,5 @@
 import { hgetJSON } from "./kv";
-import { anonymizeIfPerson } from "./tenantAnonymize";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 import { getTenantForecastComments } from "./tenantForecastComments";
 
 export interface TenantForecastLine {
@@ -143,7 +143,10 @@ const SYSTEM_ROW_LABELS = new Set([
 // derfor en prefix-sjekk her i stedet for eksakt Set-medlemskap som de to andre systemradene.
 const LEDIG_ROW_PREFIX = "Ledig";
 
-function isSystemRow(navn: string): boolean {
+// Eksportert (2026-09-07) slik at IncomeForecastSection.tsx sin StorstAvvikBlock kan filtrere
+// bort synteiske rader (Ledig-rader, "Mustad Eiendom (intern bruk...)", avstemmingsdifferanse)
+// på samme måte som resten av appen - i stedet for å risikere en egen, driftende kopi av logikken.
+export function isSystemRow(navn: string): boolean {
   return SYSTEM_ROW_LABELS.has(navn) || navn.startsWith(LEDIG_ROW_PREFIX);
 }
 
@@ -201,8 +204,9 @@ export async function getTenantForecastTable(): Promise<TenantForecastTableSnaps
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden
   // (kun demokunder tillatt) mot SAMME Redis - anonymiser derfor privatpersoner i farten
   // her, ikke ved lagring, se ANONYMISERING.md.
-  if (process.env.NODE_ENV === "production") {
-    return { ...withKommentarer, delA: anonymizeGrupper(withKommentarer.delA), delB: anonymizeGrupper(withKommentarer.delB) };
-  }
-  return withKommentarer;
+  return withProdAnonymization(withKommentarer, (s) => ({
+    ...s,
+    delA: anonymizeGrupper(s.delA),
+    delB: anonymizeGrupper(s.delB),
+  }));
 }
