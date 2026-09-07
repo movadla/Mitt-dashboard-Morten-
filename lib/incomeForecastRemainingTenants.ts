@@ -26,6 +26,10 @@ export type RemainingByggStatus =
   | "forklart-historisk-kundenummer"
   | "forklart-manglende-linje"
   | "intern-mustad"
+  // v14: Mustad Eiendom AS som leietaker i bygg som kun eies av Mustad Eiendom AS selv - egenleie i
+  // samme selskap, aldri bokførbar. Gjenstår 0 (i motsetning til intern-mustad, som er fakturerbar
+  // konsernleie mellom to selskap).
+  | "intern-egenleie"
   | "forklart-parkering-onepark"
   | "forklart-parkering-uten-fazile-linje"
   // v13: modellen sier det gjenstår penger, men Fazile har ingen planlagt faktura for resten av

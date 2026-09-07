@@ -242,17 +242,26 @@ export interface RemainingSnapshot {
 // "fazile-plan-mangler"). Månedsfakturerte ekstrapoleres siste måned til årsslutt. Kreditnotaer
 // på 3630 som speiler en 3632-avregning nøytraliseres parvis. Se lib/incomeForecast.local.ts
 // for full forklaring. totalDelA NED til 164 395 403,18 kr, totalDelB NED til 18 088 295,58 kr.
+// OPPDATERT 2026-09-05 (v14, egenleie): Mustad Eiendom AS sin egenleie i eget selskap (p-plasser til
+// ansatte/lager) kan aldri bokføres - 6 leieforhold nullstilt (status "intern-egenleie"). Se
+// lib/incomeForecast.local.ts. totalDelA NED til 163 829 418,33 kr, totalDelB NED til 17 270 022,27 kr.
+// OPPDATERT 2026-09-06 (v15, kontraktslinje-sluttdato som ekstrapoleringshorisont): Månedsekstra-
+// poleringen forlenget tidligere en leiefritakslinje (rabatt) til 31.12 selv om selve kontrakts-
+// linjen slutter 30.11 - rent_roll kjenner ikke rabatt-/fritakslinjer, så horisonten falt tilbake
+// til årsslutt. Nå slås contract_line.end_date opp (scripts/refresh-data/fazile-fakturaplan/
+// contract-lines.json) og brukes som horisont. Ett leieforhold berørt. totalDelA OPP til
+// 164 104 418,33 kr (+275 000), totalDelB uendret.
 export const REMAINING: RemainingSnapshot = {
-  sistOppdatert: "2026-09-04",
+  sistOppdatert: "2026-09-06",
   ar: 2026,
-  totalDelA: 164395403.18,
-  totalDelB: 18088295.58,
+  totalDelA: 164104418.33,
+  totalDelB: 17270022.27,
   antallLeieforhold: 726,
   antallIkkeMatchetFlagget: 16,
   antallForklartOmsetningsleie: 3,
   antallForklartKontraktsendring: 45,
   antallAvsluttetNullstilt: 8,
-  antallInternMustad: 18,
+  antallInternMustad: 12,
   uforklarteAvvik: [],
 };
 

@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "forklart-historisk-kundenummer": "Overtatt fra gammelt kundenummer",
   "forklart-manglende-linje": "Manglende linje lagt til",
   "intern-mustad": "Intern (Mustad selv)",
+  "intern-egenleie": "Egenleie, nullstilt",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
   "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
   "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
@@ -33,6 +34,7 @@ const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
   "forklart-historisk-kundenummer": "FFFFEB9C",
   "forklart-manglende-linje": "FFFFEB9C",
   "intern-mustad": "FFD9D9D9",
+  "intern-egenleie": "FFD9D9D9",
   "forklart-parkering-onepark": "FFC6E0B4",
   "forklart-parkering-uten-fazile-linje": "FFFFEB9C",
   "fazile-plan-mangler": "FFFFEB9C",
@@ -68,6 +70,7 @@ export async function GET() {
         "forklart-kontraktsendring",
         "avsluttet",
         "intern-mustad",
+        "intern-egenleie",
         "forklart-parkering-uten-fazile-linje",
         "fazile-plan-mangler",
       ];

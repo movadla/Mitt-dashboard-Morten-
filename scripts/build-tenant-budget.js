@@ -505,8 +505,15 @@ async function main() {
     }
     if (navn) {
       const key = normalizeName(navn);
-      if (!perTenant.has(key)) perTenant.set(key, { navn, kjerneNavn: coreName(navn), delA: 0 });
-      perTenant.get(key).delA = round2(perTenant.get(key).delA + belopJustert);
+      if (!perTenant.has(key)) perTenant.set(key, { navn, kjerneNavn: coreName(navn), delA: 0, via: new Set(), excelNavn: new Set(), perBygg: new Map() });
+      const t = perTenant.get(key);
+      t.delA = round2(t.delA + belopJustert);
+      t.perBygg.set(bygg, round2((t.perBygg.get(bygg) || 0) + belopJustert));
+      // v16 (2026-09-06): match-kvalitet publiseres pr. leietaker (`budsjettVia`) - "eksakt"/"alias"
+      // er sikre, "kjerne-navn"/"bygg+beskrivelse"/"delstreng" er antakelser som bør bekreftes når
+      // beløpet er stort. `excelNavn` = budsjettets egen skrivemåte når den avviker fra Fazile-navnet.
+      t.via.add(via);
+      if (normalizeName(row.kontrakt) !== key) t.excelNavn.add(row.kontrakt.trim());
       continue;
     }
     // Uten treff i Fazile/REMAINING - vises likevel som EGEN rad med Excel sitt eget navn,
@@ -517,8 +524,20 @@ async function main() {
   }
 
   const delALeietaker = [];
-  for (const t of perTenant.values()) if (t.delA !== 0) delALeietaker.push({ navn: t.navn, kjerneNavn: t.kjerneNavn, budsjett: t.delA });
-  for (const t of perUnmatchedNamed.values()) if (t.delA !== 0) delALeietaker.push({ navn: t.navn, kjerneNavn: t.kjerneNavn, budsjett: t.delA });
+  for (const t of perTenant.values()) {
+    if (t.delA === 0) continue;
+    delALeietaker.push({
+      navn: t.navn,
+      kjerneNavn: t.kjerneNavn,
+      budsjett: t.delA,
+      budsjettVia: [...t.via].sort(),
+      ...(t.excelNavn.size ? { excelNavn: [...t.excelNavn].sort() } : {}),
+      // Budsjett pr. (kanonisk) bygg - kontrollskriptet bruker dette til å finne budsjett i bygg
+      // der leietakeren ikke har noen Fazile-linje (typisk en levning etter flytting = dobbelt).
+      budsjettPerBygg: [...t.perBygg.entries()].map(([b, belop]) => ({ bygg: b, belop })).sort((a, b) => b.belop - a.belop),
+    });
+  }
+  for (const t of perUnmatchedNamed.values()) if (t.delA !== 0) delALeietaker.push({ navn: t.navn, kjerneNavn: t.kjerneNavn, budsjett: t.delA, budsjettVia: ["uten treff"] });
   // v6 (2026-08-28): "Ledig (vakante lokaler)" splittes nå i én rad pr. bygg (i stedet for én
   // sammenslått rad) - hver byggrad får sine individuelle ledige arealer som `linjer[]`
   // (drilldown), se kommentar ved ledigLinjerByBygg over. Sum-garanti eksplisitt sjekket rett

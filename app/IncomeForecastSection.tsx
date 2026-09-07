@@ -522,6 +522,7 @@ const BYGG_STATUS_LABEL: Record<string, string> = {
   "forklart-engangsgebyr": "Engangsgebyr (exit fee)",
   "forklart-nxt-feilkoding": "Feilkoding i NXT",
   "intern-mustad": "Intern (Mustad selv)",
+  "intern-egenleie": "Egenleie, nullstilt",
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
   "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
   "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
@@ -536,6 +537,7 @@ const BYGG_STATUS_STYLE: Record<string, string> = {
   "forklart-engangsgebyr": "bg-status-warning/15 text-status-warning",
   "forklart-nxt-feilkoding": "bg-status-warning/15 text-status-warning",
   "intern-mustad": "bg-surface-3 text-ink-4",
+  "intern-egenleie": "bg-surface-3 text-ink-4",
   "forklart-parkering-onepark": "bg-status-positive/12 text-status-positive",
   "forklart-parkering-uten-fazile-linje": "bg-status-warning/15 text-status-warning",
   "fazile-plan-mangler": "bg-status-warning/15 text-status-warning",
@@ -549,6 +551,7 @@ const REVIEW_STATUSES = [
   "forklart-nxt-feilkoding",
   "avsluttet",
   "intern-mustad",
+  "intern-egenleie",
   "forklart-parkering-onepark",
   "forklart-parkering-uten-fazile-linje",
   "fazile-plan-mangler",
@@ -2525,6 +2528,9 @@ const LEDIG_FARGE = {
   forventet: "text-status-warning",
   nullet: "text-status-danger",
 } as const;
+// Gjenværende Ledig-linjer fra og med dette beløpet får budsjettets egen kommentar vist i klartekst
+// (Morten 2026-09-06) - under terskelen ligger den bare i hover-teksten.
+const LEDIG_KOMMENTAR_TERSKEL = 100_000;
 
 function LedigStolpe({ koblet, forventet, nullet, total }: { koblet: number; forventet: number; nullet: number; total: number }) {
   if (total <= 0) return null;
@@ -2799,22 +2805,38 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                           linjer.length === 0 ? null : (
                             <div key={tittel} className="flex flex-col gap-1">
                               <LedigGruppeTittel tittel={tittel} belop={belop} colorClass={color} />
-                              {linjer.map((l, i) => (
-                                <div key={`${l.beskrivelse}-${i}`} className="flex flex-col gap-0.5 text-2xs">
-                                  <div className="flex items-baseline justify-between gap-2">
-                                    <span className="min-w-0 truncate text-ink-2">{l.beskrivelse}</span>
-                                    <span className="shrink-0 tabular-nums text-ink-3">
-                                      {formatKr(l.fullArsverdi2026)}
-                                      {l.financeEndring !== undefined && l.financeEndring !== 0 && (
-                                        <span className={`ml-2 ${l.financeEndring > 0 ? "text-status-positive" : "text-status-danger"}`}>
-                                          Finance {formatKr(l.financeEndring, true)}
-                                        </span>
-                                      )}
-                                    </span>
+                              {linjer.map((l, i) => {
+                                // beskrivelse = "objekt — budsjettkommentar"; vis objektet på linjen og
+                                // kommentaren for seg der den betyr noe (Morten 2026-09-06: over 100 000 kr
+                                // vil han se hva som var budsjettert utleid men ikke ble det).
+                                const suffiks = l.budsjettKommentar ? ` — ${l.budsjettKommentar}` : "";
+                                const objekt = suffiks && l.beskrivelse.endsWith(suffiks) ? l.beskrivelse.slice(0, -suffiks.length) : l.beskrivelse;
+                                const stor = l.fullArsverdi2026 >= LEDIG_KOMMENTAR_TERSKEL;
+                                return (
+                                  <div key={`${l.beskrivelse}-${i}`} className="flex flex-col gap-0.5 text-2xs">
+                                    <div className="flex items-baseline justify-between gap-2">
+                                      <span className="min-w-0 truncate text-ink-2" title={l.beskrivelse}>
+                                        {objekt}
+                                      </span>
+                                      <span className="shrink-0 tabular-nums text-ink-3">
+                                        {formatKr(l.fullArsverdi2026)}
+                                        {l.financeEndring !== undefined && l.financeEndring !== 0 && (
+                                          <span className={`ml-2 ${l.financeEndring > 0 ? "text-status-positive" : "text-status-danger"}`}>
+                                            Finance {formatKr(l.financeEndring, true)}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </div>
+                                    {stor && l.budsjettKommentar && (
+                                      <p className={`border-l-2 pl-2 ${color} border-current/40`}>
+                                        <span className="text-ink-4">Budsjettert: </span>
+                                        <span className="text-ink-2">{l.budsjettKommentar}</span>
+                                      </p>
+                                    )}
+                                    {l.financeKommentar && <p className="pl-2 text-ink-4">Finance {l.financeKommentar}</p>}
                                   </div>
-                                  {l.financeKommentar && <p className="pl-2 text-ink-4">Finance {l.financeKommentar}</p>}
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           ),
                         )}
@@ -3161,6 +3183,43 @@ const GRUPPERING_LABEL: Record<TenantForecastGruppering, string> = { leietaker: 
 const GRUPPERINGER: TenantForecastGruppering[] = ["leietaker", "bygg", "leietype"];
 const EMPTY_GRUPPER: TenantForecastGrupper = { leietaker: [], bygg: [], leietype: [] };
 
+// v16 match-kvalitet (se row.nxtMatch/budsjettVia i lib/tenantForecastTable.ts): varsler når
+// koblingen mellom Fazile, NXT og budsjett for en leietaker-rad hviler på en fuzzy-kobling i
+// stedet for et sikkert kundenummer/eksakt navn, slik at en stor, fuzzy-koblet rad kan
+// kontrolleres i stedet for å se like sikker ut som en vanlig match.
+const NXT_MATCH_LABEL: Record<string, string> = {
+  kundenr: "Kundenummer",
+  "navn-eksakt": "Eksakt navn",
+  alias: "Alias",
+  "kjerne-navn": "Kjernenavn (fuzzy)",
+  ingen: "Ingen NXT-kobling",
+};
+const NXT_MATCH_SIKKER = new Set(["kundenr", "navn-eksakt"]);
+const BUDSJETT_VIA_LABEL: Record<string, string> = {
+  eksakt: "Eksakt navn",
+  alias: "Alias",
+  "kjerne-navn": "Kjernenavn (fuzzy)",
+  "bygg+beskrivelse": "Bygg + beskrivelse",
+  delstreng: "Delstreng (fuzzy)",
+  "kjerne-navn (tabell)": "Kjernenavn i tabell (fuzzy)",
+  "uten treff": "Ingen budsjett-treff",
+};
+const BUDSJETT_VIA_SIKKER = new Set(["eksakt"]);
+
+function matchKvalitetTekst(row: TenantForecastRow): string | null {
+  const deler: string[] = [];
+  if (row.nxtMatch && !NXT_MATCH_SIKKER.has(row.nxtMatch)) deler.push(`NXT: ${NXT_MATCH_LABEL[row.nxtMatch] ?? row.nxtMatch}`);
+  if (row.budsjettVia?.some((v) => !BUDSJETT_VIA_SIKKER.has(v))) {
+    deler.push(`Budsjett: ${row.budsjettVia.map((v) => BUDSJETT_VIA_LABEL[v] ?? v).join(" → ")}`);
+  }
+  if (row.excelNavn && row.excelNavn.length > 0) deler.push(`Excel-navn: ${row.excelNavn.join(", ")}`);
+  if (row.remainingStatuser && row.remainingStatuser.length > 0) {
+    deler.push(`Status: ${row.remainingStatuser.map((s) => BYGG_STATUS_LABEL[s] ?? s).join(", ")}`);
+  }
+  if (deler.length === 0) return null;
+  return `Usikker kobling mellom kildene — ${deler.join(". ")}.`;
+}
+
 function TenantForecastTable({
   title,
   grupper,
@@ -3402,6 +3461,7 @@ function TenantForecastTable({
             <tbody>
               {visible.map((row) => {
                 const isOpen = expanded.has(row.navn);
+                const matchVarsel = gruppering === "leietaker" ? matchKvalitetTekst(row) : null;
                 return (
                   <Fragment key={row.navn}>
                     <tr
@@ -3450,6 +3510,23 @@ function TenantForecastTable({
                                 }
                               />
                               <TooltipContent>{commentOverrides[row.navn] ?? row.kommentar}</TooltipContent>
+                            </Tooltip>
+                          )}
+                          {matchVarsel && (
+                            <Tooltip>
+                              <TooltipTrigger
+                                render={
+                                  <button
+                                    type="button"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="Usikker kobling mellom kildene"
+                                    className="shrink-0 text-status-warning hover:text-ink-1"
+                                  >
+                                    <AlertTriangle className="h-3 w-3" />
+                                  </button>
+                                }
+                              />
+                              <TooltipContent>{matchVarsel}</TooltipContent>
                             </Tooltip>
                           )}
                         </span>

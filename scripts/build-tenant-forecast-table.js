@@ -72,15 +72,83 @@ function kanoniskByggNavn(bygg) {
 }
 
 // Samme Redis-hash/nøkkel-mønster som lib/tenantForecastComments.ts (KommentarCell i UI-en) -
-// leser/skriver DIREKTE her siden dette er et Node-script uten innlogget HTTP-sesjon. Skriver
-// KUN hvis feltet er tomt fra før - idempotent, overskriver aldri en kommentar Morten selv har
-// skrevet (verken manuelt via UI-en eller fra en tidligere kjøring av denne funksjonen).
+// leser/skriver DIREKTE her siden dette er et Node-script uten innlogget HTTP-sesjon.
+// v15 (2026-09-06): auto-genererte kommentarer merkes `auto: true` og REGENERERES ved hver
+// kjøring (tidligere "skriv kun hvis tom" lot dem bli stående utdaterte når koblingene endret
+// seg - Ledig V13D/V21 viste f.eks. fortsatt "gjenstående vist som 0" lenge etter at gulvet var
+// fjernet). Overskriver ALDRI en kommentar Morten har skrevet selv (UI-en setter ikke `auto`) -
+// eldre auto-kommentarer fra før flagget fantes gjenkjennes på de faste innledningene under.
 const KOMMENTAR_HASH_KEY = "jobb:inntektsprognose-leietaker-kommentarer";
-async function settDefaultKommentarHvisTom(navn, kommentar) {
+const AUTO_KOMMENTAR_PREFIKSER = ["Bekreftet utleid areal (", "Tok over ledig areal (", "Utleid/trukket ut fra denne Ledig-raden", "Flyttet inn i ledig areal ("];
+function erAutoKommentar(eksisterende) {
+  if (!eksisterende || !eksisterende.kommentar) return true;
+  if (eksisterende.auto === true) return true;
+  return AUTO_KOMMENTAR_PREFIKSER.some((p) => eksisterende.kommentar.startsWith(p));
+}
+// `kommentar` = "" fjerner en utdatert auto-kommentar (UI-en viser tom kommentar som "ingen").
+async function settAutoKommentar(navn, kommentar) {
   const felt = navn.trim().toLowerCase();
   const eksisterende = await getFromRedis(KOMMENTAR_HASH_KEY, felt);
-  if (eksisterende && eksisterende.kommentar) return;
-  await pushToRedis(KOMMENTAR_HASH_KEY, felt, { navn, kommentar, sistOppdatert: new Date().toISOString().slice(0, 10) });
+  if (!erAutoKommentar(eksisterende)) return false;
+  if ((eksisterende ? eksisterende.kommentar : "") === kommentar) return false; // uendret
+  if (!eksisterende && !kommentar) return false;
+  await pushToRedis(KOMMENTAR_HASH_KEY, felt, { navn, kommentar, sistOppdatert: new Date().toISOString().slice(0, 10), auto: true });
+  return true;
+}
+
+// v15: Finance sin egen månedlige innflyttingslogg for Ledig-linjene (juli-prognosefila, se
+// scratch-generatoren nevnt i _kommentar i fila). Gitignored (inneholder leietakernavn i
+// fritekst). Brukes til å klassifisere gjenværende Ledig-linjer ("forventet" utleid i år vs.
+// "nullet" av Finance = står ledig ut året) og vise Finance sin siste kommentar pr. linje.
+const LEDIG_FINANCE_FILE = path.join(__dirname, "refresh-data", "ledig-finance-juli-2026.json");
+// De 4 delt-eide byggene halveres i build-tenant-budget.js (HALVBYGG_50 der) - Finance-fila har
+// hele beløpet, så matchingen på beløp må halvere tilsvarende. Hold i sync.
+const HALVBYGG_50 = new Set(["Lilleakerveien 20 Audi", "Lilleakerveien 22 VW", "Strandveien 10", "Strandveien 4-8"]);
+function lastFinanceLedigIndeks() {
+  if (!fs.existsSync(LEDIG_FINANCE_FILE)) {
+    console.warn(`ADVARSEL: ${path.basename(LEDIG_FINANCE_FILE)} mangler - Ledig-linjene får ingen Finance-vurdering/-kommentar.`);
+    return null;
+  }
+  const data = JSON.parse(fs.readFileSync(LEDIG_FINANCE_FILE, "utf8"));
+  const indeks = new Map(); // "bygg||objekt" -> [linje, ...] (flere linjer kan ha samme objekt, f.eks. "2 etg 889X" x3)
+  for (const l of data.linjer) {
+    const key = normalizeName(kanoniskByggNavn(l.bygg)) + "||" + normalizeName(l.objekt || "");
+    if (!indeks.has(key)) indeks.set(key, []);
+    indeks.get(key).push({ ...l, _brukt: false });
+  }
+  return indeks;
+}
+// Finner Finance-linjen for en Ledig-linje: samme bygg + samme kontraktobjekt (teksten før
+// " — " i beskrivelsen) + samme budsjettbeløp (skiller like objekter fra hverandre). Hver
+// Finance-linje brukes maks én gang.
+function finnFinanceLinje(indeks, linje) {
+  if (!indeks) return null;
+  // build-tenant-budget.js setter "<leietype> (uspesifisert areal)" der Excel-objektet er tomt.
+  const objekt = (linje.beskrivelse || "").split(" — ")[0].replace(/^.*\(uspesifisert areal\)$/, "");
+  const key = normalizeName(kanoniskByggNavn(linje.bygg)) + "||" + normalizeName(objekt);
+  const kandidater = indeks.get(key) || [];
+  const halv = HALVBYGG_50.has((linje.bygg || "").trim()) ? 0.5 : 1;
+  const treff = kandidater.find((k) => !k._brukt && Math.abs(k.budsjett * halv - linje.fullArsverdi2026) < 1);
+  if (!treff) return null;
+  treff._brukt = true;
+  return { ...treff, faktor: halv };
+}
+
+// v15: privatpersonnavn i Finance sine fritekster (både masterfilas kommentarInntekt, som
+// allerede ligger i Ledig-linjenes beskrivelse, og juli-filas månedskommentarer) strippes før
+// Redis-push - linjebeskrivelser anonymiseres IKKE i lib/tenantForecastTable.ts, og snapshotet
+// leses også av den offentlige Vercel-siden. Gitignored fil, se ANONYMISERING.md.
+const LEDIG_NAVNESTRIPP_FILE = path.join(__dirname, "refresh-data", "_private-ledig-navnestripp.json");
+function lagNavnestripper() {
+  if (!fs.existsSync(LEDIG_NAVNESTRIPP_FILE)) return (s) => s;
+  const navn = JSON.parse(fs.readFileSync(LEDIG_NAVNESTRIPP_FILE, "utf8")).navn || [];
+  const regexer = navn.map((n) => new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"));
+  return (s) => {
+    if (!s) return s;
+    let ut = s;
+    for (const re of regexer) ut = ut.replace(re, "[navn fjernet]");
+    return ut;
+  };
 }
 
 function buildBudgetLookup(rows) {
@@ -88,17 +156,22 @@ function buildBudgetLookup(rows) {
   const byCore = new Map();
   for (const r of rows) {
     if (r.kjerneNavn === undefined) continue; // Ufordelt-raden har ikke kjerneNavn - slås opp separat
-    byNorm.set(normalizeName(r.navn), r.budsjett);
-    byCore.set(r.kjerneNavn, r.budsjett);
+    byNorm.set(normalizeName(r.navn), r);
+    byCore.set(r.kjerneNavn, r);
   }
   return { byNorm, byCore };
 }
 
+// Returnerer { budsjett, via, excelNavn } eller null. v16 (2026-09-06): `via` = HELE matchekjeden
+// - budsjettradens egen Excel->Fazile-metode (budsjettVia fra build-tenant-budget.js) pluss
+// "kjerne-navn (tabell)" hvis oppslaget HER måtte gå via kjernenavn (et andre fuzzy-lag).
 function lookupBudget(navn, lookup) {
   const norm = normalizeName(navn);
-  if (lookup.byNorm.has(norm)) return lookup.byNorm.get(norm);
+  const eksakt = lookup.byNorm.get(norm);
+  if (eksakt) return { budsjett: eksakt.budsjett, via: eksakt.budsjettVia || [], excelNavn: eksakt.excelNavn };
   const core = coreName(navn);
-  if (lookup.byCore.has(core)) return lookup.byCore.get(core);
+  const viaCore = lookup.byCore.get(core);
+  if (viaCore) return { budsjett: viaCore.budsjett, via: [...(viaCore.budsjettVia || []), "kjerne-navn (tabell)"], excelNavn: viaCore.excelNavn };
   return null;
 }
 
@@ -152,7 +225,7 @@ function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, 
   const rows = [];
   for (const [navn, g] of map.entries()) {
     const budsjettMatch = lookupFn(navn);
-    const budsjett = budsjettMatch !== null ? budsjettMatch : defaultBudsjett;
+    const budsjett = budsjettMatch !== null ? budsjettMatch.budsjett : defaultBudsjett;
     rows.push({
       navn,
       fakturert: g.fakturert,
@@ -164,6 +237,12 @@ function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, 
       // (groupLines()) blander sammen flere leietakeres kontoposteringer, som ikke gir mening å
       // vise som én kontoliste - derfor undefined der.
       kontoer: g.kontoer,
+      // v16: REMAINING-statuser (utenom "ok") og NXT-matchemetode pr. byggGruppe - grunnlag for
+      // årsakskode-forslag og match-kvalitet i UI/kontroller. Kun leietaker-grupperingen.
+      ...(g.remainingStatuser && g.remainingStatuser.length ? { remainingStatuser: g.remainingStatuser } : {}),
+      ...(g.nxtMatch ? { nxtMatch: g.nxtMatch } : {}),
+      ...(budsjettMatch && budsjettMatch.via && budsjettMatch.via.length ? { budsjettVia: budsjettMatch.via } : {}),
+      ...(budsjettMatch && budsjettMatch.excelNavn ? { excelNavn: budsjettMatch.excelNavn } : {}),
     });
   }
   // Rader fra budsjett-siden som ikke traff noen fakturert/gjenstår-gruppe i det hele tatt
@@ -190,7 +269,16 @@ function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, 
     // b.linjer finnes for de bygg-splittede "Ledig (vakante lokaler) – <bygg>"-radene (v6,
     // 2026-08-28, se build-tenant-budget.js) - la dem følge med som drilldown i stedet for å
     // kaste dem bort med en hardkodet tom liste.
-    rows.push({ navn: b.navn, fakturert: 0, gjenstar: 0, budsjett: b.budsjett, avvik: round2(-b.budsjett), linjer: b.linjer || [] });
+    rows.push({
+      navn: b.navn,
+      fakturert: 0,
+      gjenstar: 0,
+      budsjett: b.budsjett,
+      avvik: round2(-b.budsjett),
+      linjer: b.linjer || [],
+      ...(b.budsjettVia ? { budsjettVia: b.budsjettVia } : {}),
+      ...(b.excelNavn ? { excelNavn: b.excelNavn } : {}),
+    });
   }
   return rows;
 }
@@ -286,25 +374,51 @@ async function main() {
   // egen kommentarInntekt ikke nevner dem ved navn (så den tekst-baserte matchingen over ikke kan
   // finne dem selv). "Metesa AS" er for øvrig samme selskap som Medu AS - Morten: "Medu (metesa)
   // sin kontrakt startet 15.12.2025, og de ble til Metesa 01.07.2026" (et rebrand midt i
-  // leieperioden, registrert som to separate Fazile-kunder over tid - begge nestes derfor under
-  // samme Ledig-rad).
+  // leieperioden; siden v15 slått sammen til én leietaker i build-remaining-summary.js).
+  //
+  // v15 (2026-09-06) - LINJEBASERT budsjettoverføring. Verdiformer:
+  //   "Bygg"                                -> nestes under byggets Ledig-rad, INGEN overføring.
+  //                                            Brukes når leietakeren ikke har noen budsjettert
+  //                                            Ledig-linje (små enheter Excel ikke budsjetterte
+  //                                            enkeltvis): budsjett 0, inntekten er ren oppside.
+  //   { bygg, linjeMatch: "x" | ["x", ...] } -> nestes, og de Ledig-linjene i bygget hvis
+  //                                            beskrivelse inneholder teksten (case-insensitivt)
+  //                                            FJERNES fra Ledig-raden og blir leietakerens
+  //                                            budsjett - nøyaktig linjeverdien(e).
+  //   [ { bygg, linjeMatch }, ... ]          -> flere bygg (Rob Arnesen: LV4A + LV10).
+  // Matcher flere leietakere samme linje (Lilleakerveien 26: én Excel-linje, fire leietakere),
+  // deles linjeverdien likt mellom dem.
+  // Erstatter v7-modellen "overfør summen av leietakerens egne Fazile-linjer" som ga negative
+  // Ledig-budsjetter (v2 2026-09-01) når leietakerens faktiske leie oversteg det budsjetterte -
+  // nå står hver Ledig-rad igjen med nøyaktig de linjene som IKKE er tatt, aldri negativ, og
+  // over-/underdekning mot budsjett vises på leietakerens egen rad der den hører hjemme.
+  // Linje-tilordningene under er hentet fra Finance sin juli-prognosefil (månedskommentarene
+  // navngir hvem som tok hvilken linje) der den finnes, ellers fra masterfilas kommentarInntekt.
   const MANUAL_FLYTTET_INN_OVERRIDES = {
-    "zeg power as": "Lilleakerveien 2B",
-    "komplett asa": "Lilleakerveien 2B",
-    "metesa as": "Lilleakerveien 2B",
-    "rema 1000 norge as": "Vollsveien 13D",
+    "zeg power as": { bygg: "Lilleakerveien 2B", linjeMatch: "id 8827" }, // Finance mar: "Zeg Power fra 01.02"
+    // Finance jun (rad 568): "Komplett.no fra 01.09. Budsjettert på 3 linjer. Budsjettert 1.785.000,-"
+    // = 3.03 + 3.02b + 3.02a (1 004 400 + 428 170 + 352 964 = 1 785 534).
+    "komplett asa": { bygg: "Lilleakerveien 2B", linjeMatch: ["husleie avg.fritt 3.03", "husleie avg.fritt 3.02b", "husleie avg.fritt 3.02a"] },
+    "metesa as": { bygg: "Lilleakerveien 2B", linjeMatch: "husleie avg.fritt 4.04" }, // Finance mar: "Medu/Metesa"
+    // Rema: verkstedene + rest-delen av 1. etg (masterfila: "Delt areal på 653 til Head sine 285 og
+    // denne som er rest"). Finance mar: "Sannsynligvis utsatt noe" - oppstart 2026-10-01 i Fazile.
+    "rema 1000 norge as": { bygg: "Vollsveien 13D", linjeMatch: ["verksted 3", "verksted 4", "delt areal på 653"] },
     // Runde 4 (2026-08-31) - Morten bekreftet "Head Sport Gmbh" og "Head Norway AS" er samme
     // leietaker (se merge i build-remaining-summary.js) og at de har flyttet inn i det ledige
-    // arealet i Vollsveien 13D sammen med Rema. Head Sport Gmbh sin egen kontrakt (CA4644, fra
-    // 2025-10-01) er nå en ekte, registrert Fazile-linje - erstatter den gamle
-    // MANUAL_UNTRACKED_OVERTAKELSER-oppføringen "head tar 285kvm" under (fjernet, ville
-    // dobbelttrukket fra Ledig-raden uten å kreditere noen leietaker).
-    "head norway as": "Vollsveien 13D",
-    "movr as": "Vollsveien 13C",
-    "autismeforeningen i norge": "Vollsveien 21",
-    "rob arnesen as": "Lilleakerveien 4A",
+    // arealet i Vollsveien 13D sammen med Rema (masterfila: "Head tar 285kvm. 627k årssum 2026").
+    "head norway as": { bygg: "Vollsveien 13D", linjeMatch: "head tar 285kvm" },
+    "movr as": { bygg: "Vollsveien 13C", linjeMatch: "id 8177" }, // Finance mar: "Leid ut til Movr"
+    "autismeforeningen i norge": "Vollsveien 21", // ingen budsjettert linje (A04-linjen ble tatt av ATD Design)
+    // Finance mar (LV4A 4-1, 4-5): "Rob Arnesen. 621.230,-"; (LV10 U1-1 tidl OBH): "Kontrakt sendt Rob Arnesen fra 01.05."
+    "rob arnesen as": [
+      { bygg: "Lilleakerveien 4A", linjeMatch: "4-1, 4-5" },
+      { bygg: "Lilleakerveien 10", linjeMatch: "tidl obh" },
+    ],
     "higheredos as": "Lilleakerveien 4A",
-    "veidekke entreprenør as": "Lilleakerveien 2E",
+    // Finance mar på samme linje (8721): "Woolland. 01.03. 554.400,- inkl. alt" - Woolland AS har
+    // imidlertid allerede egen, full budsjettrad, mens Morten bekreftet Veidekke inn i LV2E-arealet
+    // (2026-08-28). Beholdt på Veidekke inntil Morten avklarer hvem som faktisk tok 8721.
+    "veidekke entreprenør as": { bygg: "Lilleakerveien 2E", linjeMatch: "8721" },
     "geothermal energy nordic as": "Lilleakerveien 2C",
     // Runde 2 (samme dag) - Morten presiserte at budsjettet ble satt i oktober 2025, så
     // leietakere med oppstart sen-2025 (ikke bare 2026) kan også ha flyttet inn i et ledig
@@ -316,19 +430,18 @@ async function main() {
     "reltime as": "Lilleakerveien 2C",
     "urbanium eiendom as": "Lilleakerveien 2C",
     "k&c factory as": "Lilleakerveien 4D",
-    "norsk elkraft kontroll as": "Lilleakerveien 4C",
+    "norsk elkraft kontroll as": { bygg: "Lilleakerveien 4C", linjeMatch: "husleie avg.fritt 1.1" }, // masterfila: "Norsk Elkraft Kontroll AS fra 15.11.2025"
     // Runde 3 (2026-08-29) - Morten bekreftet: Origon AS har en helt ny leielinje i Vollsveien 17
-    // (Kontorleie avg.pl., start 2026-09-04) som IKKE finnes noe sted i Excel-budsjettet (Origon
-    // sitt EKSISTERENDE budsjett dekker kun Vollsveien 13B/13C fra før - derfor ble denne aldri
-    // fanget opp av budsjett=0-sweepen i runde 1/2, siden Origon sin RAD totalt sett ikke er 0).
-    // Overføringen under summerer kun Origon sine linjer I NETTOPP Vollsveien 17 (se
-    // implementasjonen), så 13B/13C-delen av budsjettet hans er upåvirket.
-    "origon as": "Vollsveien 17",
+    // (Kontorleie avg.pl., start 2026-09-04) som IKKE finnes i Origon sitt eksisterende budsjett
+    // (dekker kun Vollsveien 13B/13C). v15: knyttet til den ene V17-linjen "kontor id:8070"
+    // (189 652 kr) - IKKE til den store "Kontor"-linjen (367 715 kr), som Finance i juni fortsatt
+    // meldte "Ikke leid ut, få forespørsler" på. Resten av Origon sin nye V17-leie er oppside.
+    "origon as": { bygg: "Vollsveien 17", linjeMatch: "kontor id:8070" },
     // Runde 5 (2026-08-31) - grundig gjennomgang av alle Ledig-bygg mot budsjett=0-i-samme-
     // bygg-sweepen. Morten bekreftet KUN de "sikre" treffene (nær eksakt beløpsmatch, eller
     // samme "flere små enheter i én Excel-linje"-mønster som allerede bekreftet for
     // Lilleakerveien 2C):
-    "sway pilates as": "Lilleakerveien 4D", // 175 950 kr mot Ledig-linjens "Butikk 1 — Djurny Sykkelbutikk" 176 055 kr - nær eksakt match, sykkelbutikken er erstattet
+    "sway pilates as": { bygg: "Lilleakerveien 4D", linjeMatch: "butikk 1" }, // Finance mar: "Sway Pilates fra 01.09. 369.380,-" - sykkelbutikken er erstattet
     "halite as": "Lilleakerveien 2E",
     "arkitektkontoret lene frank as": "Lilleakerveien 2E",
     "foresight as": "Lilleakerveien 2E",
@@ -343,8 +456,14 @@ async function main() {
     "atd design as": "Vollsveien 21", // rad 916: "Utleid til ATD Design. 01.02.26. 15k mnd" - annen linje (kontor A04) enn "Fellesareal U.01"-linjen som ble sjekket (og forkastet) i runde 5
     "tjernsrud holding as": "Vollsveien 19", // rad 1270: "Kjensrud Holding fra 01.03. 7000 kr mnd" (stavevariant) - egen, ekte ekstern leielinje ("Husleie avg.fritt 8, 9, 11"), ikke samme linje som "Internleie"-kommentaren i dagens masterfil
     "inlumi as": "Vollsveien 19", // ikke eksplisitt navngitt i juli-kommentarene, men samme "flere små enheter i én Excel-linje"-mønster som Tjernsrud over - bygget har åpenbart mer enn én reell leietaker bak "Internleie"-linjen
-    "løplabbet as": "Lilleakerveien 6d Hus 3", // rad 556: "Løplabbet fra 01.05 (åpning). 300.000,- i 2026"
+    "løplabbet as": { bygg: "Lilleakerveien 6d Hus 3", linjeMatch: "id 3679" }, // rad 556: "Løplabbet fra 01.05 (åpning). 300.000,- i 2026"
+    // v15 (2026-09-06) - Finance nullet Lilleakerveien 31 sine fire B3-kontorer (B3.8-B3.11, 4 x
+    // 24 744 kr) i mars uten kommentar; Partikkel AS (budsjett 0, husleie + lager i LV31 fra
+    // 2026-01-01, 98 550 kr/år) er den eneste nye LV31-leietakeren med oppstart som passer.
+    "partikkel as": { bygg: "Lilleakerveien 31", linjeMatch: ["b3.8", "b3.9", "b3.10", "b3.11"] },
   };
+  // Privatpersoner (og enkeltpersonforetak uten selskapsform) holdes i en gitignored fil - samme
+  // verdiformer som over (streng eller objekt).
   const MANUAL_FLYTTET_INN_PRIVATE_FILE = path.join(__dirname, "refresh-data", "_private-flyttet-inn-overrides.json");
   if (fs.existsSync(MANUAL_FLYTTET_INN_PRIVATE_FILE)) {
     const privateOverrides = JSON.parse(fs.readFileSync(MANUAL_FLYTTET_INN_PRIVATE_FILE, "utf8"));
@@ -353,67 +472,132 @@ async function main() {
       MANUAL_FLYTTET_INN_OVERRIDES[key] = value;
     }
   }
-  // v8 (2026-08-29): beløp som trekkes fra en Ledig-rad UTEN å overføres til noen leietaker-rad.
-  // To ulike, men regnemessig identiske, situasjoner:
-  //  1) Bekreftet overtatt, men ikke registrert som egen kontraktslinje i Fazile ennå
-  //     (Head Norway AS sin 285 kvm i Vollsveien 13D).
-  //  2) DOBBELTBUDSJETTERT - Excel sin "Ledig"-linje er aldri fjernet etter at arealet faktisk ble
+  // v8 (2026-08-29): Ledig-linjer som fjernes UTEN å overføres til noen ekstern leietaker-rad.
+  // Situasjoner:
+  //  1) DOBBELTBUDSJETTERT - Excel sin "Ledig"-linje er aldri fjernet etter at arealet faktisk ble
   //     leid ut, MENS leietakeren allerede har sin EGEN, fulle, separate budsjettlinje et annet
   //     sted i samme Excel-ark. Å overføre beløpet HIT i tillegg ville dobbelttalt det - oppdaget
   //     2026-08-29 (Morten): Vollsveien 21 sine linjer "Utleid til RCCL fra 01.01.2026" og "Uteleid
   //     til Eternal Clothing AS fra 01.01.2025" pekte begge på leietakere (RCL Cruises Ltd.,
   //     Eternal Clothing AS) som ALLEREDE har egne, komplette budsjettrader (457 917,81 kr og
   //     123 482,87 kr) - de to Ledig-linjene var rene, ikke-oppdaterte levninger i Excel-arket.
+  //  2) Ikke utleibart areal Finance selv har nullet (V21 U.01 "Fellesareal").
+  //  3) INTERNLEIE (v15) - arealet leies av Mustad Eiendomsdrift selv (P-Bro-lagrene, garderobe/
+  //     trimrom i Vollsveien 19). Inntekten ligger på intern-mustad-byggGruppene i REMAINING og
+  //     vises på MUSTAD_INTERN_LABEL-raden - `overforTil` flytter budsjettet dit, så den raden
+  //     måles mot riktig budsjett i stedet for at Ledig-raden ser ut som tapt inntekt.
   // `linjeMatch`: delstreng (case-insensitive) som identifiserer HVILKEN/HVILKE linje(r) i
   // Ledig-radens linjer[] dette gjelder - kan matche flere linjer (f.eks. RCCL sine to rom).
   // Beløpet regnes ut fra de FAKTISKE linjeverdiene (ikke håndskrevet), og linjene fjernes fra
-  // linjer[] - samme "fjern det som faktisk er tatt"-prinsipp som punkt 2 over, bare uten en
-  // leietaker-rad å overføre til.
+  // linjer[]. `kort` = etikett i Ledig-radens postliste/auto-kommentar, `beskrivelse` = full
+  // begrunnelse (hover i UI).
   const MANUAL_UNTRACKED_OVERTAKELSER = {
     "Vollsveien 21": [
       {
+        kort: "RCL Cruises Ltd. (egen budsjettrad)",
         beskrivelse: "Dobbeltbudsjettert: arealet er allerede utleid til RCL Cruises Ltd. (RCCL), som har sin egen, fulle budsjettlinje andre steder i tabellen - denne Ledig-linjen var en levning i Excel-arket.",
         linjeMatch: "utleid til rccl",
       },
       {
+        kort: "Eternal Clothing AS (egen budsjettrad)",
         beskrivelse: "Dobbeltbudsjettert: arealet er allerede utleid til Eternal Clothing AS, som har sin egen, fulle budsjettlinje andre steder i tabellen - denne Ledig-linjen var en levning i Excel-arket.",
         linjeMatch: "uteleid til eternal clothing",
+      },
+      // U.01 "Fellesareal" (20 140 kr) fjernes IKKE her selv om Finance nullet den i mars - den er
+      // et reelt budsjettbeløp som ikke kommer, og skal vises som "nullet" Ledig-linje (mangel mot
+      // budsjett), ikke forsvinne fra budsjettsummen slik de dobbeltbudsjetterte linjene gjør.
+    ],
+    "Lilleakerveien 2C": [
+      {
+        kort: "Parkly AS (egen budsjettrad)",
+        beskrivelse: "Dobbeltbudsjettert: Finance (mars 2026): \"Parkly leier her.\" - Parkly AS har egen, full budsjettrad andre steder i tabellen.",
+        linjeMatch: "rom nr 7",
+      },
+    ],
+    "P-Bro": [
+      {
+        kort: "Internleie Mustad Eiendomsdrift (P-Bro-lagre)",
+        beskrivelse: "Internleie: lagrene i P-Bro leies av Mustad Eiendomsdrift AS (Finance mai 2026: \"Skrevet kontrakt på 123.000/51.000/39.000 pr år\"; tre Fazile-linjer på P-Bro mellom LV8 og LV4, Del B). Budsjettet er flyttet til intern-raden.",
+        linjeMatch: "husleie avg.fritt",
+        overforTil: MUSTAD_INTERN_LABEL,
+      },
+    ],
+    "Vollsveien 19": [
+      {
+        kort: "Internleie Mustad Eiendomsdrift (garderobe/trimrom)",
+        beskrivelse: "Internleie (masterfila: \"Internleie\"): garderobe/trimrom i Vollsveien 19 leies av Mustad Eiendomsdrift AS. Budsjettet er flyttet til intern-raden.",
+        linjeMatch: "internleie",
+        overforTil: MUSTAD_INTERN_LABEL,
       },
     ],
   };
 
-  // Kjører async pga. kommentar-oppslag/skriving mot Redis (idempotent - overskriver aldri en
-  // kommentar Morten allerede har skrevet manuelt).
+  // Kjører async pga. kommentar-oppslag/skriving mot Redis (overskriver aldri en kommentar
+  // Morten har skrevet manuelt, se settAutoKommentar).
   async function kobleFlyttetInnOgTrekkFra(delALeietakerRader) {
-    let antallKoblet = 0;
     const ledigRader = delALeietakerRader.filter((r) => r.navn.startsWith(LEDIG_LABEL_PREFIX));
-    // overføringer[ledigRad.navn] = { sum, poster: [{beskrivelse, belop}] } - brukt til å
-    // beregne nytt (flooret) budsjett og en eventuell overtrekk-kommentar pr. Ledig-rad.
+    const koblede = new Set(); // leietaker-rader som er nestet under en Ledig-rad (telles til slutt)
+    // overføringer[ledigRad.navn] = { sum, poster: [{navn, belop, type, beskrivelse?}] } - blir
+    // Ledig-radens `ledigPoster` (UI) og grunnlaget for nytt budsjett + auto-kommentar.
     const overforinger = new Map();
-    function leggTilOverforing(ledigRad, beskrivelse, belop) {
+    function leggTilOverforing(ledigRad, navn, belop, type, beskrivelse) {
       if (!overforinger.has(ledigRad.navn)) overforinger.set(ledigRad.navn, { sum: 0, poster: [] });
       const o = overforinger.get(ledigRad.navn);
       o.sum = round2(o.sum + belop);
-      o.poster.push({ beskrivelse, belop });
+      // Samme leietaker kan ta flere linjer i samme Ledig-rad (Komplett: 3) - én post pr. leietaker.
+      const eksisterende = o.poster.find((p) => p.type === type && p.navn === navn);
+      if (eksisterende) eksisterende.belop = round2(eksisterende.belop + belop);
+      else o.poster.push({ navn, belop: round2(belop), type, ...(beskrivelse ? { beskrivelse } : {}) });
+    }
+    function finnLinjer(ledigRad, fulltBygg, linjeMatch) {
+      const treff = [];
+      for (const m of Array.isArray(linjeMatch) ? linjeMatch : [linjeMatch]) {
+        const mm = m.toLowerCase();
+        const funnet = ledigRad.linjer.filter((l) => normalizeName(l.bygg) === normalizeName(fulltBygg) && l.beskrivelse.toLowerCase().includes(mm));
+        if (funnet.length === 0) console.warn(`ADVARSEL: fant ingen linje som matcher "${m}" i "${ledigRad.navn}" - sjekk om teksten er endret.`);
+        for (const l of funnet) if (!treff.includes(l)) treff.push(l);
+      }
+      return treff;
     }
 
-    // 1) Manuelt bekreftede leietakere - ingen kjent enkelt-linje, overfør summen av leietakerens
-    // EGNE linjer i akkurat DET byggetnavnet (dekker rabatt-/tilleggslinjer korrekt siden de også
-    // er i samme bygg og allerede har riktig fortegn).
+    // 1) Manuelt bekreftede leietakere (MANUAL_FLYTTET_INN_OVERRIDES). To pass: først samles alle
+    // krav pr. Ledig-linje (flere leietakere kan peke på samme linje - Lilleakerveien 26), så
+    // deles hver linjes verdi likt mellom dem som krevde den, og linjen fjernes fra Ledig-raden.
+    const krav = new Map(); // linje -> { ledigRad, rader: [] }
+    const brukteOverrides = new Set();
     for (const rad of delALeietakerRader) {
-      const fulltBygg = MANUAL_FLYTTET_INN_OVERRIDES[normalizeName(rad.navn)];
-      if (!fulltBygg || rad.flyttetInnI) continue;
-      const ledigRad = finnLedigRad(ledigRader, fulltBygg);
-      if (!ledigRad) {
-        console.warn(`ADVARSEL: fant ingen Ledig-rad for bygg "${fulltBygg}" (manuell override for "${rad.navn}") - sjekk stavemåte.`);
-        continue;
+      if (rad.navn.startsWith(LEDIG_LABEL_PREFIX)) continue;
+      const nokkel = normalizeName(rad.navn);
+      const spesifikasjon = MANUAL_FLYTTET_INN_OVERRIDES[nokkel];
+      if (!spesifikasjon) continue;
+      brukteOverrides.add(nokkel);
+      const liste = typeof spesifikasjon === "string" ? [{ bygg: spesifikasjon }] : Array.isArray(spesifikasjon) ? spesifikasjon : [spesifikasjon];
+      for (const spec of liste) {
+        const ledigRad = finnLedigRad(ledigRader, spec.bygg);
+        if (!ledigRad) {
+          console.warn(`ADVARSEL: fant ingen Ledig-rad for bygg "${spec.bygg}" (manuell override for "${rad.navn}") - sjekk stavemåte.`);
+          continue;
+        }
+        if (!rad.flyttetInnI) rad.flyttetInnI = ledigRad.navn;
+        koblede.add(rad);
+        if (!spec.linjeMatch) continue;
+        for (const linje of finnLinjer(ledigRad, spec.bygg, spec.linjeMatch)) {
+          if (!krav.has(linje)) krav.set(linje, { ledigRad, rader: [] });
+          krav.get(linje).rader.push(rad);
+        }
       }
-      const belop = round2(rad.linjer.filter((l) => normalizeName(l.bygg) === normalizeName(fulltBygg)).reduce((s, l) => s + l.fullArsverdi2026, 0));
-      rad.flyttetInnI = ledigRad.navn;
-      rad.budsjett = round2(rad.budsjett + belop);
-      oppdaterAvvik(rad);
-      leggTilOverforing(ledigRad, rad.navn, belop);
-      antallKoblet++;
+    }
+    for (const nokkel of Object.keys(MANUAL_FLYTTET_INN_OVERRIDES)) {
+      if (!brukteOverrides.has(nokkel)) console.warn(`ADVARSEL: override "${nokkel}" treffer ingen leietaker-rad i Del A - utgått navn (merge/rebrand) eller stavefeil?`);
+    }
+    for (const [linje, { ledigRad, rader }] of krav) {
+      const andel = round2(linje.fullArsverdi2026 / rader.length);
+      for (const rad of rader) {
+        rad.budsjett = round2(rad.budsjett + andel);
+        oppdaterAvvik(rad);
+        leggTilOverforing(ledigRad, rad.navn, andel, "leietaker");
+      }
+      ledigRad.linjer = ledigRad.linjer.filter((l) => l !== linje);
     }
 
     // 2) Automatisk kommentar-matchede linjer - vi VET nøyaktig hvilken linje dette gjelder,
@@ -446,8 +630,8 @@ async function main() {
           rad.flyttetInnI = ledigRad.navn;
           rad.budsjett = round2(rad.budsjett + linje.fullArsverdi2026);
           oppdaterAvvik(rad);
-          leggTilOverforing(ledigRad, rad.navn, linje.fullArsverdi2026);
-          antallKoblet++;
+          leggTilOverforing(ledigRad, rad.navn, linje.fullArsverdi2026, "leietaker");
+          koblede.add(rad);
           matchet = true;
           break;
         }
@@ -456,10 +640,11 @@ async function main() {
       ledigRad.linjer = beholdLinjer;
     }
 
-    // 3) Usporede overtakelser (ingen leietaker-rad å legge beløpet på). Finn ALLE linjer i
-    // Ledig-raden hvis `beskrivelse` (som allerede inneholder Excel sin kommentartekst, se
+    // 3) Usporede overtakelser (ingen ekstern leietaker-rad å legge beløpet på). Finn ALLE linjer
+    // i Ledig-raden hvis `beskrivelse` (som allerede inneholder Excel sin kommentartekst, se
     // build-tenant-budget.js) matcher `linjeMatch`, summer deres FAKTISKE verdi (ikke et
-    // håndskrevet tall) og fjern dem fra linjer[].
+    // håndskrevet tall) og fjern dem fra linjer[]. `overforTil` (v15) flytter budsjettet til en
+    // navngitt rad (intern-raden) i stedet for å bare forsvinne.
     for (const [fulltBygg, poster] of Object.entries(MANUAL_UNTRACKED_OVERTAKELSER)) {
       const ledigRad = finnLedigRad(ledigRader, fulltBygg);
       if (!ledigRad) {
@@ -467,67 +652,86 @@ async function main() {
         continue;
       }
       for (const p of poster) {
-        const matchendeLinjer = ledigRad.linjer.filter(
-          (l) => normalizeName(l.bygg) === normalizeName(fulltBygg) && l.beskrivelse.toLowerCase().includes(p.linjeMatch),
-        );
-        if (matchendeLinjer.length === 0) {
-          console.warn(`ADVARSEL: fant ingen linje som matcher "${p.linjeMatch}" i "${ledigRad.navn}" - sjekk om teksten er endret.`);
-          continue;
-        }
+        const matchendeLinjer = finnLinjer(ledigRad, fulltBygg, p.linjeMatch);
+        if (matchendeLinjer.length === 0) continue;
         const belop = round2(matchendeLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
-        leggTilOverforing(ledigRad, p.beskrivelse, belop);
+        let type = "usporet";
+        if (p.overforTil) {
+          const mottaker = delALeietakerRader.find((r) => r.navn === p.overforTil);
+          if (mottaker) {
+            mottaker.budsjett = round2((mottaker.budsjett || 0) + belop);
+            oppdaterAvvik(mottaker);
+            type = "intern";
+          } else {
+            console.warn(`ADVARSEL: fant ingen rad "${p.overforTil}" å overføre ${belop} kr fra "${ledigRad.navn}" til - beholdt som usporet.`);
+          }
+        }
+        leggTilOverforing(ledigRad, p.kort, belop, type, p.beskrivelse);
         ledigRad.linjer = ledigRad.linjer.filter((l) => !matchendeLinjer.includes(l));
       }
     }
 
-    // 4) Pr.-Ledig-rad-oppdatering + automatisk overtrekk-kommentar (kun hvis Morten ikke allerede
-    // har skrevet en manuell kommentar der - sjekkes/skrives idempotent mot samme Redis-hash som
-    // KommentarCell i UI-en bruker, slik at en ny kjøring av pipelinen aldri overskriver et
-    // manuelt notat).
-    // v2 (2026-09-01, Morten): INGEN gulv på 0 lenger - en Ledig-rad kan vise NEGATIVT budsjett
-    // når bekreftet utleid areal overstiger det opprinnelig budsjetterte beløpet. Tidligere ble
-    // overskytende kun nevnt i en tekstkommentar, usynlig i selve tallene - det gjorde at
-    // leietaker-nivå-summen (Del A) driftet unna det offisielle bygg-nivå-tallet (~1,21 mill kr
-    // avvik oppdaget denne dagen, hele gapet forklart av nettopp disse "overstiger budsjett"-
-    // tilfellene). Med gulvet fjernet vises reell oppside som et negativt Ledig-budsjett - grønt
-    // avvik-tall, samme visningsmønster som resten av Leieinntekter-fanen - og de to
-    // sum-nivåene stemmer overens igjen.
+    // 4) Pr.-Ledig-rad-oppdatering for ALLE Ledig-rader (også de uten overføringer, så feltene
+    // alltid finnes for UI-en): opprinnelig/trukket ut/gjenstående, postliste, Finance-vurdering
+    // pr. gjenværende linje, navnestripping og auto-kommentar.
+    // v15 (2026-09-06): siden alt som trekkes ut nå er eksakte linjeverdier, er gjenstående
+    // budsjett ALLTID = summen av de gjenværende linjene og aldri negativt. (v2 2026-09-01 lot
+    // Ledig-rader gå negativt fordi leietakerens FAKTISKE leie ble trukket - den over-/under-
+    // dekningen vises nå på leietakerens egen rad i stedet, se MANUAL_FLYTTET_INN_OVERRIDES.)
+    const financeIndeks = lastFinanceLedigIndeks();
+    const stripp = lagNavnestripper();
+    const fmt = (n) => n.toLocaleString("nb-NO");
     for (const ledigRad of ledigRader) {
       const o = overforinger.get(ledigRad.navn);
-      if (!o) continue;
       const opprinnelig = ledigRad.budsjett;
-      const nytt = round2(opprinnelig - o.sum);
-      const overtrekk = round2(o.sum - opprinnelig);
+      const trukket = o ? o.sum : 0;
       // Bevart for den dedikerte "Ledige lokaler"-oversikten (app/IncomeForecastSection.tsx) -
-      // budsjett-feltet blir GJENSTÅENDE under, så original + trukket-ut må lagres separat for at
-      // den fanen skal kunne vise "opprinnelig / trukket ut / gjenstående" side om side.
+      // budsjett-feltet blir GJENSTÅENDE under, så original + trukket-ut må lagres separat.
       ledigRad.ledigOpprinneligBudsjett = opprinnelig;
-      ledigRad.ledigTrukketUt = o.sum;
-      ledigRad.budsjett = nytt;
+      ledigRad.ledigTrukketUt = trukket;
+      ledigRad.budsjett = round2(opprinnelig - trukket);
       oppdaterAvvik(ledigRad);
-      if (overtrekk > 0) {
-        console.log(
-          `${ledigRad.navn}: bekreftet utleid (${o.sum.toLocaleString("nb-NO")} kr) overstiger opprinnelig budsjett (${opprinnelig.toLocaleString("nb-NO")} kr) med ${overtrekk.toLocaleString("nb-NO")} kr - vist som ${nytt.toLocaleString("nb-NO")} kr, se kommentar.`,
-        );
-        await settDefaultKommentarHvisTom(
-          ledigRad.navn,
-          `Bekreftet utleid areal (samlet ${o.sum.toLocaleString("nb-NO")} kr/år: ${o.poster.map((p) => `${p.beskrivelse} (${p.belop.toLocaleString("nb-NO")} kr)`).join("; ")}) overstiger opprinnelig budsjettert ledig-beløp (${opprinnelig.toLocaleString("nb-NO")} kr/år) med ${overtrekk.toLocaleString("nb-NO")} kr.`,
-        );
+      ledigRad.ledigPoster = o ? o.poster.sort((a, b) => b.belop - a.belop) : [];
+      const sumLinjer = round2(ledigRad.linjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
+      if (Math.abs(sumLinjer - ledigRad.budsjett) > 1) {
+        console.warn(`ADVARSEL: ${ledigRad.navn}: gjenstående budsjett ${fmt(ledigRad.budsjett)} kr != sum gjenværende linjer ${fmt(sumLinjer)} kr - avrunding/deling gikk galt.`);
       }
+      for (const linje of ledigRad.linjer) {
+        linje.beskrivelse = stripp(linje.beskrivelse);
+        // Budsjettets egen "Kommentar inntekt" som eget felt (Morten 2026-09-06): for de store
+        // gjenværende linjene vil han se hva Finance budsjetterte utleid som IKKE ble leid ut.
+        // Ligger også bakt inn i beskrivelse ("objekt — kommentar"), UI-en skiller dem igjen.
+        if (linje._kommentarRaw) linje.budsjettKommentar = stripp(linje._kommentarRaw);
+        const fin = finnFinanceLinje(financeIndeks, linje);
+        if (!fin) {
+          if (financeIndeks) console.warn(`ADVARSEL: ${ledigRad.navn}: ingen Finance-linje for "${linje.beskrivelse}" (${fmt(linje.fullArsverdi2026)} kr) - uten vurdering/kommentar.`);
+          continue;
+        }
+        linje.financeEndring = round2((fin.sumEndring || 0) * fin.faktor);
+        // "nullet" = Finance har tatt hele beløpet ut av prognosen (står ledig ut året), ellers
+        // forventes arealet fortsatt utleid i år (helt eller delvis).
+        linje.ledigVurdering = fin.prognoseJuli <= 0.5 ? "nullet" : "forventet";
+        const siste = [...(fin.kommentarer || [])].reverse().find((k) => k.tekst && k.tekst.trim());
+        if (siste) linje.financeKommentar = stripp(`${siste.mnd}: ${siste.tekst.trim()}`);
+      }
+      const kommentar = o && o.poster.length > 0
+        ? `Utleid/trukket ut fra denne Ledig-raden (samlet ${fmt(o.sum)} kr/år): ${ledigRad.ledigPoster.map((p) => `${p.navn} (${fmt(p.belop)} kr)`).join("; ")}.`
+        : "";
+      await settAutoKommentar(ledigRad.navn, kommentar);
     }
 
-    // 5) Auto-generert "tok over ledig areal"-kommentar på leietakerens EGEN rad (kun hvis
-    // leietakeren ikke allerede har en manuell kommentar).
-    for (const rad of delALeietakerRader) {
-      if (!rad.flyttetInnI) continue;
-      const o = [...overforinger.values()].flatMap((v) => v.poster).find((p) => p.beskrivelse === rad.navn);
-      const belop = o ? o.belop : null;
-      const ledigNavn = rad.flyttetInnI;
-      await settDefaultKommentarHvisTom(
+    // 5) Auto-kommentar på leietakerens EGEN rad (kun hvis leietakeren ikke har en manuell).
+    for (const rad of koblede) {
+      // Kan ha tatt linjer i flere Ledig-rader (Rob Arnesen: LV4A + LV10) - summer på tvers.
+      const poster = [...overforinger.entries()]
+        .flatMap(([ledigNavn, o]) => o.poster.filter((p) => p.type === "leietaker" && p.navn === rad.navn).map((p) => ({ ledigNavn, belop: p.belop })));
+      const sum = round2(poster.reduce((s, p) => s + p.belop, 0));
+      const hvor = poster.length > 1 ? poster.map((p) => `${p.ledigNavn} ${fmt(p.belop)} kr`).join(", ") : rad.flyttetInnI;
+      await settAutoKommentar(
         rad.navn,
-        belop != null
-          ? `Tok over ledig areal (${ledigNavn}) - ${belop.toLocaleString("nb-NO")} kr/år overført fra Ledig-budsjettet dit.`
-          : `Tok over ledig areal (${ledigNavn}).`,
+        poster.length > 0
+          ? `Tok over ledig areal (${hvor}) - ${fmt(sum)} kr/år overført fra Ledig-budsjettet dit.`
+          : `Flyttet inn i ledig areal (${rad.flyttetInnI}) uten egen budsjettlinje - inntekten er oppside mot budsjett.`,
       );
     }
 
@@ -536,7 +740,7 @@ async function main() {
     for (const ledigRad of ledigRader) {
       for (const linje of ledigRad.linjer) delete linje._kommentarRaw;
     }
-    return antallKoblet;
+    return koblede.size;
   }
 
   function fuzzyLookupFn(rows) {
@@ -545,7 +749,7 @@ async function main() {
   }
   function exactLookupFn(rows) {
     const byNorm = new Map(rows.map((r) => [normalizeName(r.navn), r.budsjett]));
-    return (navn) => (byNorm.has(normalizeName(navn)) ? byNorm.get(normalizeName(navn)) : null);
+    return (navn) => (byNorm.has(normalizeName(navn)) ? { budsjett: byNorm.get(normalizeName(navn)), via: [] } : null);
   }
 
   const budgetLookupA = { leietaker: fuzzyLookupFn(budget.delA.leietaker), bygg: exactLookupFn(budget.delA.bygg), leietype: exactLookupFn(budget.delA.leietype) };
@@ -563,7 +767,9 @@ async function main() {
   function buildLeietakerMap(del) {
     const map = new Map();
     for (const tenant of remaining.tenants) {
-      const reelleGrupper = tenant.byggGrupper.filter((b) => b.status !== "intern-mustad");
+      // intern-egenleie (v14, Mustad Eiendom AS i eget selskap) er 0/0 uansett, men holdes eksplisitt
+      // utenfor slik at Mustad ikke dukker opp som en ekstern leietaker-rad.
+      const reelleGrupper = tenant.byggGrupper.filter((b) => b.status !== "intern-mustad" && b.status !== "intern-egenleie");
       if (reelleGrupper.length === 0) continue;
       const fakturert = round2(reelleGrupper.reduce((s, b) => s + (del === "A" ? b.alleredeFakturertDelA : b.alleredeFakturertDelB), 0));
       const gjenstar = round2(reelleGrupper.reduce((s, b) => s + (del === "A" ? b.gjenstarDelA : b.gjenstarDelB), 0));
@@ -596,7 +802,17 @@ async function main() {
           linjer.push({ ...line, gjenstarShare: round2(gjenstarGruppe * andel) });
         }
       }
-      map.set(tenant.navn, { fakturert, gjenstar, kontoer, linjer });
+      // v16: statuser utenom "ok" (avsluttet, forklart-*, fazile-plan-mangler, ...) og den svakeste
+      // NXT-matchemetoden på tvers av byggGruppene (kundenr > navn-eksakt > alias > kjerne-navn >
+      // ingen) - kun grupper med tall i denne Del'en teller.
+      const grupperMedTall = reelleGrupper.filter((b) => (del === "A" ? b.alleredeFakturertDelA || b.gjenstarDelA : b.alleredeFakturertDelB || b.gjenstarDelB));
+      const remainingStatuser = [...new Set(grupperMedTall.map((b) => b.status).filter((s) => s && s !== "ok"))].sort();
+      const NXT_MATCH_RANG = ["kundenr", "navn-eksakt", "alias", "kjerne-navn", "ingen"];
+      const nxtMatch = grupperMedTall
+        .map((b) => b.nxtMatch)
+        .filter(Boolean)
+        .sort((a, b) => NXT_MATCH_RANG.indexOf(b) - NXT_MATCH_RANG.indexOf(a))[0];
+      map.set(tenant.navn, { fakturert, gjenstar, kontoer, linjer, remainingStatuser, nxtMatch });
     }
     return map;
   }
@@ -622,6 +838,7 @@ async function main() {
     leietype: sortByAvvik(medBudsjett(groupLines(linesA, (line) => classifyLeietype(line.beskrivelse, line.bygg)), budgetLookupA.leietype, budget.delA.leietype)),
   };
   const antallFlyttetInn = await kobleFlyttetInnOgTrekkFra(delA.leietaker);
+  delA.leietaker = sortByAvvik(delA.leietaker); // budsjett/avvik er endret på Ledig- og leietaker-rader over
   console.log(`Flyttet-inn-kobling: ${antallFlyttetInn} leietaker(e) koblet til en Ledig-bygg-rad.`);
   // Del B: budsjett=null pr. rad (ingen pr.-leietaker/bygg/leietype-budsjett finnes - se
   // filhode) - budgetLookupB.* returnerer uansett alltid null siden budget.delB.* er tomme

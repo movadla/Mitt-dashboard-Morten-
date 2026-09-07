@@ -91,6 +91,20 @@ export interface TenantForecastRow {
   ledigOpprinneligBudsjett?: number;
   ledigTrukketUt?: number;
   ledigPoster?: LedigPost[];
+  // v16 (2026-09-07) match-kvalitet, kun "leietaker"-grupperingen. Gjør det synlig i UI-en hvor
+  // usikker koblingen mellom de tre kildene er, slik at en fuzzy-kobling med stort beløp kan
+  // kontrolleres - i stedet for at den ser like sikker ut som en kundenummer-match.
+  // - remainingStatuser: byggGruppe-statuser i REMAINING utenom "ok" (avsluttet, forklart-*,
+  //   fazile-plan-mangler, ikke-matchet-i-nxt, intern-*).
+  // - nxtMatch: den svakeste NXT-koblingen blant byggGruppene: "kundenr" | "navn-eksakt" |
+  //   "alias" | "kjerne-navn" | "ingen".
+  // - budsjettVia: hvordan budsjettraden(e) ble funnet: "alias" | "eksakt" | "kjerne-navn" |
+  //   "bygg+beskrivelse" | "delstreng" | "kjerne-navn (tabell)" | "uten treff".
+  // - excelNavn: navnet/navnene budsjettarket brukte når det avviker fra Fazile-navnet.
+  remainingStatuser?: string[];
+  nxtMatch?: string;
+  budsjettVia?: string[];
+  excelNavn?: string[];
 }
 
 export interface TenantForecastGrupper {
@@ -146,6 +160,7 @@ function anonymizeRows(rows: TenantForecastRow[]): TenantForecastRow[] {
       ...r,
       navn: isSystemRow(r.navn) ? r.navn : anonymizeIfPerson(r.navn),
       linjer: r.linjer.map((l) => (l.leietaker ? { ...l, leietaker: anonymizeIfPerson(l.leietaker) } : l)),
+      ...(r.excelNavn ? { excelNavn: r.excelNavn.map(anonymizeIfPerson) } : {}),
       ...(ledigPoster ? { ledigPoster } : {}),
       ...(kommentar !== undefined ? { kommentar } : {}),
     };

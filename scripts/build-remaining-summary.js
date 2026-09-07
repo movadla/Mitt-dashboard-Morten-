@@ -269,6 +269,17 @@ const OMSETNINGSAVREGNING_2025_ANDRE_NAVN = "andre (bokført uten leietakerrefer
 // lokaler/administrative posteringer) - ikke reelle eksterne leieforhold. Flagges separat
 // (status "intern-mustad") i stedet for å telles som et vanlig usikkert avvik.
 const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as", "mustad eiendomsdrift as"]);
+// v14 (2026-09-05): "Mustad Eiendom as" (NXT-kunde 10401) som Fazile-leietaker i et bygg som KUN
+// eies av Mustad Eiendom AS selv (selskap 2397991) er egenleie innenfor samme juridiske enhet -
+// et selskap kan ikke fakturere seg selv. Verifisert mot NXT generalLedgerTransaction: kunde 10401
+// har 0 kr på alle 3xxx-konti i Mustad Eiendom AS i både 2025 og 2026 (kun to 0-bilag), mens
+// Lilleakerveien 14 AS fakturerer samme kunde reelt (gjenbrukslager + uteparkering LV14). Gjelder
+// p-plasser til ansatte og lager (LV4CDEF uteparkering, LV8 garasje/lager, V13D, CC Vest, LV4D,
+// LV6D - ca. 1,38 mill kr modellbasert gjenstår før v14). Skilles fra "intern-mustad" (som ER
+// fakturerbar konsernleie mellom to selskap) med egen status og gjenstår 0. Morten bekreftet
+// 2026-09-05. Budsjettsiden røres ikke - avviket mot budsjett på internraden er reelt.
+const EGENLEIE_LEIETAKER = "mustad eiendom as";
+const EGENLEIE_SELSKAP = "Mustad Eiendom AS";
 
 // Bekreftet mot faktiske NXT-transaksjoner (2026-08-26, konto 3615 "Erstatning" - HELE
 // kontoens 2026-posteringer for Mustad Eiendom AS ble sjekket, kun 5 poster, disse 3 er de
@@ -865,6 +876,7 @@ function main() {
     countKontraktsendring = 0,
     countIkkeMatchetFlagget = 0,
     countInternMustad = 0,
+    countEgenleie = 0,
     countFaktureringUtsatt = 0,
     countDraftKontrakt = 0,
     countMatchedViaCoreName = 0;
@@ -875,6 +887,10 @@ function main() {
   for (const [, g] of leieforhold) {
     const bygg = normalizeName(g.resolvedBygg || g.bygg);
     let nxt = null;
+    // v16 (2026-09-06): HVORDAN NXT-koblingen ble funnet, publiseres som `nxtMatch` pr. byggGruppe
+    // slik at kontrollskriptet/UI-en kan vise match-kvalitet (kundenummer er sikkert, navnematching
+    // er en antakelse som bør bekreftes når beløpet er stort).
+    let matchVia = "ingen";
 
     // Primær metode (v3): kundenummer-basert ID-kobling - se v3-avsnittet i filhodet.
     const idMatch = matchViaCustomerNo(g.kontraktIds, g.resolvedBygg || g.bygg);
@@ -882,17 +898,22 @@ function main() {
       countUsikkerFlereKontrakter++;
     } else if (idMatch.nxt) {
       nxt = idMatch.nxt;
+      matchVia = "kundenr";
       countMatchedViaCustomerNo++;
     }
 
     // Fallback-kjede (navnematching) - kun hvis ID-koblingen ikke fant noe.
-    if (!nxt) nxt = nxtGroups.get(normalizeName(g.leietaker) + "||" + bygg);
+    if (!nxt) {
+      nxt = nxtGroups.get(normalizeName(g.leietaker) + "||" + bygg);
+      if (nxt) matchVia = "navn-eksakt";
+    }
     if (!nxt) {
       const resolvedName = resolveNxtTenantName(g.leietaker);
       if (resolvedName) {
         const viaCoreName = nxtGroups.get(normalizeName(resolvedName) + "||" + bygg);
         if (viaCoreName) {
           nxt = viaCoreName;
+          matchVia = "kjerne-navn";
           countMatchedViaCoreName++;
         }
       }
@@ -903,6 +924,7 @@ function main() {
         const viaAlias = nxtGroups.get(alias + "||" + bygg);
         if (viaAlias) {
           nxt = viaAlias;
+          matchVia = "alias";
           countMatchedViaAlias++;
         }
       }
@@ -1009,7 +1031,20 @@ function main() {
     // v12 - "frosset" = gjenstår er tvunget til 0 av en forklaring (avsluttet/utsatt/draft/
     // engangsgebyr) og skal IKKE regnes om av Del B-poolingen.
     let frosset = false;
-    if (INTERN_MUSTAD_NAMES.has(normalizeName(g.leietaker))) {
+    const byggEiere = byggSelskaper.get(bygg);
+    const erEgenleie =
+      normalizeName(g.leietaker) === EGENLEIE_LEIETAKER && !!byggEiere && byggEiere.size === 1 && byggEiere.has(EGENLEIE_SELSKAP);
+    if (erEgenleie) {
+      // Se EGENLEIE_LEIETAKER-kommentaren: Mustad Eiendom AS "leier" av seg selv i samme selskap -
+      // aldri bokførbart, derfor 0 og frosset (holdes utenfor v12 Del B-poolingen og v13-fakturaplanen).
+      gjenstarA = 0;
+      gjenstarB = 0;
+      frosset = true;
+      status = "intern-egenleie";
+      forklaring =
+        "Egenleie: Mustad Eiendom AS er både utleier og leietaker i samme selskap (bygget eies kun av Mustad Eiendom AS). Kan aldri faktureres/bokføres - NXT-kunde 10401 har 0 kr bokført i selskapet i 2025 og 2026. Fazile-linjen (p-plasser/lager til eget bruk) beholdes for sporbarhet, gjenstår satt til 0.";
+      countEgenleie++;
+    } else if (INTERN_MUSTAD_NAMES.has(normalizeName(g.leietaker))) {
       // Mustad Eiendom AS/Mustad Eiendomsdrift AS opptrer selv som "leietaker" i Fazile for
       // egne lokaler/administrative posteringer - ikke et reelt eksternt leieforhold. Beløpet
       // beholdes som beregnet (ingen antagelse om at det skal nulles), men flagges tydelig
@@ -1112,6 +1147,7 @@ function main() {
       gjenstarTotal: round2(gjenstarA + gjenstarB),
       status,
       forklaring,
+      nxtMatch: matchVia,
       // v12 - interne felt (prefiks "_"), ALDRI i det publiserte snapshotet (slettes etter
       // poolingen, samme mønster som _kommentarRaw i build-tenant-forecast-table.js).
       _key: historiskNokkel, // leieforhold-nøkkel (leietaker||bygg) - v13-fakturaplanen slår opp gruppen på denne
@@ -1145,6 +1181,23 @@ function main() {
     headNorway.byggGrupper.push(...headSport.byggGrupper);
     headNorway.lines.push(...headSport.lines);
     tenantMap.delete(HEAD_SPORT_KEY);
+  }
+  // v15 (2026-09-06): "Medu AS" og "Metesa AS" (Lilleakerveien 2B) er samme leietaker - Morten
+  // 2026-08-28: "Medu (metesa) sin kontrakt startet 15.12.2025, og de ble til Metesa 01.07.2026"
+  // (rebrand midt i leieperioden, to Fazile-kunder over tid). Til nå to separate rader, som gjorde
+  // at Ledig-koblingen i build-tenant-forecast-table.js overførte budsjettet DOBBELT (614 250 til
+  // Medu via kommentar-match + 309 649 til Metesa via override) og Medu viste et avvik på -307 124
+  // som ikke finnes (Medu 304 601 + Metesa 309 649 = 614 250 = nøyaktig Excel-linja). Slås sammen
+  // til dagens navn, samme mønster som Head over.
+  const MEDU_KEY = normalizeName("Medu AS");
+  const METESA_KEY = normalizeName("Metesa AS");
+  if (tenantMap.has(MEDU_KEY)) {
+    const medu = tenantMap.get(MEDU_KEY);
+    if (!tenantMap.has(METESA_KEY)) tenantMap.set(METESA_KEY, { navn: "Metesa AS", byggGrupper: [], lines: [] });
+    const metesa = tenantMap.get(METESA_KEY);
+    metesa.byggGrupper.push(...medu.byggGrupper);
+    metesa.lines.push(...medu.lines);
+    tenantMap.delete(MEDU_KEY);
   }
 
   // v12 (2026-09-03, Morten etter Q4-revisjonen: "Parkering må inneholde alt som er på
@@ -1420,6 +1473,7 @@ function main() {
   const planUtenLeieforhold = []; // plan-linjer som ikke kunne knyttes til noe leieforhold
   const planUtenKonto = [];
   const ekstrapolerteLinjer = []; // månedsfakturerte linjer forlenget til årsslutt (Fazile genererer bare ~3 mnd frem)
+  const manglerLinjeSlutt = []; // ekstrapoleringskandidater uten rent_roll-rad OG uten oppslag i contract-lines.json
   const delvisDekning = []; // aktive rent_roll-linjer uten planlinje i leieforhold som ellers har plan
   if (fs.existsSync(FAZILE_FAKTURAPLAN_DIR)) {
     const les = (f) => JSON.parse(fs.readFileSync(path.join(FAZILE_FAKTURAPLAN_DIR, f), "utf8"));
@@ -1428,6 +1482,8 @@ function main() {
     const planLines = les("lines.json");
     const planLineAccounts = les("line-accounts.json");
     const planContracts = fs.existsSync(path.join(FAZILE_FAKTURAPLAN_DIR, "contracts.json")) ? les("contracts.json") : {};
+    // cl_id -> contract_line.end_date for ekstrapoleringskandidatene (se månedsekstrapoleringen under).
+    const planLinjeSlutt = fs.existsSync(path.join(FAZILE_FAKTURAPLAN_DIR, "contract-lines.json")) ? les("contract-lines.json") : {};
     const planCacheDato = planMeta.nxtCacheDato || nxtCacheDato;
     if (nxtCacheDato && planMeta.nxtCacheDato && planMeta.nxtCacheDato !== nxtCacheDato) {
       console.log(`ADVARSEL: fakturaplanens nxtCacheDato (${planMeta.nxtCacheDato}) != nxt-booked-tenants/meta.json (${nxtCacheDato}) - "allerede i NXT"-grensen kan være feil, hent fakturaplanen på nytt.`);
@@ -1541,6 +1597,11 @@ function main() {
     // kontraktslinjen løper videre (rent_roll slutt_dato etter perioden, eller linjen er ukjent for
     // rent_roll - rabatt-/fritakslinjer - da følger den husleielinjen den hører til). Forlenges med
     // siste måneds beløp pr. gjenstående måned, merket i forklaringen.
+    // v15 (2026-09-06, Komplett-funn): fritaks-/rabattlinjer rent_roll ikke kjenner ble forlenget til
+    // 31.12 uansett - et 3-måneders leiefritak (sep-nov) nullet dermed også desemberleien, og
+    // leieforholdet forsvant helt fra tabellen (0 fakturert, 0 gjenstår). Nå brukes kontraktslinjens
+    // egen end_date (contract-lines.json, slått opp for alle ekstrapoleringskandidater) som horisont
+    // når den finnes - den gjelder også for rent_roll-linjer, der de to normalt er like.
     const erKalendermaaned = (from, to) => {
       if (!from || !to || from.slice(0, 7) !== to.slice(0, 7) || from.slice(8) !== "01") return false;
       const d = new Date(to + "T00:00:00Z");
@@ -1552,6 +1613,9 @@ function main() {
       const rrRad = radPrLinjeId.get(clId);
       let horisont = "2026-12-31";
       if (rrRad && rrRad.slutt_dato && rrRad.slutt_dato < horisont) horisont = rrRad.slutt_dato;
+      const linjeSlutt = planLinjeSlutt[String(clId)];
+      if (linjeSlutt && linjeSlutt < horisont) horisont = linjeSlutt;
+      if (!rrRad && !(String(clId) in planLinjeSlutt)) manglerLinjeSlutt.push({ clId, desc: s.desc, leietaker: s.rad.leietaker.trim() });
       if (horisont <= s.to) continue;
       const [ay, am] = s.to.split("-").map(Number);
       const [by, bm] = horisont.split("-").map(Number);
@@ -1703,6 +1767,10 @@ function main() {
       console.log(`  ${ekstrapolerteLinjer.length} månedsfakturerte linjer ekstrapolert til årsslutt (Fazile har ikke generert alle månedene ennå): ${fmtKr(ekstrapolerteLinjer.reduce((s, e) => s + e.belop, 0))} kr`);
       for (const e of ekstrapolerteLinjer.sort((a, b) => Math.abs(b.belop) - Math.abs(a.belop))) console.log(`    ${e.leietaker} | ${e.bygg} | ${e.desc} | siste planlagte ${e.sisteMnd}, +${e.mnd} mnd | ${fmtKr(e.belop)}`);
     }
+    if (manglerLinjeSlutt.length) {
+      console.log(`  ADVARSEL: ${manglerLinjeSlutt.length} ekstrapoleringskandidater uten rent_roll-rad og uten oppslag i fazile-fakturaplan/contract-lines.json - forlenget til 31.12 uten sjekk av kontraktslinjens end_date. Slå opp cl_id-ene i Fazile (contract_lines) og legg dem til:`);
+      for (const m of manglerLinjeSlutt) console.log(`    cl_id ${m.clId} | ${m.leietaker} | ${m.desc}`);
+    }
     if (delvisDekning.length) {
       console.log(`  ${delvisDekning.length} aktive kontraktslinjer UTEN planlinje i leieforhold som ellers har plan (merket i forklaringen, IKKE lagt til):`);
       for (const d of delvisDekning.sort((a, b) => b.arsleie - a.arsleie)) console.log(`    ${d.leietaker} | ${d.bygg} | ${d.desc} | kontrakt ${d.kontrakt} | årsleie ${fmtKr(d.arsleie)} | ${d.periode}`);
@@ -1750,6 +1818,62 @@ function main() {
     });
   } else {
     console.log('ADVARSEL: fant ikke "Onepark AS" i leieforhold-datasettet - Onepark-korreksjonen ble IKKE lagt til.');
+  }
+
+  // v15: leietaker-merger (Head, Medu->Metesa) kan gi to byggGrupper med SAMME bygg på én
+  // leietaker (gammelt og nytt leieforhold i samme bygg). build-tenant-forecast-table.js filtrerer
+  // tenant.lines på bg.bygg per gruppe, så to like bygg ville dobbelttelt linjene der. Slår derfor
+  // sammen like bygg her - summene er additive, status/forklaring tas fra gruppen med størst
+  // gjenstår (det aktive leieforholdet). Totalene er uendret.
+  for (const tenant of tenantMap.values()) {
+    const perBygg = new Map();
+    for (const bg of tenant.byggGrupper) {
+      const eksisterende = perBygg.get(bg.bygg);
+      if (!eksisterende) {
+        perBygg.set(bg.bygg, bg);
+        continue;
+      }
+      const [prim, sek] = eksisterende.gjenstarTotal >= bg.gjenstarTotal ? [eksisterende, bg] : [bg, eksisterende];
+      // Har det aktive leieforholdet en fakturaplan-basert gjenstår og det avsluttede leieforholdet
+      // KUN et modellrestbeløp uten planlagte fakturaer ("fazile-plan-mangler"), er restbeløpet en
+      // artefakt av v12-poolingen (kundenummerets parkeringsbokføring ble fordelt proporsjonalt på
+      // begge linjene) - ikke penger som skal faktureres. Fakturaplanen er per kontrakt: hadde det
+      // avsluttede leieforholdet hatt noe igjen, hadde det stått under sin egen nøkkel.
+      if (prim.gjenstarKilde === "fazile-fakturaplan" && sek.status === "fazile-plan-mangler") {
+        const bort = sek.gjenstarTotal;
+        sek.gjenstarDelA = 0;
+        sek.gjenstarDelB = 0;
+        sek.gjenstarTotal = 0;
+        sek.forklaring = `${sek.forklaring || ""} Modellrest ${bort.toLocaleString("nb-NO")} kr satt til 0 ved sammenslåing - det aktive leieforholdet i samme bygg følger fakturaplanen.`.trim();
+      }
+      for (const felt of [
+        "fullArsverdi2026DelA",
+        "fullArsverdi2026DelB",
+        "alleredeFakturertDelA",
+        "alleredeFakturertDelB",
+        "gjenstarDelA",
+        "gjenstarDelB",
+        "gjenstarTotal",
+      ]) {
+        prim[felt] = round2((prim[felt] || 0) + (sek[felt] || 0));
+      }
+      for (const kf of ["kontoFordelingDelA", "kontoFordelingDelB"]) {
+        // [{konto, belop}]-array - slås sammen per konto
+        const perKonto = new Map();
+        for (const k of [...(prim[kf] || []), ...(sek[kf] || [])]) {
+          perKonto.set(k.konto, round2((perKonto.get(k.konto) || 0) + k.belop));
+        }
+        prim[kf] = [...perKonto.entries()]
+          .map(([konto, belop]) => ({ konto, belop }))
+          .filter((k) => Math.abs(k.belop) >= 1)
+          .sort((a, b) => Math.abs(b.belop) - Math.abs(a.belop));
+      }
+      if (sek.forklaring && sek.forklaring !== prim.forklaring) {
+        prim.forklaring = `${prim.forklaring || ""} Sammenslått med tidligere leieforhold i samme bygg: ${sek.forklaring}`.trim();
+      }
+      perBygg.set(bg.bygg, prim);
+    }
+    tenant.byggGrupper = [...perBygg.values()];
   }
 
   // v12: REMAINING-totalene beregnes fra de ENDELIGE byggGruppene (etter pooling, Head-merge og
@@ -1812,6 +1936,7 @@ function main() {
   console.log(`  hvorav USIKKER (flere kontrakter med ulikt nxtCustomerNo - falt tilbake til navnematching): ${countUsikkerFlereKontrakter}`);
   console.log(`Avsluttede kontrakter nullstilt: ${countAvsluttet}`);
   console.log(`Intern Mustad (ikke reelt leieforhold): ${countInternMustad}`);
+  console.log(`Egenleie Mustad Eiendom AS i eget selskap, nullstilt (v14): ${countEgenleie}`);
   console.log(`Flagget "ikke matchet i NXT" (ny kontrakt eller navnematch-feil - sjekk manuelt): ${countIkkeMatchetFlagget}`);
   console.log(`Forklart fakturering utsatt til senere år (first_invoice_date > 2026): ${countFaktureringUtsatt}`);
   console.log(`Forklart draft-kontrakt (ikke signert/aktiv ennå): ${countDraftKontrakt}`);
