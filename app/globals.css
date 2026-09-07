@@ -634,6 +634,37 @@ html[data-theme="dag"] {
   color: #fff8f0;
 }
 
+/* Jobb-fanens egen hero-flate (JobbTodaySummary.tsx, 2026-09-07) - samme "ett mettet felt"-teknikk
+   som .hero-card, men i --color-accent (blå) i stedet for Privat-fanens oransje, jf. DESIGN.md sin
+   fane-fargekode-ledetråd. Bygget med color-mix mot --color-accent i stedet for håndplukkede
+   hex-trinn, slik at den automatisk følger samme accent-verdi som resten av Jobb-fanen bruker i
+   begge temaer (kveld #3987e5 / dag #1d4ed8) uten at noen må vedlikeholde et eget fargesett her. */
+:root {
+  --hero-bg-jobb:
+    radial-gradient(ellipse 120% 100% at 20% -40%, rgba(255, 255, 255, 0.2), transparent 58%),
+    linear-gradient(
+      166deg,
+      color-mix(in srgb, var(--color-accent) 55%, white) 0%,
+      var(--color-accent) 44%,
+      color-mix(in srgb, var(--color-accent) 60%, black) 100%
+    );
+}
+html[data-theme="dag"] {
+  --hero-bg-jobb:
+    radial-gradient(ellipse 120% 100% at 20% -40%, rgba(255, 255, 255, 0.44), transparent 58%),
+    linear-gradient(
+      166deg,
+      color-mix(in srgb, var(--color-accent) 45%, white) 0%,
+      var(--color-accent) 44%,
+      color-mix(in srgb, var(--color-accent) 65%, black) 100%
+    );
+}
+.hero-card-jobb {
+  background: var(--hero-bg-jobb);
+  box-shadow: var(--elev-3);
+  color: #f2f6ff;
+}
+
 /* Navigasjonen skal tre tilbake, ikke rope like høyt som innholdet:
    halvgjennomsiktig glass som slipper bakgrunnsgradienten gjennom. */
 .nav-tile {

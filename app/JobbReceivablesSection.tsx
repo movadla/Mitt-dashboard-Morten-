@@ -294,12 +294,18 @@ const AGING_BUCKETS: {
   key: keyof Pick<ReceivableAging, "ikkeForfalt" | "d0_30" | "d31_60" | "d61_90" | "d91Plus">;
   label: string;
   colorClass: string;
+  // Egen, alltid full-styrke tekstfarge (2026-09-07): colorClass sin /60-uttoning på 31-60-
+  // bøtta gir en fin, lesbar ESKALERING på selve STOLPEN (31-60 svakere enn 61-90/91+), men
+  // brukt på selve TALL-etiketten ga den en kontrast på ~2,4:1 mot hvitt kort i dagmodus - godt
+  // under WCAG sin 4,5:1 for tekst, og leste som deaktivert/nøytral i stedet for et
+  // alvorlighetssignal. Etiketten skal alltid være lesbar; kun stolpen toner ned.
+  textColorClass: string;
 }[] = [
-  { key: "ikkeForfalt", label: "Ikke forfalt", colorClass: "text-status-positive" },
-  { key: "d0_30", label: "0-30 dager", colorClass: "text-ink-3" },
-  { key: "d31_60", label: "31-60 dager", colorClass: "text-status-warning/60" },
-  { key: "d61_90", label: "61-90 dager", colorClass: "text-status-warning" },
-  { key: "d91Plus", label: "91+ dager", colorClass: "text-status-danger" },
+  { key: "ikkeForfalt", label: "Ikke forfalt", colorClass: "text-status-positive", textColorClass: "text-status-positive" },
+  { key: "d0_30", label: "0-30 dager", colorClass: "text-ink-3", textColorClass: "text-ink-3" },
+  { key: "d31_60", label: "31-60 dager", colorClass: "text-status-warning/60", textColorClass: "text-status-warning" },
+  { key: "d61_90", label: "61-90 dager", colorClass: "text-status-warning", textColorClass: "text-status-warning" },
+  { key: "d91Plus", label: "91+ dager", colorClass: "text-status-danger", textColorClass: "text-status-danger" },
 ];
 
 function ReceivablesAgingBar({ aging, total }: { aging: ReceivableAging; total: number }) {
@@ -322,8 +328,8 @@ function ReceivablesAgingBar({ aging, total }: { aging: ReceivableAging; total: 
         )}
       </span>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs">
-        {AGING_BUCKETS.map(({ key, label, colorClass }) => (
-          <span key={key} className={colorClass}>
+        {AGING_BUCKETS.map(({ key, label, textColorClass }) => (
+          <span key={key} className={textColorClass}>
             {label}: <span className="font-medium tabular-nums">{formatKr(aging[key])}</span>
           </span>
         ))}

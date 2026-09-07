@@ -122,8 +122,35 @@ export default function JobbTodaySummary({
     }
   }
 
+  // Hero: samme "ett mettet felt"-prinsipp som Privat-fanens TodaySummary (2026-09-07) - bevisst
+  // ETT tall, ikke en gjentakelse av listen under. Summerer de tre kategoriene som faktisk KREVER
+  // en handling i dag (påminnelser med frist, høyprioriterte oppgaver/nysignerte kontrakter,
+  // mailer som venter på svar) - IKKE møter/hendelser, som er tidsbestemte og ikke noe å "bli
+  // ferdig med". Ingen ring her (i motsetning til Privat sin fullført/gjenstår-ring): de tre
+  // kategoriene har ingen felles "fullført i dag"-tilstand å telle mot - en påtvunget ring ville
+  // vist en falsk andel, ikke en ekte.
+  const heroCount = oppfolging.length + dueReminders.length + viktigsteMailene.length;
+
   return (
     <div className="p-4">
+      {!loading && (
+        <section className="hero-card-jobb card-rise relative mb-3 overflow-hidden rounded-[22px] p-5">
+          <span
+            className="pointer-events-none absolute -right-8 -top-9 h-32 w-32 rounded-full"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,.3), transparent 68%)" }}
+            aria-hidden
+          />
+          <div className="relative min-w-0">
+            <p className="mb-2.5 text-[9px] font-bold uppercase tracking-[0.13em] opacity-80">Krever handling i dag</p>
+            <p className="text-[54px] font-light leading-[0.82] tracking-[-0.055em] tabular-nums">
+              {heroCount}
+              <span className="ml-2.5 text-[13px] font-medium tracking-normal opacity-85">
+                {heroCount === 1 ? "sak" : "saker"}
+              </span>
+            </p>
+          </div>
+        </section>
+      )}
       <h2 className="mb-3 text-sm font-semibold text-ink-1">I dag</h2>
       {loading ? (
         <SkeletonRows count={3} className="h-6" />

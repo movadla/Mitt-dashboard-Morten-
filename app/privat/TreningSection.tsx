@@ -688,7 +688,7 @@ export default function TreningSection() {
           ) : (
             <>
               {activeSession ? (
-                <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-3">
+                <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-lg font-semibold tabular-nums text-ink-1">{formatElapsed(elapsed)}</span>
                     <div className="flex items-center gap-3">
@@ -806,7 +806,7 @@ export default function TreningSection() {
                   )}
                 </div>
               ) : showSetup ? (
-                <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-3">
+                <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">Sett opp økt</p>
                   {draftExercises.length > 0 ? (
                     <ul className="flex flex-col gap-1">

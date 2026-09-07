@@ -619,7 +619,7 @@ export default function DiarySection() {
         {entriesLoading ? (
           <SkeletonRows count={2} />
         ) : wizardDate && wizardMode === "sequential" ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-2 p-3">
+          <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-2 p-2.5">
             <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
               {formatDMY(wizardDate)} · Steg {stepIndex + 1} av {STEP_ORDER.length}
             </p>
@@ -644,7 +644,7 @@ export default function DiarySection() {
             </div>
           </div>
         ) : wizardDate && wizardMode === "fields" && fieldEditing ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-2 p-3">
+          <div className="flex flex-col gap-3 rounded-xl border border-line-strong bg-surface-2 p-2.5">
             <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{formatDMY(wizardDate)}</p>
             {renderStepBody(fieldEditing)}
             <div className="flex items-center gap-2">
@@ -662,7 +662,7 @@ export default function DiarySection() {
             </div>
           </div>
         ) : wizardDate && wizardMode === "fields" ? (
-          <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-3">
+          <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
             <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Rediger {formatDMY(wizardDate)}</p>
             <ul className="flex flex-col divide-y divide-line">
               {STEP_ORDER.map((step) => (
@@ -707,7 +707,7 @@ export default function DiarySection() {
               </div>
             )}
 
-            <div className="rounded-xl border border-line bg-surface-2 p-3">
+            <div className="rounded-xl border border-line bg-surface-2 p-2.5">
               {todayEntry ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">I dag</p>
