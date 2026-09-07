@@ -310,6 +310,31 @@ function shortNewsTitle(item: NewsItem): string {
   return title.length > 42 ? `${title.slice(0, 42).trimEnd()}…` : title;
 }
 
+// Lå tidligere deklarert inne i NewsPreview. Da fikk React en ny komponenttype
+// ved hver render, som betyr at hver linje mistet identiteten sin og ble montert
+// på nytt i stedet for oppdatert — merkbart som at miniatyrbildene blinket hver
+// gang "flere nyheter" ble slått av eller på. (2026-09-07)
+function NewsLine({ item, dimmed, onJump }: { item: NewsItem; dimmed?: boolean; onJump: () => void }) {
+  return (
+    <li>
+      <button type="button" onClick={onJump} className="flex w-full items-center gap-2 text-left hover:text-accent-privat">
+        {item.image && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+        )}
+        <span className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-sm ${dimmed ? "text-ink-2" : "text-ink-1"}`}>
+          {isImportantNews(item) && (
+            <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
+              Viktig
+            </span>
+          )}
+          <span className="min-w-0 truncate">{shortNewsTitle(item)}</span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
 // De 5 "viktigste" nyhetene — se isImportantNews. De vises direkte i "I dag"
 // uten et eget klikk (med en "Viktig"-markør + miniatyrbilde), resten ligger
 // bak en liten "flere nyheter"-knapp. Å trykke en sak hopper til hele
@@ -324,39 +349,18 @@ function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: () => void 
   const high = ranked.filter(isImportantNews);
   const rest = ranked.filter((i) => !isImportantNews(i));
 
-  function NewsLine({ item, dimmed }: { item: NewsItem; dimmed?: boolean }) {
-    return (
-      <li>
-        <button type="button" onClick={onJump} className="flex w-full items-center gap-2 text-left hover:text-accent-privat">
-          {item.image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
-          )}
-          <span className={`flex min-w-0 flex-1 items-baseline gap-1.5 text-sm ${dimmed ? "text-ink-2" : "text-ink-1"}`}>
-            {isImportantNews(item) && (
-              <span className="shrink-0 rounded-full bg-status-warning/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-status-warning">
-                Viktig
-              </span>
-            )}
-            <span className="min-w-0 truncate">{shortNewsTitle(item)}</span>
-          </span>
-        </button>
-      </li>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-1.5">
       {high.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {high.map((item) => (
-            <NewsLine key={item.link} item={item} />
+            <NewsLine key={item.link} item={item} onJump={onJump} />
           ))}
         </ul>
       )}
       {high.length === 0 && rest.length > 0 && (
         <ul className="flex flex-col gap-1.5">
-          <NewsLine item={rest[0]} dimmed />
+          <NewsLine item={rest[0]} dimmed onJump={onJump} />
         </ul>
       )}
       {(() => {
@@ -367,7 +371,7 @@ function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: () => void 
             {showAll && (
               <ul className="flex flex-col gap-1.5">
                 {remaining.map((item) => (
-                  <NewsLine key={item.link} item={item} dimmed />
+                  <NewsLine key={item.link} item={item} dimmed onJump={onJump} />
                 ))}
               </ul>
             )}

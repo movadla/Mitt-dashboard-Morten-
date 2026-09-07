@@ -48,14 +48,11 @@ export function useRestTimer() {
     function tick() {
       const rest = endsAt! - Date.now();
       if (rest <= 0) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setRemainingMs(0);
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setEndsAt(null);
         vibrate([15, 40, 15]);
         return;
       }
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRemainingMs(rest);
     }
     tick();

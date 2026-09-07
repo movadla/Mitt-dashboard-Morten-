@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { CARD_SHELL, CardErrorBoundary, CardHeader, ConfirmDialog, SuggestionList, useConfirmDelete, usePersistedOrder } from "./CardShell";
 import StaleSourceBanner, { MAX_AGE_DAYS, sourceAgeDays } from "./StaleSourceBanner";
-import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
+import { APP_NAVIGATE_EVENT, consumePendingNavigation, peekPendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import { jsonFetcher } from "@/lib/swrFetcher";
@@ -483,7 +483,11 @@ export default function JobbView({
   const nowMs = Date.parse(now);
   const [order, setOrder] = usePersistedOrder(JOBB_SECTION_ORDER_KEY, DEFAULT_JOBB_SECTION_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
-  const [activeId, setActiveId] = useState("today");
+  // Et hopp som kom FRA Privat-fanen ligger allerede klart før første render, så
+  // startseksjonen leses her i stedet for å settes i en effekt: visningen males
+  // én gang på riktig seksjon i stedet for å blinke innom "today" først. peek,
+  // ikke consume — nullstillingen hører hjemme i effekten under.
+  const [activeId, setActiveId] = useState(() => peekPendingNavigation("jobb") ?? "today");
   // Hoppønske som JobbOppgaverPanel plukker opp når det monteres (se
   // handleSelect/jumpToCase under) — panelet eier selv all Oppgaver-tilstand.
   const [oppgaverFocus, setOppgaverFocus] = useState<OppgaverFocus | null>(null);
@@ -512,8 +516,9 @@ export default function JobbView({
   // Søketreff fra kommandopaletten — se samme mønster i
   // app/privat/PrivatPanel.tsx og begrunnelsen i lib/appNavigation.ts.
   useEffect(() => {
-    const pendingId = consumePendingNavigation("jobb");
-    if (pendingId) setActiveId(pendingId);
+    // Nullstiller målet useState-initializeren allerede leste, slik at et senere
+    // fanebytte ikke hopper tilbake hit igjen.
+    consumePendingNavigation("jobb");
 
     function handler(e: Event) {
       const target = (e as CustomEvent<NavigationTarget>).detail;

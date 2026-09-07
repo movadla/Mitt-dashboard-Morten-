@@ -22,7 +22,7 @@ import { SidebarNav, type NavItem } from "../SidebarNav";
 import PrivatSearch from "./PrivatSearch";
 import { SECTION_ACCENT } from "./sectionAccents";
 import { localDateString } from "@/lib/payday";
-import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
+import { APP_NAVIGATE_EVENT, consumePendingNavigation, peekPendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import type { ReminderLink } from "@/lib/reminders";
 import {
   Home,
@@ -121,7 +121,11 @@ export default function PrivatPanel() {
   const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today).length;
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
-  const [activeId, setActiveId] = useState("today");
+  // Et hopp som kom FRA Jobb-fanen ligger allerede klart før første render, så
+  // startseksjonen leses her i stedet for å settes i en effekt: panelet males én
+  // gang på riktig seksjon i stedet for å blinke innom "today" først. peek, ikke
+  // consume — nullstillingen hører hjemme i effekten under.
+  const [activeId, setActiveId] = useState(() => peekPendingNavigation("privat") ?? "today");
   const paneRef = useRef<HTMLDivElement>(null);
   const hasNavigatedRef = useRef(false);
   const skipFocusMoveRef = useRef(false);
@@ -142,13 +146,14 @@ export default function PrivatPanel() {
     return () => window.removeEventListener("mitt-dashboard:privat-refresh", handler);
   }, []);
 
-  // Søketreff fra kommandopaletten. To kilder, med vilje: `consumePendingNavigation`
-  // ved montering fanger opp et hopp som kom FRA Jobb-fanen (da fantes ikke
-  // dette panelet ennå da eventet ble sendt), lytteren fanger opp hopp mens
+  // Søketreff fra kommandopaletten. To kilder, med vilje: peek i useState-
+  // initializeren over fanger opp et hopp som kom FRA Jobb-fanen (da fantes ikke
+  // dette panelet ennå da eventet ble sendt), lytteren her fanger opp hopp mens
   // panelet allerede står åpent.
   useEffect(() => {
-    const pendingId = consumePendingNavigation("privat");
-    if (pendingId) setActiveId(pendingId);
+    // Nullstiller målet initializeren allerede leste, slik at et senere fanebytte
+    // ikke hopper tilbake hit igjen.
+    consumePendingNavigation("privat");
 
     function handler(e: Event) {
       const target = (e as CustomEvent<NavigationTarget>).detail;

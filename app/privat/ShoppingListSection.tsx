@@ -375,14 +375,11 @@ export default function ShoppingListSection() {
     }
   }
 
-  async function handleQuickAdd(qp: QuickPick) {
-    vibrate(8);
-    await addItemToList(qp.name, qp.section);
-  }
-
-  // Samme hurtigvalg-tillegg som handleQuickAdd, men fra "Ny vare"-skjemaet —
-  // tilbakestiller i tillegg skjemaet, siden dette ER skjemaets primære
-  // legg-til-handling når det finnes et treff (se autocomplete-listen under).
+  // Legger til fra et hurtigvalg-treff i "Ny vare"-skjemaet og tilbakestiller
+  // skjemaet, siden dette ER skjemaets primære legg-til-handling når det finnes
+  // et treff (se autocomplete-listen under). Eneste vei inn fra et hurtigvalg
+  // etter at den frittstående chip-raden ble erstattet av autocomplete +
+  // "Administrer hurtigvalg".
   async function handleAddFromMatch(qp: QuickPick) {
     vibrate(8);
     const ok = await addItemToList(qp.name, qp.section);
