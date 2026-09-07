@@ -313,15 +313,40 @@ export interface RemainingSnapshot {
 // FORTSATT TIL STEDE - STRANDVEIEN_4_8_MANUAL_HALVING i build-remaining-summary.js beholdt
 // uendret. Ingen eiendommer traff 2000-raders-grensen (største var fortsatt Lilleakerveien 16
 // mm/CC Vest, nå med 240 rader mot 221 før).
+// OPPDATERT 2026-09-07 (v25, korrigert NXT-koblingsmetode): v21 sitt NXT-uttrekk ("allerede
+// fakturert"-siden) koblet generalLedgerTransaction mot customerTransaction via voucherNo - BEVIST
+// FEIL i dag: voucherNo er kun unikt INNENFOR sin egen bilagsserie, ikke på tvers av hele
+// regnskapet, så koblingen fanget opp urelaterte transaksjoner (konkret bevis: en enkelt, stor
+// leietaker - se lib/incomeForecast.local.ts for navn, ekte leietakernavn hører ikke hjemme i
+// denne committede fila - fikk tidligere feilaktig tilordnet beløp fra 16 forskjellige bygg den
+// ikke leier i, når den i virkeligheten kun leier ett bygg + ett kjent, legitimt beløp på et
+// annet bygg). Korrigert metode: `accountingTransaction` har `customerNo`, `accountNo` OG
+// `orgUnit3` DIREKTE på samme rad (filtrert `accountType=3` for GL-siden) - ingen join nødvendig.
+// Sanity-sjekket FØR full kjøring mot de to kjente byggene for denne leietakeren: -57 603 552,50 kr
+// (innenfor forventet 55-60 mill) og -36 886 606,68 kr (bekrefter kjent, legitimt beløp) - begge
+// bestått. Alle 9 aktive selskaper hentet på nytt (samme eierandel-halvering som før for Fåbro
+// Eiendom AS/Strandveien 10 AS/Strandveien 4-8 AS). Ny råtotalsum 537 204 083,24 kr, svært nær
+// v21-24 sin gamle (feilkoblede) 537 472 029,01 kr (BOOKED_3600_3699, urørt denne runden) - altså
+// var den AGGREGERTE selskaps-/kontonivå-summen tilfeldigvis nesten riktig selv med feil metode
+// (feilen omfordelte beløp MELLOM leietakere/bygg innenfor samme selskap, ikke på tvers av
+// selskaper), men PR.-LEIETAKER/BYGG-fordelingen var upålitelig - det er nettopp den fordelingen
+// REMAINING bruker for å beregne "allerede fakturert pr. leieforhold". Avstemming i
+// refresh-nxt-booked-tenants.js: differanse 0,00 kr. Effekt på REMAINING: totalDelA OPP 38 729,34
+// til 163 708 064,68 kr, totalDelB NED 16 065,30 til 17 112 587,27 kr - begge små endringer i sum
+// (metoden omfordelte mellom leieforhold, den samlede porteføljetotalen var lite påvirket).
+// antallForklartOmsetningsleie NED til 5 (fra 34) og antallForklartKontraktsendring NED til 43
+// (fra 48) - en god del leieforhold som tidligere ble klassifisert i disse to catch-all-
+// kategoriene (basert på feilkoblet "allerede fakturert") havner nå i andre/ingen kategori med
+// korrekt NXT-data. Fazile-siden (fakturaplan) IKKE oppdatert i denne runden - kun NXT-siden.
 export const REMAINING: RemainingSnapshot = {
   sistOppdatert: "2026-09-07",
   ar: 2026,
-  totalDelA: 163669335.34,
-  totalDelB: 17128652.57,
+  totalDelA: 163708064.68,
+  totalDelB: 17112587.27,
   antallLeieforhold: 724,
   antallIkkeMatchetFlagget: 14,
-  antallForklartOmsetningsleie: 34,
-  antallForklartKontraktsendring: 48,
+  antallForklartOmsetningsleie: 5,
+  antallForklartKontraktsendring: 43,
   antallAvsluttetNullstilt: 8,
   antallInternMustad: 12,
   uforklarteAvvik: [],
