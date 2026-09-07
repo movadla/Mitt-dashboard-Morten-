@@ -98,6 +98,41 @@
   --color-slate-300: var(--t-slate-300);
   --color-slate-400: var(--t-slate-400);
   --color-slate-500: var(--t-slate-500);
+  /* green-300/500: Boko Haramsdale sin egen grønn i FplSection. Emerald (over) er en annen
+     kulør, så uten disse to trinnene måtte kortet bruke nærmeste emerald og bommet litt. */
+  --color-green-300: var(--t-green-300);
+  --color-green-500: var(--t-green-500);
+  --color-fpl-hero: var(--t-fpl-hero);
+
+  /* Lagfarger for TeamPitch.tsx sin banetegning - IKKE rutet gjennom --t-*-indireksjonen, med
+     vilje: banen (gress+benk) er fast mørk i BEGGE temaer, så en farge tunet for kontrast mot
+     hvitt (slik --color-blue-300/--color-green-300 er, se lenger opp) ville blitt nesten usynlig
+     der (2026-09-07). Disse to er derfor en bevisst, dokumentert unntak fra "alt skal følge
+     temaet"-regelen - samme verdi uansett tema, fordi bakgrunnen de vises mot aldri endrer seg. */
+  --color-pitch-blue: #93c5fd;
+  --color-pitch-green: #86efac;
+
+  /* Sport-kategorienes egen identitetsfarge (app/privat/SportSection.tsx) - hvilken
+     sport/liga en rad gjelder, aldri brukt som statusfarge. Lå tidligere som rå hex i en
+     komponent-intern SPORT_COLOR-tabell, utenfor hele tema-systemet over - flyttet hit av
+     samme grunn som resten av paletten: kun worldcup (gult) trengte en egen, mørkere valør
+     i dagmodus for å lese på et hvitt kort, se html[data-theme="dag"] under. */
+  --color-sport-football: var(--t-sport-football);
+  --color-sport-f1: var(--t-sport-f1);
+  --color-sport-darts: var(--t-sport-darts);
+  --color-sport-athletics: var(--t-sport-athletics);
+  --color-sport-golf: var(--t-sport-golf);
+  --color-sport-football-eli: var(--t-sport-football-eli);
+  --color-sport-football-obos: var(--t-sport-football-obos);
+  --color-sport-football-pl: var(--t-sport-football-pl);
+  --color-sport-football-facup: var(--t-sport-football-facup);
+  --color-sport-football-ucl: var(--t-sport-football-ucl);
+  --color-sport-football-manu: var(--t-sport-football-manu);
+  --color-sport-football-norway: var(--t-sport-football-norway);
+  --color-sport-football-no-uefa: var(--t-sport-football-no-uefa);
+  --color-sport-worldcup: var(--t-sport-worldcup);
+  --color-sport-personal: var(--t-sport-personal);
+  --color-sport-lyn: var(--t-sport-lyn);
 
   /* shadcn/ui-tokens — brukes av komponenter fra `npx shadcn add ...`
      (components/ui/*), mappet til de eksisterende --color-*-tokens over i
@@ -159,6 +194,24 @@
   --t-source-outlook: #199e70;
   --t-source-teams: #8b5cf6;
 
+  /* Sport-kategorienes identitetsfarge - uendret fra opprinnelig SPORT_COLOR-tabell. */
+  --t-sport-football: #2563eb;
+  --t-sport-f1: #dc2626;
+  --t-sport-darts: #7c3aed;
+  --t-sport-athletics: #d97706;
+  --t-sport-golf: #15803d;
+  --t-sport-football-eli: #ef4444;
+  --t-sport-football-obos: #f97316;
+  --t-sport-football-pl: #8b5cf6;
+  --t-sport-football-facup: #be185d;
+  --t-sport-football-ucl: #0891b2;
+  --t-sport-football-manu: #da291c;
+  --t-sport-football-norway: #1e3a8a;
+  --t-sport-football-no-uefa: #4338ca;
+  --t-sport-worldcup: #eab308;
+  --t-sport-personal: #0e9e79;
+  --t-sport-lyn: #991b1b;
+
   /* Tailwind-skalaene på sine ekte verdier — kveldsmodus endrer ingenting. */
   --t-emerald-200: #a7f3d0;
   --t-emerald-400: #34d399;
@@ -195,6 +248,12 @@
   --t-slate-300: #cbd5e1;
   --t-slate-400: #94a3b8;
   --t-slate-500: #64748b;
+  --t-green-300: #86efac;
+  --t-green-500: #22c55e;
+
+  /* FPL-heroens egen flate (app/privat/FplSection.tsx) - dyp bane-grønn i kveld, lys og tonet i
+     dag. Eget token fordi ingen Tailwind-trinn eller --ds-*-flate treffer denne kuløren. */
+  --t-fpl-hero: #0c3d22;
 
   /* ── Dybde og materiale ──
      Tre nivåer, ikke ett: hero (e3) ligger høyere enn kort (e2), som ligger
@@ -265,6 +324,10 @@ html[data-theme="dag"] {
   --t-source-outlook: #0f766e;
   --t-source-teams: #6d28d9;
 
+  /* Kun worldcup (gult, samme kulør som yellow-500 over) trenger en egen, mørkere valør her -
+     resten av sport-fargene er mørke/saturerte nok til å lese på hvitt uansett. */
+  --t-sport-worldcup: #a16207;
+
   /* Samme kulør, lavere lyshet — de lyse trinnene ville forsvunnet på hvitt. */
   --t-emerald-200: #065f46;
   --t-emerald-400: #059669;
@@ -301,6 +364,11 @@ html[data-theme="dag"] {
   --t-slate-300: #475569;
   --t-slate-400: #64748b;
   --t-slate-500: #64748b;
+  --t-green-300: #065f46;
+  --t-green-500: #15803d;
+
+  /* Lys, tonet variant av bane-grønnen - hero-teksten må lese på et hvitt kort. */
+  --t-fpl-hero: #e4f1ec;
 
   --elev-1:
     0 1px 2px rgba(15, 23, 42, 0.05),
@@ -412,9 +480,13 @@ body {
   --font-inter: var(--font-geist-sans);
   --font-grotesk: var(--font-geist-sans);
 
-  /* shadcn/ui-tokens mappet til appens egne dark-glass-farger (ikke shadcn
-     sin lyse standardpalett) — appen har ingen lys/mørk-toggle, så det
-     finnes bevisst ingen egen `.dark`-blokk her. */
+  /* shadcn/ui-tokens mappet til appens egne farge-tokens (ikke shadcn sin egen
+     standardpalett). Det finnes bevisst ingen `.dark`-blokk her: appen HAR to
+     temaer (kveld/dag, se ThemeToggle og html[data-theme="dag"] lenger opp),
+     men temabyttet skjer i --t-*-variablene disse tokenene peker på via
+     --color-*, ikke via en shadcn-`.dark`-klasse. Kommentaren sa tidligere at
+     appen ikke hadde noe temabytte i det hele tatt - ikke sant siden dagmodus
+     ble innført (rettet 2026-09-07). */
   --background: var(--color-surface-0);
   --foreground: var(--color-ink-1);
   --card: var(--color-surface-1);

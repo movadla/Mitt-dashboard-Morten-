@@ -16,7 +16,17 @@ interface PicksData {
   error?: string;
 }
 
-function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
+// Lagenes aksentfarge kommer inn som et CSS-variabelNAVN (f.eks. "--color-blue-300"),
+// ikke en ferdig hex-streng — se rapport til FplSection.tsx om hvorfor. Samme
+// color-mix-teknikk som alpha()/sunk()/ink() i FplSection.tsx, men reimplementert
+// lokalt her siden vi ikke eier den filen og de hjelperne ikke er eksportert.
+// Erstatter den gamle strengkonkateneringen (`${accent}22`), som krevde en literal
+// hex og ville feilet stille med en CSS-variabel.
+function accentAlpha(accentVar: string, pct: number): string {
+  return `color-mix(in srgb, var(${accentVar}) ${pct}%, transparent)`;
+}
+
+function PlayerCard({ p, accentVar }: { p: PickPlayer; accentVar: string }) {
   const [shirtFailed, setShirtFailed] = useState(false);
   const isGk = p.elementType === 1;
   const shirtUrl = `https://fantasy.premierleague.com/dist/img/shirts/standard/shirt_${p.teamCode}${isGk ? "_1" : ""}-66.png`;
@@ -30,10 +40,10 @@ function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
 
   const pointsColor = isOnBench
     ? (p.rawPoints > 0 ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.2)")
-    : (p.livePoints > 0 ? accent : "rgba(255,255,255,0.3)");
+    : (p.livePoints > 0 ? `var(${accentVar})` : "rgba(255,255,255,0.3)");
   const pointsBg    = isOnBench
     ? "rgba(255,255,255,0.06)"
-    : (p.livePoints > 0 ? `${accent}22` : "rgba(0,0,0,0.5)");
+    : (p.livePoints > 0 ? accentAlpha(accentVar, 13) : "rgba(0,0,0,0.5)");
 
   return (
     <div className="flex flex-col items-center gap-0.5" style={{ opacity: inactive ? 0.4 : 1 }}>
@@ -57,6 +67,13 @@ function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
           </div>
         )}
 
+        {/* Bonus-/kaptein-/benk-/banemerkingene under er bevisst rå hex/rgba, ikke
+            tema-tokens: hele banen (gress + benk) er fast mørk i BEGGE temaer, mens
+            f.eks. --color-amber-400/--color-status-* er tunet til å bli MØRKERE i
+            dagmodus for kontrast mot et hvitt kort (se DESIGN.md). Brukt her ville
+            de blitt en gjørmete brun/mørk farge oppå den mørke banen i dagmodus —
+            altså akkurat den tema-fellen banen er ment å unngå ved å stå utenfor
+            systemet. */}
         {/* Bonus badge */}
         {hasBonus && (
           <div className="absolute -top-1 -left-1 flex items-center justify-center rounded-full font-black leading-none shadow-md"
@@ -73,16 +90,20 @@ function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
           </div>
         )}
         {!p.isCaptain && p.isViceCaptain && (
+          // --color-slate-500 har nøyaktig samme verdi (#64748b) i begge temaer i
+          // globals.css, så dette er en ren tokenbytte uten synlig endring.
           <div className="absolute -top-1 -right-1 flex items-center justify-center rounded-full text-[7px] font-black leading-none"
-            style={{ width: 14, height: 14, background: "#64748b", color: "#fff" }}>
+            style={{ width: 14, height: 14, background: "var(--color-slate-500)", color: "#fff" }}>
             V
           </div>
         )}
 
-        {/* Live pulse for playing players */}
+        {/* Live pulse for playing players — samme "live"-signalfarge som
+            FplSection.tsx sin pulserende prikk (FplHero), i stedet for en egen
+            rå rød. */}
         {p.isPlaying && (
           <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full animate-pulse"
-            style={{ background: "#ef4444" }} />
+            style={{ background: "var(--color-status-danger)" }} />
         )}
       </div>
 
@@ -97,7 +118,7 @@ function PlayerCard({ p, accent }: { p: PickPlayer; accent: string }) {
         style={{
           background: pointsBg,
           color: pointsColor,
-          border: p.isCaptain ? `1px solid ${accent}44` : "1px solid transparent",
+          border: p.isCaptain ? `1px solid ${accentAlpha(accentVar, 27)}` : "1px solid transparent",
           opacity: isOnBench ? 0.75 : 1,
         }}>
         {displayPts}
@@ -145,7 +166,7 @@ function PitchBackground() {
   );
 }
 
-export default function TeamPitch({ managerId, accent }: { managerId?: number; accent: string }) {
+export default function TeamPitch({ managerId, accentVar }: { managerId?: number; accentVar: string }) {
   // Samme SWR-nøkkel-format som FplHero (usePicksForTeam i FplSection.tsx)
   // — deduplicerer nettverkskallet når begge komponenter viser samme lag,
   // i stedet for at spillerdata hentes to ganger.
@@ -160,7 +181,7 @@ export default function TeamPitch({ managerId, accent }: { managerId?: number; a
     return (
       <div className="flex items-center justify-center h-32">
         <div className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin"
-          style={{ borderColor: `${accent}66`, borderTopColor: "transparent" }} />
+          style={{ borderColor: accentAlpha(accentVar, 40), borderTopColor: "transparent" }} />
       </div>
     );
   }
@@ -199,7 +220,7 @@ export default function TeamPitch({ managerId, accent }: { managerId?: number; a
                 {POS_LABEL[row[0]?.elementType]}
               </p>
               <div className="flex justify-around items-center w-full px-1">
-                {row.map(p => <PlayerCard key={p.id} p={p} accent={accent} />)}
+                {row.map(p => <PlayerCard key={p.id} p={p} accentVar={accentVar} />)}
               </div>
             </div>
           ))}
@@ -212,7 +233,7 @@ export default function TeamPitch({ managerId, accent }: { managerId?: number; a
         <p className="text-[7px] font-black uppercase tracking-[0.22em] mb-2"
           style={{ color: "rgba(255,255,255,0.2)" }}>Benk</p>
         <div className="flex justify-around">
-          {bench.map(p => <PlayerCard key={p.id} p={p} accent={accent} />)}
+          {bench.map(p => <PlayerCard key={p.id} p={p} accentVar={accentVar} />)}
         </div>
       </div>
     </div>

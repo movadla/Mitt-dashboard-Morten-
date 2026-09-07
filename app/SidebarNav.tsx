@@ -48,6 +48,7 @@ function NavButton({
   onKeyDown,
   buttonRef,
   dense = false,
+  activeAccentClass,
 }: {
   item: NavItem;
   active: boolean;
@@ -58,6 +59,12 @@ function NavButton({
   // dense = mobil-gridets 4-per-rad-celler: mindre ikon/tekst/padding enn
   // desktop-railens knapper, som har mer bredde å boltre seg på.
   dense?: boolean;
+  // Fargen på den VALGTE flisens tekst - "text-accent" (Jobb, blå) eller
+  // "text-accent-privat" (Privat, oransje), DESIGN.md sin "egen fargekode-
+  // ledetråd for hvilken fane man er i". Uten denne som prop var den
+  // hardkodet til Privat sin farge, så Jobb-fanens valgte seksjon feilaktig
+  // viste seg i oransje i stedet for blått.
+  activeAccentClass: string;
 }) {
   const Icon = item.icon;
   return (
@@ -75,7 +82,7 @@ function NavButton({
         // .nav-tile / .nav-tile-active (globals.css): halvgjennomsiktig glass
         // som slipper bakgrunnsgradienten gjennom, slik at navigasjonen trer
         // tilbake og bare den valgte flisen er en tett, opplyst flate.
-        active ? "nav-tile-active font-semibold text-accent-privat" : "nav-tile text-ink-3 hover:text-ink-1"
+        active ? `nav-tile-active font-semibold ${activeAccentClass}` : "nav-tile text-ink-3 hover:text-ink-1"
       }`}
     >
       <span
@@ -98,6 +105,7 @@ function SortableNavButton({
   onSelect,
   onKeyDown,
   buttonRef,
+  activeAccentClass,
 }: {
   item: NavItem;
   active: boolean;
@@ -105,6 +113,7 @@ function SortableNavButton({
   onSelect: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   buttonRef?: (el: HTMLButtonElement | null) => void;
+  activeAccentClass: string;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
@@ -137,6 +146,7 @@ function SortableNavButton({
           onSelect={onSelect}
           onKeyDown={onKeyDown}
           buttonRef={buttonRef}
+          activeAccentClass={activeAccentClass}
         />
       </div>
     </div>
@@ -158,6 +168,8 @@ export function SidebarNav({
   reorderMode = false,
   onReorder,
   secondaryIds,
+  activeAccentClass = "text-accent-privat",
+  secondaryStale = false,
 }: {
   items: NavItem[];
   activeId: string;
@@ -169,6 +181,15 @@ export function SidebarNav({
   // stedet for å ta plass i det faste rutenettet. Kun mobil — desktop-railen
   // har vertikal plass til alle og viser dem alltid.
   secondaryIds?: string[];
+  // Se kommentaren på NavButton sin activeAccentClass-prop. Default til
+  // Privat sin farge for bakoverkompatibilitet, men Jobb-fanen sender
+  // eksplisitt "text-accent" (blå).
+  activeAccentClass?: string;
+  // Varsler på selve "Mer"-flisen når minst én skjult seksjon har utdaterte
+  // data (StaleSourceBanner-varselet den seksjonen ellers ville vist er
+  // usynlig så lenge flisen ikke er åpnet) - uten dette forsvant nettopp
+  // ferskhetsvarselet for de seksjonene som ligger bak "Mer".
+  secondaryStale?: boolean;
 }) {
   const railRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const stripRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -267,6 +288,7 @@ export function SidebarNav({
                   onSelect={onSelectItem}
                   onKeyDown={handleRailKeyDown}
                   buttonRef={buttonRef}
+                  activeAccentClass={activeAccentClass}
                 />
               ) : (
                 <NavButton
@@ -277,6 +299,7 @@ export function SidebarNav({
                   onSelect={onSelectItem}
                   onKeyDown={handleRailKeyDown}
                   buttonRef={buttonRef}
+                  activeAccentClass={activeAccentClass}
                 />
               );
             })}
@@ -311,6 +334,7 @@ export function SidebarNav({
                 stripRefs.current[item.id] = el;
               }}
               dense
+              activeAccentClass={activeAccentClass}
             />
           );
         })}
@@ -324,11 +348,17 @@ export function SidebarNav({
             aria-expanded={secondaryOpen}
             aria-label={secondaryOpen ? "Skjul flere seksjoner" : "Vis flere seksjoner"}
             className={`flex min-h-14 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center text-2xs font-medium transition ${
-              secondaryOpen ? "nav-tile-active text-accent-privat" : "nav-tile text-ink-3 hover:text-ink-1"
+              secondaryOpen ? `nav-tile-active ${activeAccentClass}` : "nav-tile text-ink-3 hover:text-ink-1"
             }`}
           >
-            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-3/10">
+            <span className="relative grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-3/10">
               <MoreHorizontal className="h-3 w-3 text-ink-3" />
+              {secondaryStale && !secondaryOpen && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-status-warning ring-2 ring-surface-0"
+                />
+              )}
             </span>
             <span className="w-full truncate leading-tight">Mer</span>
           </button>
@@ -349,6 +379,7 @@ export function SidebarNav({
                   stripRefs.current[item.id] = el;
                 }}
                 dense
+                activeAccentClass={activeAccentClass}
               />
             );
           })}

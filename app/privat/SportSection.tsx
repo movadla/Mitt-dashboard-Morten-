@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
-import { CardHeader } from "../CardShell";
+import { CardHeader, MutationError, SkeletonRows } from "../CardShell";
+import { SECTION_ACCENT } from "./sectionAccents";
 import { timeAgo } from "@/lib/timeAgo";
 import { localDateString, toOsloDateString } from "@/lib/payday";
 
@@ -19,23 +20,34 @@ function daysUntil(d: string) {
   return Math.ceil((new Date(d + "T00:00:00").getTime() - t.getTime()) / 86_400_000);
 }
 
+// Fargene selv er nå tokens i app/globals.css (--color-sport-*) - egen valør per tema der
+// kontrasten krever det (se worldcup i html[data-theme="dag"]) - i stedet for rå hex her,
+// som DESIGN.md sitt --t-*-system er bygget for å unngå (samme dag/kveld-felle som resten
+// av paletten, se innledningen der).
 const SPORT_COLOR: Record<string, string> = {
-  football: "#2563eb",
-  f1: "#dc2626",
-  darts: "#7c3aed",
-  athletics: "#d97706",
-  golf: "#15803d",
-  football_eli: "#ef4444",
-  football_obos: "#f97316",
-  football_pl: "#8b5cf6",
-  football_facup: "#be185d",
-  football_ucl: "#0891b2",
-  football_manu: "#da291c",
-  football_norway: "#1e3a8a",
-  football_no_uefa: "#4338ca",
-  worldcup: "#eab308",
-  personal: "#0e9e79",
+  football: "var(--color-sport-football)",
+  f1: "var(--color-sport-f1)",
+  darts: "var(--color-sport-darts)",
+  athletics: "var(--color-sport-athletics)",
+  golf: "var(--color-sport-golf)",
+  football_eli: "var(--color-sport-football-eli)",
+  football_obos: "var(--color-sport-football-obos)",
+  football_pl: "var(--color-sport-football-pl)",
+  football_facup: "var(--color-sport-football-facup)",
+  football_ucl: "var(--color-sport-football-ucl)",
+  football_manu: "var(--color-sport-football-manu)",
+  football_norway: "var(--color-sport-football-norway)",
+  football_no_uefa: "var(--color-sport-football-no-uefa)",
+  worldcup: "var(--color-sport-worldcup)",
+  personal: "var(--color-sport-personal)",
+  football_lyn: "var(--color-sport-lyn)",
 };
+
+// `col` er nå en CSS-variabel-referanse, ikke en hex-streng - kan derfor ikke lenger få en
+// alpha-hex-suffiks (`${col}12`) limt på. `color-mix()` gir samme lave-opasitets-tint.
+function tint(col: string, percent: number): string {
+  return `color-mix(in srgb, ${col} ${percent}%, transparent)`;
+}
 const SPORT_LABEL: Record<string, string> = {
   football: "Fotball",
   f1: "Formel 1",
@@ -52,6 +64,7 @@ const SPORT_LABEL: Record<string, string> = {
   football_no_uefa: "Norsk lag i Europa",
   worldcup: "VM 2026",
   personal: "Egen kamp",
+  football_lyn: "Lyn (hjemme)",
 };
 type LucideComp = React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 const SPORT_ICON: Record<string, LucideComp> = {
@@ -70,6 +83,7 @@ const SPORT_ICON: Record<string, LucideComp> = {
   football_pl: Trophy,
   football_facup: Trophy,
   football_ucl: Trophy,
+  football_lyn: Trophy,
 };
 
 // Nøytral "det er en full liga-runde denne dagen"-indikator — frikoblet fra
@@ -98,9 +112,9 @@ function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolea
       target="_blank"
       rel="noopener noreferrer"
       className={`flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-3/50 ${border ? "border-t border-line" : ""}`}
-      style={{ background: isHighlight ? `${col}12` : undefined }}
+      style={{ background: isHighlight ? tint(col, 7) : undefined }}
     >
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${col}18` }}>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: tint(col, 9) }}>
         {Icon && <Icon size={14} style={{ color: col }} />}
       </div>
       <div className="min-w-0 flex-1">
@@ -122,7 +136,7 @@ function LeagueSubsection({ cat, matches }: { cat: string; matches: SportEvent[]
   return (
     <div className="border-t border-line">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-2.5 text-left">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${col}18` }}>
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: tint(col, 9) }}>
           <Trophy size={14} style={{ color: col }} />
         </div>
         <div className="min-w-0 flex-1">
@@ -264,10 +278,15 @@ export function SportSection({
   events,
   loading,
   fetchedAt,
+  error,
 }: {
   events: SportEvent[];
   loading: boolean;
   fetchedAt?: number | null;
+  // Feilen fra useSWR i PrivatPanel.tsx - tidligere ikke sendt inn i det hele tatt, så en
+  // feilet /api/sports-henting så identisk ut som en helt vanlig, tom dag ("Ingen i dag"),
+  // uten noe tegn til brukeren om at noe faktisk gikk galt.
+  error?: unknown;
 }) {
   // Åpen fra start — resten av uken skal vises uten et ekstra klikk.
   const [showWeek, setShowWeek] = useState(true);
@@ -296,19 +315,24 @@ export function SportSection({
   );
 
   return (
-    <div className="border-t-2 border-t-accent/60 p-4">
+    // border-t-sky-400 må matche SECTION_ACCENT.sport — se sectionAccents.ts. Kortet brukte
+    // tidligere `accent`, altså JOBB-fanens blå, midt i Privat-fanen (2026-09-07).
+    <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Sport"
-        subtitle={todayEvents.length > 0 ? `${todayEvents.length} i dag` : "Ingen i dag"}
+        stat={
+          todayEvents.length > 0
+            ? { value: todayEvents.length, label: todayEvents.length === 1 ? "kamp i dag" : "kamper i dag" }
+            : undefined
+        }
+        subtitle={todayEvents.length === 0 ? "Ingen kamper i dag" : undefined}
         icon={Trophy}
-        iconColorClass="text-accent"
+        iconColorClass={SECTION_ACCENT.sport}
       />
         {loading && !events.length ? (
-          <div className="flex flex-col gap-2">
-            {[0, 1, 2].map((n) => (
-              <div key={n} className="h-12 animate-pulse rounded-xl bg-surface-2" />
-            ))}
-          </div>
+          <SkeletonRows count={3} className="h-12" />
+        ) : error && !events.length ? (
+          <MutationError message="Kunne ikke hente sportsdata — prøv å laste siden på nytt." />
         ) : (
           <div className="flex flex-col gap-2">
             {todayEvents.length > 0 ? (
@@ -427,13 +451,18 @@ export function WorldCupSection({
   events,
   loading = false,
   fetchedAt,
+  error,
 }: {
   events: SportEvent[];
   loading?: boolean;
   fetchedAt?: number | null;
+  error?: unknown;
 }) {
   const [showMore, setShowMore] = useState(false);
-  if (!events.length && !loading) return null;
+  // PrivatPanel.tsx sin egen render-gate matcher denne (worldCup.length > 0 || loading ||
+  // error) - uten `error` her forsvant HELE seksjonen sporløst fra "Mer"-navigasjonen ved en
+  // feilet henting, i stedet for å vise at noe faktisk gikk galt.
+  if (!events.length && !loading && !error) return null;
 
   const today = todayStr();
   const byDay = new Map<string, SportEvent[]>();
@@ -456,11 +485,9 @@ export function WorldCupSection({
     <div className="p-4">
       <CardHeader title="VM 2026" subtitle={`${events.length} kamper`} icon={Trophy} />
         {loading && !events.length ? (
-          <div className="flex flex-col gap-2">
-            {[0, 1, 2].map((n) => (
-              <div key={n} className="h-12 animate-pulse rounded-xl bg-surface-2" />
-            ))}
-          </div>
+          <SkeletonRows count={3} className="h-12" />
+        ) : error && !events.length ? (
+          <MutationError message="Kunne ikke hente VM-data — prøv å laste siden på nytt." />
         ) : (
           <div className="flex flex-col gap-2">
             {todayMatches.length > 0 ? (

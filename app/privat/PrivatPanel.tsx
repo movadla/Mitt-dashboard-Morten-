@@ -20,6 +20,7 @@ import DiarySection from "./DiarySection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
 import PrivatSearch from "./PrivatSearch";
+import { SECTION_ACCENT } from "./sectionAccents";
 import { localDateString } from "@/lib/payday";
 import { APP_NAVIGATE_EVENT, consumePendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
 import type { ReminderLink } from "@/lib/reminders";
@@ -64,39 +65,39 @@ const DEFAULT_NAV_ORDER = [
   "fpl",
 ];
 
-// Ikon/farge per kategori — samme verdier som hver seksjon selv sender til
-// CardHeader internt, gjenbrukt her uendret slik at nav-elementet matcher
-// seksjonens egen identitet.
+// Ikon/farge per kategori. Fargen leses fra SECTION_ACCENT (app/privat/sectionAccents.ts) —
+// samme kilde seksjonene selv bruker, slik at nav og kort ikke KAN drifte fra hverandre. Se
+// kommentaren i den filen for hvilke seksjoner som faktisk hadde driftet før dette.
 export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColorClass: string }> = {
-  today: { label: "I dag", icon: Home, iconColorClass: "text-accent-privat" },
-  reminders: { label: "Påminnelser", icon: Bell, iconColorClass: "text-accent-privat" },
-  calendar: { label: "Kalender", icon: Calendar, iconColorClass: "text-source-teams" },
-  events: { label: "Hendelser", icon: PartyPopper, iconColorClass: "text-accent-privat" },
-  notes: { label: "Notater", icon: StickyNote, iconColorClass: "text-amber-400" },
-  projects: { label: "Prosjekter", icon: FolderKanban, iconColorClass: "text-indigo-400" },
-  diary: { label: "Dagbok", icon: Moon, iconColorClass: "text-violet-400" },
-  finance: { label: "Økonomi", icon: Wallet, iconColorClass: "text-source-outlook" },
-  sport: { label: "Sport", icon: Trophy, iconColorClass: "text-accent" },
-  worldcup: { label: "VM", icon: Trophy, iconColorClass: "text-accent" },
-  trening: { label: "Trening", icon: Dumbbell, iconColorClass: "text-emerald-400" },
-  alfred: { label: "Alfred", icon: Bot, iconColorClass: "text-status-action" },
-  shopping: { label: "Handleliste", icon: ShoppingCart, iconColorClass: "text-cyan-400" },
-  // text-ink-1, ikke text-white: i dagmodus er kortene hvite, og et hvitt
-  // ikon på hvitt kort er usynlig. ink-1 følger temaet.
-  news: { label: "Nyheter", icon: Newspaper, iconColorClass: "text-ink-1" },
-  fpl: { label: "FPL", icon: Shirt, iconColorClass: "text-lime-400" },
+  today: { label: "I dag", icon: Home, iconColorClass: SECTION_ACCENT.today },
+  reminders: { label: "Påminnelser", icon: Bell, iconColorClass: SECTION_ACCENT.reminders },
+  calendar: { label: "Kalender", icon: Calendar, iconColorClass: SECTION_ACCENT.calendar },
+  events: { label: "Hendelser", icon: PartyPopper, iconColorClass: SECTION_ACCENT.events },
+  notes: { label: "Notater", icon: StickyNote, iconColorClass: SECTION_ACCENT.notes },
+  projects: { label: "Prosjekter", icon: FolderKanban, iconColorClass: SECTION_ACCENT.projects },
+  diary: { label: "Dagbok", icon: Moon, iconColorClass: SECTION_ACCENT.diary },
+  finance: { label: "Økonomi", icon: Wallet, iconColorClass: SECTION_ACCENT.finance },
+  sport: { label: "Sport", icon: Trophy, iconColorClass: SECTION_ACCENT.sport },
+  worldcup: { label: "VM", icon: Trophy, iconColorClass: SECTION_ACCENT.worldcup },
+  trening: { label: "Trening", icon: Dumbbell, iconColorClass: SECTION_ACCENT.trening },
+  alfred: { label: "Alfred", icon: Bot, iconColorClass: SECTION_ACCENT.alfred },
+  shopping: { label: "Handleliste", icon: ShoppingCart, iconColorClass: SECTION_ACCENT.shopping },
+  news: { label: "Nyheter", icon: Newspaper, iconColorClass: SECTION_ACCENT.news },
+  fpl: { label: "FPL", icon: Shirt, iconColorClass: SECTION_ACCENT.fpl },
 };
 
 export default function PrivatPanel() {
   const { data: fplData, isLoading: fplLoading } = useSWR<FplData>("/api/fpl", jsonFetcher);
-  const { data: sportsData, isLoading: sportsLoading } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>(
-    "/api/sports",
-    jsonFetcher,
-  );
-  const { data: worldCupData, isLoading: worldCupLoading } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>(
-    "/api/worldcup",
-    jsonFetcher,
-  );
+  const {
+    data: sportsData,
+    isLoading: sportsLoading,
+    error: sportsError,
+  } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>("/api/sports", jsonFetcher);
+  const {
+    data: worldCupData,
+    isLoading: worldCupLoading,
+    error: worldCupError,
+  } = useSWR<{ events: SportEvent[]; fetchedAt?: number }>("/api/worldcup", jsonFetcher);
   const fpl = fplData ?? null;
   const sports = sportsData?.events ?? [];
   const sportsFetchedAt = sportsData?.fetchedAt ?? null;
@@ -212,10 +213,10 @@ export default function PrivatPanel() {
     diary: <DiarySection />,
     projects: <ProjectsSection />,
     finance: <FinanceSection />,
-    sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} />,
+    sport: <SportSection events={sports} loading={sportsLoading} fetchedAt={sportsFetchedAt} error={sportsError} />,
     worldcup:
-      worldCup.length > 0 || worldCupLoading ? (
-        <WorldCupSection events={worldCup} loading={worldCupLoading} fetchedAt={worldCupFetchedAt} />
+      worldCup.length > 0 || worldCupLoading || worldCupError ? (
+        <WorldCupSection events={worldCup} loading={worldCupLoading} fetchedAt={worldCupFetchedAt} error={worldCupError} />
       ) : null,
     trening: <TreningSection />,
     alfred: <AlfredSection />,
