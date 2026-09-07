@@ -27,18 +27,27 @@ export interface InvoicedSnapshot {
 // (samme reelle tall her, ingen leietaker-identifiserende data i denne konstanten).
 // OPPDATERT 2026-08-30: se lib/incomeForecast.local.ts sin tilsvarende kommentar - periode 8
 // dekker nå hele august (økte kun ~680 000 kr, IKKE hovedforklaringen på gapet mot budsjett).
+// OPPDATERT 2026-09-07 (v22, fersk uttrekk periode 1-9): se lib/incomeForecast.local.ts sin
+// tilsvarende kommentar for full metode/forklaring - kort oppsummert: hentet helt på nytt fra NXT,
+// nå periode 1-9 (periode 9 delvis siden dagens dato er 2026-09-07). INVOICED og
+// BOOKED_3600_3699 er denne runden hentet fra SAMME NXT-spørring/tidspunkt og stemmer derfor
+// eksakt overens (totalDelA/totalDelB her = BOOKED_3600_3699 sine totalDelA/totalDelB), i
+// motsetning til tidligere runder der de kom fra ulik metode/tidspunkt med et lite kjent avvik.
+// Periode 1-8 er SVÆRT nær forrige uttrekk (delA opp ~32 350 kr av ~493 mill, delB praktisk talt
+// uendret) - bekrefter konsistent metodikk, kun periode 9 er reelt nytt.
 export const INVOICED: InvoicedSnapshot = {
-  sistOppdatert: "2026-08-30",
+  sistOppdatert: "2026-09-07",
   ar: 2026,
   periods: [
-    { periode: "2026-01", delA: 141302960.75, delB: 12209573 },
-    { periode: "2026-02", delA: 9026384.5, delB: 286411 },
-    { periode: "2026-03", delA: 2914222, delB: 107460 },
-    { periode: "2026-04", delA: 169500119.92, delB: 13329754.13 },
-    { periode: "2026-05", delA: -5225742.24, delB: 866271.01 },
-    { periode: "2026-06", delA: 13048334.44, delB: 1110845.79 },
-    { periode: "2026-07", delA: 156629942.12, delB: 11678877.66 },
-    { periode: "2026-08", delA: 5769399.16, delB: 324461.5 },
+    { periode: "2026-01", delA: 141302960.75, delB: 12209572.7 },
+    { periode: "2026-02", delA: 9026384.36, delB: 286410.92 },
+    { periode: "2026-03", delA: 2914221.77, delB: 107459.94 },
+    { periode: "2026-04", delA: 169500120.24, delB: 13329754.75 },
+    { periode: "2026-05", delA: -5225742.48, delB: 866270.42 },
+    { periode: "2026-06", delA: 13048334.02, delB: 1110845.81 },
+    { periode: "2026-07", delA: 156629941.78, delB: 11678878.48 },
+    { periode: "2026-08", delA: 5801749.73, delB: 324460.8 },
+    { periode: "2026-09", delA: 4193282.75, delB: 367122.27 },
   ],
 };
 
@@ -436,32 +445,42 @@ export interface BookedAccountRangeSnapshot {
 // Bygg-/selskapsnavn, ikke leietaker-identifiserende - identisk med .local.ts, ingen
 // anonymisering nødvendig. EIERANDEL-KORRIGERT 2026-08-24, se lib/incomeForecast.local.ts
 // for full metodikk-kommentar.
+// OPPDATERT 2026-09-07 (v22, samme kilde/tidspunkt som INVOICED): se lib/incomeForecast.local.ts
+// sin tilsvarende kommentar for full forklaring - kort oppsummert: hentet på nytt med EKSPLISITT
+// period<=9-filter (ikke lenger "hele 2026 uten periodebegrensning"), så totalDelA/totalDelB her
+// er nå de HELT SAMME tallene som INVOICED sin periode-1-9-sum - de to stemmer eksakt overens for
+// første gang. AVVIK FUNNET OG RAPPORTERT: Mustad Eiendom AS sin bygg[]-sum mangler 571 134 kr
+// (~0,12 %) sammenlignet med selskapets belop - et lite antall posteringer i kontospennet mangler
+// orgUnit3/bygg-kode i NXT (verifisert med ROLLUP-spørring), beløpet er IKKE fordelt til noe bygg
+// under men ER med i selskapets totale belop. Lilleakerveien 32B AS sitt belop falt til 568 545,75
+// kr (fra 758 061 kr) fordi en forhåndsbokført Q4-postering (periode 10, utenfor jan-sep) korrekt
+// utelates nå som period<=9 filtreres eksplisitt - en rettelse, ikke et datatap.
 export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
-  sistOppdatert: "2026-08-30",
+  sistOppdatert: "2026-09-07",
   ar: 2026,
   kontoFra: 3600,
   kontoTil: 3699,
-  totalBelop: 536472358.23,
-  totalDelA: 494414072.1,
-  totalDelB: 42058286.13,
+  totalBelop: 537472029.01,
+  totalDelA: 497191252.92,
+  totalDelB: 40280776.09,
   perSelskap: [
     {
       selskap: "Mustad Eiendom AS",
-      belop: 458219079.79,
+      belop: 459305789.81,
       bygg: [
-        { bygg: "CC Vest Senter", belop: 118910053.15 },
+        { bygg: "CC Vest Senter", belop: 118848013.46 },
         { bygg: "Lilleakerveien 6", belop: 58138396.32 },
         { bygg: "Lilleakerveien 4E", belop: 36886606.68 },
-        { bygg: "Lilleakerveien 8", belop: 34812848.87 },
-        { bygg: "Lilleakerveien 2A", belop: 28937030.09 },
+        { bygg: "Lilleakerveien 8", belop: 34806848.87 },
+        { bygg: "Lilleakerveien 2A", belop: 28949080.59 },
         { bygg: "Lilleakerveien 2B", belop: 23455365.88 },
         { bygg: "Vollsveien 13H", belop: 21096274.79 },
-        { bygg: "Lilleakerveien 4C", belop: 17359264.18 },
+        { bygg: "Lilleakerveien 4C", belop: 18159264.18 },
         { bygg: "Mustads vei 1", belop: 12807323.07 },
         { bygg: "Lilleakerveien 4A", belop: 12304432.33 },
-        { bygg: "Lilleakerveien 10", belop: 11347054.73 },
+        { bygg: "Lilleakerveien 10", belop: 11512588.06 },
         { bygg: "Lilleakerveien 6D", belop: 10321655.74 },
-        { bygg: "Vollsveien 19", belop: 8710110.03 },
+        { bygg: "Vollsveien 19", belop: 8738235.03 },
         { bygg: "Vollsveien 17", belop: 8215342.61 },
         { bygg: "Lilleakerveien 2C", belop: 6704528.93 },
         { bygg: "Lilleakerveien 2D", belop: 5167521.8 },
@@ -472,23 +491,22 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
         { bygg: "Lilleakerveien 2 - Felles", belop: 2217767 },
         { bygg: "Vollsveien 13D", belop: 2192951.19 },
         { bygg: "Lilleakerveien 4CDEF Uteparkering", belop: 2115520.88 },
-        { bygg: "Vollsveien 13B", belop: 2098079.4 },
+        { bygg: "Vollsveien 13B", belop: 2110067.48 },
         { bygg: "Lilleakerveien 24C", belop: 1687812.4 },
+        { bygg: "Vollsveien 17-19-21 Uteparkering", belop: 1551270.17 },
         { bygg: "Vollsveien 21", belop: 1537214.14 },
         { bygg: "Sponhoggveien 2", belop: 1534648.76 },
-        { bygg: "Vollsveien 17-19-21 Uteparkering", belop: 1490334.17 },
         { bygg: "Vollsveien 13E", belop: 1446392.98 },
         { bygg: "Lilleakerveien 30", belop: 1277648.42 },
         { bygg: "Lilleakerveien 4A Modus", belop: 1159782 },
+        { bygg: "Vollsveien 13-17-19 Uteparkering", belop: 971037.48 },
         { bygg: "P-Bro mellom LV8 og LV4", belop: 968059.11 },
-        { bygg: "Vollsveien 13-17-19 Uteparkering", belop: 907919.68 },
         { bygg: "Lilleakerveien 16 Bilforretning", belop: 703333.33 },
         { bygg: "Vollsveien 13F", belop: 697199.16 },
         { bygg: "Lilleakerveien 18", belop: 696736.54 },
-        { bygg: "Vollsveien 17 Sør Uteparkering", belop: 577006.8 },
         { bygg: "Mustads vei 10", belop: 505886.27 },
         { bygg: "(Ikke bruk) Uteområde Sør", belop: 371968 },
-        { bygg: "Lilleakerveien 2G", belop: 284044 },
+        { bygg: "Lilleakerveien 2G", belop: 328543 },
         { bygg: "Mustads vei 12", belop: 277931.6 },
         { bygg: "Lilleakerveien 14 Uteparkering", belop: 273460.41 },
         { bygg: "Vollsveien 13D Uteparkering", belop: 181788.34 },
@@ -502,25 +520,23 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
         { bygg: "Lilleakerveien 10 Uteparkering", belop: 61358 },
         { bygg: "Fåbro Gårdeierforening", belop: 49216 },
         { bygg: "Carl Lundgrensvei Uteparkering", belop: 43250 },
-        { bygg: "Arnstein Arnebergs vei 4", belop: 31500 },
         { bygg: "Lilleakerveien 16 Uteparkering", belop: 21987.54 },
-        { bygg: "Lilleakerveien 14", belop: 0 },
+        { bygg: "Vollsveien 17 Sør Uteparkering", belop: 5872.8 },
       ],
     },
     {
       selskap: "Strandveien 4-8 AS",
-      belop: 23413606.28,
+      belop: 23413606.29,
       bygg: [
-        { bygg: "Strandveien 4-8", belop: 23413606.28 },
-        { bygg: "Fellesanlegg", belop: 0 },
+        { bygg: "Strandveien 4-8", belop: 23413606.29 },
       ],
     },
     {
       selskap: "Lilleakerveien 14 AS",
-      belop: 21013425.75,
+      belop: 21052050.75,
       bygg: [
-        { bygg: "Lilleakerveien 14", belop: 20577574.41 },
-        { bygg: "Lilleakerveien 14 Uteparkering", belop: 435851.34 },
+        { bygg: "Lilleakerveien 14", belop: 20622902.38 },
+        { bygg: "Lilleakerveien 14 Uteparkering", belop: 429148.37 },
       ],
     },
     {
@@ -542,11 +558,11 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
     },
     {
       selskap: "Mustadboliger AS",
-      belop: 3328800.35,
+      belop: 3392651.35,
       bygg: [
         { bygg: "Lilleakerveien 26", belop: 1804307.71 },
         { bygg: "Gamle Drammensvei 10", belop: 640186.6 },
-        { bygg: "Arnstein Arnebergs vei 4", belop: 375487.85 },
+        { bygg: "Arnstein Arnebergs vei 4", belop: 439338.85 },
         { bygg: "Lilleakerveien 19", belop: 341618.19 },
         { bygg: "Holmenveien 16", belop: 142200 },
         { bygg: "Mustadkroken", belop: 25000 },
@@ -560,17 +576,17 @@ export const BOOKED_3600_3699: BookedAccountRangeSnapshot = {
       ],
     },
     {
-      selskap: "Lilleakerveien 32B AS",
-      belop: 758061,
-      bygg: [
-        { bygg: "Lilleakerveien 32B", belop: 758061 },
-      ],
-    },
-    {
       selskap: "Strandveien 10 AS",
       belop: 582241.06,
       bygg: [
         { bygg: "Strandveien 10", belop: 582241.06 },
+      ],
+    },
+    {
+      selskap: "Lilleakerveien 32B AS",
+      belop: 568545.75,
+      bygg: [
+        { bygg: "Lilleakerveien 32B", belop: 568545.75 },
       ],
     },
   ],
