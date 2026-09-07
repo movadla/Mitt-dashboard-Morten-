@@ -2400,17 +2400,44 @@ function finnSammenligningspunkt(punkter: HistoryPoint[], fraDato: string, dager
   return kandidater[0] ?? null;
 }
 
+// v18 (2026-09-07, "sikre tallgrunnlaget/visualiser bedre"-gjennomgangen): liten håndrullet
+// SVG-sparkline av kjørehistorikken - samme prinsipp som IncomeWaterfall (ingen chart-bibliotek i
+// prosjektet, og dette er for lite til å rettferdiggjøre å legge til ett). Kun retning/forløp, ikke
+// eksakte verdier - de vises allerede i TrendIndicator og selve totalen over.
+function HistorySparkline({ history }: { history: HistoryPoint[] }) {
+  if (history.length < 2) return null;
+  const width = 96;
+  const height = 24;
+  const verdier = history.map((p) => p.kjerneTotal);
+  const min = Math.min(...verdier);
+  const max = Math.max(...verdier);
+  const span = max - min || 1;
+  const punkter = history.map((p, i) => {
+    const x = (i / (history.length - 1)) * width;
+    const y = height - ((p.kjerneTotal - min) / span) * height;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="mt-1 text-ink-4" aria-hidden="true">
+      <polyline points={punkter.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function TrendIndicator({ history, fraDato, naverendeTotal }: { history: HistoryPoint[]; fraDato: string; naverendeTotal: number }) {
   const sammenligning = useMemo(() => finnSammenligningspunkt(history, fraDato, 7), [history, fraDato]);
   if (!sammenligning) return <p className="mt-1 text-2xs text-ink-4">Ingen tidligere målepunkt ennå - kommer etter noen dagers bruk.</p>;
   const delta = Math.round(naverendeTotal - sammenligning.kjerneTotal);
   const Icon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
   return (
-    <p className="mt-1 flex items-center gap-1 text-2xs text-ink-3">
-      <Icon className="h-3 w-3 shrink-0" />
-      {delta === 0 ? "Uendret" : formatKr(delta, true)} siden {formatDateDMY(sammenligning.dato)}
-      <span className="text-ink-4"> (bokført+gjenstår)</span>
-    </p>
+    <>
+      <p className="mt-1 flex items-center gap-1 text-2xs text-ink-3">
+        <Icon className="h-3 w-3 shrink-0" />
+        {delta === 0 ? "Uendret" : formatKr(delta, true)} siden {formatDateDMY(sammenligning.dato)}
+        <span className="text-ink-4"> (bokført+gjenstår)</span>
+      </p>
+      <HistorySparkline history={history} />
+    </>
   );
 }
 
@@ -2488,6 +2515,51 @@ function KpiStrip({
           </div>
         </TooltipContent>
       </Tooltip>
+    </div>
+  );
+}
+
+// v18 (2026-09-07, "visualiser bedre"-gjennomgangen): de største avvikene mot budsjett vises i
+// dag kun som sorterte tabellrader i Leieinntekter - må skumme hele tabellen for å se hvem som
+// stikker seg ut. Denne viser topp 8 (etter |avvik|) som stolper skalert til den STØRSTE av dem,
+// grønt/rødt etter samme fortegn-konvensjon som resten av siden (over/under budsjett).
+function StorstAvvikBlock({ rows }: { rows: TenantForecastRow[] }) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Størst avvik", false);
+  const topp = useMemo(
+    () =>
+      rows
+        .filter((r) => r.avvik !== null && Math.round(r.avvik) !== 0)
+        .sort((a, b) => Math.abs(b.avvik ?? 0) - Math.abs(a.avvik ?? 0))
+        .slice(0, 8),
+    [rows],
+  );
+  if (topp.length === 0) return null;
+  const maks = Math.max(...topp.map((r) => Math.abs(r.avvik ?? 0)));
+
+  return (
+    <div className="rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader title="Størst avvik mot budsjett" subtitle={`Topp ${topp.length} leieforhold`} collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+      {!collapsed && (
+        <div className="flex flex-col gap-2">
+          {topp.map((r) => {
+            const avvik = r.avvik ?? 0;
+            const bredde = maks > 0 ? (Math.abs(avvik) / maks) * 100 : 0;
+            return (
+              <div key={r.navn} className="flex flex-col gap-0.5">
+                <div className="flex items-baseline justify-between gap-2 text-2xs">
+                  <span className="min-w-0 truncate text-ink-2">{r.navn}</span>
+                  <span className={`shrink-0 tabular-nums font-medium ${avvik >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+                    {formatKr(avvik, true)}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-4/15">
+                  <div className={`h-full rounded-full ${avvik >= 0 ? "bg-status-positive" : "bg-status-danger"}`} style={{ width: `${Math.max(bredde, 1.5)}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -4430,6 +4502,7 @@ export default function IncomeForecastSection() {
               <MainForecastBox prognose={prognose} potential={potential} onPotentialUpdated={handlePotentialUpdated} />
 
               <LeieforholdReviewBlock snapshot={remainingTenantsSnapshot} loading={loadingRemainingTenants} />
+              <StorstAvvikBlock rows={tenantForecastTable?.delA.leietaker ?? []} />
 
               <TenantForecastTable
                 title="Leieinntekter"
@@ -4460,6 +4533,17 @@ export default function IncomeForecastSection() {
               <div className="flex flex-col gap-1.5">
                 <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
                 <ReconciliationPanel advarsler={advarslerLive} />
+                <a
+                  href="/api/income-forecast/backup"
+                  download={`inntektsprognose-backup-${idagIso}.json`}
+                  className="mt-0.5 inline-flex w-fit items-center gap-1 text-2xs font-medium text-accent hover:text-accent/80"
+                >
+                  Last ned backup av manuelt innhold (JSON)
+                </a>
+                <p className="text-2xs text-ink-4">
+                  Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler - finnes KUN i Redis, ikke re-utledbart fra
+                  Fazile/NXT. Ta en kopi av og til.
+                </p>
               </div>
 
               <InvoicedBlock />

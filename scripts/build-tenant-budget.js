@@ -148,7 +148,7 @@ const AVSTEMMING_LABEL = "Avstemmingsdifferanse (Excel redigert etter at 'harde 
 
 const fs = require("fs");
 const path = require("path");
-const { loadEnvLocal, getFromRedis, pushToRedis, normalizeName, coreName } = require("./lib/refresh-helpers");
+const { loadEnvLocal, getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "budsjett-2026-excel-raw.json");
 const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
@@ -593,6 +593,20 @@ async function main() {
   console.log(`  Matching-metode (Del A): ${JSON.stringify(viaCount)}`);
   const avstemmingDiff = delA.leietaker.find((r) => r.navn === AVSTEMMING_LABEL);
   console.log(`  Avstemmingsdifferanse Del A: ${avstemmingDiff ? avstemmingDiff.budsjett.toLocaleString("nb-NO") : 0} kr (${avstemmingDiff ? ((Math.abs(avstemmingDiff.budsjett) / OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026) * 100).toFixed(2) : "0"}% av total) - IKKE en matchefeil, se filhode.`);
+  // v18 (2026-09-07, "sikre tallgrunnlaget"-gjennomgangen): verifyTotal() var bygget i
+  // refresh-helpers.js men aldri koblet inn noe sted - den ekte, tette kontrollsummen finnes
+  // HER: `sumFunnet` (Del A FØR avstemmingsdifferanse-plugget) skal alltid ligge svært nær
+  // OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026 (dokumentert historikk i filhodet: 22 øre - 1,4 mill kr
+  // gap i kjente gode kjøringer, mot ~22 mill kr / ~3 % da matchingen faktisk var ødelagt, v3).
+  // 0,5 %-toleransen fanger en reell regresjon i matchingen UTEN å plugges stille bort av
+  // medAvstemming() sin utjevningsrad - som ellers ville latt Del A-SUMMEN se perfekt ut selv om
+  // stadig færre rader faktisk ble matchet til riktig leietaker.
+  verifyTotal(
+    "Budsjett Del A: matchet sum (før avstemmingsdifferanse-plugg) vs. offisiell total (Oppsummering juli-2026-arket)",
+    OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026 - (avstemmingDiff ? avstemmingDiff.budsjett : 0),
+    OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026,
+    0.5,
+  );
   console.log(`  Største uten-treff-rader (>50 000 kr), med Finance sin egen kommentar der den finnes:`);
   utenTreffStore
     .filter((r) => Math.abs(r.belop) > 50000)

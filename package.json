@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "tunnel": "powershell -ExecutionPolicy Bypass -File start-dev.ps1"
+    "tunnel": "powershell -ExecutionPolicy Bypass -File start-dev.ps1",
+    "refresh:income-forecast": "node scripts/refresh-income-forecast.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

@@ -236,7 +236,7 @@ const BUILDING_ALIASES = {
   "strandveien uteparkering": "Strandveien 10", // Vedeld: 19 924,03 vs. forventet 20 118,72 (liten rest, trolig delvis år)
 };
 
-const { loadEnvLocal, pushToRedis, normalizeName, coreName } = require("./lib/refresh-helpers");
+const { loadEnvLocal, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
 
 // Onepark AS - parkeringsdrift utenfor Fazile rent_roll (etterfakturert basert på tilsendt
 // omsetningsrapport, ikke en vanlig leiekontrakt). De 6 leieforholdene under nulles derfor
@@ -586,9 +586,15 @@ function main() {
   const nxtGroups = new Map(); // "tenant||bygg" -> { alleredeA, alleredeB }
   let sumOmsetningsavregning2025Fordelt = 0; // reelle leietakeres andel av avregningen
   let sumOmsetningsavregning2025Avsetning = 0; // "Andre" (customerNo=0) sin side - selve avsetningen/reverseringen
+  // v18 (2026-09-07, "sikre tallgrunnlaget"-gjennomgangen): rå-sum av HVER linje i
+  // booked-tenants-snapshot.json, uttrekksfilas EGET fasit-felt (nxtData.totalBelop) er en
+  // uavhengig kontrollsum av samme fil - fanger opp en korrupt/avkuttet/feilparset uttrekksfil
+  // FØR den forplanter seg videre inn i leieforhold-matchingen (se verifyTotal-kallet under).
+  let sumAlleNxtLinjer = 0;
   for (const t of nxtData.tenants) {
     const erAndreUtenLeietakerreferanse = normalizeName(t.navn) === OMSETNINGSAVREGNING_2025_ANDRE_NAVN;
     for (const l of t.lines) {
+      sumAlleNxtLinjer += l.belop;
       if (OMSETNINGSAVREGNING_2025_KONTI.has(l.accountNo)) {
         // "Andre" sin linje er avsetningen/reverseringen selv - MÅ holdes separat fra det som
         // er fordelt til reelle leietakere, ellers netter de to seg mot hverandre og "fordelt"
@@ -609,6 +615,11 @@ function main() {
   }
   sumOmsetningsavregning2025Fordelt = round2(sumOmsetningsavregning2025Fordelt);
   sumOmsetningsavregning2025Avsetning = round2(sumOmsetningsavregning2025Avsetning);
+  // v18: kaster hvis rå-summen av alle enkeltlinjer avviker >0,5 % fra uttrekksfilas eget
+  // totalBelop-felt - fanger en korrupt/avkuttet booked-tenants-snapshot.json FØR den brukes.
+  if (typeof nxtData.totalBelop === "number") {
+    verifyTotal("NXT booked-tenants-snapshot.json: sum av enkeltlinjer vs. filas eget totalBelop-felt", round2(sumAlleNxtLinjer), nxtData.totalBelop, 0.5);
+  }
 
   // ID-basert matching (v3, primær metode - se v3-avsnittet i filhodet). Bygges fra de RÅ
   // per-selskaps NXT-filene (customerNo pr. linje), ikke fra den navn-aggregerte
