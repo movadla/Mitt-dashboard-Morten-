@@ -1,6 +1,12 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 import { getTenantForecastComments } from "./tenantForecastComments";
+import { isSystemRow } from "./tenantForecastSystemRow";
+
+// Re-eksportert for eksisterende importer (lib/tenantForecastTable.test.ts) - selve
+// definisjonen bor i tenantForecastSystemRow.ts siden DENNE filen importerer kv.ts (server-only)
+// på toppnivå, se dens filhode for hvorfor det er farlig for klientkode.
+export { isSystemRow } from "./tenantForecastSystemRow";
 
 export interface TenantForecastLine {
   eiendom: string;
@@ -131,24 +137,8 @@ export interface TenantForecastTableSnapshot {
 const HASH_KEY = "jobb:inntektsprognose-leietaker-tabell";
 const FIELD = "snapshot";
 
-// Syntetiske rad-navn fra scripts/build-tenant-budget.js (MUSTAD_INTERN_LABEL/AVSTEMMING_LABEL
-// der) - IKKE ekte leietakernavn, og skal derfor ALDRI anonymiseres (ellers vises de som
-// misvisende "Demokunde N" i prod). Hold i sync hvis label-tekstene endres.
-const SYSTEM_ROW_LABELS = new Set([
-  "Mustad Eiendom (intern bruk, ikke leieforhold)",
-  "Avstemmingsdifferanse (Excel redigert etter at 'harde tall' ble limt inn i Oppsummering-arket)",
-]);
-// "Ledig (vakante lokaler)" er siden v6 (2026-08-28) splittet i én rad pr. bygg, og siden v8
-// (2026-08-29) med korte radnavn ("Ledig V13D" osv., se BYGG_KORTKODE i build-tenant-budget.js) -
-// derfor en prefix-sjekk her i stedet for eksakt Set-medlemskap som de to andre systemradene.
-const LEDIG_ROW_PREFIX = "Ledig";
-
-// Eksportert (2026-09-07) slik at IncomeForecastSection.tsx sin StorstAvvikBlock kan filtrere
-// bort synteiske rader (Ledig-rader, "Mustad Eiendom (intern bruk...)", avstemmingsdifferanse)
-// på samme måte som resten av appen - i stedet for å risikere en egen, driftende kopi av logikken.
-export function isSystemRow(navn: string): boolean {
-  return SYSTEM_ROW_LABELS.has(navn) || navn.startsWith(LEDIG_ROW_PREFIX);
-}
+// isSystemRow (og SYSTEM_ROW_LABELS/LEDIG_ROW_PREFIX) bor i ./tenantForecastSystemRow - se
+// import/re-export øverst i filen og den filens eget filhode for hvorfor.
 
 // Ledig-radenes auto-kommentar (settAutoKommentar i build-tenant-forecast-table.js) lister
 // postene ved navn - må bygges på nytt fra de anonymiserte postene i prod, ellers lekker

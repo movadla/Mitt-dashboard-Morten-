@@ -39,7 +39,10 @@ import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
 import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot, ContractExpiryStatus } from "@/lib/contractExpiry2026";
 import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
-import { isSystemRow } from "@/lib/tenantForecastTable";
+// isSystemRow importeres fra tenantForecastSystemRow, IKKE tenantForecastTable - sistnevnte
+// importerer kv.ts (server-only, Redis) på toppnivå, så et verdi-import derfra ville dratt hele
+// ioredis-pakken inn i denne klientkomponentens bundle og krasjet builden.
+import { isSystemRow } from "@/lib/tenantForecastSystemRow";
 import type { TenantForecastGrupper, TenantForecastGruppering, TenantForecastRow, TenantForecastTableSnapshot } from "@/lib/tenantForecastTable";
 import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
 import type { NxtBudgetSnapshot } from "@/lib/nxtBudget";
