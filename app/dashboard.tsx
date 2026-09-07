@@ -128,6 +128,17 @@ export default function Dashboard({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Settes etter mount (ikke under render) slik at server- og klient-HTML er identisk - å lese
+  // navigator under render ville gitt hydrerings-avvik på en Mac. Default "Ctrl K" er riktig for
+  // Windows/Android, som er der appen faktisk brukes.
+  const [shortcutLabel, setShortcutLabel] = useState("Ctrl K");
+  useEffect(() => {
+    // Å lese en nettleser-API ETTER mount er nettopp det en effekt er til for; regelen sikter på
+    // state som utledes av annen state. Samme unntak er brukt i lib/.../treningHelpers.ts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (/Mac|iPhone|iPad/.test(navigator.userAgent)) setShortcutLabel("⌘K");
+  }, []);
+
   return (
     <>
       <div className="mx-auto w-full max-w-2xl px-4 pb-[calc(8rem+env(safe-area-inset-bottom))] md:max-w-[1440px] md:px-8">
@@ -136,15 +147,23 @@ export default function Dashboard({
             <div className="flex items-center gap-2">
               <ThemeToggle />
               {/* Synlig inngang til søket — Ctrl/Cmd+K finnes ikke på mobil,
-                  som er der appen faktisk brukes mest. */}
+                  som er der appen faktisk brukes mest. På desktop vises
+                  hurtigtasten som en synlig kbd-brikke (2026-09-07): den var
+                  tidligere kun i en title-attributt, altså usynlig helt til man
+                  tilfeldigvis holdt musepekeren stille over knappen — appens
+                  raskeste inngang var i praksis udokumentert i UI-et. */}
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
                 aria-label="Søk i hele dashboardet"
-                title="Søk (Ctrl+K)"
-                className="nav-tile grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-2 transition hover:text-ink-1"
+                title={`Søk (${shortcutLabel})`}
+                className="nav-tile grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink-2 transition hover:text-ink-1 md:flex md:w-auto md:gap-2 md:rounded-full md:px-3"
               >
-                <Search className="h-4 w-4" />
+                <Search className="h-4 w-4 shrink-0" />
+                <span className="hidden text-sm md:inline">Søk</span>
+                <kbd className="hidden rounded border border-line-strong bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-ink-4 md:inline">
+                  {shortcutLabel}
+                </kbd>
               </button>
             </div>
             {mode && <ModeToggle mode={mode} onChange={setMode} />}

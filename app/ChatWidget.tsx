@@ -111,7 +111,10 @@ export default function ChatWidget() {
               {messages.map((m, i) => (
                 <div
                   key={i}
-                  className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                  // whitespace-pre-wrap: uten denne kollapset ALLE linjeskift i modellens svar til
+                  // én vegg av tekst (2026-09-07) - lister og avsnitt assistenten faktisk skrev ble
+                  // usynlige. break-words hindrer at en lang URL/id sprenger boblen.
+                  className={`max-w-[85%] whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-sm leading-relaxed ${
                     m.role === "user"
                       ? "ml-auto bg-accent/15 text-ink-1"
                       : "bg-surface-2 text-ink-2"
@@ -128,16 +131,22 @@ export default function ChatWidget() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 border-t border-line p-3">
-            <input
-              type="text"
+          <div className="flex items-end gap-2 border-t border-line p-3">
+            {/* textarea, ikke input: Enter sender (som før), Shift+Enter gir linjeskift - med et
+                rent <input> var det umulig å skrive en flerlinjet forespørsel i det hele tatt
+                (2026-09-07). rows=1 + max-h holder den like kompakt som før for korte spørsmål. */}
+            <textarea
+              rows={1}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") send();
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
               }}
-              placeholder="Spør om noe..."
-              className="flex-1 rounded-full border border-line bg-surface-2 px-3.5 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+              placeholder="Spør om noe… (Shift+Enter for ny linje)"
+              className="max-h-32 flex-1 resize-none rounded-2xl border border-line bg-surface-2 px-3.5 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
             <button
               type="button"
