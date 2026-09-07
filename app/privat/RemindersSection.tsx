@@ -870,19 +870,7 @@ export default function RemindersSection({
     <div className="border-t-2 border-t-accent-privat/60 p-4">
       <CardHeader
         title="Påminnelser"
-        subtitle={
-          <button
-            type="button"
-            onClick={() => setReorderMode((v) => !v)}
-            className={`rounded-lg border px-2 py-1 text-2xs font-semibold uppercase transition ${
-              reorderMode
-                ? "border-accent-privat/40 bg-accent-privat/15 text-accent-privat"
-                : "border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
-            }`}
-          >
-            {reorderMode ? "Ferdig" : "Endre rekkefølge"}
-          </button>
-        }
+        stat={{ value: todays.length, label: "i dag" }}
         onAdd={handleAddClick}
         addLabel="Ny påminnelse"
         icon={Bell}
@@ -890,6 +878,20 @@ export default function RemindersSection({
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
+          {/* Reorder-knappen lå tidligere i CardHeader sin subtitle-plass (2026-09-07) - flyttet
+              hit, som en egen rad, for å frigjøre plassen til et ekte nøkkeltall via `stat`
+              (kortet var ett av åtte i appen som fortsatt manglet det). */}
+          <button
+            type="button"
+            onClick={() => setReorderMode((v) => !v)}
+            className={`self-end rounded-lg border px-2 py-1 text-2xs font-semibold uppercase transition ${
+              reorderMode
+                ? "border-accent-privat/40 bg-accent-privat/15 text-accent-privat"
+                : "border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
+            }`}
+          >
+            {reorderMode ? "Ferdig" : "Endre rekkefølge"}
+          </button>
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input

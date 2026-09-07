@@ -6,7 +6,7 @@ import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, SuggestionList, useConfirmDelete, useMutationError } from "./CardShell";
 import type { JobbEvent } from "@/lib/jobbEvents";
 import type { Suggestion } from "@/lib/jobbSuggestions";
-import { formatDMY, localDateString, relativeDayLabel } from "@/lib/payday";
+import { localDateString, relativeDayLabel, relativeDaysLabel } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "./privat/SwipeableRow";
 import { CalendarPlus, X } from "lucide-react";
@@ -232,7 +232,13 @@ export default function JobbEventsSection() {
     <div className="border-t-2 border-t-emerald-400/60 p-4">
       <CardHeader
         title="Hendelser"
-        subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].date)}` : "Ingen"}
+        // stat i stedet for subtitle (2026-09-07, samme gap lukket på 7 andre
+        // Jobb-kort i en tidligere sweep-runde). relativeDaysLabel (ikke
+        // relativeDayLabel) — samme "om 3 dager"-nedtelling som
+        // app/privat/EventsSection.tsx sitt CardHeader-kall bruker for stat:
+        // en avstand-i-tid sier mer her enn en rå dato ("Mandag 17.08"), som
+        // fortsatt er riktig som gruppeoverskrift nede i selve lista.
+        stat={rows.length > 0 ? { value: relativeDaysLabel(rows[0].date, today), label: "neste" } : undefined}
         onAdd={() => setShowForm(true)}
         addLabel="Ny hendelse"
         icon={CalendarPlus}

@@ -280,17 +280,24 @@ export default function JobbCompanyNewsSection() {
     <div className="border-t-2 border-t-cyan-400/60 p-4">
       <CardHeader
         title="Mustad-nyheter"
-        subtitle={
-          news.length > 0 && lastResearchAt !== null
-            ? `${news.length} oppføringer · sist research-runde ${timeAgo(lastResearchAt)}`
-            : "Ingen ennå"
-        }
+        // stat i stedet for subtitle (2026-09-07, samme gap lukket på 7 andre
+        // Jobb-kort i en tidligere sweep-runde). CardShell.tsx sin showStat-
+        // logikk lar stat overta HELE subtitle-plassen når begge er satt (se
+        // presedens i app/privat/FplSection.tsx sitt CardHeader-kall) — den
+        // gamle sammensatte strengen kan derfor ikke bo begge steder samtidig.
+        // "Sist research-runde X" er ikke tapt, bare flyttet ned til en egen
+        // linje i kortkroppen (samme flytte-mønster som
+        // app/JobbReceivablesSection.tsx brukte for sin subtitle-overflyt).
+        stat={news.length > 0 ? { value: news.length, label: news.length === 1 ? "oppføring" : "oppføringer" } : undefined}
         icon={Newspaper}
         iconColorClass="text-cyan-400"
         onAdd={() => setShowForm(true)}
         addLabel="Ny nyhet"
       />
       <div className="flex flex-col gap-2">
+        {news.length > 0 && lastResearchAt !== null && (
+          <p className="text-2xs text-ink-4">Sist research-runde {timeAgo(lastResearchAt)}</p>
+        )}
         <MutationError message={mutationError.message} />
         {showForm && <NewsForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
         {usedCategories.length > 1 && (

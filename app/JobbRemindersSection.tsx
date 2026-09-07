@@ -462,7 +462,12 @@ export default function JobbRemindersSection() {
     <div className="border-t-2 border-t-accent/60 p-4">
       <CardHeader
         title="Påminnelser"
-        subtitle={todays.length > 0 ? `${todays.length} i dag` : "Ingen i dag"}
+        // Nøkkeltallet ("X i dag") flyttet fra subtitle til stat (2026-09-07) —
+        // samme gap som ble lukket på 7 andre Jobb-kort i en tidligere
+        // sweep-runde. Ingen kollaps her (ingen onToggleCollapse sendes inn),
+        // så stat vises alltid — en null-verdi er en normal stor "0", ikke et
+        // eget "Ingen i dag"-særtilfelle slik subtitle-strengen hadde før.
+        stat={{ value: todays.length, label: "i dag" }}
         onAdd={() => {
           setDueDate(localDateString());
           setShowForm(true);
@@ -470,7 +475,6 @@ export default function JobbRemindersSection() {
         addLabel="Ny påminnelse"
         icon={Bell}
         iconColorClass="text-accent"
-        alwaysShowSubtitle
       />
       <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />

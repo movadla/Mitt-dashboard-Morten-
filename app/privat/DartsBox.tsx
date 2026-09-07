@@ -54,7 +54,9 @@ export default function DartsBox() {
     <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Darts"
-        subtitle={stats ? `${stats.hitPct}% treff` : undefined}
+        // Nøkkeltallet (treffprosent) løftet fra subtitle til stat — samme
+        // systematiske sveip som resten av kortene denne runden (2026-09-07).
+        stat={stats ? { value: `${stats.hitPct}%`, label: "treff" } : undefined}
         icon={Target}
         iconColorClass="text-sky-400"
       />

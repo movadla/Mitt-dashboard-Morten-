@@ -386,12 +386,21 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
     <div className="border-t-2 border-t-violet-400/60 p-4">
       <CardHeader
         title="Oppslag"
-        subtitle={`${TENANTS.length} leietakere · ${managers.length} utleieansvarlige · ${employees.length} ansatte`}
+        // stat i stedet for subtitle (2026-09-07, samme gap lukket på 7 andre
+        // Jobb-kort i en tidligere sweep-runde). Leietakere er hovedtallet —
+        // det er det kortet primært brukes til å slå opp. De to andre tallene
+        // (utleieansvarlige/ansatte) er ikke tapt, bare flyttet ned til en
+        // egen linje i kortkroppen (samme flytte-mønster som
+        // app/JobbReceivablesSection.tsx brukte for sin subtitle-overflyt).
+        stat={{ value: TENANTS.length, label: "leietakere" }}
         onAdd={() => setShowForm(true)}
         addLabel="Ny utleieansvarlig"
         icon={Users}
         iconColorClass="text-violet-400"
       />
+      <p className="text-2xs text-ink-4">
+        {managers.length} utleieansvarlige · {employees.length} ansatte
+      </p>
 
       <div className="flex flex-col gap-2">
         <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Leietakersøk</p>

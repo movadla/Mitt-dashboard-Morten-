@@ -180,7 +180,14 @@ export default function NewsSection() {
     <div className="border-t-2 border-t-orange-400/60 p-4">
       <CardHeader
         title="Nyheter"
-        subtitle={items.length > 0 ? (items[0].aiTitle ?? items[0].title) : "Flere kilder"}
+        // Løftet fra subtitle til stat (systematisk sveip 2026-09-07) — men her
+        // er det IKKE bare en mekanisk items.length-promotering: NewsItem har
+        // ingen lest/ulest-tilstand (se lib/news.ts), så et antall er det eneste
+        // tallet som finnes. Den forrige subtitle-teksten (siste overskrift) var
+        // egentlig mer nyttig informasjon enn et rått antall, så den er ikke
+        // fjernet — kun flyttet ned til en egen linje i kortkroppen (stat
+        // fortrenger subtitle-plassen helt, jf. CardHeader/CardShell.tsx).
+        stat={items.length > 0 ? { value: items.length, label: items.length === 1 ? "nyhet" : "nyheter" } : undefined}
         icon={Newspaper}
         iconColorClass="text-orange-400"
       />
@@ -190,7 +197,9 @@ export default function NewsSection() {
           ) : items.length === 0 ? (
             <p className="text-sm text-ink-3">Fikk ikke hentet nyheter akkurat nå.</p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
+            <>
+              <p className="truncate text-sm text-ink-2">{items[0].aiTitle ?? items[0].title}</p>
+              <ul className="flex flex-col gap-1.5">
               {items.map((item) => (
                 <NewsRow
                   key={item.link}
@@ -204,7 +213,8 @@ export default function NewsSection() {
                   onToggleMore={() => setMoreLink((v) => (v === item.link ? null : item.link))}
                 />
               ))}
-            </ul>
+              </ul>
+            </>
           )}
           {fetchedAt && <p className="mt-1 text-2xs text-ink-4">Oppdatert {timeAgo(fetchedAt)}</p>}
         </div>

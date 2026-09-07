@@ -1188,7 +1188,10 @@ export default function FinanceSection() {
     <div className="border-t-2 border-t-source-outlook/60 p-4">
       <CardHeader
         title="Økonomi"
-        subtitle={loans.length > 0 ? formatKr(totalRemaining) : undefined}
+        // Nøkkeltallet (gjenstående lånebeløp) løftet fra subtitle til stat —
+        // samme formatKr-verdi som JobbReceivablesSection/IncomeForecastSection
+        // allerede viser som stat, systematisk sveip 2026-09-07.
+        stat={loans.length > 0 ? { value: formatKr(totalRemaining), label: "gjenstår i lån" } : undefined}
         onAdd={handleAddClick}
         addLabel="Nytt lån"
         icon={Wallet}
