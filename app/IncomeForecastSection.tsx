@@ -1932,12 +1932,20 @@ function OwnershipShareBlock() {
 // (håndskrevne, daterte undersøkelser Morten/Claude har gjort manuelt) er disse regnet ut PÅ NYTT
 // hver gang dataene oppdateres, og kan derfor aldri gå stille ut av synk med de faktiske tallene
 // slik en håndskrevet sjekk kan.
-function ReconciliationPanel({ advarsler }: { advarsler: string[] }) {
+function ReconciliationPanel({ advarsler, erUtdatert }: { advarsler: string[]; erUtdatert: boolean }) {
   if (RECONCILIATION.checks.length === 0 && advarsler.length === 0) {
     return <p className="text-sm text-ink-3">Ingen avstemmingskontroller kjørt ennå.</p>;
   }
   return (
     <div className="flex flex-col gap-3">
+      {erUtdatert && RECONCILIATION.checks.length > 0 && (
+        <p className="flex items-start gap-1.5 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2 text-2xs text-ink-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-warning" />
+          Kontrollene under er fra {formatDateDMY(RECONCILIATION.sistOppdatert)} — eldre enn andre datakilder i dag. Kronebeløp
+          sitert i fritekst (f.eks. &quot;totalsum-plausibel&quot;) kan referere utdaterte tall, selv om selve funnet fortsatt
+          stemmer.
+        </p>
+      )}
       {advarsler.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-status-warning">
@@ -2366,6 +2374,10 @@ function dataSourceFreshnessList(extra: DataSourceFreshness[]): DataSourceFreshn
     { label: "Gjenstår (Fazile)", dato: REMAINING.sistOppdatert },
     { label: "Manuelle bilag i NXT", dato: MANUAL_NXT.sistOppdatert },
     { label: "Avstemmingskontroller", dato: RECONCILIATION.sistOppdatert },
+    // v20 (2026-09-07): manglet her tidligere - begge er hardkodede konstanter med egen
+    // sistOppdatert, samme "kan gå stille foreldet"-risiko som resten av lista.
+    { label: "Full 2026-verdi per leietype", dato: LEIETYPE_BREAKDOWN.sistOppdatert },
+    { label: "Eierandel-regler", dato: OWNERSHIP_SHARE_RULES.sistOppdatert },
     ...extra,
   ].filter((d) => d.dato && d.dato.length > 0);
   return base.sort((a, b) => a.dato.localeCompare(b.dato));
@@ -4517,6 +4529,13 @@ export default function IncomeForecastSection() {
     [remainingTenantsSnapshot, tenantForecastTable, omsetningsavregning, contractExpiry2026, vacantAreas],
   );
 
+  // v20 (2026-09-07): eksplisitt varsel når RECONCILIATION (de håndskrevne, daterte
+  // avstemmingsnotatene) er eldre enn den ferskeste andre datakilden - "Eldste datakilde"-KPI-en
+  // viser allerede DATOEN, men sier ikke rett ut at INNHOLDET i kontrollene (kronebeløp sitert i
+  // fritekst, f.eks. "totalsum-plausibel") kan referere utdaterte tall.
+  const nyesteKilde = dataSourceFreshness[dataSourceFreshness.length - 1] ?? null;
+  const reconciliationErUtdatert = nyesteKilde !== null && RECONCILIATION.sistOppdatert < nyesteKilde.dato;
+
   const idagIso = localDateString();
 
   // v17: registrerer dagens kjernetall (bokført+gjenstår) i kjørehistorikken - ÉN gang pr. faktisk
@@ -4615,7 +4634,7 @@ export default function IncomeForecastSection() {
 
               <div className="flex flex-col gap-1.5">
                 <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
-                <ReconciliationPanel advarsler={advarslerLive} />
+                <ReconciliationPanel advarsler={advarslerLive} erUtdatert={reconciliationErUtdatert} />
                 <p className="mt-0.5 flex w-fit items-center gap-1">
                   <a
                     href="/api/income-forecast/backup"
