@@ -79,3 +79,12 @@ export async function getJSON<T>(key: string): Promise<T | null> {
 export async function del(key: string): Promise<void> {
   await getClient().del(key);
 }
+
+// Atomisk forsøksteller med glidende vindu (INCR + EXPIRE kun på FØRSTE treff) - brukt til
+// rate-limiting av PIN-innlogging (se app/api/auth/route.ts), siden appen er eksponert på
+// åpent internett via Cloudflare-tunnelen og en kort numerisk PIN ellers kan brute-forces.
+export async function incrWithExpiry(key: string, ttlSeconds: number): Promise<number> {
+  const count = await getClient().incr(key);
+  if (count === 1) await getClient().expire(key, ttlSeconds);
+  return count;
+}

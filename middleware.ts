@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export function middleware(request: NextRequest) {
   const auth = request.cookies.get("auth")?.value;
-  if (auth === process.env.AUTH_SECRET) return NextResponse.next();
+  const secret = process.env.AUTH_SECRET;
+  // `auth` og `secret` kan begge være `undefined` (secret usatt i et miljø, f.eks. en
+  // Vercel-preview uten env-var) - `undefined === undefined` ville da sluppet gjennom UTEN
+  // cookie i det hele tatt. `secret` må derfor eksistere og ha innhold før sammenligningen.
+  if (secret && auth === secret) return NextResponse.next();
   return NextResponse.redirect(new URL("/login", request.url));
 }
 
