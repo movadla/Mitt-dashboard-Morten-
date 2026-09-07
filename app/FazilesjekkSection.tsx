@@ -47,6 +47,30 @@ function PavirkningBelop({ kr }: { kr: number }) {
   );
 }
 
+// Segmentert stolpe for status-fordelingen på tvers av alle kontrakter - samme fargekoding
+// (STATUS_META) som teksten under den og statuschipsene pr. rad, så en ny farge aldri kan
+// gli ut av sync med resten av kortet.
+function StatusFordelingBar({ counts, total }: { counts: { status: FazilesjekkStatus; count: number }[]; total: number }) {
+  if (total <= 0) return null;
+  return (
+    <span
+      className="flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-ink-4/25"
+      role="img"
+      aria-label="Fordeling av kontraktsstatus"
+    >
+      {counts.map(({ status, count }) =>
+        count > 0 ? (
+          <span
+            key={status}
+            className={`${STATUS_META[status].text} block h-full bg-current`}
+            style={{ width: `${(count / total) * 100}%` }}
+          />
+        ) : null,
+      )}
+    </span>
+  );
+}
+
 function StatusChip({ status }: { status: FazilesjekkStatus }) {
   const meta = STATUS_META[status];
   return (
@@ -64,6 +88,19 @@ function SammenligningsRad({ label, asana, fazile, avvik }: { label: string; asa
       <span className="w-32 shrink-0 tabular-nums text-ink-2">{asana}</span>
       <span className={`w-32 shrink-0 tabular-nums ${avvik ? "font-semibold text-status-warning" : "text-ink-2"}`}>{fazile}</span>
     </div>
+  );
+}
+
+// `leietaker`+`bygg` alene kolliderer når samme leietaker/bygg har flere ULIKE avvik (f.eks. én
+// garanti-sak og én datosak) - to rader ville da delt React-key, og åpen/lukket-tilstand
+// (useState i KontraktRad) kunne lekke mellom dem. Fazile/SF sin egen kontraktsnøkkel er den
+// ekte unike identifikatoren når den finnes; avvikstyper+beløp som fallback dekker nettopp
+// tilfellet med flere avvik på samme leieforhold.
+function kontraktRadKey(row: FazilesjekkRow): string {
+  return (
+    row.fazileKontraktsnokkel ??
+    row.sfKontraktId ??
+    `${row.leietaker}-${row.bygg ?? ""}-${row.avvikstyper?.join(",") ?? ""}-${row.belopspavirkning ?? ""}`
   );
 }
 
@@ -155,16 +192,29 @@ export default function FazilesjekkSection() {
     if (av !== bv) return Math.abs(bv) - Math.abs(av);
     return a.leietaker.localeCompare(b.leietaker, "nb");
   });
-  const synlige = visAlle ? rows : rows.filter((r) => r.belopspavirkning != null);
+  // "finnes-ikke" (kontrakten finnes ikke i Fazile) har ofte INGEN beregnet belopspavirkning -
+  // det er ingenting å avvike FRA - men er det mest alvorlige utfallet som finnes. Uten dette
+  // unntaket skjulte standardfilteret nettopp de verste radene bak "Vis alle"-knappen.
+  const synlige = visAlle ? rows : rows.filter((r) => r.belopspavirkning != null || r.status === "finnes-ikke");
 
   const sumUnder = rows.reduce((sum, r) => sum + (r.belopspavirkning != null && r.belopspavirkning > 0 ? r.belopspavirkning : 0), 0);
   const sumOver = rows.reduce((sum, r) => sum + (r.belopspavirkning != null && r.belopspavirkning < 0 ? -r.belopspavirkning : 0), 0);
+
+  // Samme fem tellinger som tekstlinja under - kun omformet til stolpe-input, ingen ny kilde.
+  const statusFordeling = [
+    { status: "ok" as const, count: s.antallOk },
+    { status: "delvis-ok" as const, count: s.antallDelvisOk },
+    { status: "avvik" as const, count: s.antallAvvik },
+    { status: "finnes-ikke" as const, count: s.antallFinnesIkke },
+    { status: "kan-ikke-sjekkes" as const, count: s.antallKanIkkeSjekkes },
+  ];
+  const totalKontrakter = statusFordeling.reduce((sum, c) => sum + c.count, 0);
 
   return (
     <div className="border-t-2 border-t-sky-400/60 p-4">
       <CardHeader
         title="Fazilesjekk"
-        subtitle={`${s.antallAvvik} avvik av ${s.unikeKontrakter}`}
+        stat={{ value: s.antallAvvik, label: `avvik av ${s.unikeKontrakter}` }}
         icon={ClipboardCheck}
         iconColorClass="text-sky-400"
       />
@@ -190,6 +240,8 @@ export default function FazilesjekkSection() {
             <p className="text-2xs text-ink-4">per år</p>
           </div>
         </div>
+
+        <StatusFordelingBar counts={statusFordeling} total={totalKontrakter} />
 
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-2xs text-ink-3">
           <span className="text-status-positive">{s.antallOk} OK</span>
@@ -221,7 +273,7 @@ export default function FazilesjekkSection() {
 
         <ul className="flex flex-col gap-1.5">
           {synlige.map((row) => (
-            <KontraktRad key={`${row.leietaker}-${row.bygg ?? ""}`} row={row} />
+            <KontraktRad key={kontraktRadKey(row)} row={row} />
           ))}
         </ul>
 
