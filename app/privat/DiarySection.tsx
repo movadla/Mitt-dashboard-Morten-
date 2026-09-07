@@ -7,7 +7,10 @@ import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelet
 import type { DiaryEntry } from "@/lib/diary";
 import type { DiaryPreset, DiaryPresetCategory } from "@/lib/diaryPresets";
 import type { DiarySettings } from "@/lib/diarySettings";
-import { addDaysIso, formatDMY, localDateString } from "@/lib/payday";
+import { addDaysIso, formatDMY, localDateString, weekRangeContaining } from "@/lib/payday";
+import { WeekStrip } from "./DataStrips";
+import { SECTION_ACCENT } from "./sectionAccents";
+import SwipeableRow from "./SwipeableRow";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ChevronDown, ChevronRight, Moon, Settings } from "lucide-react";
@@ -268,15 +271,20 @@ function DiaryHistoryRow({ entry, onEdit, onDelete }: { entry: DiaryEntry; onEdi
   const totalCount = entry.morning.length + entry.afternoon.length + entry.evening.length + entry.people.length + entry.places.length;
   return (
     <li className="border-b border-line last:border-0">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 py-2 text-left">
-        <span className="w-9 shrink-0 text-xs font-semibold uppercase text-ink-3">{shortWeekdayLabel(entry.date)}</span>
-        <span className="w-14 shrink-0 text-xs tabular-nums text-ink-4">{formatDMY(entry.date)}</span>
-        <span className="min-w-0 flex-1 truncate text-sm text-ink-2">
-          {totalCount > 0 ? `${totalCount} valg` : "Ingen kryss"}
-          {entry.notes ? " · notat" : ""}
-        </span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+      {/* Sveip venstre = slett, samme gest som Handleliste/Kalender — den
+          eksisterende "Slett"-knappen i drilldownen beholdes, sveipet er et
+          tillegg og aldri eneste vei. */}
+      <SwipeableRow onSwipeLeft={onDelete} leftLabel="Slett">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 py-2 text-left">
+          <span className="w-9 shrink-0 text-xs font-semibold uppercase text-ink-3">{shortWeekdayLabel(entry.date)}</span>
+          <span className="w-14 shrink-0 text-xs tabular-nums text-ink-4">{formatDMY(entry.date)}</span>
+          <span className="min-w-0 flex-1 truncate text-sm text-ink-2">
+            {totalCount > 0 ? `${totalCount} valg` : "Ingen kryss"}
+            {entry.notes ? " · notat" : ""}
+          </span>
+          <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </SwipeableRow>
       {open && (
         <div className="flex flex-col gap-1.5 pb-2 pl-[4.75rem]">
           <EntryTags entry={entry} />
@@ -353,6 +361,26 @@ export default function DiarySection() {
   const yesterday = addDaysIso(today, -1);
   const todayEntry = entries.find((e) => e.date === today) ?? null;
   const yesterdayEntry = entries.find((e) => e.date === yesterday) ?? null;
+
+  // Nøkkeltallet er dager på rad, ikke antall notater totalt — det er rekken
+  // som faktisk sier noe om hvordan det går nå. I dag teller bare hvis den ER
+  // fylt ut; ellers regnes rekken fra i går, slik at streken ikke brytes midt
+  // på dagen mens man fortsatt har tid til å fylle ut.
+  const filledDates = new Set(entries.map((e) => e.date));
+  let streak = 0;
+  let streakCursor = filledDates.has(today) ? today : yesterday;
+  while (filledDates.has(streakCursor)) {
+    streak++;
+    streakCursor = addDaysIso(streakCursor, -1);
+  }
+
+  // Ukesstripen over lista, mandag–søndag (samme oppsett som Trening) — viser
+  // formen på uka uten at man må lese historikk-tabellen.
+  const { start: weekStart } = weekRangeContaining(today);
+  const weekDayIsos = Array.from({ length: 7 }, (_, i) => addDaysIso(weekStart, i));
+  const weekFilledDays = weekDayIsos.map((d) => filledDates.has(d));
+  const weekTodayIndex = weekDayIsos.indexOf(today);
+  const filledThisWeek = weekFilledDays.filter(Boolean).length;
 
   function draftFromEntry(existing: DiaryEntry | null): DiaryDraft {
     return existing
@@ -566,15 +594,27 @@ export default function DiarySection() {
   }
 
   return (
-    <div className="border-t-2 border-t-accent-privat/60 p-4">
+    // Topplinjen må matche SECTION_ACCENT.diary (se ./sectionAccents.ts) —
+    // Tailwind kan ikke bygge klassenavnet fra en variabel i runtime.
+    <div className="border-t-2 border-t-violet-400/60 p-4">
       <CardHeader
         title="Dagbok"
+        stat={{ value: streak, label: streak === 1 ? "dag på rad" : "dager på rad" }}
         icon={Moon}
-        iconColorClass="text-violet-400"
+        iconColorClass={SECTION_ACCENT.diary}
         extraAction={{ icon: Settings, onClick: openSettings, label: "Innstillinger for Dagbok" }}
       />
       <div className="flex flex-col gap-3">
         <MutationError message={mutationError.message} />
+
+        {!entriesLoading && (
+          <WeekStrip
+            activeDays={weekFilledDays}
+            todayIndex={weekTodayIndex === -1 ? null : weekTodayIndex}
+            colorClass={SECTION_ACCENT.diary}
+            label={`${filledThisWeek} av 7 dager fylt ut denne uken`}
+          />
+        )}
 
         {entriesLoading ? (
           <SkeletonRows count={2} />
@@ -651,7 +691,10 @@ export default function DiarySection() {
           </div>
         ) : (
           <>
-            {!yesterdayEntry && (
+            {/* Påminnelsen om i går gir bare mening når dagboken er i bruk — i en
+                helt tom dagbok ville den kollidert med forklaringsteksten
+                under og lest som en anklage for noe man aldri har begynt på. */}
+            {!yesterdayEntry && entries.length > 0 && (
               <div className="flex items-center justify-between gap-2 rounded-lg border border-status-warning/30 bg-status-warning/[0.06] px-3 py-2">
                 <p className="text-sm text-status-warning">Du fylte ikke ut dagboken i går ({formatDMY(yesterday)}).</p>
                 <button
@@ -679,7 +722,14 @@ export default function DiarySection() {
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm text-ink-3">Ikke fylt ut i dag ennå.</p>
+                  {/* Helt tom dagbok forklarer hva den samler; etter første
+                      dag holder den korte statuslinjen. Begge peker på samme
+                      eksisterende "Fyll ut nå"-knapp ved siden av. */}
+                  <p className="text-sm text-ink-3">
+                    {entries.length === 0
+                      ? "Dagboken samler ett kort kryss per dag: morgen, ettermiddag, kveld, hvem du var sammen med og hvor."
+                      : "Ikke fylt ut i dag ennå."}
+                  </p>
                   <button
                     type="button"
                     onClick={() => openWizard(today, null)}

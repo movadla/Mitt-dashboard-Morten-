@@ -662,28 +662,16 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const slideClass = slideDirection === "forward" ? "day-slide-in-right" : slideDirection === "backward" ? "day-slide-in-left" : "";
 
   // ── Hero: dagens ene mettede felt ──
-  // Bevisst bare tre opplysninger: hvor mye som står igjen, hvor langt du er
-  // kommet, og hva som er neste holdepunkt. Alt annet finnes i listene under —
-  // en hero som gjentar hele dagen er ikke en hero, den er en ekstra liste.
+  // Bevisst bare to opplysninger: hvor mye som står igjen, og hvor langt du er
+  // kommet. Alt annet finnes i listene under — en hero som gjentar hele dagen
+  // er ikke en hero, den er en ekstra liste. (Tredje linjen med "neste
+  // holdepunkt"/forfalt-varsel er fjernet 2026-09-07: den kunne si "ingenting
+  // står igjen i dag" samtidig som tallet over viste 2 — feil, ikke bare
+  // overflødig, siden heroRemaining teller alt som gjenstår, ikke bare
+  // tidsbestemte hendelser og forfalte påminnelser.)
   const heroCompleted = reminders.filter((r) => r.done && (r.completedAt ?? "").slice(0, 10) === realToday).length;
   const heroRemaining = reminderRows.length;
   const heroTotal = heroRemaining + heroCompleted;
-  const heroNextEvent = eventsOnViewed.filter((e) => e.startTime).sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""))[0] ?? null;
-  // Mange kalendertitler har klokkeslettet i selve tittelen ("Reunion 3A -
-  // Fly 11:30"). Å legge på startTime igjen ga "... 11:30 11:30".
-  const heroNextLabel = heroNextEvent
-    ? heroNextEvent.title.includes(heroNextEvent.startTime ?? " ")
-      ? heroNextEvent.title
-      : `${heroNextEvent.title} ${heroNextEvent.startTime}`
-    : null;
-  const heroParts = [
-    heroNextLabel,
-    overdueReal.length > 0
-      ? overdueReal.length === 1
-        ? "én påminnelse er forfalt"
-        : `${overdueReal.length} påminnelser er forfalt`
-      : null,
-  ].filter(Boolean);
   // Omkretsen av sirkelen i ringen under (r=18): 2·π·18 ≈ 113.
   const HERO_RING_LENGTH = 113;
   const heroRingOffset = heroTotal > 0 ? HERO_RING_LENGTH * (1 - heroCompleted / heroTotal) : HERO_RING_LENGTH;
@@ -759,9 +747,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
             <p className="text-[54px] font-light leading-[0.82] tracking-[-0.055em] tabular-nums">
               {heroRemaining}
               <span className="ml-2.5 text-[13px] font-medium tracking-normal opacity-85">ting igjen</span>
-            </p>
-            <p className="mt-3 text-xs leading-snug opacity-90">
-              {heroParts.length > 0 ? heroParts.join(" · ") : "Ingenting står igjen i dag."}
             </p>
           </div>
           {heroTotal > 0 && (

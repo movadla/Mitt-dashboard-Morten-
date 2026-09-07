@@ -14,6 +14,12 @@ import {
 import type { AlfredFreeNote, AlfredProfile, GrowthEntry, Milestone, MilestoneCategory, PlayIdea } from "@/lib/alfred";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
+import { RatioBar } from "./DataStrips";
+import { SECTION_ACCENT } from "./sectionAccents";
+import SwipeableRow from "./SwipeableRow";
+// Samme koordinat-hjelper som Trening sin ProgressChart bruker — vektkurven
+// under er samme teknikk (innebygd SVG-polyline), ikke et nytt bibliotek.
+import { chartCoords } from "./trening/treningHelpers";
 import { Bot, X } from "lucide-react";
 
 function formatDateTime(iso: string): string {
@@ -201,34 +207,40 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
 
 function MilestoneRow({ item, onToggle, onRemove }: { item: Milestone; onToggle: (id: string) => void; onRemove: (id: string) => void }) {
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <button
-        type="button"
-        onClick={() => onToggle(item.id)}
-        aria-pressed={item.done}
-        aria-label={item.done ? "Marker som ikke fullført" : "Marker som fullført"}
-        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
-          item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
-        }`}
-      >
-        {item.done && (
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 8.5L6.5 12 13 5" />
-          </svg>
-        )}
-      </button>
-      <div className="min-w-0 flex-1">
-        <p className={`text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{item.label}</p>
-        {item.done && item.achievedDate && <p className="mt-0.5 text-2xs text-ink-4">{formatDMY(item.achievedDate)}</p>}
-      </div>
-      <button
-        type="button"
-        onClick={() => onRemove(item.id)}
-        aria-label="Slett punkt"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+    <li>
+      {/* Sveip venstre = slett, samme gest som Handleliste/Kalender. X-knappen
+          til høyre står igjen — sveipet er et tillegg, aldri eneste vei. */}
+      <SwipeableRow onSwipeLeft={() => onRemove(item.id)} leftLabel="Slett">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => onToggle(item.id)}
+            aria-pressed={item.done}
+            aria-label={item.done ? "Marker som ikke fullført" : "Marker som fullført"}
+            className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 transition ${
+              item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-line-strong"
+            }`}
+          >
+            {item.done && (
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-surface-0" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 8.5L6.5 12 13 5" />
+              </svg>
+            )}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>{item.label}</p>
+            {item.done && item.achievedDate && <p className="mt-0.5 text-2xs text-ink-4">{formatDMY(item.achievedDate)}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(item.id)}
+            aria-label="Slett punkt"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -248,16 +260,36 @@ function MilestoneGroup({
 }) {
   const [adding, setAdding] = useState(false);
   const [label, setLabel] = useState("");
+  const doneCount = items.filter((i) => i.done).length;
 
   return (
     <div className="flex flex-col gap-1.5">
-      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{CATEGORY_LABEL[category]}</p>
+      {/* "x av y" + RatioBar: kategorien hadde ingen andel i det hele tatt før,
+          bare en liste man måtte telle selv. */}
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{CATEGORY_LABEL[category]}</p>
+        {items.length > 0 && (
+          <p className="shrink-0 text-2xs tabular-nums text-ink-4">
+            {doneCount} av {items.length}
+          </p>
+        )}
+      </div>
       {items.length > 0 && (
+        <RatioBar
+          done={doneCount}
+          total={items.length}
+          colorClass={SECTION_ACCENT.alfred}
+          label={`${doneCount} av ${items.length} punkter fullført i ${CATEGORY_LABEL[category]}`}
+        />
+      )}
+      {items.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
           {items.map((item) => (
             <MilestoneRow key={item.id} item={item} onToggle={onToggle} onRemove={onRemove} />
           ))}
         </ul>
+      ) : (
+        <p className="text-xs text-ink-4">Milepæler du vil holde øye med her. Legg til den første med «+ Nytt punkt».</p>
       )}
       {adding ? (
         <div className="flex items-center gap-2">
@@ -321,22 +353,28 @@ function PlayList({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {ideas.length > 0 && (
+      {ideas.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
           {ideas.map((idea) => (
-            <li key={idea.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-              <p className="min-w-0 flex-1 text-sm text-ink-1">{idea.label}</p>
-              <button
-                type="button"
-                onClick={() => onRemove(idea.id)}
-                aria-label="Slett punkt"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+            <li key={idea.id}>
+              <SwipeableRow onSwipeLeft={() => onRemove(idea.id)} leftLabel="Slett">
+                <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+                  <p className="min-w-0 flex-1 text-sm text-ink-1">{idea.label}</p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(idea.id)}
+                    aria-label="Slett punkt"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </SwipeableRow>
             </li>
           ))}
         </ul>
+      ) : (
+        <p className="text-xs text-ink-4">Lekideer å ta frem når dagen trenger et forslag. Legg til den første med «+ Nytt punkt».</p>
       )}
       {adding ? (
         <div className="flex items-center gap-2">
@@ -366,6 +404,37 @@ function PlayList({
           + Nytt punkt
         </button>
       )}
+    </div>
+  );
+}
+
+// Vektkurve over de lagrede målingene — samme innebygde SVG-polyline-teknikk
+// som ProgressChart i trening/SetRows.tsx, ingen ny avhengighet. Kun vekt:
+// lengde måles sjeldnere, så en lengdekurve ville hatt hull dataen ikke dekker.
+function GrowthSparkline({ entries }: { entries: GrowthEntry[] }) {
+  if (entries.length < 2) return null;
+  const width = 260;
+  const height = 48;
+  const values = entries.map((e) => e.weightKg);
+  const coords = chartCoords(values, width, height, 5);
+  return (
+    <div className={`flex flex-col gap-1 ${SECTION_ACCENT.alfred}`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`Vektutvikling over ${entries.length} målinger`}>
+        <polyline
+          points={coords.map((c) => `${c.x},${c.y}`).join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {coords.map((c, i) => (
+          <circle key={i} cx={c.x} cy={c.y} r="2.5" fill="currentColor" />
+        ))}
+      </svg>
+      <p className="text-2xs text-ink-4">
+        {Math.min(...values).toLocaleString("nb-NO")}–{Math.max(...values).toLocaleString("nb-NO")} kg over {entries.length} målinger
+      </p>
     </div>
   );
 }
@@ -406,28 +475,35 @@ function GrowthSection({
           </p>
         )}
       </div>
-      {entries.length > 0 && (
+      <GrowthSparkline entries={entries} />
+      {entries.length > 0 ? (
         <ul className="flex flex-col gap-1">
           {[...entries].reverse().map((e) => (
-            <li key={e.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-              <p className="min-w-0 flex-1 text-sm text-ink-1">
-                {e.approxDate ? "~" : ""}
-                {formatDMY(e.date)}
-              </p>
-              <p className="shrink-0 text-sm tabular-nums text-ink-2">
-                {e.weightKg.toLocaleString("nb-NO")} kg{e.lengthCm ? ` / ${e.lengthCm} cm` : ""}
-              </p>
-              <button
-                type="button"
-                onClick={() => onRemove(e.id)}
-                aria-label="Slett måling"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+            <li key={e.id}>
+              <SwipeableRow onSwipeLeft={() => onRemove(e.id)} leftLabel="Slett">
+                <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+                  <p className="min-w-0 flex-1 text-sm text-ink-1">
+                    {e.approxDate ? "~" : ""}
+                    {formatDMY(e.date)}
+                  </p>
+                  <p className="shrink-0 text-sm tabular-nums text-ink-2">
+                    {e.weightKg.toLocaleString("nb-NO")} kg{e.lengthCm ? ` / ${e.lengthCm} cm` : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(e.id)}
+                    aria-label="Slett måling"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </SwipeableRow>
             </li>
           ))}
         </ul>
+      ) : (
+        <p className="text-xs text-ink-4">Vekt og lengde etter hvert som de måles. Legg til den første med «+ Ny måling».</p>
       )}
       {showForm ? (
         <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
@@ -535,22 +611,26 @@ function FreeNoteRow({
   }
 
   return (
-    <li className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-      <button type="button" onClick={startEditing} className="min-w-0 flex-1 text-left">
-        <p className="whitespace-pre-line text-sm text-ink-1">{note.text}</p>
-        <p className="mt-0.5 text-2xs text-ink-4">
-          {formatDateTime(note.updatedAt ?? note.createdAt)}
-          {note.updatedAt ? " (redigert)" : ""}
-        </p>
-      </button>
-      <button
-        type="button"
-        onClick={() => onRemove(note.id)}
-        aria-label="Slett notat"
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+    <li>
+      <SwipeableRow onSwipeLeft={() => onRemove(note.id)} leftLabel="Slett">
+        <div className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <button type="button" onClick={startEditing} className="min-w-0 flex-1 text-left">
+            <p className="whitespace-pre-line text-sm text-ink-1">{note.text}</p>
+            <p className="mt-0.5 text-2xs text-ink-4">
+              {formatDateTime(note.updatedAt ?? note.createdAt)}
+              {note.updatedAt ? " (redigert)" : ""}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(note.id)}
+            aria-label="Slett notat"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </SwipeableRow>
     </li>
   );
 }
@@ -578,12 +658,14 @@ function FreeNoteList({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {notes.length > 0 && (
+      {notes.length > 0 ? (
         <ul className="flex flex-col gap-1.5">
           {notes.map((note) => (
             <FreeNoteRow key={note.id} note={note} onSave={onSave} onRemove={onRemove} />
           ))}
         </ul>
+      ) : (
+        <p className="text-xs text-ink-4">Løpende notater med dato og klokkeslett. Skriv det første med «+ Nytt notat».</p>
       )}
       {adding ? (
         <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
@@ -905,20 +987,29 @@ export default function AlfredSection() {
   const today = localDateString();
   const months = profile ? ageInMonths(profile.born, today) : null;
   const latestGrowth = growth[growth.length - 1];
-  const subtitle =
-    latestGrowth || months !== null
-      ? [months !== null ? `${months} mnd` : null, latestGrowth ? `${latestGrowth.weightKg.toLocaleString("nb-NO")} kg` : null]
-          .filter(Boolean)
-          .join(" · ")
-      : "Ukentlig";
+  // Nøkkeltallet er alderen, med siste veiing som etikett under. Mangler
+  // fødselsdatoen finnes det ingen alder å vise — da sier kortet det rett ut
+  // i stedet for den gamle "Ukentlig", som leste som en frekvens og ikke som
+  // et barn.
+  const stat =
+    months !== null
+      ? {
+          value: `${months} mnd`,
+          label: latestGrowth ? `${latestGrowth.weightKg.toLocaleString("nb-NO")} kg` : "alder",
+        }
+      : undefined;
+  const subtitle = profile && !profile.born ? "Fødselsdato mangler" : undefined;
 
   return (
+    // Topplinjen må matche SECTION_ACCENT.alfred (se ./sectionAccents.ts) —
+    // Tailwind kan ikke bygge klassenavnet fra en variabel i runtime.
     <div className="border-t-2 border-t-status-action/60 p-4">
       <CardHeader
         title="Alfred"
+        stat={stat}
         subtitle={subtitle}
         icon={Bot}
-        iconColorClass="text-status-action"
+        iconColorClass={SECTION_ACCENT.alfred}
       />
         <div className="flex flex-col gap-3">
           <MutationError message={mutationError.message} />
@@ -957,7 +1048,7 @@ export default function AlfredSection() {
 
               {profile && (
                 <AlfredSubSection title="Notater" storageKey="Alfred - Notater">
-                  <EditableNote label="Motorisk (notat)" value={profile.motorikkNotat} onSave={(v) => saveProfile({ motorikkNotat: v })} />
+                  <EditableNote label="Motorisk" value={profile.motorikkNotat} onSave={(v) => saveProfile({ motorikkNotat: v })} />
                   <EditableNote label="Helse" value={profile.helseNotat} onSave={(v) => saveProfile({ helseNotat: v })} />
                   <EditableNote label="Mat og søvn" value={profile.matOgSovnNotat} onSave={(v) => saveProfile({ matOgSovnNotat: v })} />
                   <EditableNote label="Permisjon" value={profile.permisjonNotat} onSave={(v) => saveProfile({ permisjonNotat: v })} />

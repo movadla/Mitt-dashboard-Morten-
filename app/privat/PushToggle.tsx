@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
+import { MutationError } from "../CardShell";
 
 // base64url → Uint8Array. PushManager.subscribe krever nøkkelen som binærdata,
 // mens VAPID-nøkkelen distribueres som base64url-streng.
@@ -27,6 +28,10 @@ type State = "ukjent" | "utilgjengelig" | "av" | "på" | "nektet" | "jobber";
  *  virke. */
 export default function PushToggle() {
   const [state, setState] = useState<State>("ukjent");
+  // Tidligere: feil fra /api/push/subscribe ble svelget stille (og res.ok ble ikke engang
+  // sjekket) - bryteren spratt bare tilbake uten forklaring, eneste sted i appen som ikke
+  // fulgte MutationError-mønsteret resten av mutasjonene bruker.
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
   useEffect(() => {
@@ -53,6 +58,7 @@ export default function PushToggle() {
   async function enable() {
     if (!publicKey) return;
     setState("jobber");
+    setErrorMsg(null);
     try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
@@ -65,33 +71,38 @@ export default function PushToggle() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
       const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
-      await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(json),
       });
+      if (!res.ok) throw new Error("Serveren avviste påmeldingen");
       setState("på");
     } catch {
       setState("av");
+      setErrorMsg("Kunne ikke slå på morgenbrief-varsler — prøv igjen.");
     }
   }
 
   async function disable() {
     setState("jobber");
+    setErrorMsg(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch("/api/push/subscribe", {
+        const res = await fetch("/api/push/subscribe", {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
+        if (!res.ok) throw new Error("Serveren avviste avmeldingen");
         await sub.unsubscribe();
       }
       setState("av");
     } catch {
       setState("på");
+      setErrorMsg("Kunne ikke slå av morgenbrief-varsler — prøv igjen.");
     }
   }
 
@@ -109,18 +120,21 @@ export default function PushToggle() {
 
   const on = state === "på";
   return (
-    <button
-      type="button"
-      onClick={on ? disable : enable}
-      disabled={state === "jobber"}
-      className={`flex items-center gap-2 self-start rounded-full px-3 py-1.5 text-2xs font-semibold transition disabled:opacity-60 ${
-        on
-          ? "bg-accent-privat/12 text-accent-privat hover:bg-accent-privat/20"
-          : "border border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
-      }`}
-    >
-      {on ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
-      {state === "jobber" ? "Vent…" : on ? "Morgenbrief på" : "Slå på morgenbrief"}
-    </button>
+    <div className="flex flex-col items-start gap-1.5">
+      <button
+        type="button"
+        onClick={on ? disable : enable}
+        disabled={state === "jobber"}
+        className={`flex items-center gap-2 self-start rounded-full px-3 py-1.5 text-2xs font-semibold transition disabled:opacity-60 ${
+          on
+            ? "bg-accent-privat/12 text-accent-privat hover:bg-accent-privat/20"
+            : "border border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
+        }`}
+      >
+        {on ? <Bell className="h-3.5 w-3.5" /> : <BellOff className="h-3.5 w-3.5" />}
+        {state === "jobber" ? "Vent…" : on ? "Morgenbrief på" : "Slå på morgenbrief"}
+      </button>
+      <MutationError message={errorMsg} />
+    </div>
   );
 }

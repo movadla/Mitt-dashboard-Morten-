@@ -20,6 +20,7 @@ import type { AiUsageSummary } from "@/lib/aiUsage";
 import { vibrate } from "@/lib/haptics";
 import { localDateString } from "@/lib/payday";
 import SwipeableRow from "./SwipeableRow";
+import { RatioBar } from "./DataStrips";
 import { Wallet, X } from "lucide-react";
 
 const EMPTY_LOANS: Loan[] = [];
@@ -354,12 +355,13 @@ function LoanRow({
           ) : (
             loan.originalAmount && loan.originalAmount > 0 && (() => {
               const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount!));
+              const pct = Math.round(paidDown * 100);
               return (
                 <div className="mt-1.5 flex items-center gap-2">
-                  <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-3">
-                    <div className="h-full rounded-full bg-accent-privat" style={{ width: `${(paidDown * 100).toFixed(1)}%` }} />
+                  <div className="min-w-0 flex-1">
+                    <RatioBar done={pct} total={100} colorClass="text-accent-privat" label={`${pct}% nedbetalt`} />
                   </div>
-                  <span className="shrink-0 text-2xs tabular-nums text-ink-4">{Math.round(paidDown * 100)}% nedbetalt</span>
+                  <span className="shrink-0 text-2xs tabular-nums text-ink-4">{pct}% nedbetalt</span>
                 </div>
               );
             })()

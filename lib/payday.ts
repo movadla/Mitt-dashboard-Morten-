@@ -176,3 +176,20 @@ export function relativeDayLabel(dateIso: string, todayIso: string): string {
   if (dateIso === addDaysIso(todayIso, 1)) return "I morgen";
   return weekdayDateLabel(dateIso);
 }
+
+// Kompakt nedtelling ("om 3 dager") - for et KORT-NØKKELTALL (CardHeader sin `stat`), der
+// plassen er trang og avstanden i tid er hele poenget. relativeDayLabel over faller tilbake på
+// ukedag+dato ("Mandag 17.08"), som er riktig som gruppeoverskrift i en liste, men sier mindre
+// og tar mer plass når man bare vil vite hvor lenge det er til (2026-09-07).
+export function relativeDaysLabel(dateIso: string, todayIso: string): string {
+  const diff = daysBetween(todayIso, dateIso);
+  if (diff === 0) return "I dag";
+  if (diff === 1) return "I morgen";
+  if (diff === -1) return "I går";
+  if (diff < -1) return `${-diff} dager siden`;
+  if (diff < 14) return `om ${diff} dager`;
+  const uker = Math.round(diff / 7);
+  if (uker < 9) return `om ${uker} uker`;
+  const maneder = Math.round(diff / 30);
+  return `om ${maneder} md.`;
+}

@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
+import { GroupLabel } from "./DataStrips";
+import SwipeableRow from "./SwipeableRow";
+import { SECTION_ACCENT } from "./sectionAccents";
 import type { Note } from "@/lib/notes";
 import { ChevronUp, Pin, StickyNote, X } from "lucide-react";
 
@@ -204,7 +207,7 @@ function NoteRow({
     if (!editing) setMode("edit");
   }
 
-  return (
+  const content = (
     <div className={`rounded-xl border px-3 py-2 ${note.pinned ? "border-amber-400/50 bg-amber-400/8" : "border-line bg-surface-2"}`}>
       <div className="flex items-start gap-2">
         {expanded ? (
@@ -280,6 +283,18 @@ function NoteRow({
       )}
     </div>
   );
+
+  // Sveip-slett kun når raden IKKE redigeres — samme grep som ItemRow i
+  // Handleliste, der redigeringsskjemaet ligger utenfor SwipeableRow: ellers
+  // ville horisontal dra i tekstfeltet flyttet raden i stedet for å markere
+  // tekst. Slett-knappen finnes uansett, sveip er bare en snarvei.
+  if (editing) return content;
+
+  return (
+    <SwipeableRow onSwipeLeft={() => onRemove(note)} leftLabel="Slett">
+      {content}
+    </SwipeableRow>
+  );
 }
 
 export default function NotesSection() {
@@ -299,6 +314,12 @@ export default function NotesSection() {
     return notes.filter((n) => n.text.toLowerCase().includes(q));
   }, [notes, query]);
   const visibleNotes = filtered.slice(0, visibleCount);
+  // Festede notater løftes ut i en egen gruppe med overskrift i stedet for at
+  // den eneste markeringen er en gul kant midt i en ellers flat liste.
+  // Pagineringen ligger fortsatt på hele `filtered`, så "Mer (n)" teller det
+  // samme som før — grupperingen er ren visning.
+  const pinnedVisible = visibleNotes.filter((n) => n.pinned);
+  const restVisible = visibleNotes.filter((n) => !n.pinned);
 
   function openAddForm() {
     setShowForm(true);
@@ -391,56 +412,93 @@ export default function NotesSection() {
     }
   }
 
+  // Delt rad-oppsett for begge gruppene (festet / resten) — ellers måtte hele
+  // prop-lista gjentas to steder og kunne drifte fra hverandre.
+  function renderNote(n: Note) {
+    return (
+      <NoteRow
+        key={n.id}
+        note={n}
+        expanded={expandedId === n.id}
+        editing={editingId === n.id}
+        onExpand={() => setExpandedId(n.id)}
+        onCollapse={() => {
+          setExpandedId(null);
+          setEditingId(null);
+        }}
+        onStartEdit={() => setEditingId(n.id)}
+        onCancelEdit={() => setEditingId(null)}
+        onRemove={confirmDelete.request}
+        onSaveEdit={handleSaveEdit}
+        onAppend={handleAppend}
+        onTogglePin={handleTogglePin}
+      />
+    );
+  }
+
   return (
+    // border-t-amber-400 må matche SECTION_ACCENT.notes — se sectionAccents.ts.
     <div className="border-t-2 border-t-amber-400/60 p-4">
       <CardHeader
         title="Notater"
-        subtitle={notes.length > 0 ? `${notes.length} notater` : "Tomt"}
+        stat={{ value: notes.length, label: notes.length === 1 ? "notat" : "notater" }}
         onAdd={openAddForm}
         addLabel="Nytt notat"
         icon={StickyNote}
-        iconColorClass="text-amber-400"
+        iconColorClass={SECTION_ACCENT.notes}
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Søk i notater..."
-            aria-label="Søk i notater"
-            className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
+          {/* Søkefeltet skjules når det ikke finnes noe å søke i — et tomt
+              søkefelt over en tomtilstand ba brukeren filtrere ingenting. */}
+          {notes.length > 0 && (
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Søk i notater..."
+              aria-label="Søk i notater"
+              className="rounded-lg border border-transparent bg-surface-2 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+          )}
 
           {showForm && <NoteForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}
 
           {loading ? (
             <SkeletonRows count={2} />
+          ) : notes.length === 0 ? (
+            // Tomtilstand: hva seksjonen er til + veien til første notat, med
+            // samme sekundær-knappestil som ellers i kortet.
+            <p className="text-sm text-ink-3">
+              Notater samler ideer og korte tekster du vil finne igjen senere.{" "}
+              <button
+                type="button"
+                onClick={openAddForm}
+                className="font-medium text-accent-privat hover:text-accent-privat/80"
+              >
+                Skriv det første notatet
+              </button>
+            </p>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-ink-3">{query.trim() ? "Ingen treff." : "Ingen notater ennå."}</p>
+            <p className="text-sm text-ink-3">Ingen treff.</p>
           ) : (
             <>
-              <div className="flex flex-col gap-1.5">
-                {visibleNotes.map((n) => (
-                  <NoteRow
-                    key={n.id}
-                    note={n}
-                    expanded={expandedId === n.id}
-                    editing={editingId === n.id}
-                    onExpand={() => setExpandedId(n.id)}
-                    onCollapse={() => {
-                      setExpandedId(null);
-                      setEditingId(null);
-                    }}
-                    onStartEdit={() => setEditingId(n.id)}
-                    onCancelEdit={() => setEditingId(null)}
-                    onRemove={confirmDelete.request}
-                    onSaveEdit={handleSaveEdit}
-                    onAppend={handleAppend}
-                    onTogglePin={handleTogglePin}
-                  />
-                ))}
-              </div>
+              {pinnedVisible.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {/* Wrapperen bærer seksjonsfargen; GroupLabel med `now` tegner
+                      seg selv med currentColor. */}
+                  <div className={SECTION_ACCENT.notes}>
+                    <GroupLabel now>Festet</GroupLabel>
+                  </div>
+                  {pinnedVisible.map(renderNote)}
+                </div>
+              )}
+              {restVisible.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {pinnedVisible.length > 0 && <GroupLabel>Resten</GroupLabel>}
+                  {restVisible.map(renderNote)}
+                </div>
+              )}
               {filtered.length > visibleCount && (
                 <button
                   type="button"

@@ -525,7 +525,17 @@ export default function CalendarSection({
             <SkeletonRows count={2} />
           ) : (
             <>
-              {upcoming.length === 0 && <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>}
+              {upcoming.length === 0 && (
+                // Samme form som resten av appens tomtilstander (2026-09-07): én setning om hva
+                // seksjonen er til + en vei videre, ikke en blindvei. Gjenbruker header-knappens
+                // egen handleAddClick i stedet for et nytt knappedesign.
+                <p className="text-sm text-ink-3">
+                  Kalenderen holder avtaler og hendelser med dato og klokkeslett.{" "}
+                  <button type="button" onClick={handleAddClick} className="font-medium text-accent-privat hover:text-accent-privat/80">
+                    Legg til den første hendelsen
+                  </button>
+                </p>
+              )}
               {thisWeek.length > 0 && (
                 <div>
                   <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-2">Denne uken</p>

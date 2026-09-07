@@ -9,9 +9,11 @@ import { PartyPopper, X } from "lucide-react";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
 import type { EventCategory, LifeEvent, LifeEventRecurrence } from "@/lib/payday";
-import { addDaysIso, formatDMY, localDateString, nextOccurrence, nextPaydayFrom, relativeDayLabel, weekRangeContaining } from "@/lib/payday";
+import { addDaysIso, localDateString, nextOccurrence, nextPaydayFrom, relativeDayLabel, relativeDaysLabel, weekRangeContaining } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
+import { WeekStrip } from "./DataStrips";
 import SwipeableRow from "./SwipeableRow";
+import { SECTION_ACCENT } from "./sectionAccents";
 
 type DisplayCategory = EventCategory | "lonn";
 
@@ -397,12 +399,19 @@ export default function EventsSection({
 
   // Samme tre-bøtte-inndeling som Kalender — mer fokus på det som er nært
   // i tid, mindre fremtredende lenger frem.
-  const { end: thisWeekEnd } = weekRangeContaining(today);
+  const { start: thisWeekStart, end: thisWeekEnd } = weekRangeContaining(today);
   const { end: nextWeekEnd } = weekRangeContaining(addDaysIso(thisWeekEnd, 1));
   const thisWeekRows = rows.filter((r) => r.occurrence <= thisWeekEnd);
   const nextWeekRows = rows.filter((r) => r.occurrence > thisWeekEnd && r.occurrence <= nextWeekEnd);
   const laterRows = rows.filter((r) => r.occurrence > nextWeekEnd);
   const visibleLaterRows = laterRows.slice(0, visibleCount);
+
+  // Ukesstripe, ikke døgnakse: en hendelse har bare dato (ingen klokkeslett),
+  // så DayAxis har ingenting å plassere den på — uka er den finmaskede
+  // oppløsningen dataen faktisk bærer. Dagene før i dag står alltid tomme,
+  // siden `rows` kun inneholder kommende forekomster.
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDaysIso(thisWeekStart, i));
+  const weekActiveDays = weekDays.map((d) => rows.some((r) => r.occurrence === d));
 
   // Skroller til og fremhever raden når man hopper hit fra en lenket
   // påminnelse — samme mønster som CalendarSection.
@@ -427,17 +436,37 @@ export default function EventsSection({
   }, [highlightEventId, visibleCount, laterRows.length]);
 
   return (
+    // border-t-accent-privat må matche SECTION_ACCENT.events — se sectionAccents.ts.
     <div className="border-t-2 border-t-accent-privat/60 p-4">
       <CardHeader
         title="Hendelser"
-        subtitle={rows.length > 0 ? `Neste: ${formatDMY(rows[0].occurrence)}` : "Ingen"}
+        // Avstand i tid, ikke rå dato: sier mer om når det haster enn "Neste: 17.08.2026" gjorde.
+        // relativeDaysLabel (ikke relativeDayLabel): nøkkeltallet skal si HVOR LENGE det er til
+        // ("om 3 dager"), ikke hvilken dato det er ("Mandag 17.08") — sistnevnte er riktig som
+        // gruppeoverskrift nede i lista, men bredere og mindre informativt her.
+        stat={rows.length > 0 ? { value: relativeDaysLabel(rows[0].occurrence, today), label: "neste" } : undefined}
         onAdd={handleAddClick}
         addLabel="Ny hendelse"
         icon={PartyPopper}
-        iconColorClass="text-accent-privat"
+        iconColorClass={SECTION_ACCENT.events}
       />
       <div className="flex flex-col gap-2">
         <MutationError message={mutationError.message} />
+        {!loading && rows.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <WeekStrip
+              activeDays={weekActiveDays}
+              todayIndex={weekDays.indexOf(today)}
+              colorClass={SECTION_ACCENT.events}
+              label={thisWeekRows.length === 1 ? "1 hendelse denne uken" : `${thisWeekRows.length} hendelser denne uken`}
+            />
+            {thisWeekRows.length > 0 && (
+              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+                {thisWeekRows.length === 1 ? "1 denne uken" : `${thisWeekRows.length} denne uken`}
+              </p>
+            )}
+          </div>
+        )}
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
               <input
@@ -511,10 +540,24 @@ export default function EventsSection({
 
           {loading ? (
             <SkeletonRows count={2} />
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-ink-3">Ingen kommende hendelser.</p>
           ) : (
             <>
+              {/* Lønningsdag legges alltid inn i `rows`, så lista er teknisk
+                  aldri tom — den ekte tomtilstanden er at ingen egne hendelser
+                  er lagt inn. Teksten forklarer hva seksjonen holder og gir
+                  veien videre, med samme sekundær-knappestil som i skjemaet. */}
+              {events.length === 0 && (
+                <p className="text-sm text-ink-3">
+                  Hendelser holder datoer som kommer igjen — bursdager, permisjon og bolig.{" "}
+                  <button
+                    type="button"
+                    onClick={handleAddClick}
+                    className="font-medium text-accent-privat hover:text-accent-privat/80"
+                  >
+                    Legg til den første hendelsen
+                  </button>
+                </p>
+              )}
               {thisWeekRows.length > 0 && (
                 <div>
                   <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-2">Denne uken</p>

@@ -17,6 +17,9 @@ import {
 import type { Project, ProjectStatus } from "@/lib/projects";
 import { formatDMY } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
+import { RatioBar } from "./DataStrips";
+import { SECTION_ACCENT } from "./sectionAccents";
+import SwipeableRow from "./SwipeableRow";
 import { FolderKanban, X } from "lucide-react";
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -139,6 +142,7 @@ function ItemNote({ note, onSave }: { note?: string; onSave: (note: string) => v
 function ProjectListBlock({
   items,
   placeholder,
+  emptyText,
   withQuantity = false,
   onAdd,
   onToggle,
@@ -147,6 +151,9 @@ function ProjectListBlock({
 }: {
   items: SimpleItem[];
   placeholder: string;
+  // Én setning om hva lista holder + hvordan man legger til det første —
+  // de tre underlistene er ikke selvforklarende når de står tomme.
+  emptyText: string;
   withQuantity?: boolean;
   onAdd: (label: string, meta?: string) => void;
   onToggle: (id: string) => void;
@@ -168,39 +175,47 @@ function ProjectListBlock({
 
   return (
     <div className="flex flex-col gap-1.5">
-      {items.length > 0 && (
+      {items.length > 0 ? (
         <ul className="flex flex-col gap-1">
           {items.map((item) => (
             <li key={item.id} className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onToggle(item.id)}
-                  aria-pressed={item.done}
-                  aria-label={item.done ? "Marker som ikke gjort" : "Marker som gjort"}
-                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
-                    item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
-                  }`}
-                >
-                  {item.done && <CheckIcon className="h-3 w-3 text-surface-0" />}
-                </button>
-                <p className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
-                  {item.label}
-                  {item.meta && <span className="ml-1.5 text-ink-4">· {item.meta}</span>}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onRemove(item)}
-                  aria-label="Slett"
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {/* Sveip venstre = slett, samme gest som Handleliste/Kalender.
+                  X-knappen står igjen — sveipet er et tillegg, aldri eneste
+                  vei. Notatlinjen ligger utenfor sveipeflaten, slik at den
+                  ikke drar med seg raden. */}
+              <SwipeableRow onSwipeLeft={() => onRemove(item)} leftLabel="Slett">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onToggle(item.id)}
+                    aria-pressed={item.done}
+                    aria-label={item.done ? "Marker som ikke gjort" : "Marker som gjort"}
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-full ring-1 transition ${
+                      item.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
+                    }`}
+                  >
+                    {item.done && <CheckIcon className="h-3 w-3 text-surface-0" />}
+                  </button>
+                  <p className={`min-w-0 flex-1 truncate text-sm ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+                    {item.label}
+                    {item.meta && <span className="ml-1.5 text-ink-4">· {item.meta}</span>}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(item)}
+                    aria-label="Slett"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </SwipeableRow>
               {onSaveNote && <ItemNote note={item.note} onSave={(note) => onSaveNote(item.id, note)} />}
             </li>
           ))}
         </ul>
+      ) : (
+        <p className="text-xs text-ink-4">{emptyText}</p>
       )}
       {adding ? (
         <div className="flex items-center gap-2">
@@ -462,9 +477,23 @@ export default function ProjectsSection() {
     }
   }
 
+  // Nøkkeltallet er prosjekter som pågår, ikke totalt antall — det er tallet
+  // som sier noe om hva som faktisk krever oppmerksomhet nå.
+  const ongoingCount = projects.filter((p) => p.status === "pagar").length;
+
   return (
-    <div className="border-t-2 border-t-accent-privat/60 p-4">
-      <CardHeader title="Prosjekter" onAdd={() => setShowForm(true)} addLabel="Nytt prosjekt" icon={FolderKanban} iconColorClass="text-accent-privat" />
+    // Topplinjen må matche SECTION_ACCENT.projects (se ./sectionAccents.ts) —
+    // Tailwind kan ikke bygge klassenavnet fra en variabel i runtime. Var
+    // oransje mens navigasjonen var indigo; indigo er den kanoniske.
+    <div className="border-t-2 border-t-indigo-400/60 p-4">
+      <CardHeader
+        title="Prosjekter"
+        stat={{ value: ongoingCount, label: "pågår" }}
+        onAdd={() => setShowForm(true)}
+        addLabel="Nytt prosjekt"
+        icon={FolderKanban}
+        iconColorClass={SECTION_ACCENT.projects}
+      />
       <div className="flex flex-col gap-3">
         <MutationError message={mutationError.message} />
         {showForm && (
@@ -505,13 +534,29 @@ export default function ProjectsSection() {
         {loading ? (
           <SkeletonRows count={2} />
         ) : projects.length === 0 ? (
-          <p className="text-sm text-ink-3">Ingen prosjekter ennå.</p>
+          // "Ingen prosjekter ennå." forklarte ingenting: begrepet (sjekkliste,
+          // gjesteliste, innkjøp samlet rundt én anledning) er ikke
+          // selvforklarende. Knappen er samme "+ Nytt ..."-stil som resten av
+          // kortet og åpner det vanlige opprett-skjemaet.
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-ink-3">
+              Et prosjekt samler sjekkliste, gjesteliste og innkjøp for én anledning, som en dåp eller en bursdag.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowForm(true)}
+              className="self-start text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+            >
+              + Nytt prosjekt
+            </button>
+          </div>
         ) : (
           <ul className="flex flex-col gap-2">
             {projects.map((project) => {
               const total = project.checklist.length + project.guests.length + project.purchases.length;
+              const checklistDone = project.checklist.filter((i) => i.done).length;
               const done =
-                project.checklist.filter((i) => i.done).length +
+                checklistDone +
                 project.guests.filter((i) => i.done).length +
                 project.purchases.filter((i) => i.done).length;
               const expanded = expandedId === project.id;
@@ -526,39 +571,66 @@ export default function ProjectsSection() {
 
               return (
                 <li key={project.id} className="rounded-xl border border-line bg-surface-2 p-2.5">
-                  <div className="flex items-start gap-2">
-                    <button type="button" onClick={() => setExpandedId(expanded ? null : project.id)} className="min-w-0 flex-1 text-left">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="min-w-0 truncate text-sm font-medium text-ink-1">{project.name}</p>
-                        <StatusBadge status={project.status} />
+                  {/* Sveip venstre = slett prosjektet (bekreftes som før).
+                      Bare topplinjen er sveipbar — det utvidede innholdet
+                      har sine egne sveipbare rader. */}
+                  <SwipeableRow onSwipeLeft={() => confirmDeleteProject.request(project.id)} leftLabel="Slett">
+                    <div className="flex items-start gap-2">
+                      <button type="button" onClick={() => setExpandedId(expanded ? null : project.id)} className="min-w-0 flex-1 text-left">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="min-w-0 truncate text-sm font-medium text-ink-1">{project.name}</p>
+                          <StatusBadge status={project.status} />
+                        </div>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-4">
+                          {project.targetDate && <span>{formatDMY(project.targetDate)}</span>}
+                          {total > 0 && (
+                            // "totalt" er nødvendig: ringen teller ALLE tre listene (sjekkliste +
+                            // gjester + innkjøp), mens baren rett under viser sjekklista alene.
+                            // Uten etiketten sto to ulike andeler rett over hverandre, begge
+                            // umerket, og det var umulig å se hvilken som var hvilken.
+                            <span className="inline-flex items-center gap-1">
+                              {project.targetDate && <span>·</span>}
+                              <ProjectProgress done={done} total={total} />
+                              {`${done}/${total} totalt`}
+                            </span>
+                          )}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(project.id)}
+                        className="shrink-0 text-2xs font-medium text-ink-4 hover:text-ink-2"
+                      >
+                        Rediger
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => confirmDeleteProject.request(project.id)}
+                        aria-label="Slett prosjekt"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </SwipeableRow>
+                  {/* Sjekklisten er prosjektets egen framdrift — ringen over
+                      teller alle tre listene, så baren merkes eksplisitt
+                      "Sjekkliste" for at de to andelene ikke skal forveksles. */}
+                  {project.checklist.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <RatioBar
+                          done={checklistDone}
+                          total={project.checklist.length}
+                          colorClass={SECTION_ACCENT.projects}
+                          label={`${checklistDone} av ${project.checklist.length} punkter i sjekklisten er gjort`}
+                        />
                       </div>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-4">
-                        {project.targetDate && <span>{formatDMY(project.targetDate)}</span>}
-                        {total > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            {project.targetDate && <span>·</span>}
-                            <ProjectProgress done={done} total={total} />
-                            {`${done}/${total}`}
-                          </span>
-                        )}
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(project.id)}
-                      className="shrink-0 text-2xs font-medium text-ink-4 hover:text-ink-2"
-                    >
-                      Rediger
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => confirmDeleteProject.request(project.id)}
-                      aria-label="Slett prosjekt"
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
+                      <span className="shrink-0 text-2xs tabular-nums text-ink-4">
+                        Sjekkliste {checklistDone} av {project.checklist.length}
+                      </span>
+                    </div>
+                  )}
                   <CollapsibleBody collapsed={!expanded}>
                     <div className="mt-2.5 flex flex-col gap-2">
                       {project.description && <p className="text-sm text-ink-3">{project.description}</p>}
@@ -566,6 +638,7 @@ export default function ProjectsSection() {
                         <ProjectListBlock
                           items={project.checklist.map((i) => ({ id: i.id, label: i.text, done: i.done, note: i.notes }))}
                           placeholder="Nytt punkt..."
+                          emptyText="Ting som må gjøres før dagen. Legg til det første punktet med «+ Nytt punkt»."
                           onAdd={(label) => handleAddItem(project.id, "checklist", label)}
                           onToggle={(id) => handleToggleItem(project.id, "checklist", id)}
                           onRemove={(item) => confirmDeleteItem.request({ projectId: project.id, kind: "checklist", itemId: item.id, preview: item.label })}
@@ -576,6 +649,7 @@ export default function ProjectsSection() {
                         <ProjectListBlock
                           items={project.guests.map((g) => ({ id: g.id, label: g.name, done: g.done }))}
                           placeholder="Navn på gjest..."
+                          emptyText="Navn på gjestene til denne anledningen. Legg til den første med «+ Nytt punkt»."
                           onAdd={(label) => handleAddItem(project.id, "guests", label)}
                           onToggle={(id) => handleToggleItem(project.id, "guests", id)}
                           onRemove={(item) => confirmDeleteItem.request({ projectId: project.id, kind: "guests", itemId: item.id, preview: item.label })}
@@ -585,6 +659,7 @@ export default function ProjectsSection() {
                         <ProjectListBlock
                           items={project.purchases.map((p) => ({ id: p.id, label: p.name, done: p.done, meta: p.quantity }))}
                           placeholder="Vare..."
+                          emptyText="Varer som skal handles inn, med antall. Legg til den første med «+ Nytt punkt»."
                           withQuantity
                           onAdd={(label, meta) => handleAddItem(project.id, "purchases", label, meta)}
                           onToggle={(id) => handleToggleItem(project.id, "purchases", id)}

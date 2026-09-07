@@ -16,7 +16,9 @@ import type { ShoppingItem, StoreSection } from "@/lib/shoppingList";
 import type { QuickPick } from "@/lib/shoppingQuickPicks";
 import { vibrate } from "@/lib/haptics";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
+import { RatioBar } from "./DataStrips";
 import SwipeableRow from "./SwipeableRow";
+import { SECTION_ACCENT } from "./sectionAccents";
 import { Pencil, ShoppingCart, X } from "lucide-react";
 
 const EMPTY_ITEMS: ShoppingItem[] = [];
@@ -517,6 +519,10 @@ export default function ShoppingListSection() {
     (g) => g.items.length > 0,
   );
   const notDoneFlat = grouped.flatMap((g) => g.items);
+  // Kjøpt/totalt for RatioBar regnes på `items` direkte: `notDone` og `done`
+  // overlapper for varer som nettopp ble huket av (justToggled holder dem
+  // synlige i begge lister), så en sum av de to ville dobbelttalt.
+  const boughtCount = items.filter((i) => i.done).length;
   const visibleNotDone = notDoneFlat.slice(0, visibleNotDoneCount);
   const visibleDone = done.slice(0, visibleDoneCount);
   // Autocomplete i "Ny vare"-feltet — matchende hurtigvalg vises som forslag
@@ -537,17 +543,33 @@ export default function ShoppingListSection() {
   }
 
   return (
+    // border-t-cyan-400 må matche SECTION_ACCENT.shopping — se sectionAccents.ts.
     <div className="border-t-2 border-t-cyan-400/60 p-4">
       <CardHeader
         title="Handleliste"
-        subtitle={notDone.length > 0 ? `${notDone.length} varer` : "Tom"}
+        // Nøkkeltallet er det som gjenstår, ikke totalen: det er antallet du
+        // faktisk skal handle.
+        stat={{ value: notDone.length, label: notDone.length === 1 ? "vare igjen" : "varer igjen" }}
         onAdd={handleAddClick}
         addLabel="Ny vare"
         icon={ShoppingCart}
-        iconColorClass="text-cyan-400"
+        iconColorClass={SECTION_ACCENT.shopping}
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
+          {!loading && items.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+                {boughtCount} av {items.length} kjøpt
+              </p>
+              <RatioBar
+                done={boughtCount}
+                total={items.length}
+                colorClass={SECTION_ACCENT.shopping}
+                label={`${boughtCount} av ${items.length} varer kjøpt`}
+              />
+            </div>
+          )}
 
           {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
@@ -692,8 +714,23 @@ export default function ShoppingListSection() {
 
           {loading ? (
             <SkeletonRows count={2} />
+          ) : items.length === 0 ? (
+            // Tomtilstand: hva lista er til + veien til første vare, med samme
+            // sekundær-knappestil som ellers i kortet.
+            <p className="text-sm text-ink-3">
+              Handlelisten holder varene du skal kjøpe, sortert etter butikkseksjon.{" "}
+              <button
+                type="button"
+                onClick={handleAddClick}
+                className="font-medium text-accent-privat hover:text-accent-privat/80"
+              >
+                Legg til den første varen
+              </button>
+            </p>
           ) : notDone.length === 0 ? (
-            <p className="text-sm text-ink-3">Handlelisten er tom.</p>
+            // Egen tilstand: lista er ikke tom, den er ferdighandlet. Samme
+            // ordlyd som nøkkeltallet "0 varer igjen" over.
+            <p className="text-sm text-ink-3">Alt på lista er kjøpt.</p>
           ) : (
             <>
               {/* Kategorien vises inline til høyre på hver rad (se ItemRow) i
