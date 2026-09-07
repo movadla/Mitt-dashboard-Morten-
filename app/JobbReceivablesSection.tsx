@@ -96,14 +96,25 @@ function ReceivableRow({
   const bygg = getMainBuilding(r.leietaker);
   return (
     <>
-      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
-        <td className="max-w-0 px-3 py-2">
+      {/* Under sm er raden et 3-kolonners rutenett i stedet for sju tabellceller
+          (2026-09-07). Sju kolonner får aldri plass på en telefon: den gamle
+          tabellen presset navnene ned til «Møller ...» og lot beløpene renne
+          utover cellene sine og oppå hverandre. Stablet:
+            navn ........................... utestående
+            selskap        61-90            91+
+            risiko ......................... notat
+          Fra sm og opp er alt tilbake til vanlige tabellceller. */}
+      <tr className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 border-t border-line px-2 py-2.5 transition-colors hover:bg-surface-2/50 sm:table-row sm:gap-0 sm:px-0 sm:py-0">
+        {/* col-start-1 + col-end-3, ikke col-span-2: span-varianten setter hele
+            grid-column-shorthanden og kan slå ut col-start avhengig av
+            regelrekkefølgen i den genererte CSS-en. */}
+        <td className="col-start-1 col-end-3 row-start-1 min-w-0 sm:max-w-0 sm:table-cell sm:px-2 sm:py-2">
           <div className="flex min-w-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setDetailsOpen((v) => !v)}
             aria-expanded={detailsOpen}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-ink-2 hover:text-ink-1"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-ink-1 hover:text-ink-1 sm:font-normal sm:text-ink-2"
           >
             {/* role="img" + aria-label (2026-09-07): en tom, ikke-interaktiv <span> med kun
                 `title` blir ikke pålitelig lest opp av skjermlesere, så inkasso-flagget var
@@ -116,26 +127,49 @@ function ReceivableRow({
                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger"
               />
             )}
-            <span className="min-w-0 truncate">{r.leietaker}</span>
+            {/* Brytes over to linjer på mobil i stedet for å avkortes — å se hvilken
+                leietaker det gjelder er hele poenget med raden. Avkortingen beholdes
+                fra sm, der kolonnen har en fast bredde å avkorte mot. */}
+            <span className="min-w-0 break-words sm:truncate">{r.leietaker}</span>
           </button>
           <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="max-w-0 truncate px-3 py-2 text-2xs text-ink-3">
+        <td className="col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium text-ink-1 sm:table-cell sm:px-2 sm:py-2 sm:font-normal sm:text-ink-2">
+          {formatKr(r.utestaende)}
+        </td>
+        <td className="col-start-1 row-start-2 min-w-0 break-words text-2xs text-ink-3 sm:max-w-0 sm:table-cell sm:truncate sm:px-2 sm:py-2">
           {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
         </td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
-          {band6190 > 0 ? formatKr(band6190) : "–"}
+        {/* Nullbeløp vises som tomt på mobil og som «–» i tabellen: en kolonne full av
+            tankestreker trenger plassen sin på et bredt skjermbilde for å holde
+            rutenettet lesbart, men på mobil er det bare støy under navnet. */}
+        <td className={`col-start-2 row-start-2 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
+          {band6190 > 0 ? (
+            <>
+              <span className="text-ink-4 sm:hidden">61-90&nbsp;</span>
+              {formatKr(band6190)}
+            </>
+          ) : (
+            <span className="hidden sm:inline">–</span>
+          )}
         </td>
-        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
-          {overdue91 > 0 ? formatKr(overdue91) : "–"}
+        <td className={`col-start-3 row-start-2 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
+          {overdue91 > 0 ? (
+            <>
+              <span className="text-ink-4 sm:hidden">91+&nbsp;</span>
+              {formatKr(overdue91)}
+            </>
+          ) : (
+            <span className="hidden sm:inline">–</span>
+          )}
         </td>
-        <td className="whitespace-nowrap px-1 py-2">
+        <td className="col-start-1 row-start-3 whitespace-nowrap sm:table-cell sm:px-1 sm:py-2">
           <select
             value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
             title={isOverride ? "Manuelt satt" : "Automatisk satt basert på forfalt beløp"}
+            aria-label={`Risiko for ${r.leietaker}`}
             className={`w-full max-w-full rounded-lg border bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${RISK_META[effectiveRisk].textClass} ${isOverride ? "border-line" : "border-dashed border-line"}`}
           >
             <option value="lav">Lav{effectiveRisk === "lav" && !isOverride ? " (auto)" : ""}</option>
@@ -143,13 +177,13 @@ function ReceivableRow({
             <option value="hoy">Høy{effectiveRisk === "hoy" && !isOverride ? " (auto)" : ""}</option>
           </select>
         </td>
-        <td className="whitespace-nowrap px-3 py-2">
+        <td className="col-start-3 row-start-3 flex justify-end whitespace-nowrap sm:table-cell sm:px-2 sm:py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {detailsOpen && (
-        <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={7} className="px-3 py-2 pl-9">
+        <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
+          <td colSpan={7} className="block px-3 py-2 sm:table-cell sm:pl-9">
             <div className="mb-1.5 text-2xs text-ink-4">Bygg: {bygg}</div>
             <div className="flex flex-col gap-2.5">
               {r.selskaper.map((s, i) => (
@@ -177,8 +211,8 @@ function ReceivableRow({
         </tr>
       )}
       {notesOpen && (
-        <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={7} className="px-3 py-2 pl-9">
+        <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
+          <td colSpan={7} className="block px-3 py-2 sm:table-cell sm:pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
@@ -393,6 +427,43 @@ function ReceivablesSortHeader({
   );
 }
 
+type ReceivableSort = { key: ReceivableSortKey; dir: "asc" | "desc" };
+
+// Sorteringsvalgene som er nyttige i praksis, ferdig kombinert med retning —
+// på mobil er det ingen kolonneoverskrifter å trykke på, og et eget
+// retningsvalg ved siden av ville vært to kontroller for én beslutning.
+const MOBILE_SORTS: { id: string; label: string; sort: ReceivableSort | null }[] = [
+  { id: "default", label: "Standardrekkefølge", sort: null },
+  { id: "utestaende", label: "Størst utestående", sort: { key: "utestaende", dir: "desc" } },
+  { id: "overdue91", label: "Mest 91+ dager", sort: { key: "overdue91", dir: "desc" } },
+  { id: "overdue6190", label: "Mest 61-90 dager", sort: { key: "overdue6190", dir: "desc" } },
+  { id: "risiko", label: "Høyest risiko", sort: { key: "risiko", dir: "desc" } },
+  { id: "leietaker", label: "Leietaker A-Å", sort: { key: "leietaker", dir: "asc" } },
+];
+
+function ReceivablesMobileSort({ sort, onChange }: { sort: ReceivableSort | null; onChange: (next: ReceivableSort | null) => void }) {
+  // Faller tilbake til "default" når tabellen er sortert stigende via en
+  // kolonneoverskrift på et bredt skjermbilde — den tilstanden finnes ikke som
+  // et valg her, og da er det ærligere å vise ingenting enn feil valg.
+  const current = MOBILE_SORTS.find((o) => o.sort?.key === sort?.key && o.sort?.dir === sort?.dir)?.id ?? "default";
+  return (
+    <label className="mb-2 flex items-center gap-2 text-2xs text-ink-4 sm:hidden">
+      Sorter
+      <select
+        value={current}
+        onChange={(e) => onChange(MOBILE_SORTS.find((o) => o.id === e.target.value)?.sort ?? null)}
+        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2 py-1 text-2xs text-ink-2 outline-none focus:border-line-strong"
+      >
+        {MOBILE_SORTS.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export default function JobbReceivablesSection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const [showAll, setShowAll] = useState(false);
   const [showTrend, setShowTrend] = useState(false);
@@ -403,7 +474,7 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
   const [snapshotLastFeil, setSnapshotLastFeil] = useState(false);
   const [snapshotConfirmOpen, setSnapshotConfirmOpen] = useState(false);
   const [snapshotStatus, setSnapshotStatus] = useState<string | null>(null);
-  const [sort, setSort] = useState<{ key: ReceivableSortKey; dir: "asc" | "desc" } | null>(null);
+  const [sort, setSort] = useState<ReceivableSort | null>(null);
   const total = RECEIVABLES.reduce((sum, r) => sum + r.utestaende, 0);
   const antallUnderInkasso = RECEIVABLES.filter((r) => r.selskaper.some((s) => s.underInkasso)).length;
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
@@ -598,29 +669,40 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         <ReceivablesAgingBar aging={totalAging} total={total} />
       </div>
         <>
-          <div className={`-mx-1 overflow-x-auto ${showAll ? "max-h-[480px] overflow-y-auto" : ""}`}>
-            <table className="w-full min-w-[460px] table-fixed text-sm">
-              <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
+          {/* Sortering på mobil: kolonneoverskriftene er skjult der (se thead under),
+              så uten denne var tabellen låst til den rekkefølgen den ble lastet i.
+              (2026-09-07) */}
+          <ReceivablesMobileSort sort={sort} onChange={setSort} />
+          <div className={`-mx-1 sm:overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto sm:max-h-[480px]" : ""}`}>
+            {/* Bredden er regnet ut fra innholdet, ikke gjettet: «14 253 410 kr» er ~100 px
+                bredt, og med tre beløpskolonner + risiko + notat kan ikke sju kolonner
+                presses under ~760 px. Den gamle min-w-[460px] ga beløpskolonnene 55 px,
+                og siden cellene er whitespace-nowrap rant tallene utover og ble malt oppå
+                nabokolonnen i stedet for å bli avkortet. Under sm er tabellen lagt om til
+                stablede rader (block/grid), så min-bredden gjelder kun fra sm og opp.
+                (2026-09-07) */}
+            <table className="block w-full text-sm sm:table sm:min-w-[760px] sm:table-fixed">
+              <thead className={`hidden sm:table-header-group ${showAll ? "sticky top-0 z-10 bg-surface-1" : ""}`}>
                 <tr className="text-left text-ink-4">
                   <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[22%]" />
-                  <th className="w-[16%] px-3 py-2 text-2xs font-medium">Selskap</th>
-                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[14%] text-right" />
-                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
-                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
-                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[16%] px-1" />
-                  <th className="w-[8%] px-3 py-2 text-2xs font-medium">Notat</th>
+                  <th className="w-[13%] px-2 py-2 text-2xs font-medium">Selskap</th>
+                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[18%] text-right" />
+                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
+                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
+                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[13%] px-1" />
+                  <th className="w-[4%] px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
-                  <td className="px-3 py-2">Totalt</td>
-                  <td className="px-3 py-2"></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">{formatKr(total)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.d61_90)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
+                  <td className="px-2 py-2">Totalt</td>
+                  <td className="px-2 py-2"></td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(total)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.d61_90)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
                   <td className="px-1 py-2"></td>
-                  <td className="px-3 py-2"></td>
+                  <td className="px-2 py-2"></td>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="block sm:table-row-group">
                 {visible.map((r) => (
                   <ReceivableRow
                     key={r.id}
