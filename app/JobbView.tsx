@@ -673,6 +673,12 @@ export default function JobbView({
     events: JOBB_SECTION_NODES.events(today),
     oppslag: <JobbLookupCard initialQuery={oppslagQuery} />,
     "income-forecast": JOBB_SECTION_NODES["income-forecast"](today),
+    // Manglet her (funnet 2026-09-08): id-en sto i DEFAULT_JOBB_SECTION_ORDER og i
+    // NAV_META, og noden fantes i JOBB_SECTION_NODES — men den ble aldri hentet inn
+    // hit. Oppslaget ga bare undefined, så Fazilesjekk rendret et helt tomt kort
+    // uten noen feilmelding. Se fallback-en under render for hvorfor det ikke lenger
+    // kan skje i stillhet.
+    fazilesjekk: JOBB_SECTION_NODES.fazilesjekk(today),
   };
 
   // Sikkerhetsnett hvis lagret aktiv fane av en eller annen grunn ikke finnes
@@ -719,7 +725,19 @@ export default function JobbView({
           tabIndex={-1}
           className={`${CARD_SHELL} tab-fade min-w-0 overflow-hidden outline-none`}
         >
-          <CardErrorBoundary>{sectionNodes[activeId]}</CardErrorBoundary>
+          {/* Fallback + synlig varsel i stedet for stille tomhet (2026-09-08):
+              Fazilesjekk sto i nav-lista uten en oppføring i sectionNodes, og et
+              manglende oppslag ga bare undefined — kortet ble tomt, uten feil i
+              konsollen og uten at feilboundary-en over slo inn. Nå plukkes noden
+              opp fra JOBB_SECTION_NODES hvis den finnes der, og mangler den
+              begge steder sier kortet det høyt. */}
+          <CardErrorBoundary>
+            {sectionNodes[activeId] ?? JOBB_SECTION_NODES[activeId]?.(today) ?? (
+              <p className="p-4 text-sm text-status-danger">
+                Seksjonen «{NAV_META[activeId]?.label ?? activeId}» har ingen visning koblet til seg.
+              </p>
+            )}
+          </CardErrorBoundary>
         </div>
       </div>
     </div>

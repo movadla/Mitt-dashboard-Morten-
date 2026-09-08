@@ -135,11 +135,14 @@ function ReceivableRow({
           <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium text-ink-1 sm:table-cell sm:px-2 sm:py-2 sm:font-normal sm:text-ink-2">
-          {formatKr(r.utestaende)}
-        </td>
+        {/* DOM-rekkefølgen MÅ følge kolonneoverskriftene: i en tabell er det den som
+            bestemmer hvilken kolonne cellen havner i. Mobilplasseringen styres av
+            eksplisitte col-start/row-start, så rutenettet trenger ingen omstokking. */}
         <td className="col-start-1 row-start-2 min-w-0 break-words text-2xs text-ink-3 sm:max-w-0 sm:table-cell sm:truncate sm:px-2 sm:py-2">
           {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
+        </td>
+        <td className="col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium text-ink-1 sm:table-cell sm:px-2 sm:py-2 sm:font-normal sm:text-ink-2">
+          {formatKr(r.utestaende)}
         </td>
         {/* Nullbeløp vises som tomt på mobil og som «–» i tabellen: en kolonne full av
             tankestreker trenger plassen sin på et bredt skjermbilde for å holde
@@ -675,22 +678,23 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
           <ReceivablesMobileSort sort={sort} onChange={setSort} />
           <div className={`-mx-1 sm:overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto sm:max-h-[480px]" : ""}`}>
             {/* Bredden er regnet ut fra innholdet, ikke gjettet: «14 253 410 kr» er ~100 px
-                bredt, og med tre beløpskolonner + risiko + notat kan ikke sju kolonner
-                presses under ~760 px. Den gamle min-w-[460px] ga beløpskolonnene 55 px,
-                og siden cellene er whitespace-nowrap rant tallene utover og ble malt oppå
+                bredt, risiko-nedtrekket trenger ~125 px for «Medium (auto)» og
+                notat-merkelappen ~110 px for «Kommentar (1)». Sju kolonner kan derfor ikke
+                presses under ~900 px. Den gamle min-w-[460px] ga beløpskolonnene 55 px, og
+                siden cellene er whitespace-nowrap rant tallene utover og ble malt oppå
                 nabokolonnen i stedet for å bli avkortet. Under sm er tabellen lagt om til
                 stablede rader (block/grid), så min-bredden gjelder kun fra sm og opp.
                 (2026-09-07) */}
-            <table className="block w-full text-sm sm:table sm:min-w-[760px] sm:table-fixed">
+            <table className="block w-full text-sm sm:table sm:min-w-[900px] sm:table-fixed">
               <thead className={`hidden sm:table-header-group ${showAll ? "sticky top-0 z-10 bg-surface-1" : ""}`}>
                 <tr className="text-left text-ink-4">
-                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[22%]" />
+                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[20%]" />
                   <th className="w-[13%] px-2 py-2 text-2xs font-medium">Selskap</th>
-                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[18%] text-right" />
-                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
-                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
-                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[13%] px-1" />
-                  <th className="w-[4%] px-2 py-2 text-2xs font-medium">Notat</th>
+                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[14%] text-right" />
+                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
+                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
+                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[15%] px-1" />
+                  <th className="w-[14%] px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
                   <td className="px-2 py-2">Totalt</td>
