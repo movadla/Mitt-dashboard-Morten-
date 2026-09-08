@@ -2,7 +2,7 @@
 // Add a new sport by appending an entry to SOURCES — nothing else to change.
 
 import { getJSON, setJSON } from "./kv";
-import { localDateString } from "./payday";
+import { addDaysIso, localDateString } from "./payday";
 import { getCustomSportEvents } from "./customSports";
 import { SPORTS_CACHE_KEY } from "./sportsCache";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES, LEAGUE_ROUND_LABELS } from "./sportsCategories";
@@ -86,20 +86,43 @@ async function fetchESPN(
 
   const todayStr     = localDateString();
   const todayCompact = todayStr.replace(/-/g, "");
+  // Full-liga-runder (ingen teamFilter) trengte tidligere kun 7 dager frem fordi
+  // UI-et var hardkodet til én ukes vindu — nå som SportSection kan vise flere
+  // uker (se "Vis flere uker"), må dette vinduet strekke seg like langt, ellers
+  // blir de nye dagkortene tomme selv om ligaen faktisk spiller runder lenger frem.
+  const vinduDager = teamFilter ? 10 : 21;
 
-  const upcomingDates: string[] = (todayBoard.leagues?.[0]?.calendar ?? [] as string[])
-    .map((d: string) => d.slice(0, 10).replace(/-/g, ""))
-    .filter((d: string) => d > todayCompact)
-    // Full-liga-runder (ingen teamFilter) trengte tidligere kun 7 dager frem
-    // fordi UI-et var hardkodet til én ukes vindu — nå som SportSection kan
-    // vise flere uker (se "Vis flere uker"), må dette vinduet strekke seg
-    // like langt, ellers blir de nye dagkortene tomme selv om ligaen faktisk
-    // spiller runder lenger frem.
-    .slice(0, teamFilter ? 10 : 21);
+  // ESPN svarer med TO HELT ULIKE former på `calendar` (2026-09-08):
+  //
+  //   Ligaer (eng.1, nor.1):  ["2026-08-21T07:00Z", "2026-08-22T07:00Z", ...]
+  //   Cuper  (uefa.champions, eng.fa):
+  //       [{ label: "UEFA Champions League", entries: [{ label: "League Phase",
+  //          startDate, endDate }, ...] }]
+  //
+  // Den gamle koden antok den flate formen og kalte d.slice(0, 10) rett på
+  // elementet. For cupene er elementet et objekt, så det kastet TypeError — og
+  // fordi getSportEvents samler kildene med Promise.allSettled ble hele
+  // turneringen borte i stillhet, inkludert kampene som ALLEREDE lå i
+  // dagens tavle. Det er derfor Champions League og FA Cup aldri har vist noe,
+  // mens Premier League og Eliteserien har fungert hele tiden.
+  //
+  // Cup-formen har ingen liste over enkeltdatoer å hente ut — bare
+  // fase-intervaller — så der spørres det i stedet med ett dato-INTERVALL
+  // (?dates=20260908-20260929), som ESPN godtar og som dekker vinduet i ett kall.
+  const rawCalendar: unknown = todayBoard.leagues?.[0]?.calendar;
+  const flatDates: string[] = Array.isArray(rawCalendar) ? rawCalendar.filter((d): d is string => typeof d === "string") : [];
+
+  const dateQueries: string[] =
+    flatDates.length > 0
+      ? flatDates
+          .map((d) => d.slice(0, 10).replace(/-/g, ""))
+          .filter((d) => d > todayCompact)
+          .slice(0, vinduDager)
+      : [`${todayCompact}-${addDaysIso(todayStr, vinduDager).replace(/-/g, "")}`];
 
   const boards = await Promise.allSettled([
     Promise.resolve(todayBoard),
-    ...upcomingDates.map(d =>
+    ...dateQueries.map(d =>
       fetch(`${ESPN}/scoreboard?dates=${d}`, UA).then(r => r.ok ? r.json() : null).catch(() => null)
     ),
   ]);
@@ -133,7 +156,11 @@ async function fetchESPN(
     }
   }
 
-  return events
+  // Dedupe FØR slice: intervall-spørringen over dekker også dagens dato, så de
+  // samme kampene kommer inn både fra dagens tavle og fra intervallet. Uten dette
+  // spiste duplikatene av `limit`, og getSportEvents sin globale dedupe kommer
+  // for sent — den kjører etter at dette kuttet allerede er gjort.
+  return [...new Map(events.map((e) => [e.id, e])).values()]
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))
     .slice(0, limit);
 }
