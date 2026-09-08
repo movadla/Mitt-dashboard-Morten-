@@ -742,11 +742,20 @@ export default function JobbView({
             dagens når det er tre uker gammelt er verre enn ingen tall. Én
             kobling her dekker alle seksjoner i stedet for et innslag i hver. */}
         <StaleSourceBanner sourceId={SECTION_DATA_SOURCE[activeId]} />
+        {/* brand-mustad på selve kortflaten, ikke på et innerlag: bakgrunnen og
+            skyggen kommer fra CARD_SHELL her, så et wrapper-div lenger inn hadde
+            gitt merkefarger på innholdet oppå et kort fra grunntemaet. Klassen
+            overstyrer bare --t-*-variablene i sitt eget subtre (se globals.css),
+            så Inntektsprognosen brandes uten at komponenten er rørt — og hele
+            fanen kan brandes senere ved å flytte klassen ut hit uten betingelse.
+            (2026-09-08) */}
         <div
           key={activeId}
           ref={paneRef}
           tabIndex={-1}
-          className={`${CARD_SHELL} tab-fade min-w-0 overflow-hidden outline-none`}
+          className={`${CARD_SHELL} tab-fade min-w-0 overflow-hidden outline-none ${
+            activeId === "income-forecast" ? "brand-mustad" : ""
+          }`}
         >
           {/* Fallback + synlig varsel i stedet for stille tomhet (2026-09-08):
               Fazilesjekk sto i nav-lista uten en oppføring i sectionNodes, og et

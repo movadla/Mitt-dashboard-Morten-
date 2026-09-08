@@ -415,6 +415,103 @@ html[data-theme="dag"] {
   --ds-wc: #a16207;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   MUSTAD EIENDOM — MERKEPALETT (2026-09-08)
+
+   Kilde: brandmanual.mustadeiendom.no/mustad-eiendom/ (offisiell brandhub,
+   lansert 30.04.2026). Hex-verdiene under er kopiert derfra ordrett:
+
+     Primær      beige      #DDD3CA  (Pantone Warm Gray 3 C)
+                 mørk grønn #062916  (Pantone 5535 C / RAL 6009)
+     Sekundær    #699E71 (557 C) · #206C4C (341 C) · #2C4430 (357 C)
+                 #F8F2ED · #A19387 (Warm Gray 8 C) · #5F5954 (Warm Gray 11 C)
+     Aksenter    #FF4E43 (178 C) · #F8D177 (1355 C) · #92B3D0 (2141 C)
+                 #334D70 (2143 C) · #A897B4 (666 C) · #93627A (2047 C)
+
+   Dette er et TOKEN-OMFANG, ikke et nytt tema: klassen overstyrer bare
+   --t-*-variablene innenfor sitt eget subtre, og alt under den arver
+   merkefargene uten at en enkelt komponent trenger å endres. Derfor kan én
+   seksjon brandes av gangen (se JobbView), og hele fanen senere ved å flytte
+   klassen oppover.
+
+   To valg verdt å begrunne, siden de ikke følger rett av manualen:
+   · Aksentfargen er merkets BLÅ (#92B3D0/#334D70), ikke en av grønnfargene.
+     Grønn er allerede flatens farge, og «positiv status» bruker #699E71 — en
+     grønn lenkefarge oppå grønn flate ville visket ut skillet mellom
+     «handling» og «alt er bra».
+   · Manualen har ingen mørk rød eller mørk gul, og i dagmodus leser #FF4E43
+     og #F8D177 for svakt på beige. De er derfor dempet med merkets egen mørke
+     grønn via color-mix i stedet for at det oppfinnes farger utenfor paletten.
+
+   Typografien (Domaine Sans Text + Post Grotesk) er IKKE med her. Begge er
+   lisensierte skrifter fra Klim/Sharp Type, og dette repoet er offentlig på
+   GitHub — fontfilene kan ikke legges inn her uten å publisere dem. Se
+   samtalen; det krever en webfont-lisens og en annen leveringsmåte.
+   ═══════════════════════════════════════════════════════════════════════ */
+.brand-mustad {
+  --t-surface-0: #041c0f;
+  --t-surface-1: #062916;
+  --t-surface-2: #0c3a20;
+  --t-surface-3: #14492b;
+
+  --t-ink-1: #f8f2ed;
+  --t-ink-2: #ddd3ca;
+  --t-ink-3: #a19387;
+  --t-ink-4: #7d7268;
+
+  --t-line: color-mix(in srgb, #ddd3ca 14%, transparent);
+  --t-line-strong: color-mix(in srgb, #ddd3ca 28%, transparent);
+
+  --t-accent: #92b3d0;
+  --t-status-danger: #ff4e43;
+  --t-status-warning: #f8d177;
+  /* Merkets grønn #699E71 rått oppå den mørke grønne flaten forsvant nesten —
+     «+1 696 815 kr» og de positive stolpene lå like i kulør som bakgrunnen.
+     Lysnet med merkets egen off-white i stedet for å bytte til en farge utenfor
+     paletten, så «positiv» fortsatt LESER som Mustad-grønn. Verifisert mot det
+     faktiske kortet i nettleseren, ikke gjettet. */
+  --t-status-positive: color-mix(in srgb, #699e71 70%, #f8f2ed);
+  --t-status-action: #a897b4;
+
+  /* Emerald-trinnene brukes til stolpefyll i Inntektsprognosen og trenger samme
+     behandling som status-positive over. */
+  --t-emerald-400: color-mix(in srgb, #699e71 62%, #f8f2ed);
+  --t-emerald-500: #699e71;
+  --t-emerald-600: #206c4c;
+  --t-emerald-700: #2c4430;
+
+  /* Kortets egen flate og skygge må følge med, ellers ligger den brandede
+     seksjonen på et blågrått kort fra grunntemaet. */
+  --card-sheen: linear-gradient(180deg, #073019, #062916);
+  --tile-bg: color-mix(in srgb, #ddd3ca 7%, transparent);
+  --elev-edge: inset 0 0 0 1px color-mix(in srgb, #ddd3ca 12%, transparent);
+}
+
+html[data-theme="dag"] .brand-mustad {
+  --t-surface-0: #ddd3ca;
+  --t-surface-1: #f8f2ed;
+  --t-surface-2: #efe6de;
+  --t-surface-3: #e4d9d0;
+
+  --t-ink-1: #062916;
+  --t-ink-2: #2c4430;
+  --t-ink-3: #5f5954;
+  --t-ink-4: #a19387;
+
+  --t-line: color-mix(in srgb, #062916 12%, transparent);
+  --t-line-strong: color-mix(in srgb, #062916 24%, transparent);
+
+  --t-accent: #334d70;
+  --t-status-danger: color-mix(in srgb, #ff4e43 74%, #062916);
+  --t-status-warning: color-mix(in srgb, #f8d177 58%, #062916);
+  --t-status-positive: #206c4c;
+  --t-status-action: #93627a;
+
+  --card-sheen: linear-gradient(180deg, #fffaf6, #f8f2ed);
+  --tile-bg: color-mix(in srgb, #062916 5%, transparent);
+  --elev-edge: 0 0 0 0 transparent;
+}
+
 html,
 body {
   color: var(--color-ink-2);
