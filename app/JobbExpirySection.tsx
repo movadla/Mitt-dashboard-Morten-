@@ -18,6 +18,7 @@ import {
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
+import { daysBetween, relativeDaysLabel } from "@/lib/payday";
 import { ArrowUpRight, CalendarClock } from "lucide-react";
 
 // Summeres fra EXPIRIES her i stedet for å importere EXPIRIES_TOTAL_ARSLEIE/
@@ -61,42 +62,65 @@ function OppslagLink({ name, onJump }: { name: string; onJump: (name: string) =>
   );
 }
 
-// Hastegrad-histogram: grupperer leietakerne etter NÆRMESTE linjes dagerTilUtlop
+// Hastegrad-histogram: grupperer leietakerne etter NÆRMESTE linjes utløpsdato
 // (samme utledning som `nearestLine` i ExpiryTenantRow under) i tre bøtter —
 // 0–7/8–14/15–30 dager. Lista sin egentlige jobb er å rangere uro, ikke bare
 // telle opp, så en enkelt sum i toppen (EXPIRIES.length) sier ingenting om
 // HVOR HASTER det er. Ikke `RatioBar` (den uttrykker kun ferdig/totalt), men
 // samme visuelle språk: tynn stolpe i seksjonsfargen, tegnet med bg-current,
 // ingen ny avhengighet — kun tre segmenter i stedet for to.
-function ExpiryUrgencyBar({ tenants, colorClass }: { tenants: ExpiringTenant[]; colorClass: string }) {
+// Bøttene regnes mot DAGENS dato, ikke mot linjenes forhåndsregnede `dagerTilUtlop`
+// (2026-09-08). Det feltet er frosset i det øyeblikket uttrekket mot Fazile ble kjørt:
+// med et uttrekk fra 12.08 lå to leietakere fortsatt i «0–7 d» og lyste rødt, mens de i
+// virkeligheten gikk ut 14.08 og 18.08 — over tre uker før dagen kortet ble sett på.
+// «Utløpt» er derfor en egen, første bøtte: har fristen passert er det ikke lenger et
+// hastegradsspørsmål, og det skal ikke skjules inne i «0–7 d».
+const URGENCY_BUCKETS = [
+  { label: "Utløpt", swatch: "bg-status-danger", aria: "allerede utløpt" },
+  { label: "0-7 d", swatch: "bg-current", aria: "innen 7 dager" },
+  { label: "8-14 d", swatch: "bg-current opacity-60", aria: "om 8 til 14 dager" },
+  { label: "15-30 d", swatch: "bg-current opacity-30", aria: "om 15 til 30 dager" },
+];
+
+export function expiryBucketIndex(dagerTil: number): number {
+  if (dagerTil < 0) return 0;
+  if (dagerTil <= 7) return 1;
+  if (dagerTil <= 14) return 2;
+  return 3;
+}
+
+function ExpiryUrgencyBar({ tenants, today, colorClass }: { tenants: ExpiringTenant[]; today: string; colorClass: string }) {
   const total = tenants.length;
   if (total === 0) return null;
-  const buckets = [0, 0, 0]; // 0–7, 8–14, 15–30 dager
+  const buckets = [0, 0, 0, 0];
   for (const t of tenants) {
-    const nearestDager = Math.min(...t.lines.map((l) => l.dagerTilUtlop));
-    buckets[nearestDager <= 7 ? 0 : nearestDager <= 14 ? 1 : 2] += 1;
+    const nearestDager = Math.min(...t.lines.map((l) => daysBetween(today, l.slutt)));
+    buckets[expiryBucketIndex(nearestDager)] += 1;
   }
-  const OPACITY = ["", "opacity-60", "opacity-30"]; // mest prekært = full styrke, avtar med god tid igjen
-  const LABELS = ["0–7 d", "8–14 d", "15–30 d"];
   return (
     <div className={colorClass}>
       <div
         className="flex h-1 overflow-hidden rounded-full bg-ink-4/25"
         role="img"
-        aria-label={`Utløp etter hastegrad: ${buckets[0]} innen 7 dager, ${buckets[1]} om 8 til 14 dager, ${buckets[2]} om 15 til 30 dager`}
+        aria-label={`Utløp etter hastegrad: ${buckets.map((c, i) => `${c} ${URGENCY_BUCKETS[i].aria}`).join(", ")}`}
       >
         {buckets.map((count, i) => (
           <span
-            key={LABELS[i]}
-            className={`block h-full bg-current ${OPACITY[i]}`}
+            key={URGENCY_BUCKETS[i].label}
+            className={`block h-full ${URGENCY_BUCKETS[i].swatch}`}
             style={{ width: `${(count / total) * 100}%` }}
           />
         ))}
       </div>
-      <div className="mt-1 flex" aria-hidden>
+      {/* Tegnforklaring, ikke etiketter som forsøker å stå over «sitt» segment
+          (2026-09-08): de gamle lå i flex-1-tredjedeler og pekte derfor sjelden på
+          segmentet de beskrev, i text-[8.5px] text-ink-4 — under enhver lesbar
+          størrelse, og grunnen til at «2 · 0-7 d» leste som «2-0-7 d». */}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
         {buckets.map((count, i) => (
-          <span key={LABELS[i]} className="flex-1 text-center text-[8.5px] tabular-nums text-ink-4">
-            {count} · {LABELS[i]}
+          <span key={URGENCY_BUCKETS[i].label} className="flex items-center gap-1.5 text-2xs text-ink-3">
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${URGENCY_BUCKETS[i].swatch}`} aria-hidden />
+            <span className="tabular-nums">{count}</span> {URGENCY_BUCKETS[i].label}
           </span>
         ))}
       </div>
@@ -106,6 +130,7 @@ function ExpiryUrgencyBar({ tenants, colorClass }: { tenants: ExpiringTenant[]; 
 
 function ExpiryTenantRow({
   tenant,
+  today,
   comments,
   onAdd,
   onRequestDelete,
@@ -113,6 +138,7 @@ function ExpiryTenantRow({
   onJumpToOppslag,
 }: {
   tenant: ExpiringTenant;
+  today: string;
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
@@ -121,8 +147,12 @@ function ExpiryTenantRow({
 }) {
   const [open, setOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const nearestLine = tenant.lines.reduce((a, b) => (a.dagerTilUtlop <= b.dagerTilUtlop ? a : b));
-  const utlopUrgent = nearestLine.dagerTilUtlop < 10;
+  // Nærmeste linje og hastegrad regnes fra `slutt` mot dagens dato, ikke fra det
+  // forhåndsregnede `dagerTilUtlop` — se merknaden over URGENCY_BUCKETS.
+  const nearestLine = tenant.lines.reduce((a, b) => (a.slutt <= b.slutt ? a : b));
+  const dagerTilNaermeste = daysBetween(today, nearestLine.slutt);
+  const utlopt = dagerTilNaermeste < 0;
+  const utlopUrgent = dagerTilNaermeste < 10;
 
   return (
     <>
@@ -154,8 +184,14 @@ function ExpiryTenantRow({
         <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">{tenant.bygg}</td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-ink-3">{tenant.lines.length}</td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums font-medium text-ink-1">{formatKr(tenant.totalArsleie)}</td>
+        {/* Avstanden i tid er det man handler på, og den kan ikke leses ut av datoen alene
+            når uttrekket er noen uker gammelt — «14.08.2026» sa ingenting om at fristen
+            var passert. relativeDaysLabel gir «12 dager siden» / «om 3 dager». */}
         <td className={`whitespace-nowrap px-3 py-2 tabular-nums ${utlopUrgent ? "font-medium text-status-danger" : "text-ink-3"}`}>
           {formatDateDMY(nearestLine.slutt)}
+          <span className={`ml-1.5 text-2xs ${utlopt ? "text-status-danger" : "text-ink-4"}`}>
+            {relativeDaysLabel(nearestLine.slutt, today)}
+          </span>
         </td>
         <td className="whitespace-nowrap px-3 py-2">
           <span
@@ -191,7 +227,7 @@ function ExpiryTenantRow({
                 <span className="whitespace-nowrap text-2xs text-ink-4">{l.leietype}</span>
                 <span className="whitespace-nowrap tabular-nums font-medium text-ink-2">{formatKr(l.totalArsleie)}</span>
                 <span
-                  className={`whitespace-nowrap tabular-nums text-2xs ${l.dagerTilUtlop < 10 ? "font-medium text-status-danger" : "text-ink-4"}`}
+                  className={`whitespace-nowrap tabular-nums text-2xs ${daysBetween(today, l.slutt) < 10 ? "font-medium text-status-danger" : "text-ink-4"}`}
                 >
                   {formatDateDMY(l.slutt)}
                 </span>
@@ -209,9 +245,17 @@ function ExpiryTenantRow({
   );
 }
 
-export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
+export default function JobbExpirySection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   const mutationError = useMutationError();
+
+  // Uttrekksvinduet er en egenskap ved spørringen mot Fazile, og det ligger fast i fila.
+  // Er starten passert, beskriver vinduet ikke lenger «neste 30 dager» — og det er verdt
+  // å si høyt, for da er det uttrekket som må kjøres på nytt, ikke kortet som er i stykker.
+  const vinduAlderDager = daysBetween(EXPIRIES_WINDOW.fraDato, today);
+  const antallUtlopt = EXPIRIES.filter(
+    (t) => Math.min(...t.lines.map((l) => daysBetween(today, l.slutt))) < 0,
+  ).length;
 
   // Samme feilhåndtering som Nye kontrakter (2026-09-07): useComments ruller tilbake den
   // optimistiske endringen selv, men returverdien ble kastet — en mislykket kommentar
@@ -237,19 +281,31 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
 
   return (
     <div className="border-t-2 border-t-orange-400/60 p-4">
+      {/* «neste 30 dager» var direkte feil så snart uttrekket ble noen dager gammelt: fire
+          av leietakerne i lista hadde allerede passert utløpsdato. Etiketten beskriver nå
+          uttrekket, som er det tallet faktisk teller. (2026-09-08) */}
       <CardHeader
         title="Utløpsliste"
-        stat={{ value: EXPIRIES.length, label: "neste 30 dager" }}
+        stat={{ value: EXPIRIES.length, label: "i uttrekket" }}
         icon={CalendarClock}
         iconColorClass="text-orange-400"
       />
         <>
           <MutationError message={mutationError.message} />
+          {vinduAlderDager > 0 && (
+            <p className="mb-2 text-2xs leading-relaxed text-status-warning">
+              Uttrekket dekker {formatDateDMY(EXPIRIES_WINDOW.fraDato)}–{formatDateDMY(EXPIRIES_WINDOW.tilDato)}, som
+              startet for {vinduAlderDager} dager siden
+              {antallUtlopt > 0 ? ` — ${antallUtlopt} av leietakerne under har allerede passert utløpsdato` : ""}.
+              Dagene til utløp regnes mot dagens dato, så lista er riktig, men den dekker ikke de neste 30 dagene før
+              uttrekket kjøres på nytt.
+            </p>
+          )}
           <div className="mb-3">
-            <ExpiryUrgencyBar tenants={EXPIRIES} colorClass="text-orange-400" />
+            <ExpiryUrgencyBar tenants={EXPIRIES} today={today} colorClass="text-orange-400" />
           </div>
           <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[600px] text-sm">
+            <table className="w-full min-w-[700px] text-sm">
               <thead>
                 <tr className="text-left text-ink-4">
                   <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
@@ -277,6 +333,7 @@ export default function JobbExpirySection({ onJumpToOppslag }: { onJumpToOppslag
                     <ExpiryTenantRow
                       key={t.customerId}
                       tenant={t}
+                      today={today}
                       comments={comments[commentKey("expiry-tenant", targetId)] ?? []}
                       onAdd={(tekst) => handleAdd(targetId, tekst)}
                       onRequestDelete={(commentId, preview) =>

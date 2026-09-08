@@ -320,7 +320,7 @@ export default function JobbCompanyNewsSection() {
       />
       <div className="flex flex-col gap-2">
         {news.length > 0 && lastResearchAt !== null && (
-          <p className="text-2xs text-ink-4">Sist research-runde {timeAgo(lastResearchAt)}</p>
+          <p className="text-2xs text-ink-3">Sist research-runde {timeAgo(lastResearchAt)}</p>
         )}
         <MutationError message={mutationError.message} />
         {showForm && <NewsForm onCancel={() => setShowForm(false)} onSave={handleAdd} />}

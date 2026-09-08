@@ -234,9 +234,14 @@ export default function FazilesjekkSection() {
 
   return (
     <div className="border-t-2 border-t-sky-400/60 p-4">
+      {/* Nevneren MÅ være det tallet delene faktisk summerer til (2026-09-08). Med
+          `s.unikeKontrakter` sto det «avvik av 76» over en fordeling som summerer til 78 —
+          kortet motsa seg selv på to linjer. Differansen kommer av at avvikene telles opp
+          fra radene (23) mens sammendraget oppgir 21; den står forklart under fordelingen
+          i stedet for å bli skjult bak et rundere tall. */}
       <CardHeader
         title="Fazilesjekk"
-        stat={{ value: tell("avvik"), label: `avvik av ${s.unikeKontrakter}` }}
+        stat={{ value: tell("avvik"), label: `avvik av ${totalKontrakter}` }}
         icon={ClipboardCheck}
         iconColorClass="text-sky-400"
       />
@@ -245,7 +250,7 @@ export default function FazilesjekkSection() {
         {/* Øyeblikksbilde, ikke live: dashboardet har ingen MCP-tilgang, så
             dataene må friskes opp ved å kjøre gjennomgangen på nytt i en
             Claude-økt. Datoen står derfor tydelig. */}
-        <p className="text-2xs text-ink-4">
+        <p className="text-2xs text-ink-3">
           Øyeblikksbilde {formatDato(s.kjortDato)} · kontraktsstart {formatDato(s.vinduFra)}–{formatDato(s.vinduTil)} · Asana «Signerte
           dokumenter» mot Fazile
         </p>
@@ -277,8 +282,9 @@ export default function FazilesjekkSection() {
             ulikt, står differansen her i klartekst i stedet for at kortet velger ett tall
             uten å si fra. Vises kun når de faktisk spriker. */}
         {uenigeTellinger.length > 0 && (
-          <p className="text-2xs leading-relaxed text-ink-4">
-            Tellingene over er talt opp fra radene under. Sammendraget fra {formatDato(s.kjortDato)} oppga{" "}
+          <p className="text-2xs leading-relaxed text-ink-3">
+            Tellingene over er talt opp fra radene under, og summerer til {totalKontrakter} kontrakter. Sammendraget fra{" "}
+            {formatDato(s.kjortDato)} oppga{" "}
             {uenigeTellinger.map((c) => `${c.fraSammendrag} ${STATUS_META[c.status].label.toLowerCase()}`).join(", ")} av{" "}
             {s.unikeKontrakter} kontrakter. Differansen er ikke avklart.
           </p>

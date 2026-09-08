@@ -282,7 +282,10 @@ function timeSinceUpdate(task: Task, nowMs: number): string | null {
   if (days < 7) return `${days}d`;
   const weeks = Math.floor(days / 7);
   if (weeks < 4) return `${weeks}u`;
-  return `${Math.floor(days / 30)}m`;
+  // "md.", ikke "m": ved siden av "t" for timer leste "3m" som tre minutter, altså
+  // motsatt av tre måneder. Samme forkortelse som relativeDaysLabel i lib/payday.
+  // (2026-09-08)
+  return `${Math.floor(days / 30)} md.`;
 }
 
 function parseContactEmail(kontaktperson: string | undefined): string | null {
@@ -722,7 +725,7 @@ function TaskCard({
             <div className="min-w-0 flex-1">{body}</div>
             <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
               {ago && (
-                <span className="text-xs font-semibold tabular-nums text-ink-2">
+                <span title={`Sist endret for ${ago} siden`} className="text-xs font-semibold tabular-nums text-ink-2">
                   {ago}
                 </span>
               )}
@@ -750,7 +753,7 @@ function TaskCard({
           >
             <div className="min-w-0 flex-1">{body}</div>
             {ago && (
-              <span className="shrink-0 pt-0.5 text-xs font-semibold tabular-nums text-ink-2">
+              <span title={`Sist endret for ${ago} siden`} className="shrink-0 pt-0.5 text-xs font-semibold tabular-nums text-ink-2">
                 {ago}
               </span>
             )}
@@ -1723,26 +1726,27 @@ export function JobbOppgaverPanel({
             />
           </div>
         </div>
+        {/* «36 oppgaver igjen» sto her i tillegg til nøkkeltallet med samme etikett rett
+            over, og prikkene bar bare et tall — man kunne ikke vite at rødt betyr høy
+            prioritet uten å gjette. Teksten er droppet, prikkene har fått ord.
+            (2026-09-08) */}
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-3">
-          <span>
-            {counts.all} {counts.all === 1 ? "oppgave igjen" : "oppgaver igjen"}
-          </span>
           {priorityCounts.high > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-danger" />
-              {priorityCounts.high}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-status-danger" aria-hidden />
+              <span className="tabular-nums">{priorityCounts.high}</span> høy
             </span>
           )}
           {priorityCounts.medium > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-warning" />
-              {priorityCounts.medium}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-status-warning" aria-hidden />
+              <span className="tabular-nums">{priorityCounts.medium}</span> middels
             </span>
           )}
           {priorityCounts.low > 0 && (
-            <span className="inline-flex items-center gap-1.5 tabular-nums">
-              <span className="h-2 w-2 rounded-full bg-status-positive" />
-              {priorityCounts.low}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-status-positive" aria-hidden />
+              <span className="tabular-nums">{priorityCounts.low}</span> lav
             </span>
           )}
         </div>

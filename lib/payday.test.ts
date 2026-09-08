@@ -1,5 +1,14 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { addDaysIso, localDateString, nextPaydayFrom, toOsloDateString, weekRangeContaining } from "./payday";
+import {
+  addDaysIso,
+  daysBetween,
+  localDateString,
+  nextPaydayFrom,
+  relativeDayLabel,
+  toOsloDateString,
+  weekRangeContaining,
+  weekdayDateLabel,
+} from "./payday";
 
 // Dato-hjelperne er bevisst rene kalenderdag-funksjoner i UTC (se kommentarene i lib/payday.ts):
 // månedsskift, årsskift, skuddår og sommertid/vintertid skal IKKE kunne flytte en dato med én dag.
@@ -166,5 +175,55 @@ describe("nextPaydayFrom", () => {
 
   it("regner selve lønningsdagen som neste lønningsdag", () => {
     expect(nextPaydayFrom("2026-10-20")).toBe("2026-10-20");
+  });
+});
+
+describe("weekdayDateLabel", () => {
+  it("utelater årstallet når datoen er i inneværende år", () => {
+    expect(weekdayDateLabel("2026-08-17", "2026-09-08")).toBe("Mandag 17.08");
+  });
+
+  it("tar med årstallet når året er et annet enn i dag", () => {
+    // Uten dette leste en sak fra 02.09.2024 som "Mandag 02.09", altså som
+    // forrige uke - grunnen til at endringen ble gjort.
+    expect(weekdayDateLabel("2024-09-02", "2026-09-08")).toBe("Mandag 02.09.2024");
+  });
+
+  it("tar med årstallet også for datoer fram i tid i et annet år", () => {
+    expect(weekdayDateLabel("2027-01-04", "2026-09-08")).toBe("Mandag 04.01.2027");
+  });
+
+  it("utelater årstallet når den kalles uten dagens dato", () => {
+    expect(weekdayDateLabel("2024-09-02")).toBe("Mandag 02.09");
+  });
+});
+
+describe("relativeDayLabel", () => {
+  it("bruker I dag og I morgen som særtilfeller", () => {
+    expect(relativeDayLabel("2026-09-08", "2026-09-08")).toBe("I dag");
+    expect(relativeDayLabel("2026-09-09", "2026-09-08")).toBe("I morgen");
+  });
+
+  it("sender dagens dato videre, slik at et annet år får årstall", () => {
+    expect(relativeDayLabel("2024-09-02", "2026-09-08")).toBe("Mandag 02.09.2024");
+  });
+});
+
+describe("daysBetween", () => {
+  it("gir negativt antall for en dato som er passert", () => {
+    expect(daysBetween("2026-09-08", "2026-08-14")).toBe(-25);
+  });
+
+  it("gir positivt antall for en dato fram i tid", () => {
+    expect(daysBetween("2026-09-08", "2026-09-18")).toBe(10);
+  });
+
+  it("er 0 for samme dag", () => {
+    expect(daysBetween("2026-09-08", "2026-09-08")).toBe(0);
+  });
+
+  it("påvirkes ikke av sommertidsovergangen", () => {
+    // 25.10.2026 er natten klokken stilles tilbake i Norge.
+    expect(daysBetween("2026-10-24", "2026-10-26")).toBe(2);
   });
 });

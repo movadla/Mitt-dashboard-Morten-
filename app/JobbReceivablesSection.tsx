@@ -654,7 +654,7 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         icon={Receipt}
         iconColorClass="text-fuchsia-400"
       />
-      <p className="mb-2 text-2xs text-ink-4">
+      <p className="mb-2 text-2xs text-ink-3">
         {RECEIVABLES.length} leietakere{antallUnderInkasso > 0 ? ` · ${antallUnderInkasso} under inkasso` : ""}
       </p>
       {risikoLastFeil && (

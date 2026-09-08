@@ -447,7 +447,7 @@ export default function JobbLookupCard({ initialQuery }: { initialQuery?: string
         icon={Users}
         iconColorClass="text-violet-400"
       />
-      <p className="text-2xs text-ink-4">
+      <p className="text-2xs text-ink-3">
         {managers.length} utleieansvarlige · {employees.length} ansatte
       </p>
       <MutationError message={mutationError.message} />

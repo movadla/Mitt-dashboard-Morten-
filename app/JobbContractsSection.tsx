@@ -42,7 +42,12 @@ function ContractRow({
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.startdato)}</td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatKr(c.arsbelop)}</td>
         <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.bygg}</td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{c.kvm}</td>
+        {/* Rått tall ga «135.6» med punktum som desimalskilletegn — engelsk formatering
+            midt i et norsk grensesnitt. toLocaleString gir «135,6», og maxFractionDigits 1
+            holder «12» som «12» i stedet for «12,0». (2026-09-08) */}
+        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">
+          {c.kvm.toLocaleString("nb-NO", { maximumFractionDigits: 1 })}
+        </td>
         <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.leietype}</td>
         <td className="whitespace-nowrap px-3 py-2">
           {c.sfUrl ? (
@@ -51,9 +56,12 @@ function ContractRow({
               target="_blank"
               rel="noopener noreferrer"
               aria-label={`Åpne ${c.kunde} i Salesforce`}
-              className="text-accent hover:underline"
+              className="inline-flex items-center gap-1 text-accent hover:underline"
             >
-              Link
+              {/* Het «Link», som sier hva elementet ER og ikke hvor det går.
+                  (2026-09-08) */}
+              Salesforce
+              <ArrowUpRight className="h-3 w-3 shrink-0" aria-hidden />
             </a>
           ) : (
             <span className="text-ink-4">—</span>

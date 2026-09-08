@@ -35,7 +35,7 @@ import { SidebarNav, type NavItem } from "./SidebarNav";
 import type { Suggestion } from "@/lib/jobbSuggestions";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { setAppBadgeCount } from "@/lib/appBadge";
-import { relativeDayLabel } from "@/lib/payday";
+import { daysBetween, relativeDayLabel, weekdayDateLabel } from "@/lib/payday";
 import useSWR, { mutate } from "swr";
 import IncomeForecastSection from "./IncomeForecastSection";
 import FazilesjekkSection from "./FazilesjekkSection";
@@ -175,10 +175,21 @@ function CalendarCard({ today }: { today: string }) {
       const showHeader = m.dato !== prevDate;
       return (
         <Fragment key={m.id}>
+          {/* Datopillen sto tidligere på HVER rad, og gjentok dermed datoen
+              gruppeoverskriften rett over allerede oppgir — «I DAG» fulgt av to rader
+              som begge sa «08.09.2026». Fargesignalet (i dag / innen 7 dager) er flyttet
+              hit opp, hvor det gjelder hele gruppen, og Dato-kolonnen er borte.
+              Overskriften får datoen med når etiketten er «I dag»/«I morgen» og ellers
+              ikke, siden «Tirsdag 15.09» inneholder den fra før. (2026-09-08) */}
           {showHeader && (
             <tr className="border-t border-line">
-              <td colSpan={6} className="px-3 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wide text-ink-4">
-                {relativeDayLabel(m.dato, today)}
+              <td colSpan={5} className="px-3 pb-1 pt-3">
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide ${calendarDateBadge(m.dato, today)}`}
+                >
+                  {relativeDayLabel(m.dato, today)}
+                  {(m.dato === today || m.dato === addDaysISO(today, 1)) && ` · ${weekdayDateLabel(m.dato, today)}`}
+                </span>
               </td>
             </tr>
           )}
@@ -195,11 +206,6 @@ function CalendarCard({ today }: { today: string }) {
             aria-expanded={isOpen}
             className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
           >
-            <td className="whitespace-nowrap px-3 py-2">
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 tabular-nums text-2xs font-medium ${calendarDateBadge(m.dato, today)}`}>
-                {formatDateDMY(m.dato)}
-              </span>
-            </td>
             <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.start}</td>
             <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{m.slutt}</td>
             <td className="whitespace-nowrap px-3 py-2 text-ink-1">{m.mote}</td>
@@ -208,7 +214,7 @@ function CalendarCard({ today }: { today: string }) {
           </tr>
           {isOpen && (
             <tr className="border-t border-line bg-surface-2">
-              <td colSpan={6} className="px-3 py-3">
+              <td colSpan={5} className="px-3 py-3">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="mb-1 text-2xs font-medium text-ink-4">Info fra Outlook</p>
@@ -291,14 +297,15 @@ function CalendarCard({ today }: { today: string }) {
         ) : (
           <>
             <div className="-mx-1 overflow-x-auto">
-              <table className="w-full min-w-[620px] text-sm">
+              <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="text-left text-ink-4">
-                    <th className="px-3 py-2 text-2xs font-medium">Dato</th>
                     <th className="px-3 py-2 text-2xs font-medium text-right">Start</th>
                     <th className="px-3 py-2 text-2xs font-medium text-right">Slutt</th>
                     <th className="px-3 py-2 text-2xs font-medium">Møte</th>
-                    <th className="px-3 py-2 text-2xs font-medium">Beskrivelse</th>
+                    {/* Het «Beskrivelse», men feltet inneholder Innkaller/Deltaker/Fravær —
+                        altså din egen rolle i møtet, ikke en beskrivelse av det. */}
+                    <th className="px-3 py-2 text-2xs font-medium">Min rolle</th>
                     <th className="px-3 py-2 text-2xs font-medium">Sted</th>
                   </tr>
                 </thead>
@@ -351,14 +358,15 @@ function CalendarCard({ today }: { today: string }) {
               <p className="text-sm text-ink-3">Ingen møter denne uken.</p>
             ) : (
               <div className="-mx-1 overflow-x-auto">
-                <table className="w-full min-w-[620px] text-sm">
+                {/* Samme kolonner som tabellen over — begge bruker renderRows, så
+                    overskriftene MÅ følge den. */}
+                <table className="w-full min-w-[520px] text-sm">
                   <thead>
                     <tr className="text-left text-ink-4">
-                      <th className="px-3 py-2 text-2xs font-medium">Dato</th>
                       <th className="px-3 py-2 text-2xs font-medium text-right">Start</th>
                       <th className="px-3 py-2 text-2xs font-medium text-right">Slutt</th>
                       <th className="px-3 py-2 text-2xs font-medium">Møte</th>
-                      <th className="px-3 py-2 text-2xs font-medium">Beskrivelse</th>
+                      <th className="px-3 py-2 text-2xs font-medium">Min rolle</th>
                       <th className="px-3 py-2 text-2xs font-medium">Sted</th>
                     </tr>
                   </thead>
@@ -436,6 +444,21 @@ const SECTION_DATA_SOURCE: Record<string, string> = {
   oppslag: "tenants",
   "mustad-nyheter": "companyNews",
 };
+
+// Den omvendte koblingen: kilde-id → seksjonen den mater, men BARE der bare én
+// seksjon bruker kilden. «widgets» mater fem seksjoner og «tasks» to, og for dem
+// finnes det ikke ett riktig sted å hoppe — de utelates i stedet for at Datakilder
+// skal gjette. Utledes av SECTION_DATA_SOURCE over, ikke skrevet opp på nytt, så
+// de to ikke kan drifte fra hverandre. (2026-09-08)
+const SOURCE_TO_SECTION: Record<string, string> = (() => {
+  const perKilde = new Map<string, string[]>();
+  for (const [seksjon, kilde] of Object.entries(SECTION_DATA_SOURCE)) {
+    perKilde.set(kilde, [...(perKilde.get(kilde) ?? []), seksjon]);
+  }
+  return Object.fromEntries(
+    [...perKilde.entries()].filter(([, seksjoner]) => seksjoner.length === 1).map(([kilde, seksjoner]) => [kilde, seksjoner[0]]),
+  );
+})();
 
 // Ikon/farge per kategori — samme verdier som hvert kort allerede sender til
 // sin egen CardHeader, gjenbrukt her uendret slik at nav-elementet matcher
@@ -617,14 +640,14 @@ export default function JobbView({
   // auto-risiko "høy" for kundefordringer (samme computeAutoRisk som
   // JobbReceivablesSection selv viser — manuelle overstyringer telles ikke med her,
   // badgen er en tilnærming, selve kortet er alltid det presise).
+  // dagerTilUtlop er frosset i datafilen fra uttrekksdatoen og blir feil så snart fila er
+  // noen dager gammel — badgen viste 2 «innen 10 dager» der begge i realiteten hadde gått
+  // ut over tre uker tidligere. Regnes nå fra `slutt` mot dagens dato. (2026-09-08)
   const expiryUrgentCount = EXPIRIES.filter((t) => {
-    const nearest = Math.min(...t.lines.map((l) => l.dagerTilUtlop));
+    const nearest = Math.min(...t.lines.map((l) => daysBetween(today, l.slutt)));
     return nearest < 10 && t.status !== "Reforhandlet";
   }).length;
-  const guaranteeUrgentCount = GUARANTEES.filter((g) => {
-    const days = Math.round((Date.parse(g.frist) - Date.parse(today)) / (1000 * 60 * 60 * 24));
-    return days <= 10;
-  }).length;
+  const guaranteeUrgentCount = GUARANTEES.filter((g) => daysBetween(today, g.frist) <= 10).length;
   const receivableHighRiskCount = RECEIVABLES.filter((r) => computeAutoRisk(r, today) === "hoy").length;
 
   // iOS-appens badge-tall speilet kun påminnelser fra Privat uansett hvilken
@@ -663,11 +686,11 @@ export default function JobbView({
       <JobbOppgaverPanel tasks={tasks} today={today} nowMs={nowMs} focus={oppgaverFocus} />
     ),
     "mustad-nyheter": <JobbCompanyNewsSection />,
-    "data-sources": <JobbDataSourcesCard />,
+    "data-sources": <JobbDataSourcesCard sourceToSection={SOURCE_TO_SECTION} onJumpToSection={handleSelect} />,
     calendar: JOBB_SECTION_NODES.calendar(today),
     contracts: <JobbContractsSection today={today} onJumpToOppslag={jumpToOppslag} />,
-    expiry: <JobbExpirySection onJumpToOppslag={jumpToOppslag} />,
-    guarantees: <JobbGuaranteesSection onJumpToOppslag={jumpToOppslag} />,
+    expiry: <JobbExpirySection today={today} onJumpToOppslag={jumpToOppslag} />,
+    guarantees: <JobbGuaranteesSection today={today} onJumpToOppslag={jumpToOppslag} />,
     receivables: <JobbReceivablesSection today={today} onJumpToOppslag={jumpToOppslag} />,
     reminders: JOBB_SECTION_NODES.reminders(today),
     events: JOBB_SECTION_NODES.events(today),

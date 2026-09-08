@@ -269,7 +269,10 @@ export function CardHeader({
             <span className={`block text-[27px] font-light leading-[0.85] tracking-[-0.05em] tabular-nums ${iconColorClass}`}>
               {stat.value}
             </span>
-            <span className="mt-1.5 block text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+            {/* text-ink-3, ikke ink-4: 9px sperret bold i den svakeste blekkfargen lå
+                under lesbar kontrast i kveldsmodus, og etiketten er det eneste som
+                sier hva det store tallet teller. (2026-09-08) */}
+            <span className="mt-1.5 block text-[9px] font-bold uppercase tracking-[0.13em] text-ink-3">
               {stat.label}
             </span>
           </span>
@@ -328,7 +331,9 @@ export function CardHeader({
     return (
       <div className="mb-2 flex items-center justify-between gap-2">
         {inner}
-        <div className="flex shrink-0 items-center gap-1">
+        {/* ml-3 når nøkkeltallet vises: med bare gap-2 lå «+» klistret inntil det store
+            tallet og leste som en del av det — «0 +», «30 +». (2026-09-08) */}
+        <div className={`flex shrink-0 items-center gap-1 ${showStat ? "ml-3" : ""}`}>
           {extraActionButton}
           {addButton}
         </div>

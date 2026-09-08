@@ -18,6 +18,7 @@ import {
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
+import { daysBetween, relativeDaysLabel } from "@/lib/payday";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 
 const GUARANTEE_STATUS_STYLE: Record<GuaranteeStatus, string> = {
@@ -49,6 +50,8 @@ function OppslagLink({ name, onJump }: { name: string; onJump: (name: string) =>
 
 function GuaranteeRow({
   guarantee: g,
+  today,
+  visBelop,
   comments,
   onAdd,
   onRequestDelete,
@@ -56,6 +59,8 @@ function GuaranteeRow({
   onJumpToOppslag,
 }: {
   guarantee: Guarantee;
+  today: string;
+  visBelop: boolean;
   comments: Comment[];
   onAdd: (tekst: string) => Promise<boolean>;
   onRequestDelete: (commentId: string, preview: string) => void;
@@ -63,6 +68,8 @@ function GuaranteeRow({
   onJumpToOppslag: (name: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const dagerTilFrist = daysBetween(today, g.frist);
+  const fristPassert = dagerTilFrist < 0;
   return (
     <>
       <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
@@ -77,15 +84,26 @@ function GuaranteeRow({
             <OppslagLink name={g.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{g.belop === null ? "—" : formatKr(g.belop)}</td>
-        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{formatDateDMY(g.frist)}</td>
+        {visBelop && (
+          <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-3">{g.belop === null ? "—" : formatKr(g.belop)}</td>
+        )}
+        {/* Passerte frister var tidligere nøytralt grå, akkurat som de kommende
+            (2026-09-08): tre av fem frister lå over en måned tilbake i tid uten at noe
+            på raden sa det. Datoen alene er heller ikke nok til å se hvor ille det er,
+            derfor avstanden i tid ved siden av — samme grep som i Utløpslista. */}
+        <td className={`whitespace-nowrap px-3 py-2 tabular-nums text-right ${fristPassert ? "font-medium text-status-danger" : "text-ink-3"}`}>
+          {formatDateDMY(g.frist)}
+          <span className={`ml-1.5 text-2xs ${fristPassert ? "text-status-danger" : "text-ink-4"}`}>
+            {relativeDaysLabel(g.frist, today)}
+          </span>
+        </td>
         <td className="whitespace-nowrap px-3 py-2">
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={5} className="px-3 py-2 pl-9">
+          <td colSpan={visBelop ? 5 : 4} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
@@ -94,7 +112,7 @@ function GuaranteeRow({
   );
 }
 
-export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOppslag: (name: string) => void }) {
+export default function JobbGuaranteesSection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   const mutationError = useMutationError();
 
@@ -132,6 +150,14 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
   // radene den står over. "Mangler garanti" er komplementet til `sikret`, altså alt som
   // ennå er en åpen sak ("Mangler" + "Forespurt").
   const mangler = GUARANTEES.length - sikret;
+  // Beløp er sjelden kjent på oppfølgingstidspunktet, og da sto kolonnen med bare
+  // tankestreker på hver rad — en femtedel av tabellbredden brukt på ingenting
+  // (2026-09-08). Skjules når ingen rad har et beløp, og kommer tilbake av seg selv
+  // idet én får det. Status-kolonnen er BEVISST beholdt selv om alle radene sier
+  // «Mangler» nå: den skifter til «Forespurt»/«Kommer» underveis, og en kolonne som
+  // dukker inn og ut etter hvor langt sakene er kommet ville vært verre enn en som
+  // står stille.
+  const visBelop = GUARANTEES.some((g) => g.belop !== null);
   return (
     <div className="border-t-2 border-t-teal-400/60 p-4">
       <CardHeader
@@ -141,6 +167,9 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
         iconColorClass="text-teal-400"
       />
         <MutationError message={mutationError.message} />
+        {/* RatioBar sitt `label` er kun aria-label — stripen sto som fem umerkede
+            segmenter, og forholdstallet den viser står ikke noe annet sted på kortet
+            (nøkkeltallet teller det motsatte: hvor mange som mangler). (2026-09-08) */}
         <div className="mb-3">
           <RatioBar
             done={sikret}
@@ -148,6 +177,9 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
             colorClass="text-teal-400"
             label={`${sikret} av ${GUARANTEES.length} oppfølgingssaker har sikret garanti`}
           />
+          <p className="mt-1.5 text-2xs text-ink-3">
+            {sikret} av {GUARANTEES.length} oppfølgingssaker har sikret garanti
+          </p>
         </div>
         <div className="-mx-1 overflow-x-auto">
           <table className="w-full min-w-[600px] text-sm">
@@ -155,7 +187,7 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
               <tr className="text-left text-ink-4">
                 <th className="px-3 py-2 text-2xs font-medium">Status</th>
                 <th className="px-3 py-2 text-2xs font-medium">Leietaker</th>
-                <th className="px-3 py-2 text-2xs font-medium text-right">Beløp</th>
+                {visBelop && <th className="px-3 py-2 text-2xs font-medium text-right">Beløp</th>}
                 <th className="px-3 py-2 text-2xs font-medium text-right">Frist</th>
                 <th className="px-3 py-2 text-2xs font-medium">Notat</th>
               </tr>
@@ -165,7 +197,7 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
                   tabell uten rader og uten tekst leste som en lastefeil. */}
               {GUARANTEES.length === 0 && (
                 <tr className="border-t border-line">
-                  <td colSpan={5} className="px-3 py-2 text-sm text-ink-3">
+                  <td colSpan={visBelop ? 5 : 4} className="px-3 py-2 text-sm text-ink-3">
                     Ingen innflyttinger venter på bankgaranti eller depositum.
                   </td>
                 </tr>
@@ -174,6 +206,8 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { onJumpToOpp
                 <GuaranteeRow
                   key={g.id}
                   guarantee={g}
+                  today={today}
+                  visBelop={visBelop}
                   comments={comments[commentKey("guarantee", g.id)] ?? []}
                   onAdd={(tekst) => handleAdd(g.id, tekst)}
                   onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}

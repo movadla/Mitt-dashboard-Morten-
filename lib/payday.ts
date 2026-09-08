@@ -52,7 +52,10 @@ export interface LifeEvent {
   recurrence: LifeEventRecurrence;
 }
 
-function daysBetween(fromIso: string, toIso: string): number {
+// Eksportert (2026-09-08) fordi Utløpslista trengte den: den stolte tidligere på et
+// forhåndsregnet `dagerTilUtlop` i datafilen, som er frosset i det øyeblikket uttrekket
+// ble kjørt og derfor blir feil så snart fila er noen dager gammel.
+export function daysBetween(fromIso: string, toIso: string): number {
   const [fy, fm, fd] = fromIso.split("-").map(Number);
   const [ty, tm, td] = toIso.split("-").map(Number);
   const fromMs = Date.UTC(fy, fm - 1, fd);
@@ -160,11 +163,18 @@ export function nextPaydayFrom(todayIso: string): string {
 // "Mandag 17.08" — ukedag + dato uten noe "i dag"/"i morgen"-særtilfelle.
 // Brukt alene der man alltid vil se ukedagen (f.eks. en fast dagsoverskrift),
 // og som fallback-gren i relativeDayLabel under.
-export function weekdayDateLabel(dateIso: string): string {
+//
+// Får den `todayIso` og årene er ulike, tas årstallet med: "Mandag 02.09.2024".
+// Uten det leste en to år gammel sak i Mustad-nyheter som "MANDAG 02.09", altså
+// som forrige uke — og lista så feilsortert ut selv om den var riktig sortert
+// (2026-09-08). Året utelates når det ER inneværende år, som er det normale;
+// da er det bare støy.
+export function weekdayDateLabel(dateIso: string, todayIso?: string): string {
   const d = new Date(dateIso + "T12:00:00");
   const weekday = d.toLocaleDateString("nb-NO", { weekday: "long" });
-  const [, m, day] = dateIso.split("-");
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day}.${m}`;
+  const [y, m, day] = dateIso.split("-");
+  const visAr = todayIso !== undefined && y !== todayIso.slice(0, 4);
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${day}.${m}${visAr ? `.${y}` : ""}`;
 }
 
 // Dag-gruppeoverskrift for lister over kommende hendelser/møter: "I dag" og
@@ -174,7 +184,7 @@ export function weekdayDateLabel(dateIso: string): string {
 export function relativeDayLabel(dateIso: string, todayIso: string): string {
   if (dateIso === todayIso) return "I dag";
   if (dateIso === addDaysIso(todayIso, 1)) return "I morgen";
-  return weekdayDateLabel(dateIso);
+  return weekdayDateLabel(dateIso, todayIso);
 }
 
 // Kompakt nedtelling ("om 3 dager") - for et KORT-NØKKELTALL (CardHeader sin `stat`), der
