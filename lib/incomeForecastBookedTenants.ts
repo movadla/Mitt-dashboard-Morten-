@@ -1,14 +1,14 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson } from "./tenantAnonymize";
 
-export interface BookedTenantLine {
+interface BookedTenantLine {
   selskap: string;
   accountNo: number;
   bygg: string;
   belop: number;
 }
 
-export interface BookedTenant {
+interface BookedTenant {
   navn: string;
   totalBelop: number;
   lines: BookedTenantLine[];

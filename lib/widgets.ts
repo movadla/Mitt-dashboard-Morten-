@@ -1,1 +1,1 @@
-export * from "./widgets.anon";
+export * from "./widgets.local";

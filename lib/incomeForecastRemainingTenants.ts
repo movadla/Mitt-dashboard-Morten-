@@ -1,7 +1,7 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
-export interface RemainingTenantLine {
+interface RemainingTenantLine {
   eiendom: string;
   bygg: string;
   linjetype: string;
@@ -42,7 +42,7 @@ export interface RemainingKontoBelop {
   belop: number;
 }
 
-export interface RemainingByggGruppe {
+interface RemainingByggGruppe {
   bygg: string;
   fullArsverdi2026DelA: number;
   fullArsverdi2026DelB: number;
@@ -66,7 +66,7 @@ export interface RemainingByggGruppe {
   modellGjenstarTotal?: number;
 }
 
-export interface RemainingTenant {
+interface RemainingTenant {
   navn: string;
   fullArsverdi2026: number;
   alleredeFakturertNxt2026: number;
@@ -75,7 +75,7 @@ export interface RemainingTenant {
   lines: RemainingTenantLine[];
 }
 
-export interface Omsetningsavregning2025Info {
+interface Omsetningsavregning2025Info {
   avsetning: number;
   fordeltPerLeietaker: number;
   nettoEffekt2026: number;
@@ -88,7 +88,7 @@ export interface Omsetningsavregning2025Info {
 
 // v13: metadata om Fazile-fakturaplanen som er brukt som primærkilde for gjenstår. null hvis
 // planen ikke var tilgjengelig og modellen ble brukt alene.
-export interface FazileFakturaplanInfo {
+interface FazileFakturaplanInfo {
   uttrekksdato: string;
   nxtCacheDato: string;
   planStart: string;

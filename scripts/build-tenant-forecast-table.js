@@ -41,7 +41,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { getFromRedis, pushToRedis, normalizeName, coreName } = require("./lib/refresh-helpers");
+const { getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
 
 const REMAINING_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const BUDGET_KEY = "jobb:inntektsprognose-leietaker-budsjett";
@@ -66,6 +66,10 @@ const EXCEL_RAW_FILE = path.join(__dirname, "refresh-data", "budsjett-2026-excel
 // som 100 % under budsjett, men marker den tydelig som internleie (egen farge + hover-forklaring
 // i UI-en, se `internleie`-feltet på TenantForecastRow / app/IncomeForecastSection.tsx).
 const MUSTAD_INTERN_LABEL = "Mustad Eiendom (intern bruk, ikke leieforhold)";
+// v28 (2026-09-08): samlerad for budsjett trukket ut av en Ledig-rad uten at noen leietakerrad
+// tok imot det (MANUAL_UNTRACKED_OVERTAKELSER uten `overforTil`). Syntetisk radnavn på linje med
+// de to andre - må holdes i sync med SYSTEM_ROW_LABELS i lib/tenantForecastSystemRow.ts.
+const USPORET_OVERTAKELSE_LABEL = "Usporede overtakelser (ledig areal overtatt, mottaker ukjent)";
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -75,7 +79,23 @@ function round2(n) {
 // begrunnelse): kollapser dobbelt-mellomrom-varianter ("Lilleakerveien  4A") og slår sammen
 // "CC Vest senter" (Excel sitt navn)/"Lilleakerveien 16" (Fazile/NXT sitt navn) til ett bygg i
 // bygg-grupperingen - ellers splittes samme fysiske bygg i flere rader.
-const BYGG_NAVN_ALIAS = { "cc vest senter": "Lilleakerveien 16" };
+// v45 (2026-09-11): bygg-navn som skrives ULIKT i Excel-budsjettet og i Fazile/NXT. Uten alias
+// havner de som to separate rader - én med budsjett og null inntekt, én med inntekt og null
+// budsjett - og avviket pr. bygg blir meningsløst i begge. Funnet ved å liste bygg som har
+// budsjett uten inntekt mot bygg som har inntekt uten budsjett (Morten bekreftet parene
+// 2026-09-11). Nøkkelen er budsjettsidens skrivemåte i lowercase, verdien er Fazile/NXT-navnet.
+//   Mustadsvei 10/12: ett ord i Excel, "Mustads vei" med mellomrom i Fazile.
+//   Skoda / Schlägergården: Excel bruker kortnavn, Fazile bruker gateadressen.
+const BYGG_NAVN_ALIAS = {
+  "cc vest senter": "Lilleakerveien 16",
+  "mustadsvei 10 fåbro gård": "Mustads vei 10 Fåbro gård",
+  "mustadsvei 12 hagebyen": "Mustads vei 12 Hagebyen",
+  skoda: "Lilleakerveien 16 Skoda",
+  "schlägergården": "Lilleakerveien 30",
+  // v52: NXT-siden ("Ukodet bokføring"-raden) skriver Arnstein Arnebergs vei med mellomrom,
+  // Excel og Fazile uten - lå igjen som eneste Uklassifisert-post i Del A.
+  "arnstein arnebergs vei 4": "Arnstein Arnebergsvei 4",
+};
 function kanoniskByggNavn(bygg) {
   const trimmed = (bygg || "").replace(/\s+/g, " ").trim();
   return BYGG_NAVN_ALIAS[trimmed.toLowerCase()] || trimmed;
@@ -185,7 +205,15 @@ function lookupBudget(navn, lookup) {
   return null;
 }
 
-function buildLeietypeClassifier() {
+// Må matche DEL_B_LEIETYPER i build-tenant-budget.js: leietypene Excel-budsjettet regner som
+// parkering (Del B). Brukes i v52-fallbacken under til å holde Del A-linjer unna dem.
+const DEL_B_LEIETYPER = new Set(["parkering", "garasje"]);
+
+// `budsjettOppslag(navn)` = budgetLookupA.leietaker (fuzzyLookupFn) - gir { excelNavn: [...] } for
+// leietakere budsjettsiden har alias-koblet (Norsk Medisinaldepot -> "Vitusapotek CC Vest",
+// Rn Nordic -> "Skoda", Sats Norway -> "Sats CC Vest"), slik at leietypen deres i Excel finnes
+// selv når Fazile-navnet ikke ligner Excel-navnet.
+function buildLeietypeClassifier(budsjettOppslag) {
   const excelRows = JSON.parse(fs.readFileSync(EXCEL_RAW_FILE, "utf8"));
   const byggBeskrivelse = new Map(); // "bygg||beskrivelse" -> Set(leietype)
   for (const r of excelRows) {
@@ -193,18 +221,103 @@ function buildLeietypeClassifier() {
     if (!byggBeskrivelse.has(key)) byggBeskrivelse.set(key, new Set());
     byggBeskrivelse.get(key).add(r.leietype || "Uklassifisert");
   }
-  return function classify(beskrivelse, bygg) {
+  // v52 (2026-09-11, Morten: "stor post på Uklassifisert" i Leietype-fanen - 81 mill i +/- fordi
+  // fakturert/gjenstår havnet der uten budsjett, mens budsjettet lå på Kontor/Butikk/...). 157 av
+  // 168 linjer het bare "Husleie avg.pl." - ingen av regex-ene over treffer, og bygg+beskrivelse-
+  // oppslaget krever at Fazile-teksten er identisk med Excel-kolonnen "Kontrakt-objekt". Nytt
+  // fallback-lag: LEIETAKERENS egen leietype i budsjettarket (pr. leietaker+bygg, så pr.
+  // leietaker, så pr. kjernenavn), valgt etter størst budsjettbeløp når leietakeren har flere
+  // (Onesubsea: Kontor 1,5 mill + Annet 20 000 -> Kontor). Del A-linjer ser bort fra Parkering/
+  // Garasje og omvendt, slik at "Kontor/Parkering"-leietakere ikke blir tvetydige. Budsjettet
+  // klassifiseres jo nettopp på denne kolonnen, så inntekt og budsjett måles nå på samme skala.
+  const perLeietakerBygg = new Map(); // normNavn||normKanoniskBygg -> Map(leietype -> beløp)
+  const perLeietaker = new Map(); // normNavn -> Map(leietype -> beløp)
+  const perKjerne = new Map(); // coreName -> Map(leietype -> beløp)
+  const perBygg = new Map(); // normKanoniskBygg -> Map(leietype -> beløp) - siste utvei, se under
+  const legg = (m, key, r) => {
+    if (!r.leietype || !key) return;
+    if (!m.has(key)) m.set(key, new Map());
+    const t = m.get(key);
+    t.set(r.leietype, (t.get(r.leietype) || 0) + Math.abs(r.inntekt2026 ?? r.arsbelop ?? 0));
+  };
+  for (const r of excelRows) {
+    if (r.bygg) legg(perBygg, normalizeName(kanoniskByggNavn(r.bygg)), r);
+    if (!r.kontrakt) continue;
+    legg(perLeietakerBygg, normalizeName(r.kontrakt) + "||" + normalizeName(kanoniskByggNavn(r.bygg)), r);
+    legg(perLeietaker, normalizeName(r.kontrakt), r);
+    legg(perKjerne, coreName(r.kontrakt), r);
+  }
+  const dominerende = (typer, del) => {
+    if (!typer) return null;
+    const kandidater = [...typer.entries()].filter(([t]) => (del === "B") === DEL_B_LEIETYPER.has(t.toLowerCase()));
+    if (kandidater.length === 0) return null;
+    kandidater.sort((a, b) => b[1] - a[1]);
+    return kandidater[0][0];
+  };
+  const viaNavn = (navn, bygg, del) => {
+    if (!navn) return null;
+    const n = normalizeName(navn);
+    return (
+      dominerende(perLeietakerBygg.get(n + "||" + normalizeName(kanoniskByggNavn(bygg))), del) ||
+      dominerende(perLeietaker.get(n), del) ||
+      dominerende(perKjerne.get(coreName(navn)), del)
+    );
+  };
+  // Oppsummering til konsollen etter kjøring: hvilke leietakere som fikk leietype fra
+  // BYGGETS dominerende type (svakeste laget - verdt et blikk fra Morten) og hva som sto igjen.
+  const oppsummering = { byggFallback: new Map(), uklassifisert: new Map() };
+  const noter = (m, leietaker, bygg, leietype, belop) => {
+    const key = `${leietaker} @ ${bygg}`;
+    const e = m.get(key) || { leietype, belop: 0 };
+    e.belop += belop || 0;
+    m.set(key, e);
+  };
+  function classify(beskrivelse, bygg, leietaker, del, fullArsverdi2026) {
+    const t = classifyRaa(beskrivelse, bygg, leietaker, del, fullArsverdi2026);
+    // Del B ER parkeringskontoene (3640-3642) - alt der er parkering av ett eller annet slag.
+    // "Lager kjøl/avfall" i P-broen eller Onepark-estimatet uten Fazile-linje skal ikke stå som
+    // Lager/Annet/Uklassifisert ved siden av Garasje og Parkering.
+    if (del === "B" && t !== "Garasje") return "Parkering";
+    return t;
+  }
+  function classifyRaa(beskrivelse, bygg, leietaker, del, fullArsverdi2026) {
     const b = (beskrivelse || "").toLowerCase();
+    // 1) Entydige ord i Fazile-beskrivelsen.
     if (/garasje/.test(b)) return "Garasje";
     if (/parkering|p-plass/.test(b)) return "Parkering";
     if (/lagerleie/.test(b)) return "Lager";
     if (/kontorleie/.test(b)) return "Kontor";
     if (/minimumsleie|omsetningsbasert|butikkleie/.test(b)) return "Butikk";
+    // 2) Bygg + beskrivelse finnes ordrett som "Kontrakt-objekt" i Excel.
     const key = normalizeName(bygg || "") + "||" + normalizeName(beskrivelse || "");
     const types = byggBeskrivelse.get(key);
     if (types && types.size === 1) return [...types][0];
+    // 3) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias).
+    const direkte = viaNavn(leietaker, bygg, del);
+    if (direkte) return direkte;
+    const budsjett = leietaker && budsjettOppslag ? budsjettOppslag(leietaker) : null;
+    for (const excelNavn of (budsjett && budsjett.excelNavn) || []) {
+      const t = viaNavn(excelNavn, bygg, del);
+      if (t) return t;
+    }
+    // 4) Mindre entydige ord - først NÅ, siden Excel-typen for leietakeren skal vinne over
+    //    linjeteksten (en Restaurant-leietaker med "Omsetningsleie"-linje skal stå som Restaurant).
+    if (/omsetningsleie|omsetningsjustert|leie handel|pop up|tilleggsleie/.test(b)) return "Butikk";
+    if (/kontor/.test(b)) return "Kontor";
+    if (/lager/.test(b)) return "Lager";
+    if (/basestasjon|vendesløyfe|annen inntekt|ladestasjon|enøk/.test(b)) return "Annet";
+    // 5) Siste utvei: byggets dominerende leietype i budsjettet (Lilleakerveien 31 -> Kontor,
+    //    CC Vest -> Butikk). Grovt, men riktigere enn "Uklassifisert" for en ubudsjettert leietaker
+    //    som leier vanlige lokaler. Logges slik at Morten kan overprøve.
+    const byggType = dominerende(perBygg.get(normalizeName(kanoniskByggNavn(bygg))), del);
+    if (byggType) {
+      noter(oppsummering.byggFallback, leietaker, bygg, byggType, fullArsverdi2026);
+      return byggType;
+    }
+    noter(oppsummering.uklassifisert, leietaker, bygg, "Uklassifisert", fullArsverdi2026);
     return "Uklassifisert";
-  };
+  }
+  return { classify, oppsummering };
 }
 
 // Bygger en gruppering pr. Del: `keyFn(line, tenant)` avgjør hvilken rad linjen tilhører.
@@ -231,7 +344,7 @@ function groupLines(linesForDel, keyFn) {
 // `defaultBudsjett`: 0 for Del A (et reelt leieforhold uten budsjettlinje er et reelt 0 kr-
 // budsjett - vises som en positiv/negativ avvik). `null` for Del B (parkering har INGEN
 // pr.-rad-budsjett i det hele tatt - se filhode - så "ikke funnet" skal vises som "—", ikke 0).
-function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, internMustadFakturert = null) {
+function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, internMustadFakturert = null, internMustadGjenstar = 0) {
   const rows = [];
   for (const [navn, g] of map.entries()) {
     const budsjettMatch = lookupFn(navn);
@@ -259,9 +372,9 @@ function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, 
   // (f.eks. Avstemmingsdifferanse-raden, eller en leietype/bygg som kun finnes i budsjettet) -
   // tas med med fakturert/gjenstår=0, slik at budsjett-summen for grupperingen alltid stemmer
   // eksakt (kun relevant for Del A - budgetRowsForUfordelt er alltid [] for Del B).
-  const dekketNavn = new Set(rows.map((r) => normalizeName(r.navn)));
+  const dekketNavn = new Set(rows.map((r) => normalizeName(kanoniskByggNavn(r.navn))));
   for (const b of budgetRowsForUfordelt) {
-    if (dekketNavn.has(normalizeName(b.navn))) continue;
+    if (dekketNavn.has(normalizeName(kanoniskByggNavn(b.navn)))) continue;
     if (b.navn === MUSTAD_INTERN_LABEL) {
       // v12 (2026-08-30, Morten: "fakturert viser korrekt total på tvers av leietakere, bygg og
       // leietype") - fakturert=budsjett var en ren display-erstatning (se filhode) som gjorde at
@@ -272,8 +385,25 @@ function medBudsjett(map, lookupFn, budgetRowsForUfordelt, defaultBudsjett = 0, 
       // i app/IncomeForecastSection.tsx), så Mortens opprinnelige bekymring (2026-08-26: "vis den
       // som fullt fakturert i stedet for å se ut som 100 % under budsjett") fortsatt unngås selv om
       // avvik nå kan bli negativt.
+      //
+      // v28 (2026-09-08): gjenstar var HARDKODET til 0 her. buildLeietakerMap() filtrerer bort
+      // intern-mustad-byggGruppene i sin helhet, så denne raden er det ENESTE stedet deres
+      // gjenstår kan komme inn i leietaker-grupperingen - og med 0 forsvant 434 061,75 kr (Del A)
+      // ut av visningen. Bygg-/leietype-grupperingen teller dem med (linesA/B), så de tre
+      // grupperingene av samme tabell summerte til ulike totaler, og "Leieinntekter"-seksjonen i
+      // UI-en kom 434 062 kr lavere enn toppboksens gjenstår (som kommer fra REMAINING direkte).
+      // Sammen med Del B-raden lenger nede utgjorde det et samlet avvik på 657 022 kr mellom
+      // seksjonskortene og toppboksen (Morten så det i nettleseren 2026-09-08).
       const fakturert = internMustadFakturert ?? b.budsjett;
-      rows.push({ navn: b.navn, fakturert, gjenstar: 0, budsjett: b.budsjett, avvik: round2(fakturert - b.budsjett), linjer: [], internleie: true });
+      rows.push({
+        navn: b.navn,
+        fakturert,
+        gjenstar: internMustadGjenstar,
+        budsjett: b.budsjett,
+        avvik: round2(fakturert + internMustadGjenstar - b.budsjett),
+        linjer: [],
+        internleie: true,
+      });
       continue;
     }
     // b.linjer finnes for de bygg-splittede "Ledig (vakante lokaler) – <bygg>"-radene (v6,
@@ -308,7 +438,8 @@ async function main() {
   if (!remaining) throw new Error(`Fant ikke snapshot i Redis: ${REMAINING_KEY}/${FIELD} - kjør build-remaining-summary.js først.`);
   if (!budget) throw new Error(`Fant ikke snapshot i Redis: ${BUDGET_KEY}/${FIELD} - kjør build-tenant-budget.js først.`);
 
-  const classifyLeietype = buildLeietypeClassifier();
+  // classifyLeietype bygges lenger ned (v52), etter budgetLookupA - den trenger budsjettsidens
+  // alias-oppslag (Fazile-navn -> Excel-navn) for å finne leietakerens leietype i Excel.
 
   // (tenant, line, fakturertShare, gjenstarShare) pr. Del - fakturert/gjenstår pr. linje finnes
   // ikke i REMAINING (kun pr. byggGruppe), så vi fordeler byggGruppens fakturert/gjenstår
@@ -408,7 +539,14 @@ async function main() {
     "zeg power as": { bygg: "Lilleakerveien 2B", linjeMatch: "id 8827" }, // Finance mar: "Zeg Power fra 01.02"
     // Finance jun (rad 568): "Komplett.no fra 01.09. Budsjettert på 3 linjer. Budsjettert 1.785.000,-"
     // = 3.03 + 3.02b + 3.02a (1 004 400 + 428 170 + 352 964 = 1 785 534).
-    "komplett asa": { bygg: "Lilleakerveien 2B", linjeMatch: ["husleie avg.fritt 3.03", "husleie avg.fritt 3.02b", "husleie avg.fritt 3.02a"] },
+    // v52 (2026-09-11, Morten: "ble vi ikke enige om at det negative avviket skulle ligge under
+    // ledighetslinjen?"): `ikkeBudsjett` gjør at linjene nestes under Ledig-raden som vanlig, men
+    // at budsjettet BLIR LIGGENDE der i stedet for å følge med til leietakeren. Morten sitt
+    // standpunkt er at Komplett er oppside vi fikk inn, ikke et mål de har sviktet.
+    // NB: Finance budsjetterte dem faktisk - junikommentaren over er deres egen. Fjernes flagget,
+    // får Komplett tilbake 1 785 534 i budsjett og et avvik på −1 510 534, og Ledig LV2B blir
+    // tilsvarende mindre negativ. Kun dette flagget skiller de to tolkningene.
+    "komplett asa": { bygg: "Lilleakerveien 2B", linjeMatch: ["husleie avg.fritt 3.03", "husleie avg.fritt 3.02b", "husleie avg.fritt 3.02a"], ikkeBudsjett: true },
     "metesa as": { bygg: "Lilleakerveien 2B", linjeMatch: "husleie avg.fritt 4.04" }, // Finance mar: "Medu/Metesa"
     // Rema: verkstedene + rest-delen av 1. etg (masterfila: "Delt areal på 653 til Head sine 285 og
     // denne som er rest"). Finance mar: "Sannsynligvis utsatt noe" - oppstart 2026-10-01 i Fazile.
@@ -553,7 +691,9 @@ async function main() {
     function leggTilOverforing(ledigRad, navn, belop, type, beskrivelse) {
       if (!overforinger.has(ledigRad.navn)) overforinger.set(ledigRad.navn, { sum: 0, poster: [] });
       const o = overforinger.get(ledigRad.navn);
-      o.sum = round2(o.sum + belop);
+      // v52: "nestet" teller IKKE i sum. Sum er det som faktisk TREKKES FRA Ledig-radens budsjett;
+      // en nestet post vises i "Flyttet inn her"-listen, men budsjettet blir liggende på Ledig-raden.
+      if (type !== "nestet") o.sum = round2(o.sum + belop);
       // Samme leietaker kan ta flere linjer i samme Ledig-rad (Komplett: 3) - én post pr. leietaker.
       const eksisterende = o.poster.find((p) => p.type === type && p.navn === navn);
       if (eksisterende) eksisterende.belop = round2(eksisterende.belop + belop);
@@ -592,7 +732,7 @@ async function main() {
         koblede.add(rad);
         if (!spec.linjeMatch) continue;
         for (const linje of finnLinjer(ledigRad, spec.bygg, spec.linjeMatch)) {
-          if (!krav.has(linje)) krav.set(linje, { ledigRad, rader: [] });
+          if (!krav.has(linje)) krav.set(linje, { ledigRad, rader: [], ikkeBudsjett: spec.ikkeBudsjett === true });
           krav.get(linje).rader.push(rad);
         }
       }
@@ -600,14 +740,17 @@ async function main() {
     for (const nokkel of Object.keys(MANUAL_FLYTTET_INN_OVERRIDES)) {
       if (!brukteOverrides.has(nokkel)) varsel(`ADVARSEL: override "${nokkel}" treffer ingen leietaker-rad i Del A - utgått navn (merge/rebrand) eller stavefeil?`);
     }
-    for (const [linje, { ledigRad, rader }] of krav) {
+    for (const [linje, { ledigRad, rader, ikkeBudsjett }] of krav) {
       const andel = round2(linje.fullArsverdi2026 / rader.length);
       for (const rad of rader) {
-        rad.budsjett = round2(rad.budsjett + andel);
+        if (!ikkeBudsjett) rad.budsjett = round2((rad.budsjett || 0) + andel);
         oppdaterAvvik(rad);
-        leggTilOverforing(ledigRad, rad.navn, andel, "leietaker");
+        leggTilOverforing(ledigRad, rad.navn, andel, ikkeBudsjett ? "nestet" : "leietaker");
       }
-      ledigRad.linjer = ledigRad.linjer.filter((l) => l !== linje);
+      // v48: linjen MÅ ut av Ledig-radens liste når beløpet er trukket fra budsjettet, ellers
+      // stemmer ikke "sum gjenværende linjer" med "gjenstående budsjett" (kontrollen lenger nede).
+      // v52: med ikkeBudsjett blir budsjettet liggende, og da skal linjen også bli liggende.
+      if (!ikkeBudsjett) ledigRad.linjer = ledigRad.linjer.filter((l) => l !== linje);
     }
 
     // 2) Automatisk kommentar-matchede linjer - vi VET nøyaktig hvilken linje dette gjelder,
@@ -627,18 +770,40 @@ async function main() {
         // navn ofte er lengre ("Serendipity Partners Management AS"). Denne retningen gjør også
         // lange, tilfeldige fritekst-fraser ("Tilbud avgitt til Appear", "Uteleid til Eternal
         // Clothing AS fra 01.01.2025") trygt umulige å matche ved et uhell.
+        // v48 (2026-09-11, Morten: "budsjettet bør vel stå nede på Serendipity? ... her burde vel
+        // Appear dukket opp?" og "det som ligger igjen på de ledige bør være budsjett som ikke har
+        // materialisert seg i inntekt"): den gamle regelen krevde at leietakernavnet sto FØRST i
+        // kommentaren ("Serendipity. Arealene tegnes om"), og avviste med vilje fraser som "Tilbud
+        // avgitt til Appear" og "Skal deles. Head tar 285kvm". Konsekvensen var at budsjett for
+        // areal som FAKTISK ble leid ut ble liggende igjen på Ledig-raden som om det var tomgang.
+        // Nå leter vi etter leietakerens kjernenavn HVOR SOM HELST i kommentaren. Det som gjør det
+        // trygt er byggkravet under: navnet teller bare hvis leietakeren faktisk har kontraktslinjer
+        // i nettopp det bygget. En tilfeldig navnenevnelse for en leietaker som ikke er der, treffer
+        // ikke. `rad.budsjett !== 0`-sperren er også borte - den holdt Appear ute nettopp fordi
+        // Appear allerede hadde eget budsjett, som er helt normalt for en utvidelse.
         const helKommentar = normalizeName(linje._kommentarRaw);
         const forsteSetning = normalizeName(linje._kommentarRaw.split(".")[0]);
         const kandidater = [...new Set([forsteSetning, helKommentar])].filter((k) => k.length >= 4);
         let matchet = false;
         for (const rad of delALeietakerRader) {
-          if (rad === ledigRad || rad.budsjett !== 0 || rad.flyttetInnI || rad.navn.startsWith(LEDIG_LABEL_PREFIX)) continue;
+          // `rad.flyttetInnI` er IKKE lenger et utelukkelseskriterium (v48): en leietaker kan ha
+          // tatt over FLERE budsjettposter fra samme Ledig-rad - Appear har to ("Tilbud avgitt til
+          // Appear" på 1 170 000 og 561 000), og med den gamle sperren fikk de bare den første.
+          if (rad === ledigRad || rad.navn.startsWith(LEDIG_LABEL_PREFIX)) continue;
           const kjerne = coreName(rad.navn);
-          if (kjerne.length < 4 || !kandidater.some((k) => kjerne.startsWith(k))) continue;
+          if (kjerne.length < 4) continue;
+          // To matcheretninger, begge nødvendige:
+          //  a) kommentaren INNEHOLDER kjernenavnet - "Skal deles. Head tar 285kvm", "Tilbud
+          //     avgitt til Appear". Den nye i v48.
+          //  b) kjernenavnet STARTER MED kommentaren - "Serendipity. Arealene tegnes om" mot
+          //     "Serendipity Partners Management AS". Den opprinnelige; uten den faller
+          //     Serendipity ut, noe den gjorde da jeg først bare snudde retningen.
+          const treff = helKommentar.includes(kjerne) || kandidater.some((k) => kjerne.startsWith(k));
+          if (!treff) continue;
           const harSammeBygg = rad.linjer.some((l) => normalizeName(l.bygg) === normalizeName(linje.bygg));
           if (!harSammeBygg) continue;
+          rad.budsjett = round2((rad.budsjett || 0) + linje.fullArsverdi2026);
           rad.flyttetInnI = ledigRad.navn;
-          rad.budsjett = round2(rad.budsjett + linje.fullArsverdi2026);
           oppdaterAvvik(rad);
           leggTilOverforing(ledigRad, rad.navn, linje.fullArsverdi2026, "leietaker");
           koblede.add(rad);
@@ -699,6 +864,18 @@ async function main() {
       // budsjett-feltet blir GJENSTÅENDE under, så original + trukket-ut må lagres separat.
       ledigRad.ledigOpprinneligBudsjett = opprinnelig;
       ledigRad.ledigTrukketUt = trukket;
+      // v47 (2026-09-11, Morten: "avviket må bli stående på Ledig LV2B siden Komplett bare er en
+      // bonus at vi fikk inn"): budsjettet flyttes IKKE lenger fra Ledig-raden til leietakeren som
+      // flyttet inn. Før fikk f.eks. Komplett ASA et budsjett på 1 785 534 kr som ikke finnes noe
+      // sted i budsjettfila, og framsto dermed med −1 510 534 i avvik - som om en leietaker sviktet
+      // et mål de aldri hadde. Budsjettet ble laget for AREALET, ikke for leietakeren. Nå blir det
+      // stående på Ledig-raden, og leietakeren viser sin inntekt som ren oppside. Overføringene
+      // beregnes fortsatt (ledigPoster/ledigTrukketUt) og vises i "Flyttet inn her"-listen under
+      // Ledig-raden - de er dokumentasjon, ikke lenger en flytting av tall.
+      ledigRad.ledigTrukketUt = trukket;
+      // v48: Ledig-raden beholder KUN budsjett som ikke har materialisert seg i inntekt. Det som er
+      // overført til en navngitt leietaker trekkes fra igjen (v47 sluttet å trekke fra i det hele
+      // tatt - det var for grovt: da sto areal Head og Serendipity faktisk leier igjen som tomgang).
       ledigRad.budsjett = round2(opprinnelig - trukket);
       oppdaterAvvik(ledigRad);
       ledigRad.ledigPoster = o ? o.poster.sort((a, b) => b.belop - a.belop) : [];
@@ -745,6 +922,31 @@ async function main() {
       );
     }
 
+    // 6) Usporede overtakelser: budsjett trukket fra en Ledig-rad uten at noen leietakerrad tok
+    // imot det (MANUAL_UNTRACKED_OVERTAKELSER uten `overforTil`). Uten denne samleraden forsvinner
+    // beløpet ut av leietaker-grupperingen, og budsjett-summen der stemmer ikke med bygg-/
+    // leietype-grupperingen. Kontrollsummen mellom grupperingene fanger det umiddelbart - den har
+    // gjort det to ganger under dette arbeidet, så raden er ikke valgfri.
+    const usporetSum = round2(
+      [...overforinger.values()].reduce(
+        (s, o) => s + o.poster.filter((p) => p.type === "usporet").reduce((t, p) => t + p.belop, 0),
+        0,
+      ),
+    );
+    if (usporetSum !== 0) {
+      delALeietakerRader.push({
+        navn: USPORET_OVERTAKELSE_LABEL,
+        fakturert: 0,
+        gjenstar: 0,
+        budsjett: usporetSum,
+        avvik: round2(-usporetSum),
+        linjer: [],
+      });
+      console.log(
+        `Usporede overtakelser: ${fmt(usporetSum)} kr budsjett samlet på raden "${USPORET_OVERTAKELSE_LABEL}" (trukket fra Ledig-rader uten mottakerrad).`,
+      );
+    }
+
     // _kommentarRaw er internt/midlertidig (kun brukt til matchingen over) - skal ALDRI havne i
     // det publiserte Redis-snapshotet/API-et.
     for (const ledigRad of ledigRader) {
@@ -757,13 +959,20 @@ async function main() {
     const lookup = buildBudgetLookup(rows);
     return (navn) => lookupBudget(navn, lookup);
   }
+  // kanoniskByggNavn brukes OGSÅ her (v45): uten det virker aliaset bare på inntektssiden, og
+  // budsjettraden ville fortsatt ligget igjen under sitt eget Excel-navn som en "ufordelt" rad.
   function exactLookupFn(rows) {
-    const byNorm = new Map(rows.map((r) => [normalizeName(r.navn), r.budsjett]));
-    return (navn) => (byNorm.has(normalizeName(navn)) ? { budsjett: byNorm.get(normalizeName(navn)), via: [] } : null);
+    const byNorm = new Map(rows.map((r) => [normalizeName(kanoniskByggNavn(r.navn)), r.budsjett]));
+    return (navn) => {
+      const n = normalizeName(kanoniskByggNavn(navn));
+      return byNorm.has(n) ? { budsjett: byNorm.get(n), via: [] } : null;
+    };
   }
 
   const budgetLookupA = { leietaker: fuzzyLookupFn(budget.delA.leietaker), bygg: exactLookupFn(budget.delA.bygg), leietype: exactLookupFn(budget.delA.leietype) };
   const budgetLookupB = { leietaker: fuzzyLookupFn(budget.delB.leietaker), bygg: exactLookupFn(budget.delB.bygg), leietype: exactLookupFn(budget.delB.leietype) };
+
+  const { classify: classifyLeietype, oppsummering: leietypeOppsummering } = buildLeietypeClassifier(budgetLookupA.leietaker);
 
   // Leietaker-grupperingen bruker byggGruppe-tallene DIREKTE (uendret fra v1 - mer nøyaktig enn
   // den proporsjonale linje-fordelingen over for selve fakturert/gjenstår-SUMMEN). v11 (2026-08-29,
@@ -832,21 +1041,44 @@ async function main() {
   // Del A/B hver for seg. Brukes til å erstatte MUSTAD_INTERN_LABEL-radens tidligere fakturert=
   // budsjett-erstatning (Del A, se medBudsjett()) og til å legge til en tilsvarende rad for Del B
   // (som ellers manglet HELT, siden budget.delB.leietaker alltid er tom - se filhode).
+  //
+  // v28 (2026-09-08): gjenstår summeres nå på samme måte som fakturert. Det ble tidligere ikke
+  // gjort, og siden buildLeietakerMap() hopper over intern-mustad-gruppene helt, fantes disse
+  // beløpene ikke noe sted i leietaker-grupperingen - se den lange kommentaren i medBudsjett().
   let internMustadFakturertA = 0;
   let internMustadFakturertB = 0;
+  let internMustadGjenstarA = 0;
+  let internMustadGjenstarB = 0;
   for (const tenant of remaining.tenants) {
     for (const bg of tenant.byggGrupper) {
       if (bg.status !== "intern-mustad") continue;
       internMustadFakturertA = round2(internMustadFakturertA + bg.alleredeFakturertDelA);
       internMustadFakturertB = round2(internMustadFakturertB + bg.alleredeFakturertDelB);
+      internMustadGjenstarA = round2(internMustadGjenstarA + bg.gjenstarDelA);
+      internMustadGjenstarB = round2(internMustadGjenstarB + bg.gjenstarDelB);
     }
   }
 
   const delA = {
-    leietaker: sortByAvvik(medBudsjett(buildLeietakerMap("A"), budgetLookupA.leietaker, budget.delA.leietaker, 0, internMustadFakturertA)),
+    leietaker: sortByAvvik(medBudsjett(buildLeietakerMap("A"), budgetLookupA.leietaker, budget.delA.leietaker, 0, internMustadFakturertA, internMustadGjenstarA)),
     bygg: sortByAvvik(medBudsjett(groupLines(linesA, (line) => kanoniskByggNavn(line.bygg)), budgetLookupA.bygg, budget.delA.bygg)),
-    leietype: sortByAvvik(medBudsjett(groupLines(linesA, (line) => classifyLeietype(line.beskrivelse, line.bygg)), budgetLookupA.leietype, budget.delA.leietype)),
+    leietype: sortByAvvik(
+      medBudsjett(
+        groupLines(linesA, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, tenant.navn, "A", line.fullArsverdi2026)),
+        budgetLookupA.leietype,
+        budget.delA.leietype,
+      ),
+    ),
   };
+  {
+    const fmt = (n) => Math.round(n).toLocaleString("nb-NO");
+    const bf = [...leietypeOppsummering.byggFallback.entries()].sort((a, b) => b[1].belop - a[1].belop);
+    console.log(`Leietype v52: ${bf.length} leietaker/bygg fikk BYGGETS dominerende leietype (ubudsjettert, generisk linjetekst):`);
+    for (const [k, v] of bf.slice(0, 25)) console.log(`  ${fmt(v.belop).padStart(12)}  ${k}  ->  ${v.leietype}`);
+    const uk = [...leietypeOppsummering.uklassifisert.entries()].sort((a, b) => b[1].belop - a[1].belop);
+    console.log(`Leietype v52: ${uk.length} leietaker/bygg står igjen som Uklassifisert:`);
+    for (const [k, v] of uk.slice(0, 15)) console.log(`  ${fmt(v.belop).padStart(12)}  ${k}`);
+  }
   const antallFlyttetInn = await kobleFlyttetInnOgTrekkFra(delA.leietaker);
   delA.leietaker = sortByAvvik(delA.leietaker); // budsjett/avvik er endret på Ledig- og leietaker-rader over
   console.log(`Flyttet-inn-kobling: ${antallFlyttetInn} leietaker(e) koblet til en Ledig-bygg-rad.`);
@@ -856,15 +1088,30 @@ async function main() {
   const delB = {
     leietaker: sortByAvvik(medBudsjett(buildLeietakerMap("B"), budgetLookupB.leietaker, budget.delB.leietaker, null)),
     bygg: sortByAvvik(medBudsjett(groupLines(linesB, (line) => kanoniskByggNavn(line.bygg)), budgetLookupB.bygg, budget.delB.bygg, null)),
-    leietype: sortByAvvik(medBudsjett(groupLines(linesB, (line) => classifyLeietype(line.beskrivelse, line.bygg)), budgetLookupB.leietype, budget.delB.leietype, null)),
+    leietype: sortByAvvik(
+      medBudsjett(
+        groupLines(linesB, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, tenant.navn, "B", line.fullArsverdi2026)),
+        budgetLookupB.leietype,
+        budget.delB.leietype,
+        null,
+      ),
+    ),
   };
   // Del B sin leietaker-gruppering har ingen budsjett-side å hekte MUSTAD_INTERN_LABEL-raden på
   // (budget.delB.leietaker er alltid []) - legges derfor til direkte her i stedet, med samme
   // budsjett=null-konvensjon som resten av Del B.
-  if (internMustadFakturertB !== 0) {
+  if (internMustadFakturertB !== 0 || internMustadGjenstarB !== 0) {
     delB.leietaker = sortByAvvik([
       ...delB.leietaker,
-      { navn: MUSTAD_INTERN_LABEL, fakturert: internMustadFakturertB, gjenstar: 0, budsjett: null, avvik: null, linjer: [], internleie: true },
+      {
+        navn: MUSTAD_INTERN_LABEL,
+        fakturert: internMustadFakturertB,
+        gjenstar: internMustadGjenstarB,
+        budsjett: null,
+        avvik: null,
+        linjer: [],
+        internleie: true,
+      },
     ]);
   }
 
@@ -872,6 +1119,27 @@ async function main() {
     for (const gruppe of ["leietaker", "bygg", "leietype"]) {
       const sumBudsjett = round2(del[gruppe].reduce((s, r) => s + (r.budsjett ?? 0), 0));
       console.log(`${label} / ${gruppe}: ${del[gruppe].length} rader, budsjett-sum ${sumBudsjett.toLocaleString("nb-NO")} kr`);
+    }
+  }
+
+  // v28 (2026-09-08): de tre grupperingene er tre VISNINGER av det samme tallgrunnlaget og skal
+  // derfor summere likt - men gjorde det ikke, og ingenting fanget det opp. Feilen (hardkodet
+  // gjenstar:0 på MUSTAD_INTERN_LABEL-raden, se medBudsjett()) lå ute i flere uker og ga 657 022
+  // kr forskjell mellom "Leieinntekter"/"Parkering"-seksjonene og toppboksen i UI-en. Nå er det en
+  // hard kontrollsum: bygg-grupperingen er fasit (den bygges av linesA/linesB, som dekker ALLE
+  // linjer uansett status), og leietaker/leietype må stemme med den.
+  for (const [label, del] of [["Del A", delA], ["Del B", delB]]) {
+    const sum = (rows, felt) => round2(rows.reduce((s, r) => s + (r[felt] ?? 0), 0));
+    for (const felt of ["fakturert", "gjenstar", "budsjett"]) {
+      const fasit = sum(del.bygg, felt);
+      for (const gruppe of ["leietaker", "leietype"]) {
+        verifyTotal(
+          `${label}: ${felt}-sum i "${gruppe}"-grupperingen vs. "bygg"-grupperingen (samme tallgrunnlag, tre visninger - må summere likt)`,
+          sum(del[gruppe], felt),
+          fasit,
+          0.01,
+        );
+      }
     }
   }
   const totalDelBFakturertGjenstar = round2(delB.leietaker.reduce((s, r) => s + r.fakturert + r.gjenstar, 0));

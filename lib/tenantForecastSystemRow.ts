@@ -11,6 +11,10 @@
 export const SYSTEM_ROW_LABELS = new Set([
   "Mustad Eiendom (intern bruk, ikke leieforhold)",
   "Avstemmingsdifferanse (Excel redigert etter at 'harde tall' ble limt inn i Oppsummering-arket)",
+  // v28 (2026-09-08, USPORET_OVERTAKELSE_LABEL i build-tenant-forecast-table.js): budsjett trukket
+  // ut av en Ledig-rad uten mottakerrad. Var tidligere ingen rad i det hele tatt - beløpet
+  // forsvant ut av grupperingen og gjorde budsjett-summen 568 280 kr for lav.
+  "Usporede overtakelser (ledig areal overtatt, mottaker ukjent)",
 ]);
 // "Ledig (vakante lokaler)" er siden v6 (2026-08-28) splittet i én rad pr. bygg, og siden v8
 // (2026-08-29) med korte radnavn ("Ledig V13D" osv., se BYGG_KORTKODE i build-tenant-budget.js) -

@@ -3,7 +3,7 @@ import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 export type ContractExpiryStatus = "apen" | "reforhandlet";
 
-export interface ContractExpiryLine {
+interface ContractExpiryLine {
   linjenokkel: string;
   linjeBeskrivelse: string;
   arealtype: string;
@@ -12,7 +12,7 @@ export interface ContractExpiryLine {
   ekstraI2026: number;
 }
 
-export interface ContractExpiryContract {
+interface ContractExpiryContract {
   leietaker: string;
   kontraktsnokkel: string;
   bygg: string;
@@ -31,7 +31,7 @@ export interface ContractExpiryContract {
   muligAlleredeDekket: { faktiskFakturert: number; forventetGjennomSlutt: number; overskudd: number } | null;
 }
 
-export interface ContractExpiryEkstraLeietaker {
+interface ContractExpiryEkstraLeietaker {
   leietaker: string;
   ekstraI2026: number;
   kontrakter: { kontraktsnokkel: string; bygg: string; maxSlutt: string; ekstraI2026: number }[];

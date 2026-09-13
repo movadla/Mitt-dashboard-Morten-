@@ -21,7 +21,7 @@ export interface ManualIncomeLine {
   aktiv: boolean;
 }
 
-export interface NewManualIncomeLineInput {
+interface NewManualIncomeLineInput {
   beskrivelse: string;
   selskap: string;
   bygg: string;
@@ -35,7 +35,7 @@ export interface NewManualIncomeLineInput {
   aktiv?: boolean;
 }
 
-export interface ManualIncomeLineUpdateInput {
+interface ManualIncomeLineUpdateInput {
   beskrivelse?: string;
   selskap?: string;
   bygg?: string;

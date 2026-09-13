@@ -24,12 +24,22 @@ const path = require("path");
 const { loadEnvLocal, pushToRedis } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "arealoversikt-ledig-raw.json");
+// v33 (2026-09-09): uttrekksdatoen sto HARDKODET som "2026-08-24" i snapshotet under. Rådataen
+// kunne dermed hentes på nytt uten at datoen fulgte med, og "Eldste datakilde"-flisen i UI-en
+// ville fortsatt pekt på august med ferske tall bak. Datoen ligger nå i en egen meta-fil som SKAL
+// oppdateres sammen med rådataen - mangler den, stopper scriptet i stedet for å gjette.
+const META_FILE = path.join(__dirname, "refresh-data", "arealoversikt-ledig-meta.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-ledige-arealer";
 const REDIS_FIELD = "snapshot";
 
 function main() {
   loadEnvLocal();
   const raw = JSON.parse(fs.readFileSync(RAW_FILE, "utf8"));
+  if (!fs.existsSync(META_FILE)) {
+    throw new Error(`Fant ikke ${path.basename(META_FILE)} - den må skrives sammen med rådataen og inneholde uttrekksdato.`);
+  }
+  const meta = JSON.parse(fs.readFileSync(META_FILE, "utf8"));
+  if (!meta.uttrekksdato) throw new Error(`${path.basename(META_FILE)} mangler feltet "uttrekksdato".`);
   if (raw.warnings && raw.warnings.length > 0) {
     console.log("ADVARSEL fra Fazile-verktøyet (rådata kan være trunkert):", raw.warnings);
   }
@@ -60,7 +70,7 @@ function main() {
   const totalKvm = Math.round(raw.rows.reduce((sum, r) => sum + r.eksklusiv_kvm, 0) * 10) / 10;
 
   const snapshot = {
-    sistOppdatert: "2026-08-24",
+    sistOppdatert: meta.uttrekksdato,
     totalLedigKvm: totalKvm,
     antallArealer: raw.rows.length,
     antallBygg: bygg.length,

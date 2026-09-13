@@ -79,3 +79,11 @@ scripts/refresh-data/*.csv
 !scripts/refresh-data/README.md
 
 .vercel
+
+# Endringslogg for lokal (reell) inntektsprognose-konstantfil - kan inneholde
+# leietakernavn og reelle beløp, samme grunn som lib/incomeForecast.local.ts selv.
+docs/inntektsprognose-endringslogg.local.md
+
+# cloudflared stdout-logg og manuelle sikkerhetskopier av rå-uttrekk
+cloudflared-out.log
+scripts/refresh-data/*.bak-*

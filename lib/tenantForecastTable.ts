@@ -48,14 +48,14 @@ export interface TenantForecastLine {
 // Én post som er trukket ut av en Ledig-rad (v15): en leietaker som har tatt linjen(e) (budsjettet
 // er flyttet til leietakerens egen rad), internleie (flyttet til intern-raden) eller en
 // dobbeltbudsjettert linje som bare er fjernet (leietakeren har allerede egen budsjettrad).
-export interface LedigPost {
+interface LedigPost {
   navn: string;
   belop: number;
   type: "leietaker" | "intern" | "usporet";
   beskrivelse?: string;
 }
 
-export interface TenantForecastKonto {
+interface TenantForecastKonto {
   // NXT-bokføringskonto (f.eks. "3600"), eller en syntetisk merkelapp for en manuell korreksjon
   // (f.eks. "Overtatt fra gammelt kundenummer") - se RemainingKontoBelop i
   // lib/incomeForecastRemainingTenants.ts.

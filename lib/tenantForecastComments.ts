@@ -6,10 +6,14 @@ import { hgetallJSON, hsetJSON } from "./kv";
 // hver gang pipelinen kjøres, og ville ha overskrevet/mistet kommentarene ellers.
 // Kobles inn i lib/tenantForecastTable.ts ved lesing (samme mønster som anonymisering der).
 
-export interface TenantForecastComment {
+interface TenantForecastComment {
   navn: string;
   kommentar: string;
   sistOppdatert: string;
+  // v53 (2026-09-11): hvem som skrev kommentaren. Mortens egne (fra UI-en) har ikke feltet;
+  // Claude sine analysekommentarer merkes "claude" og vises i egen farge i tabellen, slik at
+  // Morten ser hva som er hans vurdering og hva som er en maskinell forklaring han kan overprøve.
+  forfatter?: "claude";
 }
 
 const HASH_KEY = "jobb:inntektsprognose-leietaker-kommentarer";
@@ -27,9 +31,21 @@ export async function getTenantForecastComments(): Promise<Record<string, string
   return result;
 }
 
+// Alle oppføringer med forfatter - brukes av API-et slik at UI-en kan fargelegge Claude sine.
+export async function getTenantForecastCommentAuthors(): Promise<Record<string, "claude" | "morten">> {
+  const stored = await hgetallJSON<TenantForecastComment>(HASH_KEY);
+  const result: Record<string, "claude" | "morten"> = {};
+  for (const entry of Object.values(stored)) {
+    if (entry.kommentar) result[normalizeKey(entry.navn)] = entry.forfatter === "claude" ? "claude" : "morten";
+  }
+  return result;
+}
+
 export async function setTenantForecastComment(navn: string, kommentar: string): Promise<TenantForecastComment> {
   const trimmedNavn = navn.trim();
   if (!trimmedNavn) throw new Error("Mangler leietakernavn");
+  // Lagres fra UI-en = Morten sin. Ingen forfatter-felt betyr Morten; en eksisterende Claude-
+  // kommentar som Morten redigerer blir dermed hans, som er riktig.
   const entry: TenantForecastComment = {
     navn: trimmedNavn,
     kommentar: kommentar.trim(),

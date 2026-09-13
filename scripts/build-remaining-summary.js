@@ -584,6 +584,35 @@ function main() {
   const nxtBuildingSet = new Set();
   for (const t of nxtData.tenants) for (const l of t.lines) nxtBuildingSet.add(l.bygg);
   const nxtGroups = new Map(); // "tenant||bygg" -> { alleredeA, alleredeB }
+  const nxtGruppeByggNavn = new Map(); // samme nøkkel som nxtGroupsByCustomerNo -> ekte byggnavn
+
+  // v49 (2026-09-11, Morten: "skjønner ikke hvorfor vi ikke bare kan kode det inn hos PGS og vise
+  // det faktiske avviket"): posteringer som mangler kundenummer i NXT, men der bilagsteksten
+  // utvetydig navngir leietakeren. Her kodes de om til riktig kundenummer FØR grupperingen, slik at
+  // resten av maskineriet behandler dem som om NXT hadde kodet dem riktig - beløpet lander på
+  // leietakerens rad, og avviket mot budsjett blir det reelle i stedet for å måtte bortforklares i
+  // en kommentar. Hver oppføring MÅ ha bilagsnummer og tekst i begrunnelsen, slik at den kan
+  // etterprøves mot NXT. Rettes kodingen i NXT, skal oppføringen fjernes herfra.
+  const UKODET_KUNDEKODING = [
+    {
+      selskap: "Mustad Eiendom AS",
+      accountNo: 3652,
+      orgUnit3: 43, // Lilleakerveien 4C
+      customerNo: 10385, // PGS Geophysical AS
+      begrunnelse:
+        'Bilag 14864, datert 30.06.2023 men bokført på regnskapsår 2026, tekst "Periodisering ' +
+        'leierabatter PGS ny avtale 2026". 800 000 kr forhåndsperiodisert leierabatt. Budsjettet for ' +
+        "PGS er satt netto etter denne rabatten, så uten omkodingen framstår PGS med +812 320 kr i " +
+        "avvik mot budsjett i stedet for det reelle +12 321 kr.",
+    },
+  ];
+  function omkodetKundeNo(selskap, accountNo, orgUnit3, customerNo) {
+    if (Number(customerNo) !== 0) return customerNo;
+    const treff = UKODET_KUNDEKODING.find(
+      (k) => k.selskap === selskap && k.accountNo === accountNo && k.orgUnit3 === orgUnit3,
+    );
+    return treff ? treff.customerNo : customerNo;
+  }
   let sumOmsetningsavregning2025Fordelt = 0; // reelle leietakeres andel av avregningen
   let sumOmsetningsavregning2025Avsetning = 0; // "Andre" (customerNo=0) sin side - selve avsetningen/reverseringen
   // v18 (2026-09-07, "sikre tallgrunnlaget"-gjennomgangen): rå-sum av HVER linje i
@@ -671,7 +700,13 @@ function main() {
         let bygg = company.buildings[String(l.orgUnit3)];
         if (!bygg) continue;
         bygg = BYGG_UNDERBYGG_TIL_HOVEDBYGG.get(bygg) || bygg;
-        const key = company.selskap + "||" + l.customerNo + "||" + normalizeName(bygg);
+        const kundeNo = omkodetKundeNo(company.selskap, l.accountNo, l.orgUnit3, l.customerNo);
+        const key = company.selskap + "||" + kundeNo + "||" + normalizeName(bygg);
+        // v46: det EKTE byggnavnet må tas vare på her - nøkkelen bruker normalizeName, og å bruke
+        // den normaliserte formen som byggnavn senere lager duplikate bygg-rader ("lilleakerveien
+        // 4c" ved siden av "Lilleakerveien 4C") som hver henter SAMME budsjett. Det ble fanget av
+        // kontrollsummen mellom grupperingene (budsjettet hoppet fra 665,8 til 782,7 mill).
+        nxtGruppeByggNavn.set(key, bygg);
         if (!nxtGroupsByCustomerNo.has(key)) nxtGroupsByCustomerNo.set(key, { alleredeA: 0, alleredeB: 0, kontoerA: new Map(), kontoerB: new Map() });
         const g = nxtGroupsByCustomerNo.get(key);
         const belop = -l.belop; // sign-flip, samme konvensjon som resten av scriptet
@@ -1911,6 +1946,58 @@ function main() {
     }
   }
 
+  // v46 (2026-09-11, PGS-funnet): bokføring UTEN kundenummer (customerNo 0) grupperes riktignok i
+  // nxtGroupsByCustomerNo, men ingen Fazile-kontrakt har kundenummer 0 - så gruppen ble aldri
+  // konsumert, og beløpene forsvant lydløst ut av leietaker-visningen samtidig som de lå inne i den
+  // kontobaserte BOOKED-summen. Konkret utslag: PGS sin forhåndsperiodiserte leierabatt på 800 000
+  // kr (konto 3652, bilag datert 2023-06-30 men bokført på år 2026) festet seg aldri til PGS, så
+  // PGS framsto med +812 320 kr i avvik mot budsjett når det reelle er +12 321 kr - budsjettet er
+  // satt NETTO etter rabatten, tabellen viste kontrakten BRUTTO.
+  // Beløpene legges nå på en egen, navngitt rad i stedet for å forsvinne. De er IKKE fordelt på
+  // leietakere - det krever bilagstekst, som ikke finnes i uttrekket (kun customerNo/accountNo/
+  // orgUnit3/belop) - men de er synlige, og differansen mot BOOKED krymper tilsvarende.
+  // 3632-omsetningsavregningen er allerede ekskludert lenger opp (OMSETNINGSAVREGNING_2025_KONTI)
+  // og håndteres av sin egen mekanisme - den skal ikke med her.
+  const ukodetByggGrupper = [];
+  for (const [key, g] of nxtGroupsByCustomerNo.entries()) {
+    const [selskap, customerNo] = key.split("||");
+    if (Number(customerNo) !== 0) continue;
+    const byggNavn = nxtGruppeByggNavn.get(key);
+    if (!byggNavn) continue;
+    if (round2(g.alleredeA) === 0 && round2(g.alleredeB) === 0) continue;
+    ukodetByggGrupper.push({
+      bygg: byggNavn,
+      status: "ukodet-bokforing",
+      forklaring:
+        `Bokført i ${selskap} uten kundenummer i NXT, og kan derfor ikke knyttes til et leieforhold. ` +
+        "Beløpet er med i den kontobaserte bokførte summen (BOOKED_3600_3699), men mangler i " +
+        "leietaker-fordelingen - det er nettopp dette som gjorde at PGS Geophysical framsto med et " +
+        "avvik på 812 320 kr i stedet for 12 321 kr. Krever bilagstekst fra NXT for å kunne fordeles.",
+      fullArsverdi2026DelA: 0,
+      fullArsverdi2026DelB: 0,
+      alleredeFakturertDelA: round2(g.alleredeA),
+      alleredeFakturertDelB: round2(g.alleredeB),
+      gjenstarDelA: 0,
+      gjenstarDelB: 0,
+      gjenstarTotal: 0,
+      kontoFordelingDelA: [...g.kontoerA.entries()].map(([konto, belop]) => ({ konto, belop })),
+      kontoFordelingDelB: [...g.kontoerB.entries()].map(([konto, belop]) => ({ konto, belop })),
+    });
+  }
+  if (ukodetByggGrupper.length > 0) {
+    const sumA = round2(ukodetByggGrupper.reduce((s2, b) => s2 + b.alleredeFakturertDelA, 0));
+    const sumB = round2(ukodetByggGrupper.reduce((s2, b) => s2 + b.alleredeFakturertDelB, 0));
+    varsel(
+      `ADVARSEL: ${ukodetByggGrupper.length} bygg har NXT-bokføring uten kundenummer (Del A ${sumA} kr, Del B ${sumB} kr) - ` +
+        'samlet på raden "Ukodet bokføring (uten kundenummer i NXT)". Bør kodes på riktig kunde i NXT.',
+    );
+    tenantMap.set("ukodet-bokforing", {
+      navn: "Ukodet bokføring (uten kundenummer i NXT)",
+      byggGrupper: ukodetByggGrupper,
+      lines: [],
+    });
+  }
+
   const tenantList = [...tenantMap.values()]
     .map((t) => {
       const fullArsverdi2026 = round2(t.byggGrupper.reduce((s, b) => s + b.fullArsverdi2026DelA + b.fullArsverdi2026DelB, 0));
@@ -1976,7 +2063,12 @@ function main() {
   console.log(`REMAINING-aggregat (lim inn i lib/incomeForecast.local.ts/.anon.ts):`);
   console.log(`  totalDelA: ${round2(sumTotalDelA)},`);
   console.log(`  totalDelB: ${round2(sumTotalDelB)},`);
-  console.log(`  antallLeieforhold: ${leieforhold.size},`);
+  // v28 (2026-09-08): var `leieforhold.size` - antall leietaker||bygg-nøkler på FAZILE-siden, FØR
+  // sammenslåing/eksklusjoner (724). UI-en teller derimot byggGrupper i selve snapshotet ("80 av
+  // 715 leieforhold" i Leieforhold til gjennomgang), så de to tallene sto side om side på samme
+  // side, med samme ord og 9 i forskjell. Konstanten følger nå snapshotet - det er dét brukeren
+  // faktisk kan klikke seg inn i. Fazile-siden logges fortsatt separat ("Leieforhold: N") over.
+  console.log(`  antallLeieforhold: ${tenantList.reduce((s, t) => s + t.byggGrupper.length, 0)},`);
   console.log(`  antallIkkeMatchetFlagget: ${countIkkeMatchetFlagget},`);
   console.log(`  antallForklartOmsetningsleie: ${countOmsetning},`);
   console.log(`  antallForklartKontraktsendring: ${countKontraktsendring},`);

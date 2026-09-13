@@ -39,6 +39,19 @@ følge oppskriften i:
 
 Se ellers de enkelte byggeskriptenes filhoder for hvilken rå-fil hvert av dem forventer.
 
+### Onepark-estimatet MÅ oppdateres når nye omsetningsrapporter kommer
+
+Onepark-raden (4 729 150 kr pr. 2026-09-11) er ikke et leieforhold, men et **estimat** for
+parkeringsinntekt for resten av året, for hele porteføljen samlet og ikke fordelt på bygg. Morten
+bekreftet 2026-09-11 at estimatet er kontrollert og skal stå - men det er tidsavhengig: full
+årsverdi er satt til 9 457 370 kr, hvorav halvparten faktisk er fakturert fordelt på seks bygg, og
+resten forutsetter at andre halvår kommer inn på omtrent samme nivå.
+
+**Når nye omsetningsrapporter fra Onepark foreligger, skal estimatet erstattes med reelle tall.**
+Gjøres ikke det, er dette den største enkeltposten i prognosen som ingen lenger ser på - den er
+merket "avklart" i Leieforhold til gjennomgang og dukker derfor ikke opp i arbeidslista av seg selv.
+Det er et bevisst valg (den skal ikke utfordres ved hver gjennomgang), men det flytter ansvaret hit.
+
 ## Etter du kjører: lim inn de hardkodede konstantene
 
 `npm run refresh:income-forecast` oppdaterer KUN Redis-snapshotene (drilldown-blokkene i
@@ -73,3 +86,36 @@ overskrives ALDRI av `npm run refresh:income-forecast` (de ligger i egne Redis-n
 byggeskriptene ikke rører). De er derimot ikke re-utledbare fra Fazile/NXT hvis Redis-instansen
 mistes - se `/api/income-forecast/backup` for en JSON-eksport av alt manuelt innhold, og ta en
 kopi av og til.
+
+## Åpne punkter til manuell avklaring (Morten/Finance)
+
+Data-kvalitetsspørsmål funnet 2026-09-07 som IKKE kan avgjøres fra dataene alene - de krever at
+noen som kjenner de faktiske avtalene/bokføringen tar stilling. Ingen av dem er kodefeil.
+
+- [ ] **Leietaker bokført på uventet bygg (3 tilfeller).** Funnet ved gjennomgangen av NXT-
+      koblingen (v25). Statkraft-tilfellet er avklart av Morten (leier reelt i både Lilleakerveien
+      6 og 4E - byggene henger sammen), disse tre står igjen:
+      1. *Oslo Kommune Bydel 6 Ullern* er bokført spredt på fire ikke-relaterte bygg (Mustads vei 1,
+         Sponhoggveien 2, Lilleakerveien 24C, Lilleakerveien 2E) - reelle separate leieforhold, eller
+         feilført kundenummer?
+      2. *Lilleakerveien 14 AS*: Mustad Eiendom AS står bokført som "leietaker" på eget bygg (bygg 14
+         og 614), med flere konto/kunde-kombinasjoner speilvendt mellom de to - ser ut som en
+         ompostering, bør bekreftes.
+      3. *Strandveien 4-8 AS*: kundenr 21099 "Strandveien 20 AS" (et annet Mustad-selskap) står som
+         leietaker der, og "Vedeld AS" opptrer både i Strandveien 10 AS og med en tilsvarende linje i
+         Strandveien 4-8 AS - intercompany-leie eller feilføring?
+- [ ] **344 685 kr forskjell mellom leietakertabellens fakturert og BOOKED_3600_3699.** Etter at
+      leietaker-grupperingen ble avstemt mot bygg-grupperingen (v28) er dette det ENESTE som står
+      igjen mellom seksjonskortene på Prognose-fanen (Leieinntekter 660 940 143 + Parkering
+      59 286 809 = 720 226 952 kr) og toppboksen (bokført + gjenstår + reforhandling =
+      719 882 267 kr). De to sidene kommer fra to ulike NXT-uttrekk: `accountingTransaction` pr.
+      leietaker (tabellen) mot `generalLedgerPeriodBalance` for kontoserien (toppboksen). Avviket
+      er 0,06 % og falt fra 40,2 mill etter v25-fiksen av kundekoblingen, men er ikke forklart
+      linje for linje. Verdt en avstemming mot hovedbok før tallene brukes eksternt.
+- [ ] **1,6 mill kr beholdt vs. 3,1 mill kr nullstilt på skjønn (v13-mekanismen).** Der Fazile ikke
+      har planlagt faktura for resten av året, men modellen sier det gjenstår penger, gjør
+      `build-remaining-summary.js` to motsatte skjønnsvurderinger avhengig av beløpsgrensen
+      (`FAKTURAPLAN_MANGLER_GRENSE`, 5 000 kr): 15 leieforhold BEHOLDT modelltallet (1 630 338 kr,
+      status `fazile-plan-mangler`, synlig i "Leieforhold til gjennomgang"), mens 75 ble NULLSTILT
+      (−3 103 083 kr). Verdt en stikkprøve på begge sider: er de beholdte reelt fakturerbare, og er
+      de nullstilte reelt ferdig fakturert / avsluttet?

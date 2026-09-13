@@ -14,7 +14,7 @@ import { localDateString } from "./payday";
 // to helt forskjellige ting som begge nevner "omsetningsleie".
 export type PotentialIncomeCategoryKey = "potensiell-fremtidig-inntekt" | "ledige-lokaler" | "annet";
 
-export interface PotentialIncomeCategory {
+interface PotentialIncomeCategory {
   key: PotentialIncomeCategoryKey;
   label: string;
   belop: number;

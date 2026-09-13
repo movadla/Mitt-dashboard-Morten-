@@ -1,7 +1,7 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
-export interface OmsetningsavregningButikk {
+interface OmsetningsavregningButikk {
   butikk: string;
   // Lagt til v3 (2026-08-27, Morten ba om full tabell) - bygg + minimumsleie/omsetningsleie-
   // type (fra Amesto sin "Kontraktsobjekt"-kolonne H i Avregnet omsetning 2025.xlsx).
