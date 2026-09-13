@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runChatTurn } from "@/lib/chatAgent";
 
+// Samme agent og samme tidsproblem som i app/api/voice-command — se begrunnelsen
+// der. Chat-boblen rammes likt: alt som krever et verktøykall trenger minst to
+// rundturer mot Anthropic, og det rakk ikke standardgrensen. (2026-09-13)
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(

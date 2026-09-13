@@ -4,6 +4,19 @@ import { getChatHistory } from "@/lib/chatHistory";
 
 export const dynamic = "force-dynamic";
 
+// runChatTurn kjører opptil MAX_TOOL_ROUNDS (6) rundturer mot Anthropic med
+// max_tokens 8192. Uten denne linjen kjørte ruten på Vercels standard tidsgrense
+// på ti sekunder, og da rakk den bare de forespørslene som besvares på ÉN
+// rundtur. Alt som faktisk ENDRER noe — «legg til en påminnelse» — krever minst
+// to: modellen velger verktøyet, verktøyet kjører, modellen formulerer svaret.
+// Resultatet var at spørsmål fungerte mens handlinger konsekvent feilet.
+//
+// Og en tidsavbrytelse skjer UTENFOR handleren, så try/catch under kan ikke
+// fange den: Vercel svarer 504 i ren tekst, og iOS Snarveier melder det bare som
+// «kunne ikke konvertere fra Tekst til Ordbok». Grensen må altså heves, den kan
+// ikke håndteres. (2026-09-13)
+export const maxDuration = 60;
+
 // Denne ruten er unntatt fra PIN-middlewaren (se middleware.ts) slik at en
 // iOS-snarvei (uten nettleser-cookie) også kan kalle den — autoriseres da
 // med VOICE_SECRET i stedet for auth-cookien. Egen hemmelighet fremfor
