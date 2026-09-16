@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
       rpe,
       aggravated: !!body.aggravated,
       note: body.note,
+      completedExerciseIds: Array.isArray(body.completedExerciseIds)
+        ? body.completedExerciseIds.filter((id: unknown) => typeof id === "string")
+        : undefined,
     });
     return NextResponse.json(entry, { status: 201 });
   } catch (err) {

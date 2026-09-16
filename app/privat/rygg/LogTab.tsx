@@ -71,6 +71,7 @@ export default function LogTab({ dailyLogs, sessionLogs, onChanged, onError }: P
                     Uke {row.data.week} · økt {row.data.sessionNo}
                     {row.data.variant ? ` (${row.data.variant})` : ""} · RPE {row.data.rpe}
                     {row.data.aggravated ? " · etterreaksjon" : ""}
+                    {row.data.completedExerciseIds ? ` · ${row.data.completedExerciseIds.length} øvelser krysset av` : ""}
                   </span>
                 )}
               </div>

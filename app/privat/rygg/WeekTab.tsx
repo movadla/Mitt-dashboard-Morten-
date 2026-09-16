@@ -6,6 +6,7 @@ import type { RyggProgramMeta, RyggSessionLog, RyggWeekDecision, RyggWeekState }
 import { deloadDoseWeek, deloadSets } from "@/lib/ryggAlgorithm";
 import { phaseForWeek, programForWeek } from "@/lib/ryggProgram";
 import { getRyggExercise } from "@/lib/ryggExercises";
+import ExerciseDiagram from "./ExerciseDiagram";
 import { formatDMY } from "@/lib/payday";
 import { DECISION_COLOR_CLASS, DECISION_LABEL, phaseLabelForWeek } from "./ryggHelpers";
 
@@ -70,9 +71,12 @@ export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onErr
               <button
                 type="button"
                 onClick={() => setExpandedId(expanded ? null : rowId)}
-                className="flex w-full items-center justify-between gap-2 text-left"
+                className="flex w-full items-center gap-2.5 text-left"
               >
-                <div className="min-w-0">
+                <div className="h-11 w-11 shrink-0 text-ink-3">
+                  <ExerciseDiagram exerciseId={item.exerciseId} />
+                </div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-ink-1">{exercise?.name ?? item.exerciseId}</p>
                   <p className="text-2xs text-ink-3">
                     {item.dose}

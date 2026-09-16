@@ -8,6 +8,8 @@ import { getRyggExercise } from "@/lib/ryggExercises";
 import { localDateString } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import { DECISION_COLOR_CLASS, DECISION_LABEL, phaseLabelForWeek, ringOffset, RING_LENGTH } from "./ryggHelpers";
+import ExerciseDiagram from "./ExerciseDiagram";
+import { CheckIcon } from "../../CardShell";
 
 interface Props {
   meta: RyggProgramMeta;
@@ -31,6 +33,16 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
   const [rpe, setRpe] = useState<number | null>(null);
   const [aggravated, setAggravated] = useState(false);
   const [savingSession, setSavingSession] = useState(false);
+  const [checkedExerciseIds, setCheckedExerciseIds] = useState<Set<string>>(new Set());
+
+  function toggleExerciseChecked(exerciseId: string) {
+    setCheckedExerciseIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(exerciseId)) next.delete(exerciseId);
+      else next.add(exerciseId);
+      return next;
+    });
+  }
 
   const [pain, setPain] = useState<number | null>(todayDaily?.pain ?? null);
   const [radiating, setRadiating] = useState(todayDaily?.radiating ?? false);
@@ -88,6 +100,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
           completed: true,
           rpe,
           aggravated,
+          completedExerciseIds: Array.from(checkedExerciseIds),
         }),
       });
       if (!res.ok) throw new Error("session log failed");
@@ -96,6 +109,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
       setShowSessionFlow(false);
       setRpe(null);
       setAggravated(false);
+      setCheckedExerciseIds(new Set());
       await onChanged();
     } catch {
       onError("Kunne ikke lagre økten. Prøv igjen.");
@@ -182,21 +196,52 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             <p className="text-sm font-semibold text-ink-1">
               Dagens økt{variant ? ` · variant ${variant}` : ""}
             </p>
-            <button type="button" onClick={() => setShowSessionFlow(false)} className="text-2xs text-ink-4 hover:text-ink-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSessionFlow(false);
+                setCheckedExerciseIds(new Set());
+              }}
+              className="text-2xs text-ink-4 hover:text-ink-2"
+            >
               Lukk
             </button>
           </div>
-          <ul className="flex flex-col gap-1.5">
+          <p className="text-2xs text-ink-4">{checkedExerciseIds.size} av {items.length} øvelser krysset av</p>
+          <ul className="flex flex-col gap-2">
             {items.map((item) => {
               const exercise = getRyggExercise(item.exerciseId);
               const sets = isDeload ? deloadSets(item.sets) : item.sets;
+              const checked = checkedExerciseIds.has(item.exerciseId);
               return (
-                <li key={item.exerciseId} className="rounded-lg border border-line bg-surface-1 px-2.5 py-2">
-                  <p className="text-sm font-medium text-ink-1">{exercise?.name ?? item.exerciseId}</p>
-                  <p className="text-2xs text-ink-3">
-                    {item.dose}
-                    {isDeload && sets !== item.sets ? ` (${sets} serier — redusert)` : ""}
-                  </p>
+                <li
+                  key={item.exerciseId}
+                  className={`flex gap-2.5 rounded-lg border px-2.5 py-2 transition ${
+                    checked ? "border-emerald-400/40 bg-emerald-400/5" : "border-line bg-surface-1"
+                  }`}
+                >
+                  <div className="h-14 w-14 shrink-0 text-ink-3">
+                    <ExerciseDiagram exerciseId={item.exerciseId} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink-1">{exercise?.name ?? item.exerciseId}</p>
+                    <p className="text-2xs text-ink-3">
+                      {item.dose}
+                      {isDeload && sets !== item.sets ? ` (${sets} serier — redusert)` : ""}
+                    </p>
+                    {exercise && <p className="mt-1 text-2xs leading-snug text-ink-4">{exercise.how}</p>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExerciseChecked(item.exerciseId)}
+                    aria-pressed={checked}
+                    aria-label={checked ? "Merk øvelsen som ikke fullført" : "Merk øvelsen som fullført"}
+                    className={`grid h-6 w-6 shrink-0 place-items-center self-start rounded-full ring-1 ring-inset transition ${
+                      checked ? "bg-emerald-400 ring-emerald-400" : "bg-transparent ring-line-strong hover:ring-ink-3"
+                    }`}
+                  >
+                    {checked && <CheckIcon className="h-3.5 w-3.5 text-surface-0" />}
+                  </button>
                 </li>
               );
             })}

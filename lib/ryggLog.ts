@@ -27,6 +27,10 @@ export interface RyggSessionLog {
   rpe: number; // 1-10
   aggravated: boolean;
   note?: string;
+  // Hvilke øvelser som faktisk ble krysset av underveis — kan avvike fra
+  // full liste ved en avkortet økt. Valgfri: gamle logger (før dette feltet
+  // fantes) har ingen verdi, ikke en tom liste.
+  completedExerciseIds?: string[];
 }
 
 export interface RyggSessionLogInput {
@@ -38,6 +42,7 @@ export interface RyggSessionLogInput {
   rpe: number;
   aggravated: boolean;
   note?: string;
+  completedExerciseIds?: string[];
 }
 
 export type RyggWeekDecision = "progress" | "repeat" | "deload" | "hold";
@@ -103,6 +108,7 @@ export async function addRyggSessionLog(input: RyggSessionLogInput): Promise<Ryg
     rpe: input.rpe,
     aggravated: input.aggravated,
     note: input.note?.trim() || undefined,
+    completedExerciseIds: input.completedExerciseIds,
   };
   await hsetJSON(SESSION_HASH_KEY, entry.id, entry);
   return entry;
