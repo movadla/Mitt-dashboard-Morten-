@@ -30,6 +30,7 @@ import {
   type SessionSummary,
 } from "./trening/HistoryAndCalendar";
 import { StepperButton } from "./trening/SetRows";
+import RyggSection from "./rygg/RyggSection";
 import {
   exerciseHistory,
   findLastEntry,
@@ -101,6 +102,7 @@ export default function TreningSection() {
   const [draftExercises, setDraftExercises] = useState<{ exerciseId: string; exerciseName: string }[]>([]);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
   const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
+  const [mainView, setMainView] = useState<"trening" | "rygg">("trening");
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);
@@ -673,6 +675,23 @@ export default function TreningSection() {
         icon={Dumbbell}
         iconColorClass="text-emerald-400"
       />
+      <div className="mb-2 flex items-center gap-1.5 self-start rounded-lg border border-line bg-surface-1 p-0.5">
+        {(["trening", "rygg"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setMainView(v)}
+            aria-pressed={mainView === v}
+            className={`rounded-md px-2.5 py-1 text-2xs font-semibold uppercase transition ${
+              mainView === v ? "bg-emerald-400/15 text-emerald-400" : "text-ink-3 hover:text-ink-1"
+            }`}
+          >
+            {v === "trening" ? "Trening" : "Rygg"}
+          </button>
+        ))}
+      </div>
+      {mainView === "rygg" && <RyggSection />}
+      {mainView === "trening" && (
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
           {!loading && (
@@ -1041,6 +1060,7 @@ export default function TreningSection() {
             </>
           )}
         </div>
+      )}
       <ConfirmDialog
         open={confirmDeleteSession.isOpen}
         message={

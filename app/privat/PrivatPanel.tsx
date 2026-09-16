@@ -119,6 +119,13 @@ export default function PrivatPanel() {
   const pendingShoppingCount = (shoppingBadgeData?.items ?? []).filter((i) => !i.done).length;
   const { data: calendarBadgeData } = useSWR<{ events: { date: string }[] }>("/api/privat-calendar", jsonFetcher);
   const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today).length;
+  // Rygg-underfanen i Trening: badge teller 0-2 (dagens økt mangler / gårsdagens
+  // smertelogg mangler) — se lib/ryggWeekCycle.ts sin getRyggStatus.
+  const { data: ryggBadgeData } = useSWR<{ needsSessionToday: boolean; yesterdayLogged: boolean }>(
+    "/api/rygg/status",
+    jsonFetcher,
+  );
+  const ryggBadgeCount = (ryggBadgeData?.needsSessionToday ? 1 : 0) + (ryggBadgeData && !ryggBadgeData.yesterdayLogged ? 1 : 0);
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   // Et hopp som kom FRA Jobb-fanen ligger allerede klart før første render, så
@@ -249,6 +256,7 @@ export default function PrivatPanel() {
     reminders: dueRemindersCount,
     shopping: pendingShoppingCount,
     calendar: todaysCalendarCount,
+    trening: ryggBadgeCount,
   };
   const navItems: NavItem[] = order
     .filter((id) => {
