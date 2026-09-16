@@ -7,9 +7,9 @@ import { jsonFetcher } from "@/lib/swrFetcher";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import type { Reminder } from "@/lib/reminders";
 import type { DiaryEntry } from "@/lib/diary";
-import type { RyggDailyLog, RyggSessionLog } from "@/lib/ryggLog";
+import type { RyggDailyLog } from "@/lib/ryggLog";
 import type { RyggStatus } from "@/lib/ryggWeekCycle";
-import { nextVariant, phaseForWeek } from "@/lib/ryggProgram";
+import { requestOpenRyggView } from "@/lib/ryggNavigation";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { setAppBadgeCount } from "@/lib/appBadge";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -407,8 +407,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const { data: diaryData } = useSWR<{ entries: DiaryEntry[] }>("/api/diary", jsonFetcher);
   const { data: newsData } = useSWR<{ items: NewsItem[] }>("/api/news", jsonFetcher);
   const { data: ryggStatus, mutate: mutateRyggStatus } = useSWR<RyggStatus>("/api/rygg/status", jsonFetcher);
-  const { data: ryggSessionsData, mutate: mutateRyggSessions } = useSWR<{ logs: RyggSessionLog[] }>("/api/rygg/sessions", jsonFetcher);
-  const { data: ryggDailyData, mutate: mutateRyggDaily } = useSWR<{ logs: RyggDailyLog[] }>("/api/rygg/daily", jsonFetcher);
+  const { mutate: mutateRyggDaily } = useSWR<{ logs: RyggDailyLog[] }>("/api/rygg/daily", jsonFetcher);
 
   const reminders = remindersData?.reminders ?? [];
   const events = calendarData?.events ?? [];
@@ -440,10 +439,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const [newReminderText, setNewReminderText] = useState("");
   const [newReminderTime, setNewReminderTime] = useState("");
   const [submittingReminder, setSubmittingReminder] = useState(false);
-  const [showRyggSessionForm, setShowRyggSessionForm] = useState(false);
-  const [ryggRpe, setRyggRpe] = useState<number | null>(null);
-  const [ryggAggravated, setRyggAggravated] = useState(false);
-  const [submittingRyggSession, setSubmittingRyggSession] = useState(false);
   const [showRyggPainForm, setShowRyggPainForm] = useState(false);
   const [ryggPain, setRyggPain] = useState<number | null>(null);
   const [ryggRadiating, setRyggRadiating] = useState(false);
@@ -677,42 +672,6 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
   const showRyggSessionRow = isToday && !!ryggStatus?.needsSessionToday;
   const showRyggPainNudge = isToday && ryggStatus !== undefined && !ryggStatus.yesterdayLogged;
   const ryggPainNudgeText = `Du logget ikke ryggen i går (${weekdayDateLabel(yesterday)}).`;
-  const ryggCycleSessions = (ryggSessionsData?.logs ?? []).filter(
-    (s) => s.completed && ryggStatus && s.week === ryggStatus.currentWeek,
-  );
-  const ryggVariant =
-    ryggStatus && phaseForWeek(ryggStatus.currentWeek) === 3 ? nextVariant(ryggCycleSessions.at(-1)?.variant) : undefined;
-
-  async function handleSaveRyggSession() {
-    if (ryggRpe === null || !ryggStatus) return;
-    setSubmittingRyggSession(true);
-    try {
-      const res = await fetch("/api/rygg/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: realToday,
-          week: ryggStatus.currentWeek,
-          sessionNo: ryggStatus.sessionsThisWeek + 1,
-          variant: ryggVariant,
-          completed: true,
-          rpe: ryggRpe,
-          aggravated: ryggAggravated,
-        }),
-      });
-      if (!res.ok) throw new Error("session log failed");
-      vibrate();
-      setShowRyggSessionForm(false);
-      setRyggRpe(null);
-      setRyggAggravated(false);
-      await Promise.all([mutateRyggStatus(), mutateRyggSessions()]);
-    } catch {
-      mutationError.show("Kunne ikke lagre økten. Prøv igjen.");
-    } finally {
-      setSubmittingRyggSession(false);
-    }
-  }
-
   async function handleSaveRyggPain() {
     if (ryggPain === null) return;
     setSubmittingRyggPain(true);
@@ -970,57 +929,25 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               </div>
             )}
 
-            {showRyggSessionRow && !showRyggSessionForm && (
+            {/* Selve økten gjennomføres i Trening → Rygg (guidet, øvelse for
+                øvelse, med smertelogg etterpå) — herfra bare ett tydelig hopp
+                inn, ikke et løsrevet hurtigskjema. */}
+            {showRyggSessionRow && (
               <div className="flex items-center justify-between gap-2 py-2">
                 <CategoryRow icon={Dumbbell} colorClass="text-emerald-400" label="Rygg">
                   <p className="text-sm text-ink-1">
-                    Dagens ryggøkt — uke {ryggStatus?.currentWeek}
-                    {ryggVariant ? ` (variant ${ryggVariant})` : ""}
+                    Dagens ryggøkt — økt {(ryggStatus?.sessionsThisWeek ?? 0) + 1} av 3, uke {ryggStatus?.currentWeek}
                   </p>
                 </CategoryRow>
                 <button
                   type="button"
-                  onClick={() => setShowRyggSessionForm(true)}
-                  className="shrink-0 text-xs font-medium text-emerald-400 hover:text-emerald-400/80"
+                  onClick={() => {
+                    requestOpenRyggView();
+                    onJump("trening");
+                  }}
+                  className="shrink-0 rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
                 >
-                  Logg
-                </button>
-              </div>
-            )}
-            {showRyggSessionRow && showRyggSessionForm && (
-              <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-ink-1">Dagens ryggøkt — hvor tungt?</p>
-                  <button type="button" onClick={() => setShowRyggSessionForm(false)} className="text-2xs text-ink-4 hover:text-ink-2">
-                    Lukk
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setRyggRpe(n)}
-                      aria-pressed={ryggRpe === n}
-                      className={`h-7 w-7 rounded-lg text-xs font-semibold transition ${
-                        ryggRpe === n ? "bg-emerald-400 text-surface-0" : "bg-surface-1 text-ink-3 hover:text-ink-1"
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <label className="flex items-center gap-2 text-xs text-ink-2">
-                  <input type="checkbox" checked={ryggAggravated} onChange={(e) => setRyggAggravated(e.target.checked)} className="h-4 w-4" />
-                  Verre i ryggen etter denne økta
-                </label>
-                <button
-                  type="button"
-                  disabled={ryggRpe === null || submittingRyggSession}
-                  onClick={handleSaveRyggSession}
-                  className="self-start rounded-lg bg-status-positive px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-status-positive/85 disabled:opacity-50"
-                >
-                  Lagre økt
+                  Start økt
                 </button>
               </div>
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import {
@@ -31,6 +31,7 @@ import {
 } from "./trening/HistoryAndCalendar";
 import { StepperButton } from "./trening/SetRows";
 import RyggSection from "./rygg/RyggSection";
+import { RYGG_OPEN_EVENT, consumeOpenRyggView, peekOpenRyggView } from "@/lib/ryggNavigation";
 import {
   exerciseHistory,
   findLastEntry,
@@ -102,7 +103,18 @@ export default function TreningSection() {
   const [draftExercises, setDraftExercises] = useState<{ exerciseId: string; exerciseName: string }[]>([]);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
   const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
-  const [mainView, setMainView] = useState<"trening" | "rygg">("trening");
+  // Starter på "rygg" hvis "I dag"-kortet nettopp ba om det (lib/ryggNavigation.ts) —
+  // lest i initializeren, ikke i en effekt, så første render lander riktig uten blink.
+  const [mainView, setMainView] = useState<"trening" | "rygg">(() => (peekOpenRyggView() ? "rygg" : "trening"));
+  useEffect(() => {
+    consumeOpenRyggView();
+    const onOpen = () => {
+      consumeOpenRyggView();
+      setMainView("rygg");
+    };
+    window.addEventListener(RYGG_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(RYGG_OPEN_EVENT, onOpen);
+  }, []);
   const [calendarMonthOffset, setCalendarMonthOffset] = useState(0);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
   const [showSaveRoutineForm, setShowSaveRoutineForm] = useState(false);

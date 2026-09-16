@@ -33,6 +33,11 @@ export default function RyggSection() {
 
   async function refreshAll() {
     await Promise.all([mutateWeeks(), mutateDaily(), mutateSessions()]);
+    // Samme app-konvensjon som alle andre mutasjons-handlere i Privat:
+    // PrivatPanel lytter og revaliderer ALLE SWR-nøkler — det er slik
+    // Trening-badgen og "I dag"-kortets rygg-rad (/api/rygg/status) holdes
+    // i takt uten at de trenger å kjenne til denne komponenten.
+    window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
   }
 
   async function acknowledgeDisclaimer() {
