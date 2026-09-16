@@ -56,6 +56,12 @@ const SECTION_META: Record<StoreSection, { label: string; bg: string; text: stri
 
 const VISIBLE_QUICK_PICKS = 10;
 
+// Et notat vises som klikkbar lenke når det ser ut som en URL — det er den
+// primære grunnen til at feltet finnes (produktlenker limt inn fra nettbutikk).
+function isLikelyUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
 function ItemEditForm({
   item,
   onCancel,
@@ -63,18 +69,19 @@ function ItemEditForm({
 }: {
   item: ShoppingItem;
   onCancel: () => void;
-  onSave: (updates: { name: string; section: StoreSection; quantity?: string }) => Promise<boolean>;
+  onSave: (updates: { name: string; section: StoreSection; quantity?: string; note?: string }) => Promise<boolean>;
 }) {
   const [name, setName] = useState(item.name);
   const [section, setSection] = useState<StoreSection>(item.section);
   const [quantity, setQuantity] = useState(item.quantity ?? "");
+  const [note, setNote] = useState(item.note ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function save() {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await onSave({ name: name.trim(), section, quantity: quantity.trim() || undefined });
+      await onSave({ name: name.trim(), section, quantity: quantity.trim() || undefined, note: note.trim() || undefined });
     } finally {
       setSubmitting(false);
     }
@@ -111,6 +118,19 @@ function ItemEditForm({
           placeholder="Mengde (valgfritt)"
           className="w-32 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
         />
+      </div>
+      <input
+        type="text"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") save();
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Notat / lenke til produkt (valgfritt)"
+        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <div className="flex items-center gap-2">
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
           Avbryt
         </button>
@@ -142,7 +162,7 @@ function ItemRow({
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, updates: { name: string; section: StoreSection; quantity?: string }) => Promise<boolean>;
+  onSaveEdit: (id: string, updates: { name: string; section: StoreSection; quantity?: string; note?: string }) => Promise<boolean>;
 }) {
   if (editing) {
     return <ItemEditForm item={item} onCancel={onCancelEdit} onSave={(updates) => onSaveEdit(item.id, updates)} />;
@@ -164,13 +184,29 @@ function ItemRow({
           >
             {item.done && <CheckIcon className="h-3.5 w-3.5 text-surface-0" />}
           </button>
-          <button type="button" onClick={() => onStartEdit(item.id)} aria-label="Rediger vare" className="flex min-w-0 flex-1 items-baseline justify-between gap-2 text-left">
-            <p className={`min-w-0 truncate text-sm font-medium ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
-              {item.name}
-              {item.quantity ? ` · ${item.quantity}` : ""}
-            </p>
-            <span className={`shrink-0 text-2xs ${meta.text}`}>{meta.label}</span>
-          </button>
+          <div className="min-w-0 flex-1">
+            <button type="button" onClick={() => onStartEdit(item.id)} aria-label="Rediger vare" className="flex w-full min-w-0 items-baseline justify-between gap-2 text-left">
+              <p className={`min-w-0 truncate text-sm font-medium ${item.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+                {item.name}
+                {item.quantity ? ` · ${item.quantity}` : ""}
+              </p>
+              <span className={`shrink-0 text-2xs ${meta.text}`}>{meta.label}</span>
+            </button>
+            {item.note &&
+              (isLikelyUrl(item.note) ? (
+                <a
+                  href={item.note}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="block truncate text-2xs text-accent-privat underline hover:text-accent-privat/80"
+                >
+                  {item.note}
+                </a>
+              ) : (
+                <p className="truncate text-2xs text-ink-3">{item.note}</p>
+              ))}
+          </div>
           <button
             type="button"
             onClick={() => onRemove(item.id)}
@@ -301,6 +337,7 @@ export default function ShoppingListSection() {
   const [name, setName] = useState("");
   const [section, setSection] = useState<StoreSection>("annet");
   const [quantity, setQuantity] = useState("");
+  const [note, setNote] = useState("");
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const confirmDelete = useConfirmDelete<string>();
@@ -319,12 +356,17 @@ export default function ShoppingListSection() {
   // Legger varen til selve handlelisten, og bygger samtidig opp/oppdaterer
   // hurtigvalg-katalogen — uansett om varen ble skrevet inn i skjemaet eller
   // valgt direkte fra et hurtigvalg, slik at katalogen vokser organisk av bruk.
-  async function addItemToList(itemName: string, itemSection: StoreSection, itemQuantity?: string): Promise<boolean> {
+  async function addItemToList(
+    itemName: string,
+    itemSection: StoreSection,
+    itemQuantity?: string,
+    itemNote?: string,
+  ): Promise<boolean> {
     try {
       const res = await fetch("/api/shopping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: itemName, section: itemSection, quantity: itemQuantity }),
+        body: JSON.stringify({ name: itemName, section: itemSection, quantity: itemQuantity, note: itemNote }),
       });
       if (!res.ok) {
         mutationError.show("Kunne ikke legge til varen. Prøv igjen.");
@@ -362,10 +404,11 @@ export default function ShoppingListSection() {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const ok = await addItemToList(name.trim(), section, quantity.trim() || undefined);
+      const ok = await addItemToList(name.trim(), section, quantity.trim() || undefined, note.trim() || undefined);
       if (ok) {
         setName("");
         setQuantity("");
+        setNote("");
         setSection("annet");
         setShowMoreOptions(false);
         setShowForm(false);
@@ -382,10 +425,11 @@ export default function ShoppingListSection() {
   // "Administrer hurtigvalg".
   async function handleAddFromMatch(qp: QuickPick) {
     vibrate(8);
-    const ok = await addItemToList(qp.name, qp.section);
+    const ok = await addItemToList(qp.name, qp.section, undefined, note.trim() || undefined);
     if (ok) {
       setName("");
       setQuantity("");
+      setNote("");
       setSection("annet");
       setShowMoreOptions(false);
       setShowForm(false);
@@ -449,12 +493,15 @@ export default function ShoppingListSection() {
     }
   }
 
-  async function handleSaveEditItem(id: string, updates: { name: string; section: StoreSection; quantity?: string }): Promise<boolean> {
+  async function handleSaveEditItem(
+    id: string,
+    updates: { name: string; section: StoreSection; quantity?: string; note?: string },
+  ): Promise<boolean> {
     try {
       const res = await fetch(`/api/shopping/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...updates, quantity: updates.quantity ?? null }),
+        body: JSON.stringify({ ...updates, quantity: updates.quantity ?? null, note: updates.note ?? null }),
       });
       if (!res.ok) {
         mutationError.show("Kunne ikke lagre endringene. Prøv igjen.");
@@ -676,6 +723,13 @@ export default function ShoppingListSection() {
                         placeholder="Mengde (valgfritt)"
                         className="w-32 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
                       />
+                      <input
+                        type="text"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Notat / lenke til produkt (valgfritt)"
+                        className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+                      />
                     </div>
                   )}
                   <div className="flex items-center gap-2">
@@ -685,7 +739,7 @@ export default function ShoppingListSection() {
                         onClick={() => setShowMoreOptions(true)}
                         className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
                       >
-                        + Kategori/mengde
+                        + Kategori/mengde/notat
                       </button>
                     )}
                     <button

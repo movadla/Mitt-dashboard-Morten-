@@ -19,6 +19,9 @@ export interface ShoppingItem {
   name: string;
   section: StoreSection;
   quantity?: string;
+  // Fritekst, ofte en produktlenke — vises som klikkbar lenke i UI når den
+  // ser ut som en URL (se isLikelyUrl i ShoppingListSection.tsx).
+  note?: string;
   done: boolean;
 }
 
@@ -26,12 +29,14 @@ export interface NewShoppingItemInput {
   name: string;
   section: StoreSection;
   quantity?: string;
+  note?: string;
 }
 
 export interface ShoppingItemUpdateInput {
   name?: string;
   section?: StoreSection;
   quantity?: string | null; // null fjerner mengden, undefined lar den stå urørt
+  note?: string | null; // null fjerner notatet, undefined lar det stå urørt
   done?: boolean;
 }
 
@@ -50,6 +55,7 @@ export async function addShoppingItem(input: NewShoppingItemInput): Promise<Shop
     name: input.name.trim(),
     section: input.section,
     quantity: input.quantity?.trim() || undefined,
+    note: input.note?.trim() || undefined,
     done: false,
   };
   await hsetJSON(HASH_KEY, item.id, item);
@@ -79,6 +85,7 @@ export async function updateShoppingItem(
     name,
     section: updates.section !== undefined ? updates.section : current.section,
     quantity: updates.quantity !== undefined ? (updates.quantity ?? undefined) : current.quantity,
+    note: updates.note !== undefined ? (updates.note ?? undefined) : current.note,
     done: updates.done !== undefined ? updates.done : current.done,
   };
   await hsetJSON(HASH_KEY, id, next);
