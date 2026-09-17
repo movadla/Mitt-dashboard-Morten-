@@ -542,56 +542,6 @@ function ContractExpiryDetails({ contract }: { contract: ContractExpiry2026Snaps
   );
 }
 
-// Full 2026-verdi fordelt paa leietype. Dataene har ligget i LEIETYPE_BREAKDOWN lenge, men
-// har aldri vaert vist noe sted - kun datoen dukket opp i datakilde-lista. Morten 2026-09-17:
-// "Leietype breakdown er vel bare inntektene fordelt paa leietype. Det er i alle fall det jeg
-// trenger."
-//
-// Liggende stolper sortert synkende: stoerrelse per kategori leses langs en felles baseline,
-// og kategorinavnene er for lange til aa staa under staaende stolper. Én farge - dette er én
-// serie der lengden baerer hele budskapet, saa ulike farger per rad ville kodet ingenting.
-// Rabatt er negativ og faar status-danger, fordi den trekker fra og ikke skal se ut som
-// inntekt.
-function LeietypeFordeling() {
-  const rader = Object.entries(LEIETYPE_BREAKDOWN.perLeietype).sort((a, b) => b[1] - a[1]);
-  if (rader.length === 0) return null;
-  const maks = Math.max(...rader.map(([, v]) => Math.abs(v)));
-  const total = rader.reduce((s, [, v]) => s + v, 0);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Inntekt per leietype</p>
-      <div className="rounded-xl border border-line bg-surface-2 p-3">
-        <div className="flex flex-col gap-1.5">
-          {rader.map(([navn, belop]) => {
-            const negativ = belop < 0;
-            const bredde = maks > 0 ? (Math.abs(belop) / maks) * 100 : 0;
-            return (
-              <div key={navn} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-2">
-                <span className="truncate text-2xs text-ink-2" title={navn}>
-                  {navn}
-                </span>
-                <span className="h-2 overflow-hidden rounded-sm bg-surface-3">
-                  <span
-                    className={`block h-full rounded-sm ${negativ ? "bg-status-danger" : "bg-accent"}`}
-                    style={{ width: `${Math.max(bredde, 0.6)}%` }}
-                  />
-                </span>
-                <span className="w-24 text-right text-2xs tabular-nums text-ink-3">{formatKr(belop)}</span>
-              </div>
-            );
-          })}
-        </div>
-        <p className="mt-2 border-t border-line pt-2 text-2xs text-ink-4">
-          Sum {formatKr(total)} for {LEIETYPE_BREAKDOWN.antallLinjer.toLocaleString("nb-NO")} kontraktslinjer som
-          overlapper 2026. Dagsprorata 2026-andel, Mustads eierandel. Omfatter alt som faktureres leietaker, ikke bare
-          leieinntekten på konto 3600–3699.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 // v28: `advarsler` er live datakvalitetsvarsler fra siste pipeline-kjoring (snapshotenes
 // advarsler-felt), `erUtdatert` settes nar RECONCILIATION er eldre enn de andre datakildene.
 function ReconciliationPanel({ advarsler, erUtdatert }: { advarsler: string[]; erUtdatert: boolean }) {
@@ -3610,7 +3560,6 @@ export default function IncomeForecastSection() {
                       finnes ikke lenger (fjernet i v31) - denne kollapsede seksjonen er det som ble
                       igjen av den, og er derfor det nærmeste vi kommer "tilleggsfanen". */}
                   <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
-                  <LeietypeFordeling />
                   <div className="flex flex-col gap-1.5">
                     <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
                     <ReconciliationPanel advarsler={advarslerLive} erUtdatert={reconciliationErUtdatert} />
