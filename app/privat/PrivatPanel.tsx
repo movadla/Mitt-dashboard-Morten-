@@ -115,8 +115,6 @@ export default function PrivatPanel() {
   ).length;
   // Samme gjenbruk-av-SWR-nøkkel-mønster som over — kun for varselboblene,
   // seksjonene selv eier sin egen fulle liste uavhengig av dette.
-  const { data: shoppingBadgeData } = useSWR<{ items: { done: boolean }[] }>("/api/shopping", jsonFetcher);
-  const pendingShoppingCount = (shoppingBadgeData?.items ?? []).filter((i) => !i.done).length;
   // Avhukede hendelser teller ikke — de blir liggende i Kalender-seksjonen,
   // men skal ikke holde varselet oppe (jf. tilbakemelding).
   const { data: calendarBadgeData } = useSWR<{ events: { date: string; done?: boolean }[] }>("/api/privat-calendar", jsonFetcher);
@@ -263,9 +261,11 @@ export default function PrivatPanel() {
   // seg å være tomt program (utenfor VM-vinduet), jf. tilbakemelding.
   const worldcupVisible = worldCup.length > 0;
   const fplVisible = fplLoading || (!!fpl && fpl.active && !!fpl.gw?.deadline);
+  // Handleliste har bevisst INGEN badge: en handleliste er nesten alltid
+  // ikke-tom, så tallet sto rødt konstant og betydde i praksis ingenting
+  // (jf. tilbakemelding).
   const navBadges: Partial<Record<string, number>> = {
     reminders: dueRemindersCount,
-    shopping: pendingShoppingCount,
     calendar: todaysCalendarCount,
     trening: ryggBadgeCount,
   };
