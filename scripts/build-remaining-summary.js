@@ -883,7 +883,10 @@ function main() {
       if (days <= 0) continue; // linjen overlapper ikke 2026 i det hele tatt
 
       let belop = (row.arsleie_nok * days) / daysInYear;
-      if (row.eiendom === STRANDVEIEN_4_8_MANUAL_HALVING) belop *= 0.5;
+      // Kun når raden faktisk er uhalvert. rent_roll-uttrekk har eierandel 1 her (bugen) og
+      // trenger korreksjonen; GraphQL-uttrekket (_build-rentroll.js) halverer selv og leverer
+      // eierandel 0.5 - da ville en ubetinget korreksjon her halvert beløpet to ganger.
+      if (row.eiendom === STRANDVEIEN_4_8_MANUAL_HALVING && (row.eierandel ?? 1) === 1) belop *= 0.5;
       belop = round2(belop);
 
       const del = isDelB(row.seksjon) || PARKERING_LINJE_REGEX.test(row.beskrivelse || "") ? "B" : "A";
