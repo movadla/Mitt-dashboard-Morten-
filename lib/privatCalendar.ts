@@ -9,6 +9,12 @@ export interface PrivatCalendarEvent {
   endTime?: string;
   location?: string;
   note?: string;
+  // Avhuket som gjennomført. Hendelsen SLETTES ikke — den blir liggende i
+  // Kalender-seksjonen (nedtonet) slik at man kan gå tilbake og se hva som
+  // faktisk sto der, men forsvinner fra det aktive varselet: badgen på
+  // Kalender-flisen og raden i "I dag" (jf. tilbakemelding).
+  done?: boolean;
+  completedAt?: string; // ISO
 }
 
 export interface NewPrivatEventInput {
@@ -27,6 +33,7 @@ export interface PrivatEventUpdateInput {
   endTime?: string | null;
   location?: string | null;
   note?: string | null;
+  done?: boolean;
 }
 
 const HASH_KEY = "privat:calendar";
@@ -72,6 +79,7 @@ export async function updatePrivatEvent(
   const date = updates.date !== undefined ? updates.date : current.date;
   if (!date) throw new Error("Hendelse mangler dato");
 
+  const done = updates.done !== undefined ? updates.done : current.done;
   const next: PrivatCalendarEvent = {
     ...current,
     title,
@@ -80,6 +88,10 @@ export async function updatePrivatEvent(
     endTime: updates.endTime !== undefined ? (updates.endTime ?? undefined) : current.endTime,
     location: updates.location !== undefined ? (updates.location ?? undefined) : current.location,
     note: updates.note !== undefined ? (updates.note ?? undefined) : current.note,
+    done,
+    // Settes ved avhuking, fjernes ved angring — slik at historikken viser NÅR
+    // noe ble gjort, ikke bare at det ble det.
+    completedAt: done ? (current.completedAt ?? new Date().toISOString()) : undefined,
   };
   await hsetJSON(HASH_KEY, id, next);
   return next;

@@ -1,12 +1,15 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
-// Brukerdefinert, telling-sortert preset-katalog for Dagbok-veiviseren —
-// samme mønster som lib/shoppingQuickPicks.ts (QuickPick), men med
-// `category` som diskriminant i stedet for `section`, og delt på tvers av
-// alle 5 spørsmålene (morgen/ettermiddag/kveld/personer/steder) i én hash
-// i stedet for 5 separate.
-export type DiaryPresetCategory = "morgen" | "ettermiddag" | "kveld" | "personer" | "steder";
+// Brukerdefinert, telling-sortert preset-katalog for Dagbok — samme mønster
+// som lib/shoppingQuickPicks.ts (QuickPick), men med `category` som
+// diskriminant i stedet for `section`, og delt på tvers av begge
+// spørsmålene (personer/steder) i én hash i stedet for to separate.
+//
+// Kategoriene morgen/ettermiddag/kveld falt bort da dagboken ble forenklet
+// til hvem/hvor/notat (sep. 2026). Gamle rader med de kategoriene ligger
+// fortsatt i Redis, men matcher ingen filtrering og vises derfor ikke.
+export type DiaryPresetCategory = "personer" | "steder";
 
 export interface DiaryPreset {
   id: string;
@@ -17,8 +20,8 @@ export interface DiaryPreset {
 }
 
 const HASH_KEY = "privat:diary-presets";
-const SEED_CATEGORIES: DiaryPresetCategory[] = ["morgen", "ettermiddag", "kveld"];
-const SEED_LABELS = ["Alfred", "Sats", "jobb"];
+const SEED_CATEGORIES: DiaryPresetCategory[] = ["personer"];
+const SEED_LABELS = ["Alfred", "Hilde", "Jobb"];
 
 function sortPresets(presets: DiaryPreset[]): DiaryPreset[] {
   return [...presets].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "nb"));

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
+import { CardHeader, CheckIcon, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
 import { DayAxis } from "./DataStrips";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
@@ -129,6 +129,7 @@ function EventRow({
   highlighted,
   setRowRef,
   onRemove,
+  onToggleDone,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -148,6 +149,7 @@ function EventRow({
   highlighted?: boolean;
   setRowRef?: (id: string, el: HTMLLIElement | null) => void;
   onRemove: (id: string) => void;
+  onToggleDone: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (
@@ -172,15 +174,37 @@ function EventRow({
 
   return (
     <li ref={setRowRef ? (el) => setRowRef(event.id, el) : undefined}>
-      <SwipeableRow onSwipeLeft={() => onRemove(event.id)} leftLabel="Slett">
+      <SwipeableRow
+        onSwipeRight={() => onToggleDone(event.id)}
+        rightLabel={event.done ? "Angre" : "Fullført"}
+        onSwipeLeft={() => onRemove(event.id)}
+        leftLabel="Slett"
+      >
         {/* Samme grep som i Påminnelser: dagens hendelser tones i seksjonens
             farge, senere hendelser faller tilbake til en rolig, flat rad — så
-            "hva skjer i dag" leses uten å måtte lese datokolonnen. */}
+            "hva skjer i dag" leses uten å måtte lese datokolonnen. En
+            fullført hendelse tones helt ned (men slettes ikke, se
+            PrivatCalendarEvent.done). */}
         <div
           className={`flex items-center gap-3 rounded-xl px-3 py-2 transition ${
-            event.date === localDateString() ? "bg-source-teams/[0.09]" : "bg-surface-2/50"
+            event.done
+              ? "bg-surface-2/30"
+              : event.date === localDateString()
+                ? "bg-source-teams/[0.09]"
+                : "bg-surface-2/50"
           } ${highlighted ? "ring-2 ring-accent-privat" : ""}`}
         >
+          <button
+            type="button"
+            onClick={() => onToggleDone(event.id)}
+            aria-pressed={!!event.done}
+            aria-label={event.done ? "Marker som ikke fullført" : "Marker som fullført"}
+            className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ring-1 ring-inset transition ${
+              event.done ? "bg-emerald-500 ring-emerald-500" : "bg-transparent ring-line-strong hover:ring-ink-3"
+            }`}
+          >
+            {event.done && <CheckIcon className="h-3.5 w-3.5 text-white" />}
+          </button>
           <button
             type="button"
             onClick={() => onStartEdit(event.id)}
@@ -189,12 +213,14 @@ function EventRow({
           >
             {/* Fast bredde slik at alle titler starter på samme x-posisjon
                 uansett dag-tekstens lengde ("I dag" vs. "Fre 21.08 · 14:00"). */}
-            <div className="w-28 shrink-0 pt-0.5 text-2xs font-semibold tabular-nums text-ink-2">
+            <div className={`w-28 shrink-0 pt-0.5 text-2xs font-semibold tabular-nums ${event.done ? "text-ink-4" : "text-ink-2"}`}>
               {dayLabel}
               {event.startTime ? ` · ${event.startTime}` : ""}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="min-w-0 truncate text-sm font-medium text-ink-1">{event.title}</p>
+              <p className={`min-w-0 truncate text-sm font-medium ${event.done ? "text-ink-4 line-through" : "text-ink-1"}`}>
+                {event.title}
+              </p>
               {hasSubMeta && (
                 <p className="mt-0.5 text-2xs text-ink-4">
                   {event.location ? event.location : ""}
@@ -349,6 +375,33 @@ export default function CalendarSection({
     } catch {
       mutateEvents({ events: previous }, { revalidate: false });
       mutationError.show("Kunne ikke slette hendelsen. Prøv igjen.");
+    }
+  }
+
+  async function handleToggleDone(id: string) {
+    const current = events.find((e) => e.id === id);
+    if (!current) return;
+    const nextDone = !current.done;
+    vibrate();
+    mutateEvents(
+      (data) => data && { events: data.events.map((e) => (e.id === id ? { ...e, done: nextDone } : e)) },
+      { revalidate: false },
+    );
+    try {
+      const res = await fetch(`/api/privat-calendar/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ done: nextDone }),
+      });
+      if (!res.ok) throw new Error("toggle failed");
+      const updated: PrivatCalendarEvent = await res.json();
+      mutateEvents((data) => data && { events: data.events.map((e) => (e.id === id ? updated : e)) }, { revalidate: false });
+      // Badgen på Kalender-flisen og raden i "I dag" leser samme SWR-nøkkel —
+      // uten dette ble varselet hengende til neste naturlige revalidering.
+      window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
+    } catch {
+      mutateEvents((data) => data && { events: data.events.map((e) => (e.id === id ? current : e)) }, { revalidate: false });
+      mutationError.show("Kunne ikke lagre. Prøv igjen.");
     }
   }
 
@@ -547,6 +600,7 @@ export default function CalendarSection({
                         dayLabel={relativeDayLabel(e.date, today)}
                         editing={editingId === e.id}
                         onRemove={confirmDelete.request}
+                        onToggleDone={handleToggleDone}
                         onStartEdit={setEditingId}
                         onCancelEdit={() => setEditingId(null)}
                         onSaveEdit={handleSaveEdit}
@@ -576,6 +630,7 @@ export default function CalendarSection({
                         dayLabel={relativeDayLabel(e.date, today)}
                         editing={editingId === e.id}
                         onRemove={confirmDelete.request}
+                        onToggleDone={handleToggleDone}
                         onStartEdit={setEditingId}
                         onCancelEdit={() => setEditingId(null)}
                         onSaveEdit={handleSaveEdit}
@@ -605,6 +660,7 @@ export default function CalendarSection({
                         dayLabel={relativeDayLabel(e.date, today)}
                         editing={editingId === e.id}
                         onRemove={confirmDelete.request}
+                        onToggleDone={handleToggleDone}
                         onStartEdit={setEditingId}
                         onCancelEdit={() => setEditingId(null)}
                         onSaveEdit={handleSaveEdit}
@@ -650,6 +706,7 @@ export default function CalendarSection({
                           dayLabel={relativeDayLabel(e.date, today)}
                           editing={editingId === e.id}
                           onRemove={confirmDelete.request}
+                        onToggleDone={handleToggleDone}
                           onStartEdit={setEditingId}
                           onCancelEdit={() => setEditingId(null)}
                           onSaveEdit={handleSaveEdit}

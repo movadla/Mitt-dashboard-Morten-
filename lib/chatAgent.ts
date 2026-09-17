@@ -123,7 +123,7 @@ const ADD_NOTE_TOOL: Anthropic.Tool = {
   },
 };
 
-const DIARY_CATEGORIES = ["morgen", "ettermiddag", "kveld", "personer", "steder", "notat"] as const;
+const DIARY_CATEGORIES = ["personer", "steder", "notat"] as const;
 
 const ADD_DIARY_ITEM_TOOL: Anthropic.Tool = {
   name: "add_diary_item",
@@ -598,17 +598,12 @@ async function runTool(name: string, input: unknown): Promise<unknown> {
     const entries = await getDiaryEntries();
     const current = entries.find((e) => e.date === targetDate);
     const base: DiaryEntryInput = current
-      ? { morning: current.morning, afternoon: current.afternoon, evening: current.evening, people: current.people, places: current.places, notes: current.notes }
-      : { morning: [], afternoon: [], evening: [], people: [], places: [] };
+      ? { people: current.people, places: current.places, notes: current.notes, steps: current.steps, photoUrl: current.photoUrl }
+      : { people: [], places: [] };
     if (category === "notat") {
       base.notes = base.notes ? `${base.notes}\n${text}` : text;
     } else {
-      const field = { morgen: "morning", ettermiddag: "afternoon", kveld: "evening", personer: "people", steder: "places" }[category] as
-        | "morning"
-        | "afternoon"
-        | "evening"
-        | "people"
-        | "places";
+      const field = category === "personer" ? "people" : "places";
       if (!base[field].some((l) => l.toLowerCase() === text.toLowerCase())) {
         base[field] = [...base[field], text];
       }

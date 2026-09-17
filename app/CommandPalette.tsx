@@ -30,9 +30,10 @@ function matches(haystack: string, q: string) {
   return haystack.toLowerCase().includes(q);
 }
 
-/** Søk på tvers av BEGGE faner. PrivatSearch dekker kun Privat, og Oppslag
- *  kun leietakere — men det man leter etter vet sjelden hvilken fane det bor
- *  i. Åpnes med Ctrl/Cmd+K, eller søkeknappen i toppen på mobil.
+/** Søk på tvers av BEGGE faner, og appens ENESTE søkeinngang: den gamle
+ *  alltid-synlige Privat-søkelinjen (PrivatSearch) er fjernet, siden den kun
+ *  dekket Privat og tok skjermplass på mobil uten å være i bruk. Åpnes med
+ *  Ctrl/Cmd+K, eller søkeknappen i toppen.
  *
  *  Komponenten lastes lazy (se app/dashboard.tsx): den importerer hele
  *  widget- og leietakerdatasettet, som ikke skal ligge i oppstartsbunten. */

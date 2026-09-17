@@ -638,7 +638,9 @@ export default function TodaySummary({
         ...dueOnViewed.map((r) => ({ reminder: r, overdue: false })),
       ]
     : dueOnViewed.map((r) => ({ reminder: r, overdue: false }));
-  const eventsOnViewed = events.filter((e) => e.date === viewedDate);
+  // Avhukede kalenderhendelser faller ut av "I dag" (men blir liggende i
+  // Kalender-seksjonen, nedtonet) — se PrivatCalendarEvent.done.
+  const eventsOnViewed = events.filter((e) => e.date === viewedDate && !e.done);
   // Egendefinerte kamper (category "personal") vises i "I dag" kun når de er
   // markert highlight, og fulle liga-runder (Eliteserien/PL/FA Cup/Champions
   // League) vises IKKE enkeltvis her — de samles i en klikkbar "X-runde"-linje

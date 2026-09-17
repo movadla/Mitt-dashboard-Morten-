@@ -20,7 +20,6 @@ import ProjectsSection from "./ProjectsSection";
 import DiarySection from "./DiarySection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
-import PrivatSearch from "./PrivatSearch";
 import { SECTION_ACCENT } from "./sectionAccents";
 import { localDateString } from "@/lib/payday";
 import { APP_NAVIGATE_EVENT, consumePendingNavigation, peekPendingNavigation, type NavigationTarget } from "@/lib/appNavigation";
@@ -118,8 +117,10 @@ export default function PrivatPanel() {
   // seksjonene selv eier sin egen fulle liste uavhengig av dette.
   const { data: shoppingBadgeData } = useSWR<{ items: { done: boolean }[] }>("/api/shopping", jsonFetcher);
   const pendingShoppingCount = (shoppingBadgeData?.items ?? []).filter((i) => !i.done).length;
-  const { data: calendarBadgeData } = useSWR<{ events: { date: string }[] }>("/api/privat-calendar", jsonFetcher);
-  const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today).length;
+  // Avhukede hendelser teller ikke — de blir liggende i Kalender-seksjonen,
+  // men skal ikke holde varselet oppe (jf. tilbakemelding).
+  const { data: calendarBadgeData } = useSWR<{ events: { date: string; done?: boolean }[] }>("/api/privat-calendar", jsonFetcher);
+  const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today && !e.done).length;
   // Rygg-underfanen i Trening: badge teller 0-2 (dagens økt mangler / gårsdagens
   // smertelogg mangler) — se lib/ryggWeekCycle.ts sin getRyggStatus.
   const { data: ryggBadgeData } = useSWR<{ needsSessionToday: boolean; yesterdayLogged: boolean }>(
@@ -287,8 +288,12 @@ export default function PrivatPanel() {
 
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
+      {/* Ingen alltid-synlig søkelinje her lenger — søk ligger bak
+          forstørrelsesglasset i topplinjen (CommandPalette, Ctrl/Cmd+K), som
+          uansett søker bredere (begge faner) enn den gamle Privat-linjen
+          gjorde. Å ha begge deler synlig samtidig var dobbelt opp og spiste
+          skjermplass på mobil, jf. tilbakemelding. */}
       <div className="flex flex-col gap-2 md:w-56 md:shrink-0">
-        <PrivatSearch onJump={handleSelect} />
         <SidebarNav
           items={navItems}
           activeId={activeId}
