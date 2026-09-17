@@ -689,7 +689,7 @@ function PotentialCategoryTile({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 transition hover:border-line-strong">
+    <div className="rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 transition hover:border-line-strong">
       <button type="button" onClick={() => setEditing(true)} className="w-full text-left">
         <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{POTENTIAL_CATEGORY_LABEL[category.key]}</p>
         <p className="mt-1 text-lg font-semibold tabular-nums text-ink-1">{formatKr(category.belop)}</p>
@@ -842,26 +842,31 @@ function IncomeWaterfall({ segments, total }: { segments: WaterfallSegment[]; to
   if (total <= 0 || segments.length === 0) return null;
 
   const bars = segments.map((s) => ({ ...s, widthPct: (Math.abs(s.value) / total) * 100 }));
-  // Etikettkolonnen er fast slik at alle søylene starter på nøyaktig samme x.
-  const radKlasse = "grid grid-cols-[10.5rem_minmax(0,1fr)_8.5rem] items-center gap-3";
+  // v53 (2026-09-18, Morten: "på mobil faller tallene litt utfor boksen"): raden hadde to FASTE
+  // kolonner (10,5rem etikett + 8,5rem beløp). På en 360px-skjerm er det mer enn hele bredden når
+  // kortets egen padding trekkes fra, så beløpet ble skjøvet utenfor kanten. Nå brekker raden:
+  // etikett og beløp på én linje med stolpen under i full bredde, og først fra sm: den opprinnelige
+  // tre-kolonners rekka - der er etikettkolonnen fortsatt fast, slik at søylene starter på samme x.
+  const radKlasse =
+    "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[10.5rem_minmax(0,1fr)_8.5rem] sm:gap-y-0";
 
   return (
     <div className="mb-2 flex flex-col gap-2.5">
       {bars.map((b) => (
         <div key={b.label} className={radKlasse}>
-          <span className="min-w-0 truncate text-xs text-ink-2">{b.label}</span>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-ink-4/15">
+          <span className="min-w-0 truncate text-xs text-ink-2 sm:order-1">{b.label}</span>
+          <span className="whitespace-nowrap text-right text-xs tabular-nums text-ink-2 sm:order-3">{formatKr(b.value)}</span>
+          <div className="col-span-2 h-2.5 w-full overflow-hidden rounded-full bg-ink-4/15 sm:order-2 sm:col-span-1">
             <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(b.widthPct, 0.6)}%`, opacity: b.sikkerhet }} />
           </div>
-          <span className="text-right text-xs tabular-nums text-ink-2">{formatKr(b.value)}</span>
         </div>
       ))}
       <div className={`${radKlasse} mt-0.5`}>
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-2">Sum prognose</span>
-        <div className="h-3 w-full overflow-hidden rounded-full bg-ink-4/15">
+        <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-ink-2 sm:order-1">Sum prognose</span>
+        <span className="whitespace-nowrap text-right text-xs font-semibold tabular-nums text-ink-1 sm:order-3">{formatKr(total)}</span>
+        <div className="col-span-2 h-3 w-full overflow-hidden rounded-full bg-ink-4/15 sm:order-2 sm:col-span-1">
           <div className="h-full w-full rounded-full bg-accent" />
         </div>
-        <span className="text-right text-xs font-semibold tabular-nums text-ink-1">{formatKr(total)}</span>
       </div>
       {/* v29 (2026-09-08): kortet ned fra to setninger. At søylene stables ser man; det som IKKE
           er selvforklarende er hva opasiteten koder. Resten var overlapp med kortets undertittel
@@ -1133,12 +1138,10 @@ function KpiStrip({
   avvikTotal,
   budsjettTotal,
   reforhandlingVektet,
-  reforhandlingFulltPotensial,
 }: {
   avvikTotal: number;
   budsjettTotal: number;
   reforhandlingVektet: number;
-  reforhandlingFulltPotensial: number;
 }) {
   const avvikPct = budsjettTotal !== 0 ? (avvikTotal / budsjettTotal) * 100 : null;
 
@@ -1148,22 +1151,43 @@ function KpiStrip({
   // kortheaderen. Flisen er fjernet og trendlinjen flyttet ned under hero-boksens egen total, der
   // den står ved siden av tallet den faktisk beskriver.
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      <a href="#leieinntekter" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition hover:border-line-strong">
-        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avvik mot budsjett</p>
-        <p className={`mt-1 text-lg font-semibold tabular-nums ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+    // v52 (2026-09-18, Morten): "vs. budsjett" som to bokser - kroner og prosent - uten
+    // forklaringstekst under, og Risiko med kun tallet pluss et infoikon.
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <a href="#leieinntekter" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
+        <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
+        <p className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
           {formatKr(avvikTotal, true)}
         </p>
-        <p className="mt-1 text-2xs text-ink-4">
-          {avvikPct === null ? "Uten budsjettgrunnlag" : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toFixed(1)} % · budsjett ${formatKr(budsjettTotal)}`}
+      </a>
+      <a href="#leieinntekter" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
+        <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
+        <p className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
+          {avvikPct === null
+            ? "—"
+            : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
         </p>
       </a>
-      <a href="#kontrakter-pa-utlop" className="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left transition hover:border-line-strong">
-        {/* v50: het "Reforhandling" - Morten ville ha "Risiko" (2026-09-11). Tallet er fortsatt
-            det vektede reforhandlingsbeløpet fra Kontrakter på utløp. */}
-        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Risiko</p>
-        <p className="mt-1 text-lg font-semibold tabular-nums text-ink-1">{formatKr(reforhandlingVektet)}</p>
-        <p className="mt-1 text-2xs text-ink-4">vektet · {formatKr(reforhandlingFulltPotensial)} ved 100 %</p>
+      <a href="#kontrakter-pa-utlop" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
+        <p className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+          <span className="truncate">Risiko</span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label="Hva risikotallet er"
+                  onClick={(e) => e.preventDefault()}
+                  className="shrink-0 text-ink-4 hover:text-ink-1"
+                >
+                  <Info className="h-3 w-3" />
+                </button>
+              }
+            />
+            <TooltipContent>Kontrakter på utløp, med sannsynlig reforhandling.</TooltipContent>
+          </Tooltip>
+        </p>
+        <p className="mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg text-ink-1">{formatKr(reforhandlingVektet)}</p>
       </a>
     </div>
   );
@@ -1580,64 +1604,35 @@ function KommentarCell({
   );
 }
 
-type LedigeLokalerSortKey = "navn" | "opprinnelig" | "koblet" | "forventet" | "nullet";
-
-// Fargekoding for de tre tilstandene en budsjettert Ledig-krone kan være i - gjenbrukt i
-// sammendragsstripen, pr.-bygg-stolpen og gruppeoverskriftene, så de aldri glir fra hverandre.
-const LEDIG_FARGE = {
-  koblet: "text-status-positive",
-  forventet: "text-status-warning",
-  nullet: "text-status-danger",
-} as const;
-// Gjenværende Ledig-linjer fra og med dette beløpet får budsjettets egen kommentar vist i klartekst
-// (Morten 2026-09-06) - under terskelen ligger den bare i hover-teksten.
-const LEDIG_KOMMENTAR_TERSKEL = 100_000;
-
-function LedigStolpe({ koblet, forventet, nullet, total }: { koblet: number; forventet: number; nullet: number; total: number }) {
-  if (total <= 0) return null;
-  const pct = (n: number) => `${(Math.max(0, n) / total) * 100}%`;
-  return (
-    <span className="flex h-1 w-full gap-px overflow-hidden rounded-full bg-ink-4/25" role="img" aria-label="Koblet / forventet / nullet">
-      {koblet > 0 && <span className={`${LEDIG_FARGE.koblet} block h-full bg-current`} style={{ width: pct(koblet) }} />}
-      {forventet > 0 && <span className={`${LEDIG_FARGE.forventet} block h-full bg-current`} style={{ width: pct(forventet) }} />}
-      {nullet > 0 && <span className={`${LEDIG_FARGE.nullet} block h-full bg-current`} style={{ width: pct(nullet) }} />}
-    </span>
-  );
-}
-
-function LedigGruppeTittel({ tittel, belop, colorClass }: { tittel: string; belop: number; colorClass: string }) {
-  return (
-    <p className={`flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.13em] ${colorClass}`}>
-      <span>{tittel}</span>
-      <span className="h-px flex-1 bg-current opacity-30" aria-hidden />
-      <span className="tabular-nums">{formatKr(belop)}</span>
-    </p>
-  );
-}
-
-// Dedikert oversikt over "Ledig <kortkode>"-radene (Morten, 2026-08-29) - i TILLEGG til (ikke
-// erstatning for) at de samme radene/leietakerne fortsatt vises som normalt i Leieinntekter-
-// tabellen over. Leser samme delA.leietaker-array, ingen egen Redis-pipeline.
-// v2 (2026-09-06): hver Ledig-krone plasseres i én av tre grupper pr. bygg - koblet (linjen er
-// tatt av en navngitt leietaker/internleie, budsjettet flyttet dit), forventet (Finance forventer
-// fortsatt utleie i år) eller nullet (Finance har tatt beløpet ut av prognosen). Finance sin
-// siste månedskommentar vises pr. gjenværende linje. Se kobleFlyttetInnOgTrekkFra() i
-// scripts/build-tenant-forecast-table.js for hvordan feltene settes.
-// v17 (2026-09-07): `vacantKvm` er totalLedigKvm fra VacantAreasSnapshot (Fazile arealoversikt,
-// Tillegg-fanen) - en HELT uavhengig datakilde fra denne blokkens kr-tall (tenantForecastTable).
-// De to har aldri vært vist sammen eller kryssjekket mot hverandre (se controller-gjennomgangen
-// 2026-09-07: "ledighet vises som kvm ett sted og kr et annet sted uten kobling"). Viser dem side
-// om side her, ikke en full sammenslåing av datamodellene - de to kildene har ulik bygg-matching
-// og granularitet, en fullstendig kobling er en egen jobb.
-function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; vacantKvm: number | null }) {
+// Forenklet 2026-09-18 (Morten): kortet viste fire tilstander, en forklarende paragraf, en stolpe
+// og fem sorteringsknapper. Nå tre tall og en tabell med samme kolonner som leietakerlisten.
+//
+//   Budsjett   det opprinnelig budsjetterte ledig-beløpet
+//   Inntekt    KUN det som faktisk er leid ut (ledigTrukketUt)
+//   Over/under inntekt − budsjett, altså det som fortsatt står tomt
+//
+// Inntekt teller bevisst IKKE med linjer Finance "forventer utleid". Det er en forventning, ikke en
+// inngått leie - og tar man dem med, får et bygg som fortsatt er tomt over/under = 0 og ser ut som
+// om budsjettet var innfridd. Det var nettopp det Morten fanget opp: "Hvorfor er det 0 på så mange
+// over/under? De har jo noenlunde fortsatt og kun leid ut deler?"
+//
+// MERK at "inntekt" for en utleid linje er budsjettandelen som fulgte med leietakeren, ikke
+// leietakerens egen omsetning: når en Ledig-linje tas av en navngitt leietaker flyttes budsjettet
+// til leietakerens rad, og inntekten deres gjelder HELE arealet de leier. Målt 2026-09-18 har 11 av
+// 20 koblede leietakere total inntekt over 1,5x budsjettandelen (én overtok 1 731 000 kr av
+// ledig-budsjettet, men har 10 048 976 kr totalt), så leietakerens totalinntekt ville blåst opp
+// ledig-tallet kraftig.
+//
+// Poster av typen "nestet" holdes utenfor: det er leietakere som har flyttet inn uten egen
+// budsjettlinje, og arealet deres ligger allerede i de gjenværende ledige linjene. Identiteten som
+// holder for alle 19 rader er: opprinnelig = ledigTrukketUt + forventet + nullet, og summen av
+// poster uten "nestet" er nøyaktig ledigTrukketUt.
+function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige lokaler", true);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [commentOverrides, setCommentOverrides] = useState<Record<string, string>>({});
-  const [sort, setSort] = useState<{ key: LedigeLokalerSortKey; dir: 1 | -1 }>({ key: "opprinnelig", dir: -1 });
 
-  // v51: linjekommentarene finnes ikke i tabell-snapshotet (sammensatt nøkkel), så hele
-  // kommentarkartet hentes én gang og legges i samme override-objekt som redigeringene bruker.
   useEffect(() => {
     fetch("/api/income-forecast/tenant-comments")
       .then((r) => r.json())
@@ -1658,57 +1653,36 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
     }
   }
 
-  const rowByNavn = useMemo(() => new Map(rows.map((r) => [r.navn, r])), [rows]);
-  const flyttetInnByLedigNavn = useMemo(() => {
-    const m = new Map<string, TenantForecastRow[]>();
-    for (const r of rows) {
-      if (!r.flyttetInnI) continue;
-      if (!m.has(r.flyttetInnI)) m.set(r.flyttetInnI, []);
-      m.get(r.flyttetInnI)!.push(r);
-    }
-    return m;
-  }, [rows]);
-
   const derivedAll = useMemo(
     () =>
       rows
         .filter((r) => r.navn.startsWith("Ledig"))
         .map((row) => {
-          const poster = row.ledigPoster ?? [];
-          const posterNavn = new Set(poster.filter((p) => p.type === "leietaker").map((p) => p.navn));
-          // Leietakere nestet under raden uten egen budsjettlinje (strengformen i overrides) -
-          // inntekten deres er ren oppside mot budsjett, vises under "Koblet" med 0 i budsjett.
-          const utenLinje = (flyttetInnByLedigNavn.get(row.navn) ?? []).filter((t) => !posterNavn.has(t.navn));
-          const nulletLinjer = row.linjer.filter((l) => l.ledigVurdering === "nullet");
-          const forventetLinjer = row.linjer.filter((l) => l.ledigVurdering !== "nullet");
-          const koblet = row.ledigTrukketUt ?? 0;
-          const forventet = forventetLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0);
-          const nullet = nulletLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0);
+          const budsjettPoster = (row.ledigPoster ?? []).filter((p) => p.type !== "nestet");
+          const budsjett = row.ledigOpprinneligBudsjett ?? row.budsjett ?? 0;
+          const inntekt = budsjettPoster.reduce((s, p) => s + p.belop, 0);
+          const avvik = inntekt - budsjett;
           return {
             row,
-            poster,
-            utenLinje,
-            forventetLinjer,
-            nulletLinjer,
-            opprinnelig: row.ledigOpprinneligBudsjett ?? row.budsjett ?? 0,
-            koblet,
-            forventet,
-            nullet,
-            sokeTekst: [row.navn, ...poster.map((p) => p.navn), ...utenLinje.map((t) => t.navn), ...row.linjer.map((l) => l.beskrivelse)].join(" ").toLowerCase(),
+            budsjettPoster,
+            ledigLinjer: row.linjer,
+            budsjett,
+            inntekt,
+            // Snap til 0: prorata-beregningene gir øre-rester, og uten dette viser rader som faktisk
+            // går i null enten "−0 kr" eller "+0 kr" avhengig av avrundingsretningen.
+            avvik: Math.abs(avvik) < 0.5 ? 0 : avvik,
+            sokeTekst: [row.navn, ...budsjettPoster.map((p) => p.navn), ...row.linjer.map((x) => x.beskrivelse)].join(" ").toLowerCase(),
           };
-        }),
-    [rows, flyttetInnByLedigNavn],
+        })
+        // Kun pr. bygg, største budsjett først - ingen sorteringsvalg (Morten 2026-09-18).
+        .sort((a, b) => b.budsjett - a.budsjett),
+    [rows],
   );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q ? derivedAll.filter((d) => d.sokeTekst.includes(q)) : derivedAll;
   }, [derivedAll, search]);
-
-  const sorted = useMemo(() => {
-    const { key, dir } = sort;
-    return [...filtered].sort((a, b) => (key === "navn" ? a.row.navn.localeCompare(b.row.navn, "nb-NO") * dir : (a[key] - b[key]) * dir));
-  }, [filtered, sort]);
 
   function toggle(navn: string) {
     setExpanded((prev) => {
@@ -1719,37 +1693,15 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
     });
   }
 
-  function sortKnapp(label: string, key: LedigeLokalerSortKey) {
-    const active = sort.key === key;
-    return (
-      <button
-        type="button"
-        onClick={() => setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: key === "navn" ? 1 : -1 }))}
-        className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "bg-surface-2 text-ink-1" : "text-ink-4"}`}
-      >
-        {label}
-        {active && (sort.dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
-      </button>
-    );
-  }
-
-  const total = {
-    opprinnelig: derivedAll.reduce((s, d) => s + d.opprinnelig, 0),
-    koblet: derivedAll.reduce((s, d) => s + d.koblet, 0),
-    forventet: derivedAll.reduce((s, d) => s + d.forventet, 0),
-    nullet: derivedAll.reduce((s, d) => s + d.nullet, 0),
-  };
+  const totalBudsjett = derivedAll.reduce((s, d) => s + d.budsjett, 0);
+  const totalInntekt = derivedAll.reduce((s, d) => s + d.inntekt, 0);
+  const totalAvvik = totalInntekt - totalBudsjett;
+  const avvikFarge = (n: number) => (n < 0 ? "text-status-danger" : n > 0 ? "text-status-positive" : "text-ink-3");
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Ledige lokaler"
-        // v28 (2026-09-08): hadde KUN `stat`, som CardHeader skjuler når kortet er kollapset
-        // (`showStat = stat && !collapsed`). Siden kortet er kollapset som default var dette den
-        // eneste seksjonen på Prognose-fanen uten beløp i headeren - og nettopp den som forklarer
-        // −6,4 mill av avviket mot budsjett. Naboseksjonene bruker subtitle+alwaysShowSubtitle;
-        // det gjør denne nå også. v50: Morten ville ha headeren helt uten beløp (2026-09-11) -
-        // tallet står i Ledig-radene i Leieinntekter og i toppboksens waterfall.
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={DoorOpen}
@@ -1757,219 +1709,183 @@ function LedigeLokalerBlock({ rows, vacantKvm }: { rows: TenantForecastRow[]; va
       />
       {!collapsed && (
         <>
-          {vacantKvm !== null && vacantKvm > 0 && (
-            <p className="flex items-center gap-1 text-2xs text-ink-4">
-              {vacantKvm.toLocaleString("nb-NO")} kvm ledig areal i &quot;Ledige arealer&quot; (Tillegg-fanen)
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button type="button" aria-label="Om kryssreferansen mot kvm" className="shrink-0 text-ink-4 hover:text-ink-1">
-                      <Info className="h-3 w-3" />
-                    </button>
-                  }
-                />
-                <TooltipContent>
-                  Fazile arealoversikt, uavhengig av tallene under. ≈{" "}
-                  {formatKr(Math.round((total.forventet + total.nullet) / vacantKvm))}/kvm/år av gjenstående budsjett under - to
-                  uavhengige kilder, ikke slått sammen.
-                </TooltipContent>
-              </Tooltip>
-            </p>
-          )}
-          {/* Sammendragsstripe: hvor de opprinnelig budsjetterte ledig-kronene har havnet. */}
-          <div className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-1 px-3 py-2">
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
-              {(
-                [
-                  ["Budsjettert ledig", total.opprinnelig, "text-ink-2"],
-                  ["Koblet til leietaker", total.koblet, LEDIG_FARGE.koblet],
-                  ["Forventet utleid", total.forventet, LEDIG_FARGE.forventet],
-                  ["Nullet av Finance", total.nullet, LEDIG_FARGE.nullet],
-                ] as const
-              ).map(([label, belop, color]) => (
-                <div key={label} className="flex flex-col">
-                  <span className="text-2xs uppercase tracking-wide text-ink-4">{label}</span>
-                  <span className={`text-sm font-semibold tabular-nums ${color}`}>{formatKr(belop)}</span>
-                </div>
-              ))}
-            </div>
-            <LedigStolpe koblet={total.koblet} forventet={total.forventet} nullet={total.nullet} total={total.opprinnelig} />
-            <p className="text-2xs text-ink-4">
-              Koblet = Ledig-linjen er tatt av en navngitt leietaker eller internleie, og budsjettet er flyttet til den raden i Leieinntekter.
-              Forventet/nullet er Finance sin egen vurdering av de linjene som fortsatt står ledig (juli-prognosen).
-            </p>
+          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">2026</p>
+          {/* Samme bokstil som KPI-stripen. Etikettene er korte ("Budsjett", ikke "Budsjett 2026")
+              nettopp fordi de ikke skal brekke over to linjer på mobil - året står i overskriften. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {(
+              [
+                ["Budsjett", totalBudsjett, "text-ink-1"],
+                ["Inntekter", totalInntekt, "text-ink-1"],
+                ["Over/under", totalAvvik, avvikFarge(totalAvvik)],
+              ] as const
+            ).map(([label, belop, color]) => (
+              <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5">
+                <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
+                <p className={"mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg " + color}>
+                  {formatKr(belop, label === "Over/under")}
+                </p>
+              </div>
+            ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
-              <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Søk bygg, leietaker eller areal…"
-                className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-0.5">
-              <span className="mr-1 text-2xs text-ink-4">Sorter:</span>
-              {sortKnapp("Bygg", "navn")}
-              {sortKnapp("Budsjett", "opprinnelig")}
-              {sortKnapp("Koblet", "koblet")}
-              {sortKnapp("Forventet", "forventet")}
-              {sortKnapp("Nullet", "nullet")}
-            </div>
+          <div className="flex min-w-0 items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Søk bygg, leietaker eller areal…"
+              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+            />
           </div>
           {derivedAll.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen ledige lokaler i denne kategorien.</p>
-          ) : sorted.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen treff.</p>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              {sorted.map((d) => {
-                const isOpen = expanded.has(d.row.navn);
-                const gjenstaende = d.forventet + d.nullet;
-                return (
-                  <div key={d.row.navn} className="rounded-lg border border-line bg-surface-1">
-                    <button type="button" onClick={() => toggle(d.row.navn)} className="flex w-full flex-col gap-1.5 px-3 py-2 text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{d.row.navn}</span>
-                        <span className="shrink-0 text-2xs tabular-nums text-ink-4">{formatKr(d.opprinnelig)} budsjettert</span>
-                        {isOpen ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-ink-4" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-4" />}
-                      </div>
-                      <LedigStolpe koblet={d.koblet} forventet={d.forventet} nullet={d.nullet} total={d.opprinnelig} />
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs tabular-nums">
-                        <span className={LEDIG_FARGE.koblet}>{formatKr(d.koblet)} koblet</span>
-                        <span className={LEDIG_FARGE.forventet}>{formatKr(d.forventet)} forventet</span>
-                        <span className={LEDIG_FARGE.nullet}>{formatKr(d.nullet)} nullet</span>
-                        <span className="text-ink-4">= {formatKr(gjenstaende)} gjenstår</span>
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="flex flex-col gap-3 border-t border-line px-3 py-2.5">
-                        <div className="flex flex-col gap-1">
-                          <LedigGruppeTittel tittel="Utleid (koblet)" belop={d.koblet} colorClass={LEDIG_FARGE.koblet} />
-                          {d.poster.length === 0 && d.utenLinje.length === 0 ? (
-                            <p className="text-2xs text-ink-4">Ingen linjer er koblet til en leietaker ennå.</p>
-                          ) : (
-                            <>
-                              {d.poster.map((p) => {
-                                const leietaker = p.type === "leietaker" ? rowByNavn.get(p.navn) : undefined;
-                                const faktisk = leietaker ? leietaker.fakturert + leietaker.gjenstar : null;
-                                // v16 match-kvalitet (2026-09-07): denne visningen slo opp samme leietaker-
-                                // rad uten selv å vise noe om koblingen kan være fuzzy (samme gap som
-                                // KontrakterPaUtlopBlock hadde).
-                                const matchVarsel = leietaker ? matchKvalitetTekst(leietaker) : null;
-                                return (
-                                  <div key={`${p.type}-${p.navn}`} className="flex items-baseline justify-between gap-2 text-2xs">
-                                    <span className="flex min-w-0 items-center gap-1 text-ink-2">
-                                      <span className="truncate">{p.navn}</span>
-                                      {p.type !== "leietaker" && (
-                                        <span className="shrink-0 rounded bg-surface-2 px-1 py-px text-[9px] uppercase tracking-wide text-ink-4">
-                                          {p.type === "intern" ? "internleie" : "dobbeltbudsjettert"}
-                                        </span>
-                                      )}
-                                      {p.beskrivelse && (
-                                        <Tooltip>
-                                          <TooltipTrigger render={<Info className="h-3 w-3 shrink-0 text-ink-4" />} />
-                                          <TooltipContent className="max-w-xs">{p.beskrivelse}</TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                      {matchVarsel && (
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            render={
-                                              <button type="button" aria-label="Usikker kobling" className="shrink-0 text-status-warning hover:text-status-warning/80">
-                                                <AlertTriangle className="h-3 w-3" />
-                                              </button>
-                                            }
-                                          />
-                                          <TooltipContent className="max-w-xs">{matchVarsel}</TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                    </span>
-                                    <span className="shrink-0 tabular-nums text-ink-3">
-                                      {formatKr(p.belop)}
-                                      {faktisk !== null && leietaker && (
-                                        <span className={`ml-2 ${(leietaker.avvik ?? 0) >= 0 ? "text-status-positive" : "text-status-danger"}`}>
-                                          faktisk {formatKr(faktisk)} ({formatKr(leietaker.avvik ?? 0, true)})
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                );
+            // Ingen min-width: tallkolonnene er nowrap og Bygg-kolonnen truncater, så tabellen får
+            // plass på 360px. overflow-x-auto står igjen som sikkerhetsnett.
+            <div className="-mx-1 overflow-x-auto">
+              <table className="w-full text-2xs sm:text-sm">
+                <thead>
+                  <tr className="text-left text-2xs font-medium text-ink-4">
+                    <th className="px-2 py-2 sm:px-3">Bygg</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Budsjett</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Inntekt</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Over/under</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((d) => {
+                    const isOpen = expanded.has(d.row.navn);
+                    return (
+                      <Fragment key={d.row.navn}>
+                        <tr className="cursor-pointer border-t border-line hover:bg-surface-2/60" onClick={() => toggle(d.row.navn)}>
+                          <td className="px-2 py-2 sm:px-3">
+                            <span className="flex items-center gap-1.5">
+                              {isOpen ? (
+                                <ChevronUp className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+                              ) : (
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+                              )}
+                              <span className="truncate font-medium text-ink-1">{d.row.navn}</span>
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2 sm:px-3">{formatKr(d.budsjett)}</td>
+                          <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2 sm:px-3">{formatKr(d.inntekt)}</td>
+                          <td className={"whitespace-nowrap px-2 py-2 text-right tabular-nums sm:px-3 " + avvikFarge(d.avvik)}>
+                            {formatKr(d.avvik, true)}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <>
+                            <LedigDetaljRader
+                              tittel="Utleid"
+                              tomTekst="Ingen linjer er tatt av en leietaker ennå."
+                              rader={d.budsjettPoster.map((p) => ({
+                                navn: p.navn,
+                                merke: p.type === "intern" ? "internleie" : p.type === "usporet" ? "dobbeltbudsjettert" : null,
+                                budsjett: p.belop,
+                                inntekt: p.belop,
+                                tittelTekst: p.beskrivelse ?? null,
+                              }))}
+                            />
+                            <LedigDetaljRader
+                              tittel="Ledig"
+                              tomTekst="Ingen ledige linjer igjen."
+                              rader={d.ledigLinjer.map((linje) => {
+                                // beskrivelse = "objekt — budsjettkommentar": vis objektet, behold
+                                // kommentaren som hover så forklaringen ikke går tapt i forenklingen.
+                                const suffiks = linje.budsjettKommentar ? " — " + linje.budsjettKommentar : "";
+                                const objekt =
+                                  suffiks && linje.beskrivelse.endsWith(suffiks) ? linje.beskrivelse.slice(0, -suffiks.length) : linje.beskrivelse;
+                                return {
+                                  navn: objekt,
+                                  // Begge er ledige i dag, men Finance sitt skille er verdt å se.
+                                  merke: linje.ledigVurdering === "nullet" ? "nullet" : "forventet utleid",
+                                  budsjett: linje.fullArsverdi2026,
+                                  inntekt: 0,
+                                  tittelTekst:
+                                    [linje.budsjettKommentar, linje.financeKommentar ? "Finance " + linje.financeKommentar : null]
+                                      .filter(Boolean)
+                                      .join(" · ") || null,
+                                };
                               })}
-                              {d.utenLinje.map((t) => (
-                                <div key={t.navn} className="flex items-baseline justify-between gap-2 text-2xs">
-                                  <span className="flex min-w-0 items-center gap-1 text-ink-2">
-                                    <span className="truncate">{t.navn}</span>
-                                    <span className="shrink-0 rounded bg-surface-2 px-1 py-px text-[9px] uppercase tracking-wide text-ink-4">uten budsjettlinje</span>
-                                  </span>
-                                  <span className="shrink-0 tabular-nums text-ink-3">
-                                    0<span className="ml-2 text-status-positive">faktisk {formatKr(t.fakturert + t.gjenstar)}</span>
-                                  </span>
+                            />
+                            <tr className="bg-surface-1/60">
+                              <td colSpan={4} className="px-2 pb-2.5 sm:px-3">
+                                <div className="flex items-center gap-2">
+                                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+                                  <KommentarCell
+                                    navn={d.row.navn}
+                                    value={commentOverrides[d.row.navn] ?? d.row.kommentar ?? ""}
+                                    onSave={saveComment}
+                                  />
                                 </div>
-                              ))}
-                            </>
-                          )}
-                        </div>
-                        {(
-                          [
-                            ["Forventet utleid, ikke leid ut ennå", d.forventetLinjer, d.forventet, LEDIG_FARGE.forventet],
-                            ["Ledig ut året / nullet av Finance", d.nulletLinjer, d.nullet, LEDIG_FARGE.nullet],
-                          ] as const
-                        ).map(([tittel, linjer, belop, color]) =>
-                          linjer.length === 0 ? null : (
-                            <div key={tittel} className="flex flex-col gap-1">
-                              <LedigGruppeTittel tittel={tittel} belop={belop} colorClass={color} />
-                              {linjer.map((l, i) => {
-                                // beskrivelse = "objekt — budsjettkommentar"; vis objektet på linjen og
-                                // kommentaren for seg der den betyr noe (Morten 2026-09-06: over 100 000 kr
-                                // vil han se hva som var budsjettert utleid men ikke ble det).
-                                const suffiks = l.budsjettKommentar ? ` — ${l.budsjettKommentar}` : "";
-                                const objekt = suffiks && l.beskrivelse.endsWith(suffiks) ? l.beskrivelse.slice(0, -suffiks.length) : l.beskrivelse;
-                                const stor = l.fullArsverdi2026 >= LEDIG_KOMMENTAR_TERSKEL;
-                                return (
-                                  <div key={`${l.beskrivelse}-${i}`} className="flex flex-col gap-0.5 text-2xs">
-                                    <div className="flex items-baseline justify-between gap-2">
-                                      <span className="min-w-0 truncate text-ink-2" title={l.beskrivelse}>
-                                        {objekt}
-                                      </span>
-                                      <span className="shrink-0 tabular-nums text-ink-3">
-                                        {formatKr(l.fullArsverdi2026)}
-                                        {l.financeEndring !== undefined && l.financeEndring !== 0 && (
-                                          <span className={`ml-2 ${l.financeEndring > 0 ? "text-status-positive" : "text-status-danger"}`}>
-                                            Finance {formatKr(l.financeEndring, true)}
-                                          </span>
-                                        )}
-                                      </span>
-                                    </div>
-                                    {stor && l.budsjettKommentar && (
-                                      <p className={`border-l-2 pl-2 ${color} border-current/40`}>
-                                        <span className="text-ink-4">Budsjettert: </span>
-                                        <span className="text-ink-2">{l.budsjettKommentar}</span>
-                                      </p>
-                                    )}
-                                    {l.financeKommentar && <p className="pl-2 text-ink-4">Finance {l.financeKommentar}</p>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ),
+                              </td>
+                            </tr>
+                          </>
                         )}
-                        <div className="flex items-center gap-2 border-t border-line pt-2">
-                          <MessageSquare className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-                          <KommentarCell navn={d.row.navn} value={commentOverrides[d.row.navn] ?? d.row.kommentar ?? ""} onSave={saveComment} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+// Én gruppe ("Utleid" / "Ledig") i drilldownen, rendret som ekte tabellrader i SAMME tabell som
+// bygglinjene. Det er hele poenget: da står beløpene garantert under sine egne kolonneoverskrifter
+// uansett skjermbredde. Et eget rutenett inni en colSpan-celle gjorde ikke det - der havnet budsjett
+// under "Inntekt", og tallene forsvant helt når plassen ble trang (Mortens funn 2026-09-18).
+function LedigDetaljRader({
+  tittel,
+  rader,
+  tomTekst,
+}: {
+  tittel: string;
+  rader: { navn: string; merke: string | null; budsjett: number; inntekt: number; tittelTekst: string | null }[];
+  tomTekst: string;
+}) {
+  return (
+    <>
+      <tr className="bg-surface-1/60">
+        <td colSpan={4} className="px-2 pt-2 pb-0.5 sm:px-3">
+          <p className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
+            <span>{tittel}</span>
+            <span className="h-px flex-1 bg-current opacity-30" aria-hidden />
+          </p>
+        </td>
+      </tr>
+      {rader.length === 0 ? (
+        <tr className="bg-surface-1/60">
+          <td colSpan={4} className="px-2 pb-1 text-2xs text-ink-4 sm:px-3">
+            {tomTekst}
+          </td>
+        </tr>
+      ) : (
+        rader.map((r, i) => (
+          <tr key={r.navn + "-" + i} className="bg-surface-1/60 text-2xs">
+            <td className="px-2 py-1 pl-6 sm:px-3 sm:pl-8">
+              <span className="flex min-w-0 items-center gap-1 text-ink-2" title={r.tittelTekst ?? undefined}>
+                <span className="truncate">{r.navn}</span>
+                {r.merke && (
+                  <span className="shrink-0 rounded bg-surface-2 px-1 py-px text-[9px] uppercase tracking-wide text-ink-4">{r.merke}</span>
+                )}
+              </span>
+            </td>
+            <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums text-ink-3 sm:px-3">{formatKr(r.budsjett)}</td>
+            <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums text-ink-3 sm:px-3">{formatKr(r.inntekt)}</td>
+            <td className="px-2 py-1 sm:px-3" />
+          </tr>
+        ))
+      )}
+    </>
   );
 }
 
@@ -3512,7 +3428,6 @@ export default function IncomeForecastSection() {
                     avvikTotal={avvikTotal}
                     budsjettTotal={budsjettTotal}
                     reforhandlingVektet={prognose.reforhandlingFull}
-                    reforhandlingFulltPotensial={prognose.potensiellEkstrainntektReforhandling100}
                   />
                 }
               />
@@ -3538,7 +3453,7 @@ export default function IncomeForecastSection() {
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
               />
-              <LedigeLokalerBlock rows={justertDelALeietakerRader} vacantKvm={vacantAreas?.totalLedigKvm ?? null} />
+              <LedigeLokalerBlock rows={justertDelALeietakerRader} />
 
               {/* v31 (2026-09-08, Morten: "fjern hele tillegg-fanen ... infoen der trengs ikke å
                   vises da det bare blir masse støy"). Fanen er borte. Alt som lå der var

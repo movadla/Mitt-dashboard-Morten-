@@ -51,7 +51,12 @@ export interface TenantForecastLine {
 interface LedigPost {
   navn: string;
   belop: number;
-  type: "leietaker" | "intern" | "usporet";
+  // "nestet" manglet her til 2026-09-18 selv om build-tenant-forecast-table.js har sendt den
+  // siden v52 - en leietaker som har flyttet inn i arealet UTEN egen budsjettlinje. Den teller
+  // bevisst ikke i `ledigTrukketUt` (se "v52: 'nestet' teller IKKE i sum" der), fordi arealet
+  // allerede ligger i de gjenværende forventet-linjene. Konsumenter som summerer poster må
+  // filtrere den bort, ellers dobbelttelles beløpet.
+  type: "leietaker" | "intern" | "usporet" | "nestet";
   beskrivelse?: string;
 }
 
