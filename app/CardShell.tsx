@@ -216,6 +216,7 @@ export function CardHeader({
   iconColorClass = "text-ink-3",
   alwaysShowSubtitle = false,
   extraAction,
+  headerInfo,
   stat,
 }: {
   title: string;
@@ -235,6 +236,11 @@ export function CardHeader({
   // Dagbok sitt innstillingshjul). Valgfri, ingen effekt på eksisterende
   // bruksseder som ikke setter den.
   extraAction?: { icon: React.ComponentType<{ className?: string }>; onClick: () => void; label: string };
+  // Fritt innhold helt til høyre i headeren, ment for et lite info-ikon med
+  // tooltip. I motsetning til `subtitle` (som ligger inntil tittelen og
+  // dytter den sammen på smal skjerm) tar dette ingen plass fra tittelen —
+  // metadata som "sist oppdatert" hører hjemme her, ikke i overskriften.
+  headerInfo?: React.ReactNode;
   // Kortets nøkkeltall, vist stort og tynt i seksjonens farge med en
   // bitteliten sperret etikett under. Hele hierarkiet i kortet ligger i den
   // kontrasten. Erstatter `subtitle`-plassen når den er satt, og skjules når
@@ -334,7 +340,8 @@ export function CardHeader({
         {/* ml-3 når nøkkeltallet vises: med bare gap-2 lå «+» klistret inntil det store
             tallet og leste som en del av det — «0 +», «30 +». (2026-09-08) */}
         <div className={`flex shrink-0 items-center gap-1 ${showStat ? "ml-3" : ""}`}>
-          {extraActionButton}
+          {headerInfo}
+        {extraActionButton}
           {addButton}
         </div>
       </div>
@@ -353,6 +360,7 @@ export function CardHeader({
         >
           {inner}
         </button>
+        {headerInfo}
         {extraActionButton}
       </div>
     );
@@ -369,7 +377,8 @@ export function CardHeader({
       >
         {inner}
       </button>
-      {extraActionButton}
+      {headerInfo}
+        {extraActionButton}
       {addButton}
     </div>
   );

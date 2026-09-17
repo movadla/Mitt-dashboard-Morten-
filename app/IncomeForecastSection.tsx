@@ -1169,37 +1169,44 @@ function KpiStrip({
   );
 }
 
-// v50: eldste datakilde som liten tekst i kortheaderen, ved siden av "Sist oppdatert". Hover
-// gir hele lista. Gul når eldste kilde er 14 dager eller mer - samme grense som den gamle
-// KPI-flisen brukte.
-function DatakildeHeaderTekst({ freshness, idagIso, lastUpdated }: { freshness: DataSourceFreshness[]; idagIso: string; lastUpdated: string | null }) {
+// v50: eldste datakilde vist i kortheaderen. v51 (2026-09-17): var en tekstlinje ved siden av
+// tittelen, men "Sist oppdatert 07.09.2026 · eldste kilde 07.09.2026" er langt nok til å presse
+// "Inntektsprognose 2026" sammen på mobil - datoen sto bokstavelig talt i veien for
+// overskriften. Nå kun et info-ikon ytterst til høyre; hele lista ligger i tooltipen.
+// Ikonet blir gult når eldste kilde er 14 dager eller mer, så et reelt ferskhetsproblem
+// fortsatt synes uten å måtte hovre.
+function DatakildeHeaderInfo({ freshness, idagIso, lastUpdated }: { freshness: DataSourceFreshness[]; idagIso: string; lastUpdated: string | null }) {
   const eldste = freshness[0] ?? null;
   const dagerGammel = eldste ? Math.round((new Date(idagIso).getTime() - new Date(eldste.dato).getTime()) / 86400000) : null;
   const eldsteErGammel = dagerGammel !== null && dagerGammel >= 14;
-  if (!lastUpdated && !eldste) return <>Ingen data ennå</>;
+  if (!lastUpdated && !eldste) return null;
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <span className="cursor-default">
-            {lastUpdated && `Sist oppdatert ${formatDateDMY(lastUpdated)}`}
-            {lastUpdated && eldste && " · "}
-            {eldste && (
-              <span className={eldsteErGammel ? "text-status-warning" : undefined}>
-                eldste kilde {formatDateDMY(eldste.dato)}
-              </span>
-            )}
+          <span
+            aria-label="Når dataene sist ble oppdatert"
+            className={`grid h-7 w-7 shrink-0 cursor-default place-items-center rounded-full transition hover:bg-surface-2 ${
+              eldsteErGammel ? "text-status-warning" : "text-ink-4 hover:text-ink-2"
+            }`}
+          >
+            <Info className="h-4 w-4" />
           </span>
         }
       />
       <TooltipContent>
         <div className="flex flex-col gap-1">
-          <p className="font-medium">Alle datakilder, eldst først:</p>
-          {freshness.map((f) => (
-            <p key={f.label}>
-              {formatDateDMY(f.dato)} — {f.label}
-            </p>
-          ))}
+          {lastUpdated && <p className="font-medium">Sist oppdatert {formatDateDMY(lastUpdated)}</p>}
+          {freshness.length > 0 && (
+            <>
+              <p className="font-medium">Alle datakilder, eldst først:</p>
+              {freshness.map((f) => (
+                <p key={f.label}>
+                  {formatDateDMY(f.dato)} — {f.label}
+                </p>
+              ))}
+            </>
+          )}
         </div>
       </TooltipContent>
     </Tooltip>
@@ -3481,10 +3488,9 @@ export default function IncomeForecastSection() {
         // samme skjerm (rollup.totalt, altså bokført+gjenstår+manuelle linjer) ved siden av
         // prognosetotalen, og krevde en egen forklaring for ikke å forvirre - selve tegnet på at
         // den ikke hørte hjemme i en header. Tallet finnes fortsatt i breakdownen under.
-        // v50: eldste datakilde flyttet hit fra KPI-boksene, som liten tekst ved siden av
-        // "Sist oppdatert" (Morten 2026-09-11).
-        subtitle={<DatakildeHeaderTekst freshness={dataSourceFreshness} idagIso={idagIso} lastUpdated={lastUpdated} />}
-        alwaysShowSubtitle
+        // v50: eldste datakilde flyttet hit fra KPI-boksene (Morten 2026-09-11).
+        // v51: fra tekstlinje til info-ikon ytterst til høyre — se DatakildeHeaderInfo.
+        headerInfo={<DatakildeHeaderInfo freshness={dataSourceFreshness} idagIso={idagIso} lastUpdated={lastUpdated} />}
         icon={TrendingUp}
         iconColorClass="text-yellow-400"
       />
