@@ -57,8 +57,16 @@ export default function RootLayout({
     // hjem-skjermen. Uten dette blinket det hvitt før appen kom opp.
     // Verdien her er kveldsmodus; temascriptet nedenfor bytter den synkront
     // til dagmodus-bunnen hvis det er det som er lagret.
+    //
+    // Nettopp DERFOR står suppressHydrationWarning her: scriptet setter
+    // data-theme og bytter inline-bakgrunnen FØR React hydrerer, så DOM-en
+    // avviker med vilje fra det serveren sendte. Flagget gjelder kun dette
+    // elementets egne attributter (ett nivå, ikke barna). Uten det kastet
+    // React en hydration-mismatch ved hver oppstart — ufarlig i seg selv,
+    // men dev-overlayet la seg over hele appen på mobil (2026-09-17).
     <html
       lang="nb"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       style={{ backgroundColor: THEME_BG.kveld }}
     >
