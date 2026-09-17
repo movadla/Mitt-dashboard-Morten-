@@ -183,12 +183,30 @@ async function fetchTsdbLeague(
   );
   if (!league) return [];
 
-  const eRes = await fetch(`${TSDB}/eventsnextleague.php?id=${league.idLeague}`, UA);
-  if (!eRes.ok) return [];
-  const eJson = await eRes.json();
   const today = localDateString();
-  return ((eJson.events ?? []) as TsdbEvent[])
+
+  // TheSportsDB flipper en flerdagers-turnering sin PÅGÅENDE dag over til
+  // "past" (og dermed ut av eventsnextleague) straks datoen er nådd, siden
+  // slike oppføringer ikke har noe reelt klokkeslett (strTime "00:00:00" —
+  // en midnatt-plassholder, ikke faktisk kampstart). Uten dette forsvant
+  // f.eks. "World Series of Darts Finals Day 1" fra lista på selve dagen
+  // den startet, og appen så ut til å hevde at turneringen ikke begynte før
+  // "Day 2" i morgen (2026-09-17, meldt av bruker). Hentes derfor fra BEGGE
+  // endepunkt og slås sammen — past bidrar kun med dagens egne oppføringer.
+  const [nextRes, pastRes] = await Promise.all([
+    fetch(`${TSDB}/eventsnextleague.php?id=${league.idLeague}`, UA),
+    fetch(`${TSDB}/eventspastleague.php?id=${league.idLeague}`, UA),
+  ]);
+  const nextJson = nextRes.ok ? await nextRes.json() : { events: [] };
+  const pastJson = pastRes.ok ? await pastRes.json() : { events: [] };
+  const merged = [
+    ...((nextJson.events ?? []) as TsdbEvent[]),
+    ...((pastJson.events ?? []) as TsdbEvent[]).filter(e => e.dateEvent === today),
+  ];
+
+  return [...new Map(merged.map(e => [e.idEvent, e])).values()]
     .filter(e => e.dateEvent >= today)
+    .sort((a, b) => a.dateEvent.localeCompare(b.dateEvent))
     .slice(0, limit)
     .map(e => ({
       id:          `${category}-${e.idEvent}`,
