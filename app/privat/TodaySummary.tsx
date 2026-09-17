@@ -318,10 +318,10 @@ function shortNewsTitle(item: NewsItem): string {
 // ved hver render, som betyr at hver linje mistet identiteten sin og ble montert
 // på nytt i stedet for oppdatert — merkbart som at miniatyrbildene blinket hver
 // gang "flere nyheter" ble slått av eller på. (2026-09-07)
-function NewsLine({ item, dimmed, onJump }: { item: NewsItem; dimmed?: boolean; onJump: () => void }) {
+function NewsLine({ item, dimmed, onJump }: { item: NewsItem; dimmed?: boolean; onJump: (item: NewsItem) => void }) {
   return (
     <li>
-      <button type="button" onClick={onJump} className="flex w-full items-center gap-2 text-left hover:text-accent-privat">
+      <button type="button" onClick={() => onJump(item)} className="flex w-full items-center gap-2 text-left hover:text-accent-privat">
         {item.image && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
@@ -341,10 +341,14 @@ function NewsLine({ item, dimmed, onJump }: { item: NewsItem; dimmed?: boolean; 
 
 // De 5 "viktigste" nyhetene — se isImportantNews. De vises direkte i "I dag"
 // uten et eget klikk (med en "Viktig"-markør + miniatyrbilde), resten ligger
-// bak en liten "flere nyheter"-knapp. Å trykke en sak hopper til hele
-// Nyheter-seksjonen (samme onJump som resten av "I dag") i stedet for å åpne
-// artikkelen direkte — "I dag" skal ikke være en blindvei ut av appen.
-function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: () => void }) {
+// bak en liten "flere nyheter"-knapp. Å trykke en sak hopper til Nyheter-
+// seksjonen MED selve saken sendt med (onJumpToNews, se PrivatPanel.tsx sin
+// pinnedNewsItem) — ikke bare en generisk fane-bytte. Uten det kunne saken ha
+// rukket å rotere ut av den rullerende topp-10-lista i tiden mellom at man så
+// den her og trykket på den, og man endte da i Nyheter uten å finne saken man
+// kom for (jf. tilbakemelding). Åpner fortsatt IKKE artikkelen direkte — "I
+// dag" skal ikke være en blindvei ut av appen.
+function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: (item: NewsItem) => void }) {
   const [showAll, setShowAll] = useState(false);
   const ranked = [...items]
     .sort((a, b) => Number(isImportantNews(b)) - Number(isImportantNews(a)))
@@ -393,7 +397,13 @@ function NewsPreview({ items, onJump }: { items: NewsItem[]; onJump: () => void 
   );
 }
 
-export default function TodaySummary({ onJump }: { onJump: (id: string) => void }) {
+export default function TodaySummary({
+  onJump,
+  onJumpToNews,
+}: {
+  onJump: (id: string) => void;
+  onJumpToNews: (item: NewsItem) => void;
+}) {
   // Delt SWR-cache (samme nøkkel/URL brukt av de fulle kortene, f.eks.
   // RemindersSection) — deduperer kallene istedenfor at "I dag"-boksen og
   // det fulle kortet henter akkurat det samme to ganger ved hver visning.
@@ -1089,7 +1099,7 @@ export default function TodaySummary({ onJump }: { onJump: (id: string) => void 
               {isToday && (
                 <div className="py-2 last:pb-0">
                   <CategoryRow icon={Newspaper} colorClass="text-orange-400" label="Nyheter" onJump={() => onJump("news")}>
-                    <NewsPreview items={news} onJump={() => onJump("news")} />
+                    <NewsPreview items={news} onJump={onJumpToNews} />
                   </CategoryRow>
                 </div>
               )}

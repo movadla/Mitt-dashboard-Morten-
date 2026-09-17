@@ -12,6 +12,7 @@ import FinanceSection from "./FinanceSection";
 import AlfredSection from "./AlfredSection";
 import ShoppingListSection from "./ShoppingListSection";
 import NewsSection from "./NewsSection";
+import type { NewsItem } from "@/lib/news";
 import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
@@ -140,6 +141,10 @@ export default function PrivatPanel() {
   // bytter fane OG sender med hvilken rad Kalender/Hendelser skal skrolle
   // til og fremheve.
   const [highlightTarget, setHighlightTarget] = useState<ReminderLink | null>(null);
+  // Nyhetssaker er ikke persistente (rullerende topp-10, se lib/news.ts) —
+  // en id alene holder ikke etter at cachen roterer, så hele saken sendes
+  // med her i stedet for kun highlightTarget sin id-referanse.
+  const [pinnedNewsItem, setPinnedNewsItem] = useState<NewsItem | null>(null);
 
   // Éncentralisert lytter for det gamle "privat-refresh"-eventet (fortsatt
   // dispatchet av alle mutasjons-handlere i de fulle kortene) — reveraliderer
@@ -202,12 +207,17 @@ export default function PrivatPanel() {
     handleSelect(link.targetType === "calendar-event" ? "calendar" : "events");
   }
 
+  function handleJumpToNews(item: NewsItem) {
+    setPinnedNewsItem(item);
+    handleSelect("news");
+  }
+
   // null her betyr "ingen kort å vise akkurat nå" (f.eks. tomt VM-program,
   // FPL inaktiv) — da hopper vi over navigasjonselementet også, ikke bare
   // kortet (se navItems under, som skiller "skjult av forretningslogikk"
   // fra "fortsatt under lasting").
   const sectionNodes: Record<string, React.ReactNode> = {
-    today: <TodaySummary onJump={handleSelect} />,
+    today: <TodaySummary onJump={handleSelect} onJumpToNews={handleJumpToNews} />,
     reminders: <RemindersSection onJumpToLinked={handleJumpToLinked} />,
     calendar: (
       <CalendarSection
@@ -233,7 +243,7 @@ export default function PrivatPanel() {
     trening: <TreningSection />,
     alfred: <AlfredSection />,
     shopping: <ShoppingListSection />,
-    news: <NewsSection />,
+    news: <NewsSection pinnedItem={pinnedNewsItem} onPinnedHandled={() => setPinnedNewsItem(null)} />,
     fpl: fplLoading ? (
       <div className={`${CARD_SHELL} p-4`}>
         <SkeletonRows count={1} className="h-5" />

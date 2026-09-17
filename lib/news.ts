@@ -1,7 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { after } from "next/server";
-import { getJSON, setJSON } from "./kv";
+import { del, getJSON, setJSON } from "./kv";
 import { recordUsage } from "./aiUsage";
 
 export interface NewsItem {
@@ -43,6 +43,21 @@ interface Candidate extends NewsItem {
   isVideo?: boolean;
 }
 
+// Lagres i Redis-cachen (så en senere on-demand AI-berikelse slipper å hente
+// artikkelsiden på nytt), men ALDRI sendt til klienten — se toPublicItem.
+// Dette er selve mekanismen som gjør AI-kostnaden på-forespørsel: den dyre
+// sideinnhentingen skjer fortsatt i det periodiske bakgrunnsløpet (billig —
+// bare en HTTP-GET), men Claude-kallet (summarizeText) utsettes til brukeren
+// faktisk åpner akkurat DEN saken.
+interface CachedNewsItem extends NewsItem {
+  articleText?: string;
+}
+
+function toPublicItem(item: CachedNewsItem): NewsItem {
+  const { articleText: _articleText, ...pub } = item;
+  return pub;
+}
+
 const CACHE_KEY = "cache:news:aggregert";
 // Hvor lenge cachen regnes som FERSK — utløpt cache serveres likevel (se
 // getNews), bare markert for bakgrunnsoppdatering, så denne styrer kun hvor
@@ -59,7 +74,7 @@ const BATCH_SIZE = 5;
 const UA = { headers: { "User-Agent": "Mozilla/5.0 (mitt-dashboard privat nyhetsboks)" } };
 
 interface NewsCache {
-  items: NewsItem[];
+  items: CachedNewsItem[];
   fetchedAt: number;
 }
 
@@ -387,8 +402,12 @@ function findDuplicateIndex(words: Set<string>, seen: Set<string>[]): number {
 // ── Kandidat-prosessering ────────────────────────────────────────────────────
 
 // Returnerer null hvis saken skal HOPPES OVER (video — telles ikke som en
-// fylt plass). Ellers den ferdige (evt. AI-berikede) saken.
-async function processCandidate(candidate: Candidate): Promise<NewsItem | null> {
+// fylt plass). Henter artikkelsiden (for video-avgjørelse OG for å ha
+// teksten klar til en SENERE on-demand AI-berikelse), men kaller ALDRI
+// Claude her — det er selve poenget: bakgrunnsløpet som bygger lista skal
+// være gratis, uansett hvor mange saker som havner i den. Se enrichNewsItem
+// for det faktiske AI-kallet, som kun skjer når brukeren åpner en sak.
+async function collectCandidate(candidate: Candidate): Promise<CachedNewsItem | null> {
   const { prefetchedText, isVideo: precomputedIsVideo, ...base } = candidate;
 
   let text = prefetchedText;
@@ -401,18 +420,14 @@ async function processCandidate(candidate: Candidate): Promise<NewsItem | null> 
     }
   }
   if (isVideo) return null;
-  if (!text) return base;
-
-  const ai = await summarizeText(base, text);
-  if (!ai) return base;
-  return { ...base, aiTitle: ai.title, oneLiner: ai.oneLiner, summaryBullets: ai.bullets, category: ai.category, importance: ai.importance };
+  return { ...base, articleText: text };
 }
 
-// Selve innsamlings-/AI-berikings-løpet — uendret logikk, bare trukket ut som
-// egen funksjon slik at getNews kan kjøre den enten synkront (helt kald
-// cache) eller i bakgrunnen uten å blokkere responsen (utløpt-men-brukbar
-// cache), se getNews under.
-async function fetchAndEnrichNews(): Promise<NewsItem[]> {
+// Selve innsamlingsløpet — uendret logikk fra tidligere (bortsett fra at AI-
+// kallet er borte, se collectCandidate), trukket ut som egen funksjon slik at
+// getNews kan kjøre den enten synkront (helt kald cache) eller i bakgrunnen
+// uten å blokkere responsen (utløpt-men-brukbar cache), se getNews under.
+async function fetchAndCollectNews(): Promise<CachedNewsItem[]> {
   const results = await Promise.allSettled(SOURCES.map((s) => s.fetch()));
   const all = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
@@ -422,20 +437,24 @@ async function fetchAndEnrichNews(): Promise<NewsItem[]> {
 
   // Prosesseres i samtidige bolker i stedet for én om gangen — vi må typisk
   // prøve 15-20 kandidater (noen skrelles bort som video/duplikat) for å
-  // fylle TOP_N reelle saker, og et rent sekvensielt løp (artikkel-henting +
-  // Claude-kall per kandidat) ville gjort et enkelt friskt-opp-løp for treg.
-  const enriched: NewsItem[] = [];
+  // fylle TOP_N reelle saker, og et rent sekvensielt løp (kun artikkel-
+  // henting nå, ingen Claude-kall) ville likevel gjort et enkelt
+  // friskt-opp-løp unødvendig tregt.
+  const collected: CachedNewsItem[] = [];
   const seenWords: Set<string>[] = [];
-  // Parallell til seenWords/enriched — hvilke KILDER (VG/TV2/...) som
+  // Parallell til seenWords/collected — hvilke KILDER (VG/TV2/...) som
   // allerede har bidratt til hver holdte sak, for å telle sourceCount uten å
   // dobbelttelle om samme kilde skulle dukke opp to ganger for samme sak.
   const seenSources: Set<string>[] = [];
-  for (let i = 0; i < candidates.length && enriched.length < TOP_N; i += BATCH_SIZE) {
+  for (let i = 0; i < candidates.length && collected.length < TOP_N; i += BATCH_SIZE) {
     const batch = candidates.slice(i, i + BATCH_SIZE);
-    const processed = await Promise.all(batch.map(processCandidate));
+    const processed = await Promise.all(batch.map(collectCandidate));
     for (const item of processed) {
       if (!item) continue; // video
-      const words = significantWords(item.aiTitle ?? item.title);
+      // Ingen AI-tittel finnes ennå på dette stadiet — dedupliseringen
+      // sammenligner derfor alltid rå kilde-titler, som fortsatt fanger opp
+      // "samme sak, ulik overskrift hos to aviser" i de fleste tilfeller.
+      const words = significantWords(item.title);
       const dupIdx = findDuplicateIndex(words, seenWords);
       if (dupIdx !== -1) {
         // Samme sak som en allerede holdt fra en annen kilde — teller som
@@ -443,18 +462,18 @@ async function fetchAndEnrichNews(): Promise<NewsItem[]> {
         // plass i TOP_N.
         if (!seenSources[dupIdx].has(item.source)) {
           seenSources[dupIdx].add(item.source);
-          enriched[dupIdx].sourceCount = (enriched[dupIdx].sourceCount ?? 1) + 1;
+          collected[dupIdx].sourceCount = (collected[dupIdx].sourceCount ?? 1) + 1;
         }
         continue;
       }
-      if (enriched.length >= TOP_N) continue;
+      if (collected.length >= TOP_N) continue;
       seenWords.push(words);
       seenSources.push(new Set([item.source]));
-      enriched.push({ ...item, sourceCount: 1 });
+      collected.push({ ...item, sourceCount: 1 });
     }
   }
 
-  return enriched;
+  return collected;
 }
 
 // Modul-nivå flagg (ikke i Redis) — hindrer at flere forespørsler som
@@ -477,7 +496,7 @@ function refreshNewsInBackground(): void {
   // holde funksjonen i live til denne callbacken er ferdig.
   after(async () => {
     try {
-      const items = await fetchAndEnrichNews();
+      const items = await fetchAndCollectNews();
       await setJSON<NewsCache>(CACHE_KEY, { items, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS);
     } catch {
       // Stille — neste forespørsel prøver igjen, og brukeren har uansett
@@ -496,15 +515,73 @@ function refreshNewsInBackground(): void {
 // årsaken til treg lasting, jf. tilbakemelding. Kun en HELT kald cache (aldri
 // hentet før) blokkerer fortsatt, siden det da ikke finnes noe å falle
 // tilbake til.
+// Samme "?refresh=1"-mønster som lib/sports.ts sin invalidateSportsCache —
+// tvinger en full oppfriskning i stedet for å vente på CACHE_FRESH_SECONDS.
+export async function invalidateNewsCache(): Promise<void> {
+  await del(CACHE_KEY);
+}
+
 export async function getNews(): Promise<NewsItem[]> {
   const cached = await getJSON<NewsCache>(CACHE_KEY);
   if (cached) {
     const ageSeconds = (Date.now() - cached.fetchedAt) / 1000;
     if (ageSeconds > CACHE_FRESH_SECONDS) refreshNewsInBackground();
-    return cached.items;
+    return cached.items.map(toPublicItem);
   }
 
-  const enriched = await fetchAndEnrichNews();
-  await setJSON<NewsCache>(CACHE_KEY, { items: enriched, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS);
-  return enriched;
+  const collected = await fetchAndCollectNews();
+  await setJSON<NewsCache>(CACHE_KEY, { items: collected, fetchedAt: Date.now() }, CACHE_SAFETY_TTL_SECONDS);
+  return collected.map(toPublicItem);
+}
+
+// Kalt kun når brukeren faktisk åpner én bestemt sak — dette er stedet (og
+// ENESTE stedet utenom feilsøking) et Claude-kall for nyheter skjer, jf.
+// tilbakemelding om at bakgrunnsoppfriskningen brukte penger på alle 10
+// sakene uansett om noen noensinne leste dem.
+//
+// `raw` er saken slik klienten allerede kjenner den (fra et tidligere
+// /api/news-svar) — nødvendig fordi en sak kan ha falt ut av den rullerende
+// topp-10-lista i cachen innen brukeren rekker å trykke på den (samme
+// tilbakemelding: en sak fra "I dag" må kunne åpnes selv om Nyheter-
+// seksjonen ikke lenger viser den). Uten `raw` ville vi ikke hatt noe å
+// falle tilbake til i det tilfellet.
+export async function enrichNewsItem(raw: NewsItem): Promise<NewsItem> {
+  const cached = await getJSON<NewsCache>(CACHE_KEY);
+  const idx = cached?.items.findIndex((i) => i.link === raw.link) ?? -1;
+
+  if (cached && idx !== -1) {
+    const current = cached.items[idx];
+    if (current.aiTitle) return toPublicItem(current); // allerede beriket — gratis
+    const text = current.articleText;
+    if (text) {
+      const ai = await summarizeText(current, text);
+      if (ai) {
+        const next: CachedNewsItem = {
+          ...current,
+          aiTitle: ai.title,
+          oneLiner: ai.oneLiner,
+          summaryBullets: ai.bullets,
+          category: ai.category,
+          importance: ai.importance,
+        };
+        const nextItems = [...cached.items];
+        nextItems[idx] = next;
+        await setJSON<NewsCache>(CACHE_KEY, { items: nextItems, fetchedAt: cached.fetchedAt }, CACHE_SAFETY_TTL_SECONDS);
+        return toPublicItem(next);
+      }
+    }
+    return toPublicItem(current);
+  }
+
+  // Falt ut av lista (eller cachen er helt tom) — hent siden på nytt og
+  // berik direkte fra klientens egen kopi av saken. Skrives bevisst IKKE inn
+  // i hovedcachen: den representerer ikke lenger et av de "aktuelle" TOP_N-
+  // plassene, bare et engangsoppslag for denne ene visningen.
+  const page = await fetchArticlePage(raw.link);
+  if (page?.isVideo) return raw;
+  const text = page?.text;
+  if (!text) return raw;
+  const ai = await summarizeText(raw, text);
+  if (!ai) return raw;
+  return { ...raw, aiTitle: ai.title, oneLiner: ai.oneLiner, summaryBullets: ai.bullets, category: ai.category, importance: ai.importance };
 }

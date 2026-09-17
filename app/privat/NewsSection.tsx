@@ -46,10 +46,11 @@ function isImportantNews(item: NewsItem): boolean {
   return (item.sourceCount ?? 1) >= 2 && item.importance !== "lav";
 }
 
-function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
+function NewsRow({ item, expanded, showMore, enriching, onToggle, onToggleMore }: {
   item: NewsItem;
   expanded: boolean;
   showMore: boolean;
+  enriching: boolean;
   onToggle: () => void;
   onToggleMore: () => void;
 }) {
@@ -108,8 +109,13 @@ function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
         <div className="mt-2 flex flex-col gap-2 border-t border-line pt-2">
           {/* Kort versjon først (én setning) — "Mer" avslører det fulle
               punktvise sammendraget/beskrivelsen, i stedet for å dumpe alt
-              med det samme man utvider saken. */}
-          {shortSummary ? (
+              med det samme man utvider saken. AI-tolkningen hentes først NÅ
+              (se fetchEnrichment i NewsSection) — ikke på forhånd for alle
+              saker, jf. tilbakemelding om at det kostet penger for saker
+              ingen noensinne leste. */}
+          {enriching ? (
+            <p className="text-sm text-ink-4">Henter sammendrag…</p>
+          ) : shortSummary ? (
             <p className="text-sm text-ink-2">{shortSummary}</p>
           ) : (
             <p className="text-sm text-ink-4">Ingen sammendrag tilgjengelig.</p>
@@ -153,12 +159,13 @@ function NewsRow({ item, expanded, showMore, onToggle, onToggleMore }: {
   );
 }
 
-export default function NewsSection() {
+export default function NewsSection({ pinnedItem, onPinnedHandled }: { pinnedItem?: NewsItem | null; onPinnedHandled?: () => void }) {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedLink, setExpandedLink] = useState<string | null>(null);
   const [moreLink, setMoreLink] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const [enrichingLink, setEnrichingLink] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/news")
@@ -175,6 +182,45 @@ export default function NewsSection() {
     const id = setInterval(load, REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  // Henter AI-tittel/sammendrag for ÉN sak, kun idet den faktisk åpnes — se
+  // lib/news.ts sin enrichNewsItem for hvorfor dette er billig å gjøre her
+  // (bakgrunnsoppfriskningen har allerede hentet artikkelteksten) og hvorfor
+  // det fortsatt virker for en sak som har falt ut av topp-10-lista (raw
+  // sendes med, klienten sin egen kopi er alt serveren trenger da).
+  const enrichIfNeeded = useCallback((item: NewsItem) => {
+    if (item.aiTitle) return;
+    setEnrichingLink(item.link);
+    fetch("/api/news/enrich", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(item),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((enriched: NewsItem | null) => {
+        if (!enriched) return;
+        setItems((current) => {
+          const exists = current.some((i) => i.link === enriched.link);
+          return exists ? current.map((i) => (i.link === enriched.link ? enriched : i)) : current;
+        });
+      })
+      .finally(() => setEnrichingLink((v) => (v === item.link ? null : v)));
+  }, []);
+
+  // En sak sendt inn fra "I dag" — hektes inn øverst i lista (selv om den
+  // ikke lenger finnes i den rullerende topp-10) og åpnes/berikes med det
+  // samme, siden brukeren allerede har bedt om å se akkurat denne.
+  useEffect(() => {
+    if (!pinnedItem) return;
+    setItems((current) => {
+      const exists = current.some((i) => i.link === pinnedItem.link);
+      return exists ? current : [pinnedItem, ...current];
+    });
+    setExpandedLink(pinnedItem.link);
+    enrichIfNeeded(pinnedItem);
+    onPinnedHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinnedItem]);
 
   return (
     <div className="border-t-2 border-t-orange-400/60 p-4">
@@ -206,9 +252,12 @@ export default function NewsSection() {
                   item={item}
                   expanded={expandedLink === item.link}
                   showMore={moreLink === item.link}
+                  enriching={enrichingLink === item.link}
                   onToggle={() => {
+                    const opening = expandedLink !== item.link;
                     setExpandedLink((v) => (v === item.link ? null : item.link));
                     setMoreLink(null);
+                    if (opening) enrichIfNeeded(item);
                   }}
                   onToggleMore={() => setMoreLink((v) => (v === item.link ? null : item.link))}
                 />
