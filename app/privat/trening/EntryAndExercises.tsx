@@ -9,7 +9,7 @@ import { Activity, Dumbbell, GripVertical, Pencil, X } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DoneToggle, ProgressChart, CardioSetRow, StrengthSetRow } from "./SetRows";
-import { formatSetLog, type ExerciseHistoryPoint } from "./treningHelpers";
+import { formatDuration, formatSetLog, parseDuration, type ExerciseHistoryPoint } from "./treningHelpers";
 
 const CATEGORY_LABEL: Record<ExerciseCategory, string> = { styrke: "Styrke", cardio: "Cardio" };
 const CATEGORY_ICON: Record<ExerciseCategory, typeof Dumbbell> = { styrke: Dumbbell, cardio: Activity };
@@ -57,7 +57,7 @@ export function EntryRow({
   onToggleEntryDone: () => void;
   onRemoveEntry: () => void;
 }) {
-  const [minutes, setMinutes] = useState(entry.minutes?.toString() ?? "");
+  const [minutes, setMinutes] = useState(entry.minutes != null ? formatDuration(entry.minutes) : "");
   const [notes, setNotes] = useState(entry.notes ?? "");
   const [showGraph, setShowGraph] = useState(false);
   const [showMore, setShowMore] = useState(!!entry.minutes || !!entry.notes);
@@ -80,7 +80,7 @@ export function EntryRow({
 
   function commitEntry() {
     onUpdateEntry({
-      minutes: minutes.trim() ? Number(minutes) : null,
+      minutes: parseDuration(minutes),
       notes: notes.trim() || null,
     });
   }
@@ -279,12 +279,17 @@ export function EntryRow({
         <div className="grid grid-cols-2 gap-2">
           {entry.category !== "cardio" && (
             <input
-              type="number"
+              type="text"
               inputMode="numeric"
+              pattern="[0-9:.,]*"
               value={minutes}
               onChange={(e) => setMinutes(e.target.value)}
-              onBlur={commitEntry}
-              placeholder="Minutter"
+              onBlur={() => {
+                const parsed = parseDuration(minutes);
+                setMinutes(parsed == null ? "" : formatDuration(parsed));
+                commitEntry();
+              }}
+              placeholder="Tid (min:sek)"
               className="w-full rounded-lg border border-transparent bg-surface-2 px-2 py-1.5 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
             />
           )}

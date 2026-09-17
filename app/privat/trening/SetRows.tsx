@@ -6,7 +6,15 @@ import type { SetIntensity, SetLog } from "@/lib/workouts";
 import { vibrate } from "@/lib/haptics";
 import SwipeableRow from "../SwipeableRow";
 import { X } from "lucide-react";
-import { INTENSITY_LABEL, chartCoords, formatKg, roundKg, type ExerciseHistoryPoint } from "./treningHelpers";
+import {
+  INTENSITY_LABEL,
+  chartCoords,
+  formatDuration,
+  formatKg,
+  parseDuration,
+  roundKg,
+  type ExerciseHistoryPoint,
+} from "./treningHelpers";
 
 // Gjenbrukt "done"-avkrysning — samme visuelle mønster (fylt grønn sirkel med
 // hake) som MilestoneRow i AlfredSection.tsx og ItemRow i ShoppingListSection.tsx.
@@ -299,14 +307,17 @@ export function CardioSetRow({
   onToggleDone: () => void;
   onRemove: () => void;
 }) {
-  const [minutes, setMinutes] = useState(set.minutes?.toString() ?? "");
+  // Tid holdes som rå tekst ("1:25", "12") mens man skriver, og tolkes først
+  // ved commit — et number-felt kan ikke ta kolon, og intervaller logges
+  // typisk i minutt:sekund.
+  const [minutes, setMinutes] = useState(set.minutes != null ? formatDuration(set.minutes) : "");
   const [kmt, setKmt] = useState(set.kmt?.toString() ?? "");
   const [distanceKm, setDistanceKm] = useState(set.distanceKm?.toString() ?? "");
   const [intensity, setIntensity] = useState<SetIntensity | "">(set.intensity ?? "");
 
   function commit(nextMinutes: string, nextKmt: string, nextDistanceKm: string, nextIntensity: SetIntensity | "") {
     onUpdate({
-      minutes: nextMinutes.trim() ? Number(nextMinutes) : null,
+      minutes: parseDuration(nextMinutes),
       kmt: nextKmt.trim() ? Number(nextKmt) : null,
       distanceKm: nextDistanceKm.trim() ? Number(nextDistanceKm) : null,
       intensity: nextIntensity || null,
@@ -315,9 +326,9 @@ export function CardioSetRow({
 
   function adjustMinutes(delta: number) {
     vibrate(6);
-    const current = minutes.trim() ? Number(minutes) : 0;
+    const current = parseDuration(minutes) ?? 0;
     const next = Math.max(0, current + delta);
-    const nextStr = String(next);
+    const nextStr = formatDuration(next);
     setMinutes(nextStr);
     commit(nextStr, kmt, distanceKm, intensity);
   }
@@ -347,17 +358,20 @@ export function CardioSetRow({
           <StepperButton symbol="−" label="Reduser minutter" onClick={() => adjustMinutes(-1)} />
           <div className="relative min-w-0 flex-1">
             <input
-              type="number"
+              type="text"
               inputMode="numeric"
+              pattern="[0-9:.,]*"
               value={minutes}
               onChange={(e) => setMinutes(e.target.value)}
-              onBlur={() => commit(minutes, kmt, distanceKm, intensity)}
-              placeholder="Min"
-              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-8 text-left text-base font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong sm:text-lg"
+              onBlur={() => {
+                const parsed = parseDuration(minutes);
+                setMinutes(parsed == null ? "" : formatDuration(parsed));
+                commit(minutes, kmt, distanceKm, intensity);
+              }}
+              placeholder="Min:sek"
+              aria-label="Tid, minutter og sekunder"
+              className="w-full min-w-0 rounded-lg border border-transparent bg-surface-1 py-1.5 pl-2 pr-2 text-left text-base font-semibold tabular-nums text-ink-1 outline-none placeholder:text-sm placeholder:font-normal placeholder:text-ink-4 focus:border-line-strong sm:text-lg"
             />
-            {minutes.trim() && (
-              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">min</span>
-            )}
           </div>
           <StepperButton symbol="+" label="Øk minutter" onClick={() => adjustMinutes(1)} />
         </div>

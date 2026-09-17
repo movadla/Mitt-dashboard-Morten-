@@ -124,12 +124,49 @@ export function roundKg(kg: number): number {
   return Math.round(kg * 2) / 2;
 }
 
+// Varighet lagres fortsatt som (desimale) minutter i SetLog/WorkoutEntry —
+// 1:25 blir 1,4167 — så gamle heltallsverdier og API-et er uendret. Kun
+// inn-/utlesing i UI kjenner til minutt:sekund-formen.
+
+// Godtar "1:25", "12", "12,5", "12.5" og ":45". Runder til nærmeste sekund.
+export function parseDuration(input: string): number | null {
+  const raw = input.trim().replace(",", ".");
+  if (!raw) return null;
+  const colon = raw.match(/^(\d*):(\d{1,2})$/);
+  if (colon) {
+    const mins = colon[1] ? Number(colon[1]) : 0;
+    const secs = Number(colon[2]);
+    if (secs >= 60) return null;
+    return mins + secs / 60;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 60) / 60;
+}
+
+// "1:25" for brøkminutter, "12:00" for hele — samme form i begge tilfeller,
+// slik at tallet i et sett-felt alltid leses som tid, ikke som et antall.
+export function formatDuration(minutes: number): string {
+  const totalSeconds = Math.round(minutes * 60);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Kompakt etikett for sammendrag/historikk: hele minutter som "45 min",
+// alt annet som "1:25" — "45:00" i en tekstlinje er bare støy.
+export function formatDurationLabel(minutes: number): string {
+  const totalSeconds = Math.round(minutes * 60);
+  if (totalSeconds % 60 === 0) return `${totalSeconds / 60} min`;
+  return formatDuration(minutes);
+}
+
 export function formatSetLog(s: SetLog): string | null {
   const parts: string[] = [];
   if (s.kg != null && s.reps != null) parts.push(`${formatKg(s.kg)}kg×${s.reps}`);
   else if (s.kg != null) parts.push(`${formatKg(s.kg)}kg`);
   else if (s.reps != null) parts.push(`${s.reps} reps`);
-  if (s.minutes != null) parts.push(`${s.minutes} min`);
+  if (s.minutes != null) parts.push(formatDurationLabel(s.minutes));
   if (s.distanceKm != null) parts.push(`${formatKg(s.distanceKm)} km`);
   if (s.kmt != null) parts.push(`${s.kmt} km/t`);
   if (s.intensity) parts.push(INTENSITY_LABEL[s.intensity]);

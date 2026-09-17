@@ -11,6 +11,7 @@ import {
   calendarMonthFromOffset,
   exerciseHistory,
   findLastEntry,
+  formatDurationLabel,
   formatElapsed,
   formatKg,
   formatMonthLabel,
@@ -176,7 +177,7 @@ export function HistoryRow({
                 <li key={e.id} className="text-sm text-ink-2">
                   <span className="font-medium text-ink-1">{e.exerciseName}</span>
                   {e.sets.length > 0 && <span className="text-ink-3"> · {setSummary(e)}</span>}
-                  {e.minutes ? <span className="text-ink-3"> · {e.minutes} min</span> : null}
+                  {e.minutes ? <span className="text-ink-3"> · {formatDurationLabel(e.minutes)}</span> : null}
                   {e.notes && <p className="text-2xs text-ink-4">{e.notes}</p>}
                 </li>
               ))
