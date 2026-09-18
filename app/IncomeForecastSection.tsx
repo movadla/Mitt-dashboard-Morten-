@@ -139,6 +139,18 @@ type OmsetningsavregningSortKey =
   | "gjenstar2026"
   | "ekstrafakturering";
 
+// v57 (2026-09-18, Morten: "pass på at layout og utforming er lik på alle seksjonene og bokser og
+// tabeller, slik at det er gjenkjenning på tvers"): felles klassestrenger for tabellhodet, de
+// sorterbare kolonneknappene og klikkbare rader - brukt av ALLE tabellene i seksjonen
+// (Leieinntekter/Parkering, Omsetningsavregning, Kontrakter på utløp, Ledige lokaler). Før hadde
+// hver tabell sin egen variant (små/store bokstaver, medium/semibold, ink-2/ink-4, med/uten
+// bunnlinje under hodet). Kolonnetitler og innhold er uendret - bare utformingen er samlet her.
+const TABELL_HODE_RAD = "border-b border-line-strong text-left text-ink-2";
+const TABELL_TH = "text-2xs font-semibold uppercase tracking-wide text-ink-2";
+const tabellSortKnapp = (active: boolean) =>
+  `inline-flex items-center gap-0.5 text-2xs font-semibold uppercase tracking-wide transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-2"}`;
+const TABELL_RAD_KLIKKBAR = "cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
+
 function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["butikker"][number] }) {
   const gulvavvik = b.gulvavvik ?? null;
   const harGulvavvik = gulvavvik != null && Math.abs(gulvavvik) >= 1000;
@@ -255,11 +267,7 @@ function OmsetningsavregningBlock({
   function headerButton(label: string, key: OmsetningsavregningSortKey) {
     const active = sort.key === key;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(key)}
-        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
-      >
+      <button type="button" onClick={() => toggleSort(key)} className={tabellSortKnapp(active)}>
         {label}
         {active && (sort.dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
       </button>
@@ -267,7 +275,7 @@ function OmsetningsavregningBlock({
   }
 
   return (
-    <div id="drilldown-omsetningsavregning" className="scroll-mt-4 rounded-xl border border-line bg-surface-2/40 p-3">
+    <div id="drilldown-omsetningsavregning" className="flex scroll-mt-4 flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Omsetningsavregning"
         subtitle={snapshot ? formatKr(snapshot.totalEkstrafakturering) : "Laster…"}
@@ -279,7 +287,7 @@ function OmsetningsavregningBlock({
       />
       {!collapsed && (
         <>
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
             <input
               type="text"
@@ -301,7 +309,7 @@ function OmsetningsavregningBlock({
               <div className="-mx-1 overflow-x-auto">
                 <table className="w-full min-w-[780px] text-sm">
                   <thead>
-                    <tr className="text-left text-ink-4">
+                    <tr className={TABELL_HODE_RAD}>
                       <th className="px-3 py-2">{headerButton("Leietaker", "butikk")}</th>
                       <th className="px-3 py-2">{headerButton("Bygg", "bygg")}</th>
                       <th className="px-3 py-2 text-right">{headerButton("Omsetning", "omsetningKorr")}</th>
@@ -317,10 +325,7 @@ function OmsetningsavregningBlock({
                       const isOpen = expanded.has(b.butikk);
                       return (
                         <Fragment key={`${b.butikk}-${b.bygg}`}>
-                          <tr
-                            className="cursor-pointer border-t border-line/60 transition-colors hover:bg-surface-2/50"
-                            onClick={() => toggleExpanded(b.butikk)}
-                          >
+                          <tr className={TABELL_RAD_KLIKKBAR} onClick={() => toggleExpanded(b.butikk)}>
                             <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">
                               <span className="inline-flex items-center gap-1">
                                 {b.krevManuellSjekk && <AlertTriangle className="h-3 w-3 shrink-0 text-status-warning" aria-label="Krever manuell sjekk" />}
@@ -376,7 +381,7 @@ function OmsetningsavregningBlock({
                 <button
                   type="button"
                   onClick={() => setVisibleCount((v) => v + 30)}
-                  className="mt-2 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+                  className="w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
                 >
                   Vis {Math.min(30, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
                 </button>
@@ -391,29 +396,31 @@ function OmsetningsavregningBlock({
             Om denne rapporten
             {showInfo ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
+          {/* v57 (2026-09-18, Morten: "deles opp punktvis ... kun det mest relevante"): fra ett
+              sammenhengende avsnitt til korte punkter; metodedetaljene om Amesto/lager er tatt ut. */}
           {showInfo && (
-            <p className="mt-1.5 text-2xs text-ink-4">
-              Pr. leieforhold med minimums- eller omsetningsbasert leie: forventet leie (omsetningsprosent × rullerende
-              12 mnd omsetning) mot kjerneleien (minimumsleie/omsetningsleie) som er fakturert og gjenstår å fakturere i
-              år, hentet fra samme tall som leietaker-tabellen. Lager, tillegg og lignende holdes utenfor, slik Amesto
-              gjør i den faktiske avregningen. Avregning er gulvet på 0 kr, siden minimumsleien allerede er sikret
-              gjennom vanlig fakturering. Minimumsleien på CC Vest settes hvert år lik fjorårets realiserte
-              omsetningsleie, så estimatet er svært følsomt for omsetningstallet - oppdater Omsetningsleie-fanen før
-              hver innlevering. Trykk en rad for kontraktsminimum, 2025-fasit fra Amesto og kommentarer. Kilde:{" "}
-              {snapshot?.kilde ?? "…"} (beregnet {snapshot?.sistOppdatert ?? "…"}).
-              {snapshot && snapshot.antallKrevManuellSjekk ? <> {snapshot.antallKrevManuellSjekk} leieforhold er merket for manuell sjekk.</> : null}
+            <ul className="mt-1.5 flex list-disc flex-col gap-1 pl-4 text-2xs text-ink-4">
+              <li>Forventet leie = omsetningsprosent × rullerende 12 mnd omsetning, mot minimums-/omsetningsleien som er fakturert og gjenstår i år.</li>
+              <li>Avregningen går aldri under 0 kr – minimumsleien er allerede sikret gjennom vanlig fakturering.</li>
+              <li>Minimumsleien på CC Vest settes lik fjorårets omsetningsleie – oppdater Omsetningsleie-fanen før hver innlevering.</li>
+              <li>Trykk på en rad for kontraktsminimum, 2025-avregning og kommentarer.</li>
+              {snapshot && snapshot.antallKrevManuellSjekk ? <li>{snapshot.antallKrevManuellSjekk} leieforhold er merket for manuell sjekk.</li> : null}
               {snapshot && snapshot.antallGulvavvik ? (
-                <>
-                  {" "}
-                  {snapshot.antallGulvavvik} leieforhold har fakturert + gjenstår under kontraktsminimum (sum {formatKr(snapshot.sumGulvavvik ?? 0)}) -
-                  typisk fordi første kvartal ble fakturert etter fjorårets minimumsleie; differansen kommer inn via avregningen.
-                </>
+                <li>
+                  {snapshot.antallGulvavvik} leieforhold ligger under kontraktsminimum (sum {formatKr(snapshot.sumGulvavvik ?? 0)}) – differansen kommer inn via
+                  avregningen.
+                </li>
               ) : null}
-              {snapshot && snapshot.antallIkkeMatchet > 0 && <> {snapshot.antallIkkeMatchet} leieforhold er ikke funnet i leietaker-tabellen og har ingen avregning.</>}
+              {snapshot && snapshot.antallIkkeMatchet > 0 && <li>{snapshot.antallIkkeMatchet} leieforhold mangler i leietaker-tabellen og har ingen avregning.</li>}
               {snapshot && snapshot.antallUtelatt > 0 && (
-                <> {snapshot.antallUtelatt} leieforhold er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).</>
+                <li>
+                  {snapshot.antallUtelatt} leieforhold er utelatt fordi de ikke er omsetningsbaserte ({snapshot.butikkerUtelatt.join(", ")}).
+                </li>
               )}
-            </p>
+              <li>
+                Kilde: {snapshot?.kilde ?? "…"}. Beregnet {snapshot?.sistOppdatert ?? "…"}.
+              </li>
+            </ul>
           )}
         </>
       )}
@@ -1654,6 +1661,8 @@ function KommentarCell({
 // budsjettlinje, og arealet deres ligger allerede i de gjenværende ledige linjene. Identiteten som
 // holder for alle 19 rader er: opprinnelig = ledigTrukketUt + forventet + nullet, og summen av
 // poster uten "nestet" er nøyaktig ledigTrukketUt.
+type LedigSortKey = "bygg" | "budsjett" | "inntekt" | "avvik";
+
 function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Ledige lokaler", true);
   const [search, setSearch] = useState("");
@@ -1701,15 +1710,32 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
             sokeTekst: [row.navn, ...budsjettPoster.map((p) => p.navn), ...row.linjer.map((x) => x.beskrivelse)].join(" ").toLowerCase(),
           };
         })
-        // Kun pr. bygg, største budsjett først - ingen sorteringsvalg (Morten 2026-09-18).
+        // Kun pr. bygg (Morten 2026-09-18) - sorteringsknappene er borte, men kolonnetitlene kan
+        // trykkes (v57, Morten: "alle tabeller ... trykke på tittelen til kolonnen og sortere").
         .sort((a, b) => b.budsjett - a.budsjett),
     [rows],
   );
 
+  const [sort, setSort] = useState<{ key: LedigSortKey; dir: 1 | -1 }>({ key: "budsjett", dir: -1 });
+  function toggleSort(key: LedigSortKey) {
+    setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: key === "bygg" ? 1 : -1 }));
+  }
+  function headerButton(label: string, key: LedigSortKey) {
+    const active = sort.key === key;
+    return (
+      <button type="button" onClick={() => toggleSort(key)} className={tabellSortKnapp(active)}>
+        {label}
+        {active && (sort.dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
+      </button>
+    );
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? derivedAll.filter((d) => d.sokeTekst.includes(q)) : derivedAll;
-  }, [derivedAll, search]);
+    const treff = q ? derivedAll.filter((d) => d.sokeTekst.includes(q)) : derivedAll;
+    const { key, dir } = sort;
+    return [...treff].sort((a, b) => (key === "bygg" ? a.row.navn.localeCompare(b.row.navn, "nb-NO") : a[key] - b[key]) * dir);
+  }, [derivedAll, search, sort]);
 
   function toggle(navn: string) {
     setExpanded((prev) => {
@@ -1727,6 +1753,8 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
+      {/* Ingen beløp i headeren (Morten 2026-09-18): over/under-tallet inngår ikke i prognosetotalen
+          slik naboseksjonenes headertall gjør, og det står i boksene når kortet åpnes. */}
       <CardHeader
         title="Ledige lokaler"
         collapsed={collapsed}
@@ -1778,11 +1806,11 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
             <div className="-mx-1 overflow-x-auto">
               <table className="w-full text-2xs sm:text-sm">
                 <thead>
-                  <tr className="text-left text-2xs font-medium text-ink-4">
-                    <th className="px-2 py-2 sm:px-3">Bygg</th>
-                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Budsjett</th>
-                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Inntekt</th>
-                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">Over/under</th>
+                  <tr className={TABELL_HODE_RAD}>
+                    <th className="px-2 py-2 sm:px-3">{headerButton("Bygg", "bygg")}</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">{headerButton("Budsjett", "budsjett")}</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">{headerButton("Inntekt", "inntekt")}</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right sm:px-3">{headerButton("Over/under", "avvik")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1790,15 +1818,12 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                     const isOpen = expanded.has(d.row.navn);
                     return (
                       <Fragment key={d.row.navn}>
-                        <tr className="cursor-pointer border-t border-line hover:bg-surface-2/60" onClick={() => toggle(d.row.navn)}>
-                          <td className="px-2 py-2 sm:px-3">
-                            <span className="flex items-center gap-1.5">
-                              {isOpen ? (
-                                <ChevronUp className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-                              ) : (
-                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-                              )}
-                              <span className="truncate font-medium text-ink-1">{d.row.navn}</span>
+                        <tr className={TABELL_RAD_KLIKKBAR} onClick={() => toggle(d.row.navn)}>
+                          {/* v57: samme navnecelle som Leieinntekter/Kontrakter på utløp - ingen
+                              chevron og vanlig vekt, så radene kjennes igjen på tvers av tabellene. */}
+                          <td className="max-w-[160px] px-2 py-2 text-ink-1 sm:px-3">
+                            <span className="flex min-w-0 items-center gap-1">
+                              <span className="truncate">{d.row.navn}</span>
                             </span>
                           </td>
                           <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2 sm:px-3">{formatKr(d.budsjett)}</td>
@@ -1919,7 +1944,9 @@ function LedigDetaljRader({
   );
 }
 
-type KontraktUtlopSortKey = "leietaker" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "ekstraVedReforhandling";
+// v57 (2026-09-18, Morten: "alle tabeller ... man må kunne trykke på tittelen til kolonnen og
+// sortere på den"): bygg, utløpsdato og sannsynlighet er også sorterbare.
+type KontraktUtlopSortKey = "leietaker" | "bygg" | "utlop" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "sannsynlighet" | "ekstraVedReforhandling";
 
 // Ny seksjon (Morten, 2026-08-29): "samme kolonner som leietakerlisten" + mulighet til å sette
 // sannsynlighet for reforhandling PR. KONTRAKT, med en potensiell-eksponering-sum som endrer seg
@@ -2041,13 +2068,18 @@ function KontrakterPaUtlopBlock({
   }, [derivedAll, search]);
 
   function toggleSort(key: KontraktUtlopSortKey) {
-    setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: key === "leietaker" ? 1 : -1 }));
+    // Tekst og dato starter stigende (A-Å / tidligste utløp først), tall synkende.
+    const stigendeForst = key === "leietaker" || key === "bygg" || key === "utlop";
+    setSort((prev) => (prev.key === key ? { key, dir: (prev.dir * -1) as 1 | -1 } : { key, dir: stigendeForst ? 1 : -1 }));
   }
 
   const sorted = useMemo(() => {
     const { key, dir } = sort;
     return [...filtered].sort((a, b) => {
       if (key === "leietaker") return a.kontrakt.leietaker.localeCompare(b.kontrakt.leietaker, "nb-NO") * dir;
+      if (key === "bygg") return a.kontrakt.bygg.localeCompare(b.kontrakt.bygg, "nb-NO") * dir;
+      if (key === "utlop") return a.kontrakt.maxSlutt.localeCompare(b.kontrakt.maxSlutt) * dir; // ISO-datoer sorterer riktig som tekst
+      if (key === "sannsynlighet") return (a.visSignal.sannsynlighetProsent - b.visSignal.sannsynlighetProsent) * dir;
       const av = a[key];
       const bv = b[key];
       if (av === null && bv === null) return 0;
@@ -2071,11 +2103,7 @@ function KontrakterPaUtlopBlock({
   function headerButton(label: string, key: KontraktUtlopSortKey) {
     const active = sort.key === key;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(key)}
-        className={`inline-flex items-center gap-0.5 text-2xs font-medium transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-4"}`}
-      >
+      <button type="button" onClick={() => toggleSort(key)} className={tabellSortKnapp(active)}>
         {label}
         {active && (sort.dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
       </button>
@@ -2130,15 +2158,15 @@ function KontrakterPaUtlopBlock({
             <div className="-mx-1 overflow-x-auto">
               <table className="w-full min-w-[960px] text-sm">
                 <thead>
-                  <tr className="text-left text-ink-4">
+                  <tr className={TABELL_HODE_RAD}>
                     <th className="px-3 py-2">{headerButton("Leietaker", "leietaker")}</th>
-                    <th className="px-3 py-2 text-left text-2xs font-medium text-ink-4">Bygg</th>
-                    <th className="px-3 py-2 text-left text-2xs font-medium text-ink-4">Utløp</th>
+                    <th className="px-3 py-2">{headerButton("Bygg", "bygg")}</th>
+                    <th className="px-3 py-2">{headerButton("Utløp", "utlop")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("Fakturert", "fakturert")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("Gjenstår", "gjenstar")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("Budsjett", "budsjett")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("+/-", "avvik")}</th>
-                    <th className="px-3 py-2 text-left">Sannsynlighet reforhandling</th>
+                    <th className="px-3 py-2">{headerButton("Sannsynlighet reforhandling", "sannsynlighet")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("Ekstra ved reforhandling", "ekstraVedReforhandling")}</th>
                   </tr>
                 </thead>
@@ -2151,10 +2179,7 @@ function KontrakterPaUtlopBlock({
                         : `${formatDateDMY(d.kontrakt.minSlutt)}–${formatDateDMY(d.kontrakt.maxSlutt)}`;
                     return (
                       <Fragment key={d.kontrakt.kontraktsnokkel}>
-                        <tr
-                          className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
-                          onClick={() => toggle(d.kontrakt.kontraktsnokkel)}
-                        >
+                        <tr className={TABELL_RAD_KLIKKBAR} onClick={() => toggle(d.kontrakt.kontraktsnokkel)}>
                           <td className="max-w-[150px] px-3 py-2 text-ink-1">
                             <span className="flex min-w-0 items-center gap-1">
                               <span className="truncate">{d.kontrakt.leietaker}</span>
@@ -2234,7 +2259,7 @@ function KontrakterPaUtlopBlock({
             <button
               type="button"
               onClick={() => setVisibleCount((v) => v + 20)}
-              className="mt-1 w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
+              className="w-full rounded-xl border border-dashed border-line py-2 text-2xs font-medium text-ink-3 transition hover:border-line-strong hover:text-ink-1"
             >
               Vis {Math.min(20, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
             </button>
@@ -2478,11 +2503,14 @@ function TenantForecastTable({
     });
   }
 
-  const [sort, setSort] = useState<{ key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik"; dir: 1 | -1 } | null>(null);
+  // v57 (2026-09-18, Morten: "alle tabeller ... trykke på tittelen til kolonnen og sortere"):
+  // også Start/slutt (på datoen, slutt foran start) og Kommentar (alfabetisk, tomme sist).
+  type TabellSortKey = "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "startSlutt" | "kommentar";
+  const [sort, setSort] = useState<{ key: TabellSortKey; dir: 1 | -1 } | null>(null);
 
-  function toggleSort(key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik") {
+  function toggleSort(key: TabellSortKey) {
     setSort((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: key === "navn" ? 1 : -1 };
+      if (!prev || prev.key !== key) return { key, dir: key === "navn" || key === "startSlutt" || key === "kommentar" ? 1 : -1 };
       return { key, dir: (prev.dir * -1) as 1 | -1 };
     });
     setVisibleCount(20);
@@ -2491,8 +2519,29 @@ function TenantForecastTable({
   const sorted = useMemo(() => {
     if (!sort) return filtered;
     const { key, dir } = sort;
+    const sortDato = (row: DisplayTenantRow) => {
+      const { start, slutt } = finn2026StartSlutt(row.linjer);
+      return slutt ?? start ?? null;
+    };
+    const kommentarFor = (row: DisplayTenantRow) => (commentOverrides[row.navn] ?? row.kommentar ?? "").trim();
     return [...filtered].sort((a, b) => {
       if (key === "navn") return a.navn.localeCompare(b.navn, "nb-NO") * dir;
+      if (key === "startSlutt") {
+        const da = sortDato(a);
+        const db = sortDato(b);
+        if (da === null && db === null) return 0;
+        if (da === null) return 1; // uten dato alltid sist, uansett retning
+        if (db === null) return -1;
+        return da.localeCompare(db) * dir; // ISO-datoer sorterer riktig som tekst
+      }
+      if (key === "kommentar") {
+        const ka = kommentarFor(a);
+        const kb = kommentarFor(b);
+        if (!ka && !kb) return 0;
+        if (!ka) return 1;
+        if (!kb) return -1;
+        return ka.localeCompare(kb, "nb-NO") * dir;
+      }
       const av = a[key];
       const bv = b[key];
       if (av === null && bv === null) return 0;
@@ -2500,7 +2549,7 @@ function TenantForecastTable({
       if (bv === null) return -1;
       return (av - bv) * dir;
     });
-  }, [filtered, sort]);
+  }, [filtered, sort, commentOverrides]);
 
   const visible = sorted.slice(0, visibleCount);
 
@@ -2578,14 +2627,10 @@ function TenantForecastTable({
     return b ? { width: `${b}px` } : { width: standard };
   }
 
-  function headerButton(label: string, key: "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik") {
+  function headerButton(label: string, key: TabellSortKey) {
     const active = sort?.key === key;
     return (
-      <button
-        type="button"
-        onClick={() => toggleSort(key)}
-        className={`inline-flex items-center gap-0.5 text-2xs font-semibold uppercase tracking-wide transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-2"}`}
-      >
+      <button type="button" onClick={() => toggleSort(key)} className={tabellSortKnapp(active)}>
         {label}
         {active ? (
           sort!.dir === 1 ? (
@@ -2616,25 +2661,41 @@ function TenantForecastTable({
         <>
       {/* v50 (2026-09-11, Morten): "427 rader"-linja mellom headeren og grupperingsfanene er
           fjernet - den skapte et hull i toppen av kortet uten å si noe man handler på. */}
-      {totalBudsjettOverride != null && (
-        <p className="text-2xs text-ink-4">
-          Budsjettert kun som én totallinje i kildefila, ikke pr. {GRUPPERING_LABEL[gruppering].toLowerCase()} — Budsjett/+/- vises derfor kun på
-          Totalt-raden, mot samlet fakturert + gjenstår.
-        </p>
-      )}
-      <div className="flex w-fit gap-1 rounded-lg bg-surface-2 p-0.5">
-        {GRUPPERINGER.map((g) => (
-          <button
-            key={g}
-            type="button"
-            onClick={() => handleGrupperingChange(g)}
-            className={`rounded-md px-2.5 py-1 text-2xs font-medium transition ${
-              gruppering === g ? "bg-accent text-white" : "text-ink-3 hover:text-ink-1"
-            }`}
-          >
-            {GRUPPERING_LABEL[g]}
-          </button>
-        ))}
+      {/* v57 (2026-09-18, Morten: "fjern denne hjelpeteksten og ha heller det vist når man holder
+          over en infoboks" + "infoknappen ved parkering kan vise etter man åpner den boksen"):
+          forklaringen om at parkering bare er budsjettert som én totallinje ligger bak et infoikon
+          ytterst til høyre på fanelinjen - inne i den åpne boksen, ikke i headeren, så beløpene i
+          de kollapsede kortheaderne står på linje med hverandre. */}
+      <div className="flex items-center gap-2">
+        <div className="flex w-fit gap-1 rounded-lg bg-surface-2 p-0.5">
+          {GRUPPERINGER.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => handleGrupperingChange(g)}
+              className={`rounded-md px-2.5 py-1 text-2xs font-medium transition ${
+                gruppering === g ? "bg-accent text-white" : "text-ink-3 hover:text-ink-1"
+              }`}
+            >
+              {GRUPPERING_LABEL[g]}
+            </button>
+          ))}
+        </div>
+        {totalBudsjettOverride != null && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button type="button" aria-label="Om budsjettet for parkering" className="ml-auto shrink-0 text-ink-4 hover:text-ink-1">
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              }
+            />
+            <TooltipContent className="max-w-xs">
+              Budsjettert kun som én totallinje i kildefila, ikke pr. {GRUPPERING_LABEL[gruppering].toLowerCase()} — Budsjett/+/- vises derfor kun på
+              Totalt-raden, mot samlet fakturert + gjenstår.
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
       <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
         <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
@@ -2657,7 +2718,11 @@ function TenantForecastTable({
               automatisk layout, så bredden ble regnet ut fra innholdet - og når en rad ble utvidet
               kom detaljlinjene med lengre tekst inn og dyttet kolonnene sidelengs. table-fixed +
               colgroup låser breddene, slik at de er identiske uansett hva som er åpent. */}
-          <table className="w-full min-w-[720px] table-fixed text-sm">
+          {/* v57: min-bredden må dekke summen av de faste kolonnene (colgroup under) - med
+              Leietaker-fanen er det 5 x 7,5 rem + 13 rem = 50,5 rem = 808 px FØR navnekolonnen,
+              så 720 px ga navnekolonnen negativ bredde på mobil og "Start/slutt" la seg oppå
+              "Leietaker" (Mortens skjermbilde 2026-09-18). */}
+          <table className={`w-full table-fixed text-sm ${gruppering === "leietaker" ? "min-w-[1000px]" : "min-w-[720px]"}`}>
             <colgroup>
               <col />
               {gruppering === "leietaker" && <col style={kolonneStil("startSlutt", "7.5rem")} />}
@@ -2668,11 +2733,11 @@ function TenantForecastTable({
               {gruppering === "leietaker" && <col style={kolonneStil("kommentar", "13rem")} />}
             </colgroup>
             <thead>
-              <tr className="border-b border-line-strong text-left text-ink-2">
+              <tr className={TABELL_HODE_RAD}>
                 <th className="relative px-3 py-2">{headerButton(GRUPPERING_LABEL[gruppering], "navn")}</th>
                 {gruppering === "leietaker" && (
-                  <th className="relative whitespace-nowrap px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wide text-ink-2">
-                    Start/slutt {PROGNOSE_AR}
+                  <th className="relative whitespace-nowrap px-3 py-2 text-left">
+                    {headerButton(`Start/slutt ${PROGNOSE_AR}`, "startSlutt")}
                     {dragHandtak("startSlutt")}
                   </th>
                 )}
@@ -2693,8 +2758,8 @@ function TenantForecastTable({
                   {dragHandtak("avvik")}
                 </th>
                 {gruppering === "leietaker" && (
-                  <th className="relative px-3 py-2 text-left text-2xs font-semibold uppercase tracking-wide text-ink-2">
-                    Kommentar
+                  <th className="relative px-3 py-2 text-left">
+                    {headerButton("Kommentar", "kommentar")}
                     {dragHandtak("kommentar")}
                   </th>
                 )}
