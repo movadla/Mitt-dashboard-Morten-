@@ -58,6 +58,11 @@ interface LedigPost {
   // filtrere den bort, ellers dobbelttelles beløpet.
   type: "leietaker" | "intern" | "usporet" | "nestet";
   beskrivelse?: string;
+  // v60 (2026-09-19, Morten: "Ledige lokaler" er ren info, positive avvik bør vises): leietakerens
+  // EGEN fullårsverdi på nøyaktig dette bygget (fra deres egne Fazile-linjer), uavhengig av `belop`
+  // (som er en skive av det GAMLE Ledig-budsjettet, aldri større enn budsjettet selv). Mangler for
+  // "usporet"-poster (ingen leietakerrad å hente fra) - UI-en faller da tilbake til `belop`.
+  faktiskInntekt?: number;
 }
 
 interface TenantForecastKonto {

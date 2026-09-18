@@ -21,7 +21,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
+import { CardHeader, SkeletonRows, usePersistedCollapse } from "./CardShell";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RECEIVABLES, RECEIVABLES_HENTET_DATO, formatDateDMY, formatKr } from "@/lib/widgets";
@@ -48,9 +48,8 @@ import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
 import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
 import type { TenantSignal, TenantSignalType } from "@/lib/tenantSignals";
 import { computeForecastRollup, type ForecastRollup } from "@/lib/incomeForecastCompute";
-import type { IncomeForecastPart, ManualIncomeLine, ManualLineConfidence } from "@/lib/incomeForecastManual";
+import type { ManualIncomeLine } from "@/lib/incomeForecastManual";
 import type { HistoryPoint } from "@/lib/incomeForecastHistory";
-import { vibrate } from "@/lib/haptics";
 
 // v29 (2026-09-08): prognoseåret sto hardkodet som "2026" i et titalls overskrifter, brødtekster
 // og to datointervaller, mens alle snapshotene bærer et `ar`-felt. Det betyr at siden begynner å
@@ -58,12 +57,6 @@ import { vibrate } from "@/lib/haptics";
 // snapshotene har samme år, så REMAINING.ar brukes som felles kilde - der en komponent har sitt
 // EGET snapshot med `ar`, brukes det i stedet (nærmere sannheten hvis de noen gang spriker).
 const PROGNOSE_AR = REMAINING.ar;
-
-const CONFIDENCE_STYLE: Record<ManualLineConfidence, string> = {
-  "høy": "bg-status-positive/12 text-status-positive",
-  middels: "bg-status-warning/12 text-status-warning",
-  lav: "bg-status-danger/12 text-status-danger",
-};
 
 const RECONCILIATION_ICON: Record<ReconciliationStatus, typeof CheckCircle2> = {
   ok: CheckCircle2,
@@ -573,20 +566,9 @@ function ContractExpiryDetails({ contract }: { contract: ContractExpiry2026Snaps
 // etter, med et eget "kontrollene er eldre enn datakildene"-varsel på toppen) er tatt ut av UI-en.
 // Erstattet av kontroller som regnes LIVE fra de samme snapshotene tabellene bruker - én linje med
 // status pr. kontroll, tall og forklaring bak "Detaljer" for den som trenger det.
-function LiveVarsler({ advarsler }: { advarsler: string[] }) {
-  if (advarsler.length === 0) return <p className="text-2xs text-ink-4">Ingen varsler fra siste datakjøring.</p>;
-  return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {advarsler.map((msg, i) => (
-        <div key={i} className="flex items-start gap-2 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
-          {/* "ADVARSEL: "-prefikset i selve strengen er redundant her - varseltrekanten sier det. */}
-          <p className="min-w-0 text-2xs text-ink-2">{msg.replace(/^ADVARSEL:\s*/, "")}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
+// v60 (2026-09-19, Morten: "fjern alt unntatt seksjonene avstemming og mangler fakturering"):
+// LiveVarsler (live datakvalitetsvarsler fra siste pipeline-kjøring) er fjernet fra "Verktøy og
+// avstemming" sammen med "Mine manuelle linjer" og "Backup" - se IncomeForecastSection().
 
 interface KontrollLinje {
   id: string;
@@ -699,11 +681,11 @@ function AvstemmingPanel({ remaining, tabell }: { remaining: RemainingTenantsSna
           </ul>
           {a.ikkeKonsumertNxt.antall > 0 && (
             <>
-              <p className="font-medium text-ink-1">
-                Bokført i NXT uten Fazile-kontrakt: {a.ikkeKonsumertNxt.antall} kunde/bygg-grupper, {formatKr(a.ikkeKonsumertNxt.sum)} – de største:
+              <p className="text-ink-3">
+                {a.ikkeKonsumertNxt.antall} bokføringer i NXT uten Fazile-kontrakt, til sammen {formatKr(a.ikkeKonsumertNxt.sum)}:
               </p>
               <ul className="flex flex-col gap-0.5">
-                {a.ikkeKonsumertNxt.storste.slice(0, 12).map((r, i) =>
+                {a.ikkeKonsumertNxt.storste.slice(0, 6).map((r, i) =>
                   li(
                     <>
                       <span className="min-w-0 truncate">
@@ -714,8 +696,8 @@ function AvstemmingPanel({ remaining, tabell }: { remaining: RemainingTenantsSna
                     i,
                   ),
                 )}
+                {a.ikkeKonsumertNxt.antall > 6 && <li className="text-ink-4">+ {a.ikkeKonsumertNxt.antall - 6} flere</li>}
               </ul>
-              <p className="text-ink-4">Beløp som netter hverandre (samme kunde, to bygg) er omkoding mellom bygg i NXT, ikke manglende inntekt.</p>
             </>
           )}
         </div>
@@ -750,7 +732,6 @@ function AvstemmingPanel({ remaining, tabell }: { remaining: RemainingTenantsSna
             </>,
             "b",
           )}
-          <li className="text-ink-4">Summen er lik; forskjellen er omklassifisering fra leie til parkering pluss avstemmingspostene over.</li>
         </ul>
       ),
     },
@@ -761,13 +742,12 @@ function AvstemmingPanel({ remaining, tabell }: { remaining: RemainingTenantsSna
             status: (plan.antallPlanMangler > 0 ? "varsel" : "ok") as ReconciliationStatus,
             tekst:
               plan.antallPlanMangler > 0
-                ? `${plan.antallPlanMangler} leieforhold har ${formatKr(plan.sumPlanMangler)} gjenstår uten planlagt faktura i Fazile – modelltall, må avgjøres (se statusen «fazile-plan-mangler» i tabellen).`
+                ? `${plan.antallPlanMangler} leieforhold har ${formatKr(plan.sumPlanMangler)} gjenstår uten planlagt faktura i Fazile – må avgjøres (se «fazile-plan-mangler» i tabellen).`
                 : "Alle leieforhold med gjenstår har planlagt faktura i Fazile.",
             detaljer: (
               <ul className="flex flex-col gap-0.5">
-                <li>Fakturaplan hentet {plan.uttrekksdato}, dekker fra {plan.planStart}: {plan.antallFakturaer} fakturaer, {formatKr(plan.sumPlan36xx)} på 36xx.</li>
-                <li>{plan.antallLeieforholdMedPlan} leieforhold følger planen; {plan.antallPlanMangler} bruker modellen (kontraktsverdi minus bokført).</li>
-                {plan.ekstrapolertBelop > 0 && <li>{formatKr(plan.ekstrapolertBelop)} er ekstrapolert for {plan.antallEkstrapolerteLinjer} månedsfakturerte linjer Fazile ikke har generert ennå.</li>}
+                <li>Fakturaplan fra Fazile, hentet {plan.uttrekksdato}: {plan.antallFakturaer} fakturaer, {formatKr(plan.sumPlan36xx)}.</li>
+                <li>{plan.antallLeieforholdMedPlan} leieforhold følger planen, {plan.antallPlanMangler} bruker modelltall i stedet.</li>
               </ul>
             ),
           },
@@ -1194,7 +1174,7 @@ function VerktoyOgAvstemming({ children }: { children: React.ReactNode }) {
     <div className="rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Verktøy og avstemming"
-        subtitle="Oppfølging, avstemming, manuelle linjer og backup"
+        subtitle="Mangler fakturering og avstemming"
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Settings}
@@ -1898,7 +1878,11 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
         .map((row) => {
           const budsjettPoster = (row.ledigPoster ?? []).filter((p) => p.type !== "nestet");
           const budsjett = row.ledigOpprinneligBudsjett ?? row.budsjett ?? 0;
-          const inntekt = budsjettPoster.reduce((s, p) => s + p.belop, 0);
+          // v60 (2026-09-19, Morten: "Ledige lokaler" er ren info - positive avvik bør vises):
+          // `faktiskInntekt` er leietakerens EGEN fullårsverdi på bygget (uavhengig av budsjettet),
+          // så inntekt kan nå ligge over ELLER under budsjettet. Faller tilbake til `belop` for
+          // "usporet"-poster, der det ikke finnes noen leietakerrad å hente ekte tall fra.
+          const inntekt = budsjettPoster.reduce((s, p) => s + (p.faktiskInntekt ?? p.belop), 0);
           const avvik = inntekt - budsjett;
           return {
             row,
@@ -2043,7 +2027,9 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                                 navn: p.navn,
                                 merke: p.type === "intern" ? "internleie" : p.type === "usporet" ? "dobbeltbudsjettert" : null,
                                 budsjett: p.belop,
-                                inntekt: p.belop,
+                                // v60: leietakerens egen fullårsverdi på bygget - kan avvike fra
+                                // `budsjett` (den gamle Ledig-linjens andel), se merknad ved `inntekt`.
+                                inntekt: p.faktiskInntekt ?? p.belop,
                                 tittelTekst: p.beskrivelse ?? null,
                               }))}
                             />
@@ -2329,8 +2315,6 @@ function KontrakterPaUtlopBlock({
   // Samme delte funksjon som MainForecastBox (toppboksen) bruker - garanterer at de to alltid
   // viser identisk tall, i stedet for to uavhengige utregninger som kan drifte fra hverandre.
   const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals, usikre);
-  const kontrakterVektet = beregnVektetReforhandlingTotal(snapshot, signals);
-  const usikreVektet = totalEkstraVektet - kontrakterVektet;
 
   return (
     <div id="kontrakter-pa-utlop" className="flex scroll-mt-4 flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
@@ -2370,9 +2354,11 @@ function KontrakterPaUtlopBlock({
               className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
             />
           </div>
-          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
-            Kontrakter på utløp <span className="font-normal normal-case tracking-normal text-ink-4">· {formatKr(kontrakterVektet)} vektet</span>
-          </p>
+          {/* v60 (2026-09-19, Morten): tallet er fjernet fra undertittelen - det vektede beløpet
+              per gruppe sto allerede i «Risikoforhold»-totalen lenger oppe (samme tall, dobbelt
+              opp). Undertitlene er samtidig gjort tydeligere (ink-2 i stedet for ink-4, videre
+              sperring) slik at de fire underseksjonene i Risikoforhold skiller seg fra hverandre. */}
+          <p className="text-2xs font-semibold uppercase tracking-wider text-ink-2">Kontrakter på utløp</p>
           {loading ? (
             <SkeletonRows count={4} />
           ) : apneKontrakter.length === 0 ? (
@@ -2491,9 +2477,7 @@ function KontrakterPaUtlopBlock({
               og telles kun her, vektet. Samme SignalEditor som kontraktene over. */}
           {usikre.length > 0 && (
             <>
-              <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
-                Ikke sikret avtale <span className="font-normal normal-case tracking-normal text-ink-4">· {formatKr(usikreVektet)} vektet</span>
-              </p>
+              <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">Ikke sikret avtale</p>
               <div className="-mx-1 overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead>
@@ -2695,7 +2679,7 @@ function OvrigRisikoBlock({
 
   return (
     <>
-      <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+      <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">
         Øvrig risiko i prognosen <span className="font-normal normal-case tracking-normal text-ink-4">· inngår med fullt beløp, ikke vektet</span>
       </p>
       {rader.length > 0 && (
@@ -2732,7 +2716,7 @@ function OvrigRisikoBlock({
       )}
       {fordringer.length > 0 && (
         <>
-          <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+          <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">
             Kundefordringer forfalt over 30 dager{" "}
             <span className="font-normal normal-case tracking-normal text-ink-4">
               · {fordringer.length} leietakere · {formatKr(sumForfalt30)} · NXT pr. {formatDateDMY(RECEIVABLES_HENTET_DATO)}
@@ -3479,249 +3463,18 @@ function TenantForecastTable({
   );
 }
 
-type ManualLineFormValues = {
-  beskrivelse: string;
-  selskap: string;
-  bygg: string;
-  konto: string;
-  del: IncomeForecastPart;
-  belop: string;
-  periodeFra: string;
-  periodeTil: string;
-  kilde: string;
-  sikkerhet: ManualLineConfidence;
-  aktiv: boolean;
-};
-
-const EMPTY_MANUAL_FORM: ManualLineFormValues = {
-  beskrivelse: "",
-  selskap: "",
-  bygg: "",
-  konto: "",
-  del: "A",
-  belop: "",
-  periodeFra: "",
-  periodeTil: "",
-  kilde: "",
-  sikkerhet: "middels",
-  aktiv: true,
-};
-
-function manualLineToForm(line: ManualIncomeLine): ManualLineFormValues {
-  return {
-    beskrivelse: line.beskrivelse,
-    selskap: line.selskap,
-    bygg: line.bygg,
-    konto: line.konto,
-    del: line.del,
-    belop: String(line.belop),
-    periodeFra: line.periodeFra,
-    periodeTil: line.periodeTil,
-    kilde: line.kilde ?? "",
-    sikkerhet: line.sikkerhet,
-    aktiv: line.aktiv,
-  };
-}
-
-function manualFormToPayload(form: ManualLineFormValues) {
-  return {
-    beskrivelse: form.beskrivelse.trim(),
-    selskap: form.selskap.trim(),
-    bygg: form.bygg.trim(),
-    konto: form.konto.trim(),
-    del: form.del,
-    belop: Number(form.belop.replace(",", ".")),
-    periodeFra: form.periodeFra,
-    periodeTil: form.periodeTil,
-    kilde: form.kilde.trim() || null,
-    sikkerhet: form.sikkerhet,
-    aktiv: form.aktiv,
-  };
-}
-
-function ManualLineForm({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: ManualLineFormValues;
-  onCancel: () => void;
-  onSave: (form: ManualLineFormValues) => void;
-}) {
-  const [form, setForm] = useState(initial);
-  const valid =
-    form.beskrivelse.trim() && form.selskap.trim() && form.bygg.trim() && form.konto.trim() && form.belop.trim() && form.periodeFra && form.periodeTil;
-
-  function set<K extends keyof ManualLineFormValues>(key: K, value: ManualLineFormValues[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-      <input
-        type="text"
-        value={form.beskrivelse}
-        onChange={(e) => set("beskrivelse", e.target.value)}
-        placeholder="Beskrivelse (f.eks. Antatt omsetningsleie Q4)"
-        className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="text"
-          value={form.selskap}
-          onChange={(e) => set("selskap", e.target.value)}
-          placeholder="Selskap"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={form.bygg}
-          onChange={(e) => set("bygg", e.target.value)}
-          placeholder="Bygg"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={form.konto}
-          onChange={(e) => set("konto", e.target.value)}
-          placeholder="Konto"
-          className="w-24 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <select
-          value={form.del}
-          onChange={(e) => set("del", e.target.value as IncomeForecastPart)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-        >
-          <option value="A">Del A (leie)</option>
-          <option value="B">Del B (parkering)</option>
-        </select>
-        <select
-          value={form.sikkerhet}
-          onChange={(e) => set("sikkerhet", e.target.value as ManualLineConfidence)}
-          className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-        >
-          <option value="høy">Høy sikkerhet</option>
-          <option value="middels">Middels sikkerhet</option>
-          <option value="lav">Lav sikkerhet</option>
-        </select>
-        <input
-          type="number"
-          value={form.belop}
-          onChange={(e) => set("belop", e.target.value)}
-          placeholder="Beløp (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
-          Periode fra
-          <input
-            type="date"
-            value={form.periodeFra}
-            onChange={(e) => set("periodeFra", e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
-          Periode til
-          <input
-            type="date"
-            value={form.periodeTil}
-            onChange={(e) => set("periodeTil", e.target.value)}
-            className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-        </label>
-        <label className="mt-3.5 flex items-center gap-1.5 text-xs text-ink-2">
-          <input type="checkbox" checked={form.aktiv} onChange={(e) => set("aktiv", e.target.checked)} />
-          Aktiv
-        </label>
-      </div>
-      <input
-        type="text"
-        value={form.kilde}
-        onChange={(e) => set("kilde", e.target.value)}
-        placeholder="Kilde/begrunnelse (f.eks. e-post fra leietaker 12.08 om forlengelse)"
-        className="rounded-lg border border-line bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-          Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={() => valid && onSave(form)}
-          disabled={!valid}
-          className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent/85 disabled:opacity-40"
-        >
-          Lagre
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ManualLineRow({
-  line,
-  editing,
-  onStartEdit,
-  onCancelEdit,
-  onSaveEdit,
-  onRemove,
-}: {
-  line: ManualIncomeLine;
-  editing: boolean;
-  onStartEdit: (id: string) => void;
-  onCancelEdit: () => void;
-  onSaveEdit: (id: string, form: ManualLineFormValues) => void;
-  onRemove: (id: string) => void;
-}) {
-  if (editing) {
-    return (
-      <li>
-        <ManualLineForm initial={manualLineToForm(line)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(line.id, form)} />
-      </li>
-    );
-  }
-
-  return (
-    <li>
-      <div className={`flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2 ${!line.aktiv ? "opacity-50" : ""}`}>
-        <button type="button" onClick={() => onStartEdit(line.id)} aria-label="Rediger linje" className="min-w-0 flex-1 text-left">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm text-ink-1">{line.beskrivelse}</p>
-            <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(line.belop)}</p>
-          </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-ink-4">
-            <span>
-              {line.selskap} · {line.bygg} · konto {line.konto} · Del {line.del}
-            </span>
-            <span className={`rounded-full px-1.5 py-0.5 font-medium ${CONFIDENCE_STYLE[line.sikkerhet]}`}>{line.sikkerhet}</span>
-            {!line.aktiv && <span className="rounded-full bg-surface-3 px-1.5 py-0.5 font-medium text-ink-4">Inaktiv</span>}
-          </p>
-          {line.kilde && <p className="mt-0.5 text-2xs text-ink-4">Kilde: {line.kilde}</p>}
-        </button>
-        <button
-          type="button"
-          onClick={() => onRemove(line.id)}
-          aria-label="Slett linje"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-lg leading-none text-ink-4 transition hover:bg-surface-3 hover:text-status-danger"
-        >
-          ×
-        </button>
-      </div>
-    </li>
-  );
-}
+// v60 (2026-09-19, Morten: "fjern alt unntatt seksjonene avstemming og mangler fakturering ...
+// fjern manuelle linjer"): CRUD-skjemaet for manuelle linjer (ManualLineForm/ManualLineRow,
+// legg til/rediger/slett) er fjernet fra "Verktøy og avstemming" - de aktive manuelle linjene
+// teller fortsatt fullt ut i prognosen som før, se `activeManualLines` i
+// IncomeForecastSection(). Redigering skjer nå direkte i Redis ved behov i stedet for via et
+// skjema i appen.
 
 export default function IncomeForecastSection() {
   const [manualLines, setManualLines] = useState<ManualIncomeLine[]>([]);
   const [loadingManual, setLoadingManual] = useState(true);
-  const [includeLowConfidence, setIncludeLowConfidence] = useState(true);
-  const [showManualForm, setShowManualForm] = useState(false);
-  const [editingManualId, setEditingManualId] = useState<string | null>(null);
-  const confirmDelete = useConfirmDelete<string>();
+  // v60 (2026-09-19): var en bryter i "Mine manuelle linjer" (nå fjernet) - fast på som før.
+  const includeLowConfidence = true;
   const [contractExpiry2026, setContractExpiry2026] = useState<ContractExpiry2026Snapshot | null>(null);
   const [loadingContractExpiry2026, setLoadingContractExpiry2026] = useState(true);
   const [potential, setPotential] = useState<PotentialIncomeSnapshot | null>(null);
@@ -3842,38 +3595,6 @@ export default function IncomeForecastSection() {
     load();
   }, [load]);
 
-  async function handleAddManualLine(form: ManualLineFormValues) {
-    const res = await fetch("/api/income-forecast/manual-lines", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(manualFormToPayload(form)),
-    });
-    if (res.ok) {
-      const created: ManualIncomeLine = await res.json();
-      setManualLines((prev) => [...prev, created]);
-      setShowManualForm(false);
-    }
-  }
-
-  async function handleSaveManualEdit(id: string, form: ManualLineFormValues) {
-    const res = await fetch(`/api/income-forecast/manual-lines/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(manualFormToPayload(form)),
-    });
-    if (res.ok) {
-      const updated: ManualIncomeLine = await res.json();
-      setManualLines((prev) => prev.map((l) => (l.id === id ? updated : l)));
-      setEditingManualId(null);
-    }
-  }
-
-  async function handleRemoveManualLine(id: string) {
-    setManualLines((prev) => prev.filter((l) => l.id !== id));
-    vibrate([10, 30, 10]);
-    await fetch(`/api/income-forecast/manual-lines/${id}`, { method: "DELETE" });
-  }
-
   const activeManualLines = useMemo(
     () => manualLines.filter((l) => l.aktiv && (includeLowConfidence || l.sikkerhet !== "lav")),
     [manualLines, includeLowConfidence],
@@ -3948,11 +3669,6 @@ export default function IncomeForecastSection() {
   const syncAvvik = useMemo(
     () => finnUsynkroniserteKonstanter(remainingTenantsSnapshot, bookedTenantsSnapshot),
     [remainingTenantsSnapshot, bookedTenantsSnapshot],
-  );
-
-  const advarslerLive = useMemo(
-    () => [...(remainingTenantsSnapshot?.advarsler ?? []), ...(tenantForecastTable?.advarsler ?? [])],
-    [remainingTenantsSnapshot, tenantForecastTable],
   );
 
   // v17: gjenstående budsjett (kr) for alle "Ledig <bygg>"-radene samlet - kryssreferansen
@@ -4082,122 +3798,21 @@ export default function IncomeForecastSection() {
               />
               <LedigeLokalerBlock rows={justertDelALeietakerRader} />
 
-              {/* v31 (2026-09-08, Morten: "fjern hele tillegg-fanen ... infoen der trengs ikke å
-                  vises da det bare blir masse støy"). Fanen er borte. Alt som lå der var
-                  READ-ONLY visning av kildedata (fakturert pr. periode, bokført pr. konto/leietaker,
-                  NXT-budsjett, gjenstår-detalj, leietype-fordeling, ledige arealer, kontraktsutløp,
-                  manuelle NXT-bilag, eierandelsregler) - de blokkene er slettet, og er hentbare fra
-                  git-historikken hvis noe skal tilbake.
-                  MEN tre ting der var IKKE informasjon, de var FUNKSJON, og ville blitt en stille
-                  regresjon om de forsvant med resten. De ligger derfor her, kollapset:
-                   1) "Mine manuelle linjer" - eneste sted manuelle linjer kan legges inn/endres/
-                      slettes, og de inngår i prognosetotalen (i dag −955 438 kr).
-                   2) Backup-nedlastingen - eneste eksportvei for manuelt innhold som KUN finnes i
-                      Redis og ikke kan utledes på nytt fra Fazile/NXT.
-                   3) Live varsler fra siste datakjøring - datakvalitetsavvik som ellers bare står
-                      i konsollen til den som kjørte pipelinen. */}
+              {/* v60 (2026-09-19, Morten: "fjern alt unntatt seksjonene avstemming og mangler
+                  fakturering"): "Til oppfølging"-fellesetiketten, live datavarsler, "Mine manuelle
+                  linjer" (skjema) og "Backup" er fjernet herfra. ManglerFaktureringBlock har sin
+                  egen "Mangler fakturering (N)"-header og trenger derfor ingen ytre etikett. */}
               <VerktoyOgAvstemming>
-                {/* v58 (2026-09-18, Morten): rekkefølge etter relevans - det som krever handling
-                    først, så kontrollene, så verktøyene. Hver del har samme etikettstil, og
-                    detaljtall ligger bak "Detaljer" i stedet for i løpende tekst. */}
                 <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Til oppfølging</p>
-                    <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
-                    <LiveVarsler advarsler={advarslerLive} />
-                  </div>
+                  <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
 
                   <div className="flex flex-col gap-1.5">
                     <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemming</p>
                     <AvstemmingPanel remaining={remainingTenantsSnapshot} tabell={tenantForecastTable} />
                   </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Mine manuelle linjer</p>
-                    <label className="flex items-center gap-1.5 text-xs text-ink-3">
-                      <input
-                        type="checkbox"
-                        checked={includeLowConfidence}
-                        onChange={(e) => setIncludeLowConfidence(e.target.checked)}
-                      />
-                      Inkluder lav sikkerhet i prognosen
-                    </label>
-                    {showManualForm ? (
-                      <ManualLineForm initial={EMPTY_MANUAL_FORM} onCancel={() => setShowManualForm(false)} onSave={handleAddManualLine} />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowManualForm(true)}
-                        className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                      >
-                        <span className="text-base leading-none">+</span> Ny manuell linje
-                      </button>
-                    )}
-                    {loadingManual ? (
-                      <SkeletonRows count={2} />
-                    ) : manualLines.length === 0 ? (
-                      <p className="text-sm text-ink-3">Ingen manuelle linjer lagt inn ennå.</p>
-                    ) : (
-                      <ul className="flex flex-col gap-1.5">
-                        {manualLines.map((l) => (
-                          <ManualLineRow
-                            key={l.id}
-                            line={l}
-                            editing={editingManualId === l.id}
-                            onStartEdit={setEditingManualId}
-                            onCancelEdit={() => setEditingManualId(null)}
-                            onSaveEdit={handleSaveManualEdit}
-                            onRemove={(id) => confirmDelete.request(id)}
-                          />
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Backup</p>
-                    <p className="flex w-fit items-center gap-1">
-                      <a
-                        href="/api/income-forecast/backup"
-                        download={`inntektsprognose-backup-${idagIso}.json`}
-                        className="text-2xs font-medium text-accent hover:text-accent/80"
-                      >
-                        Last ned backup av manuelt innhold (JSON)
-                      </a>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <button type="button" aria-label="Om backupen" className="shrink-0 text-ink-4 hover:text-ink-1">
-                              <Info className="h-3 w-3" />
-                            </button>
-                          }
-                        />
-                        <TooltipContent>
-                          Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler finnes kun i Redis og kan ikke
-                          utledes på nytt fra Fazile/NXT. Ta en kopi av og til.
-                        </TooltipContent>
-                      </Tooltip>
-                    </p>
-                  </div>
                 </div>
               </VerktoyOgAvstemming>
         </div>
-      <ConfirmDialog
-        open={confirmDelete.isOpen}
-        message={(() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return "";
-          const line = manualLines.find((l) => l.id === pending);
-          return `Slette linjen «${line?.beskrivelse ?? ""}»?`;
-        })()}
-        onCancel={confirmDelete.cancel}
-        onConfirm={() => {
-          const pending = confirmDelete.pending;
-          if (!pending) return;
-          handleRemoveManualLine(pending);
-          confirmDelete.cancel();
-        }}
-      />
     </div>
   );
 }

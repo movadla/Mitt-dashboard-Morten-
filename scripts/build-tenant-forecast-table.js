@@ -733,7 +733,14 @@ async function main() {
     // overføringer[ledigRad.navn] = { sum, poster: [{navn, belop, type, beskrivelse?}] } - blir
     // Ledig-radens `ledigPoster` (UI) og grunnlaget for nytt budsjett + auto-kommentar.
     const overforinger = new Map();
-    function leggTilOverforing(ledigRad, navn, belop, type, beskrivelse) {
+    // v60 (2026-09-19, Morten om Ledige lokaler: "det er kun til info ... da kan jo positive avvik
+    // også vises, det bør vises"): `belop` er en SKIVE AV DET GAMLE LEDIG-BUDSJETTET tilskrevet
+    // leietakeren (aldri større enn budsjettet selv, se andel-utregningen under - matematisk umulig
+    // å vise positivt avvik). `faktiskInntekt` er leietakerens EGEN fullårsverdi på nøyaktig dette
+    // bygget, fra deres egne Fazile-linjer - en ekte, uavhengig tall som kan ligge over ELLER under
+    // det opprinnelige budsjettet. Kun for "Ledige lokaler"-oversikten (app/IncomeForecastSection.tsx
+    // sin LedigeLokalerBlock) - påvirker ikke `belop`/`rad.budsjett`/prognosen for øvrig.
+    function leggTilOverforing(ledigRad, navn, belop, type, beskrivelse, faktiskInntekt) {
       if (!overforinger.has(ledigRad.navn)) overforinger.set(ledigRad.navn, { sum: 0, poster: [] });
       const o = overforinger.get(ledigRad.navn);
       // v52: "nestet" teller IKKE i sum. Sum er det som faktisk TREKKES FRA Ledig-radens budsjett;
@@ -741,8 +748,25 @@ async function main() {
       if (type !== "nestet") o.sum = round2(o.sum + belop);
       // Samme leietaker kan ta flere linjer i samme Ledig-rad (Komplett: 3) - én post pr. leietaker.
       const eksisterende = o.poster.find((p) => p.type === type && p.navn === navn);
-      if (eksisterende) eksisterende.belop = round2(eksisterende.belop + belop);
-      else o.poster.push({ navn, belop: round2(belop), type, ...(beskrivelse ? { beskrivelse } : {}) });
+      if (eksisterende) {
+        eksisterende.belop = round2(eksisterende.belop + belop);
+        // Overskriv (ikke legg til) - faktiskInntekt er en fersk summering av ALLE leietakerens
+        // linjer på bygget hver gang, ikke en delverdi som skal akkumuleres per kall.
+        if (faktiskInntekt !== undefined) eksisterende.faktiskInntekt = round2(faktiskInntekt);
+      } else {
+        o.poster.push({
+          navn,
+          belop: round2(belop),
+          type,
+          ...(beskrivelse ? { beskrivelse } : {}),
+          ...(faktiskInntekt !== undefined ? { faktiskInntekt: round2(faktiskInntekt) } : {}),
+        });
+      }
+    }
+    // Leietakerens egen fullårsverdi på ETT spesifikt bygg (summen av deres EGNE Fazile-linjer der) -
+    // uavhengig av hva som ble trukket fra Ledig-budsjettet. Brukes kun til faktiskInntekt over.
+    function faktiskInntektPaBygg(rad, bygg) {
+      return round2((rad.linjer || []).filter((l) => normalizeName(l.bygg) === normalizeName(bygg)).reduce((s, l) => s + l.fullArsverdi2026, 0));
     }
     function finnLinjer(ledigRad, fulltBygg, linjeMatch) {
       const treff = [];
@@ -790,7 +814,7 @@ async function main() {
       for (const rad of rader) {
         if (!ikkeBudsjett) rad.budsjett = round2((rad.budsjett || 0) + andel);
         oppdaterAvvik(rad);
-        leggTilOverforing(ledigRad, rad.navn, andel, ikkeBudsjett ? "nestet" : "leietaker");
+        leggTilOverforing(ledigRad, rad.navn, andel, ikkeBudsjett ? "nestet" : "leietaker", undefined, faktiskInntektPaBygg(rad, linje.bygg));
       }
       // v48: linjen MÅ ut av Ledig-radens liste når beløpet er trukket fra budsjettet, ellers
       // stemmer ikke "sum gjenværende linjer" med "gjenstående budsjett" (kontrollen lenger nede).
@@ -850,7 +874,7 @@ async function main() {
           rad.budsjett = round2((rad.budsjett || 0) + linje.fullArsverdi2026);
           rad.flyttetInnI = ledigRad.navn;
           oppdaterAvvik(rad);
-          leggTilOverforing(ledigRad, rad.navn, linje.fullArsverdi2026, "leietaker");
+          leggTilOverforing(ledigRad, rad.navn, linje.fullArsverdi2026, "leietaker", undefined, faktiskInntektPaBygg(rad, linje.bygg));
           koblede.add(rad);
           matchet = true;
           break;
