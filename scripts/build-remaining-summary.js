@@ -952,6 +952,11 @@ function main() {
         fullArsverdi2026: belop,
         startDato: row.start_dato || null,
         sluttDato: row.slutt_dato || null,
+        // v55: den juridiske enheten linjen tilhører - etter konsern-sammenslåingen (Morten
+        // 2026-09-18: "de som slås sammen må skilles når det skilles på bygg og leietype") kan
+        // én leietakerrad ha linjer fra flere selskap; bygg-/leietype-grupperingen regnes fra
+        // linjene og byggGruppene, ikke fra raden, så tallene pr. bygg er uendret av merge'n.
+        juridiskEnhet: row.leietaker.trim(),
       });
       if (del === "A") g.fullA += belop;
       else g.fullB += belop;

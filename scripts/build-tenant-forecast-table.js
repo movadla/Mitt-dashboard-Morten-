@@ -306,7 +306,12 @@ function buildLeietypeClassifier(budsjettOppslag) {
     if (del === "B" && t !== "Garasje") return "Parkering";
     return t;
   }
+  // `leietaker` kan være ÉN streng eller en liste [juridisk enhet, konsernrad] (v55): Excel
+  // budsjetterer pr. selskap, så enhetens eget navn prøves først; konsernraden (som eier
+  // budsjettoppslaget etter sammenslåingen) er fallback. For alle andre er lista ett navn.
   function classifyRaa(beskrivelse, bygg, leietaker, del, fullArsverdi2026) {
+    const navneliste = [...new Set((Array.isArray(leietaker) ? leietaker : [leietaker]).filter(Boolean))];
+    leietaker = navneliste[0] || null;
     const b = (beskrivelse || "").toLowerCase();
     // 1) Entydige ord i Fazile-beskrivelsen.
     if (/garasje/.test(b)) return "Garasje";
@@ -318,13 +323,18 @@ function buildLeietypeClassifier(budsjettOppslag) {
     const key = normalizeName(bygg || "") + "||" + normalizeName(beskrivelse || "");
     const types = byggBeskrivelse.get(key);
     if (types && types.size === 1) return [...types][0];
-    // 3) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias).
-    const direkte = viaNavn(leietaker, bygg, del);
-    if (direkte) return direkte;
-    const budsjett = leietaker && budsjettOppslag ? budsjettOppslag(leietaker) : null;
-    for (const excelNavn of (budsjett && budsjett.excelNavn) || []) {
-      const t = viaNavn(excelNavn, bygg, del);
-      if (t) return t;
+    // 3) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias) -
+    //    juridisk enhet først, deretter konsernraden (v55, se navneliste over).
+    for (const navn of navneliste) {
+      const direkte = viaNavn(navn, bygg, del);
+      if (direkte) return direkte;
+    }
+    for (const navn of navneliste) {
+      const budsjett = budsjettOppslag ? budsjettOppslag(navn) : null;
+      for (const excelNavn of (budsjett && budsjett.excelNavn) || []) {
+        const t = viaNavn(excelNavn, bygg, del);
+        if (t) return t;
+      }
     }
     // 4) Mindre entydige ord - først NÅ, siden Excel-typen for leietakeren skal vinne over
     //    linjeteksten (en Restaurant-leietaker med "Omsetningsleie"-linje skal stå som Restaurant).
@@ -1087,7 +1097,12 @@ async function main() {
     bygg: sortByAvvik(medBudsjett(groupLines(linesA, (line) => kanoniskByggNavn(line.bygg)), budgetLookupA.bygg, budget.delA.bygg)),
     leietype: sortByAvvik(
       medBudsjett(
-        groupLines(linesA, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, tenant.navn, "A", line.fullArsverdi2026)),
+        // v55: leietype slås opp på den JURIDISKE enheten bak linjen, ikke konsernraden - Excel
+        // budsjetterer pr. selskap (butikk-enheten er Butikk, antenne-enheten Punktleie), og
+        // Morten (2026-09-18): "de som slås sammen må skilles når det skilles på bygg og
+        // leietype". Uten dette flyttet en konsern-merge ~57 000 kr fra Butikk/Annet til Punktleie
+        // fordi antenne-enhetens linjer arvet butikk-enhetens Excel-type via konsernraden.
+        groupLines(linesA, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, [line.juridiskEnhet, tenant.navn], "A", line.fullArsverdi2026)),
         budgetLookupA.leietype,
         budget.delA.leietype,
       ),
@@ -1113,7 +1128,7 @@ async function main() {
     bygg: sortByAvvik(medBudsjett(groupLines(linesB, (line) => kanoniskByggNavn(line.bygg)), budgetLookupB.bygg, budget.delB.bygg, null)),
     leietype: sortByAvvik(
       medBudsjett(
-        groupLines(linesB, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, tenant.navn, "B", line.fullArsverdi2026)),
+        groupLines(linesB, (line, tenant) => classifyLeietype(line.beskrivelse, line.bygg, [line.juridiskEnhet, tenant.navn], "B", line.fullArsverdi2026)),
         budgetLookupB.leietype,
         budget.delB.leietype,
         null,
