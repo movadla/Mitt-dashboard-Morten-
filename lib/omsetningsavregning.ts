@@ -52,6 +52,9 @@ export interface OmsetningsavregningSnapshot {
   // v5 (2026-09-04)
   buildingTurnoverNote?: string;
   omsetningHentetDato?: string;
+  // v6 (2026-09-18): 12-månedersvinduet omsetningen dekker, "YYYY-MM" fra/til. null når fila
+  // mangler `periode`.
+  omsetningsperiode?: { fra: string; til: string } | null;
   remainingDato?: string;
   antallKrevManuellSjekk?: number;
   antallGulvavvik?: number;

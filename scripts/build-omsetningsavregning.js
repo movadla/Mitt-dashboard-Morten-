@@ -240,6 +240,10 @@ async function main() {
     buildingTurnoverNote:
       "v5: ekstrafakturering = MAX(0, omsetning × sats × andel av året − (fakturert + gjenstår kjerneleie)). Kjerneleie = minimumsleie/omsetningsleie (konto 3630/3631) fra REMAINING - lager, tillegg, kabinetter o.l. holdes utenfor, som i Amestos avregning. Kontraktsminimum (Fazile-årsverdi) er kun gulv-kontroll: positivt gulvavvik betyr at REMAINING ligger under kontrakten (mangler noe, eller rabatt). Minimumsleien på CC Vest settes hvert år lik fjorårets realiserte omsetningsleie, så estimatet er svært følsomt for omsetningstallet.",
     omsetningHentetDato: oms.hentetDato,
+    // v6 (2026-09-18): hvilke 12 måneder omsetningen dekker ("YYYY-MM" fra/til) - vises under
+    // «Øvrig risiko i prognosen» i UI-en. Oppdater `periode` i omsetningsleie-cc-vest.json
+    // sammen med tallene når Omsetningsleie-fanen rulleres.
+    omsetningsperiode: oms.periode && oms.periode.fra && oms.periode.til ? { fra: oms.periode.fra, til: oms.periode.til } : null,
     remainingDato: rem.sistOppdatert,
     totalEkstrafakturering: total,
     antallButikker: rows.length,

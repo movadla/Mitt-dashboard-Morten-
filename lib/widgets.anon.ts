@@ -360,6 +360,9 @@ export interface Receivable {
  * forfallsdato, se lib/receivablesAging.ts — ikke lagret som eget felt her. `id` er
  * posisjonsbasert (r1, r2, ...), sortert etter størst utestående først.
  */
+// Datoen RECEIVABLES ble hentet fra NXT - speiler widgets.local.ts, se kommentaren der.
+export const RECEIVABLES_HENTET_DATO = "2026-08-14";
+
 export const RECEIVABLES: Receivable[] = [
   { id: "r1", leietaker: "Demokunde 30", utestaende: 5262199.59, selskaper: [{ selskap: "Mustad Eiendomsdrift AS", belop: 5262199.59, antallLinjer: 1, fakturaer: [{ fakturaNr: "24441", belop: 5262199.59, forfallsdato: "2026-05-30" }] }] },
   { id: "r2", leietaker: "Demokunde 31", utestaende: 3102881.05, selskaper: [{ selskap: "B3 Lilleaker Eiendom AS", belop: 3102881.05, antallLinjer: 3, fakturaer: [{ fakturaNr: "1000009", belop: 471689.4, forfallsdato: "2026-03-15" }, { fakturaNr: "1000008", belop: 2188524.73, forfallsdato: "2026-01-30" }, { fakturaNr: "1000007", belop: 442666.92, forfallsdato: "2025-09-20" }] }] },

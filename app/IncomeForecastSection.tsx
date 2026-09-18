@@ -11,6 +11,7 @@ import {
   ChevronUp,
   DoorOpen,
   Info,
+  Loader2,
   MessageSquare,
   Minus,
   Search,
@@ -23,7 +24,7 @@ import {
 import { CardHeader, ConfirmDialog, SkeletonRows, useConfirmDelete, usePersistedCollapse } from "./CardShell";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { formatDateDMY, formatKr } from "@/lib/widgets";
+import { RECEIVABLES, RECEIVABLES_HENTET_DATO, formatDateDMY, formatKr } from "@/lib/widgets";
 import { addDaysIso, localDateString } from "@/lib/payday";
 import {
   BOOKED_3600_3699,
@@ -1140,10 +1141,13 @@ function MainForecastBox({
           {open ? <ChevronUp className="h-4 w-4 shrink-0 text-ink-4" /> : <ChevronDown className="h-4 w-4 shrink-0 text-ink-4" />}
         </div>
         {loading ? (
-          <>
-            <div className="my-1 h-8 w-56 max-w-full animate-pulse rounded-md bg-surface-3" aria-label="Laster prognose" />
-            <div className="h-3 w-40 max-w-full animate-pulse rounded bg-surface-3" />
-          </>
+          // v57 (2026-09-18, Morten: "et loading-ikon som viser at man venter på et tall"):
+          // spinner + tekst i stedet for grå plassholderstriper. Samme høyde som tallet + trend-
+          // linjen under, så boksen ikke hopper når tallet kommer.
+          <div className="my-1 flex h-[3.25rem] items-center gap-2 text-ink-4" role="status" aria-live="polite">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            <span className="text-sm">Henter tall …</span>
+          </div>
         ) : (
           <>
             <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
@@ -2159,6 +2163,11 @@ function KontrakterPaUtlopBlock({
   onSignalUpdated,
   leietakerRader,
   usikre = [],
+  remaining,
+  omsetning,
+  potential,
+  manualLines,
+  idagIso,
 }: {
   snapshot: ContractExpiry2026Snapshot | null;
   loading: boolean;
@@ -2167,6 +2176,12 @@ function KontrakterPaUtlopBlock({
   leietakerRader: TenantForecastRow[];
   // v56: ikke sikrede avtaler (REMAINING.usikreInntekter) - vises som egen gruppe under kontraktene.
   usikre?: UsikkerInntekt[];
+  // v57: grunnlag for «Øvrig risiko i prognosen» (OvrigRisikoBlock).
+  remaining: RemainingTenantsSnapshot | null;
+  omsetning: OmsetningsavregningSnapshot | null;
+  potential: PotentialIncomeSnapshot | null;
+  manualLines: ManualIncomeLine[];
+  idagIso: string;
 }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter på utløp", true);
   const [search, setSearch] = useState("");
@@ -2539,9 +2554,224 @@ function KontrakterPaUtlopBlock({
               </div>
             </>
           )}
+          <OvrigRisikoBlock remaining={remaining} omsetning={omsetning} potential={potential} manualLines={manualLines} idagIso={idagIso} />
         </>
       )}
     </div>
+  );
+}
+
+// v57 (2026-09-18, Morten): «Øvrig risiko i prognosen» - beløp som står med FULLT beløp i
+// prognosen (i sine egne lag: Gjenstår, Omsetningsavregning, Potensial, manuelle linjer), men som
+// bygger på estimat eller ikke er betalt ennå. Ren opplisting med én linje forklaring - ingen
+// vekting, ingen sum og ingenting legges til eller trekkes fra prognosen her. Fakturert, bokført og
+// signert kontrakt regnes som sikkert og står ikke i lista.
+interface OvrigRisikoRad {
+  forhold: string;
+  forklaring: string;
+  belop: number;
+}
+
+function formatManedAr(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return ym;
+  return new Date(y, m - 1, 1).toLocaleDateString("nb-NO", { month: "short", year: "numeric" });
+}
+
+type OvrigRisikoSortKey = "forhold" | "belop";
+type FordringSortKey = "leietaker" | "forfalt30" | "utestaende";
+
+function OvrigRisikoBlock({
+  remaining,
+  omsetning,
+  potential,
+  manualLines,
+  idagIso,
+}: {
+  remaining: RemainingTenantsSnapshot | null;
+  omsetning: OmsetningsavregningSnapshot | null;
+  potential: PotentialIncomeSnapshot | null;
+  manualLines: ManualIncomeLine[];
+  idagIso: string;
+}) {
+  const [sort, setSort] = useState<{ key: OvrigRisikoSortKey; dir: 1 | -1 } | null>(null);
+  const [fordringSort, setFordringSort] = useState<{ key: FordringSortKey; dir: 1 | -1 }>({ key: "forfalt30", dir: -1 });
+  const [visAlleFordringer, setVisAlleFordringer] = useState(false);
+
+  const rader = useMemo(() => {
+    const ut: OvrigRisikoRad[] = [];
+    let onepark = 0;
+    let planMangler = 0;
+    let planManglerAntall = 0;
+    let ikkeMatchet = 0;
+    let ikkeMatchetAntall = 0;
+    for (const t of remaining?.tenants ?? []) {
+      for (const b of t.byggGrupper) {
+        if (Math.round(b.gjenstarTotal) === 0) continue;
+        if (b.status === "forklart-parkering-onepark") onepark += b.gjenstarTotal;
+        else if (b.status === "fazile-plan-mangler") {
+          planMangler += b.gjenstarTotal;
+          planManglerAntall += 1;
+        } else if (b.status === "ikke-matchet-i-nxt") {
+          ikkeMatchet += b.gjenstarTotal;
+          ikkeMatchetAntall += 1;
+        }
+      }
+    }
+    if (onepark !== 0) ut.push({ forhold: "Onepark", forklaring: "Estimert fakturering resten av året basert på omsetning så langt", belop: onepark });
+    if (omsetning && omsetning.totalEkstrafakturering !== 0) {
+      const p = omsetning.omsetningsperiode;
+      ut.push({
+        forhold: "Avregning omsetning",
+        forklaring: p ? `Baserer seg på omsetning ${formatManedAr(p.fra)} til ${formatManedAr(p.til)}` : "Baserer seg på rullerende 12 mnd omsetning",
+        belop: omsetning.totalEkstrafakturering,
+      });
+    }
+    if (planMangler !== 0) {
+      ut.push({ forhold: `Gjenstår uten planlagt faktura i Fazile (${planManglerAntall})`, forklaring: "Modelltall, Fazile har ikke generert fakturaene ennå", belop: planMangler });
+    }
+    if (ikkeMatchet !== 0) {
+      ut.push({ forhold: `Gjenstår uten bokføring i NXT (${ikkeMatchetAntall})`, forklaring: "Ingenting fakturert på leieforholdet i år", belop: ikkeMatchet });
+    }
+    for (const c of potential?.categories ?? []) {
+      if (c.belop !== 0) ut.push({ forhold: c.label, forklaring: "Manuelt anslag i toppboksen", belop: c.belop });
+    }
+    const aktive = manualLines.filter((l) => l.aktiv);
+    const manuellSum = aktive.reduce((s, l) => s + l.belop, 0);
+    if (manuellSum !== 0) ut.push({ forhold: `Mine manuelle linjer (${aktive.length})`, forklaring: "Egne linjer utenfor Fazile og NXT", belop: manuellSum });
+    if (!sort) return ut;
+    const sortert = [...ut].sort((a, b) => (sort.key === "forhold" ? a.forhold.localeCompare(b.forhold, "nb") : a.belop - b.belop));
+    return sort.dir === 1 ? sortert : sortert.reverse();
+  }, [remaining, omsetning, potential, manualLines, sort]);
+
+  // Kundefordringer: alle kunder med minst én faktura med forfall i prognoseåret som er over 30
+  // dager forfalt pr. i dag, og hva de totalt har utestående på årets fakturaer. Aldersfordelingen
+  // regnes mot dagens dato, men datasettet er fra RECEIVABLES_HENTET_DATO - betalinger etter det
+  // er ikke med, derfor vises uttrekksdatoen i overskriften.
+  const fordringer = useMemo(() => {
+    const ar = String(PROGNOSE_AR);
+    const idag = new Date(idagIso).getTime();
+    const ut: { leietaker: string; forfalt30: number; utestaende: number }[] = [];
+    for (const r of RECEIVABLES) {
+      let forfalt30 = 0;
+      let utestaende = 0;
+      for (const s of r.selskaper) {
+        for (const f of s.fakturaer) {
+          if (!f.forfallsdato.startsWith(ar)) continue;
+          utestaende += f.belop;
+          const dager = Math.round((idag - new Date(f.forfallsdato).getTime()) / 86400000);
+          if (dager > 30) forfalt30 += f.belop;
+        }
+      }
+      if (forfalt30 > 0) ut.push({ leietaker: r.leietaker, forfalt30, utestaende });
+    }
+    const sortert = ut.sort((a, b) =>
+      fordringSort.key === "leietaker" ? a.leietaker.localeCompare(b.leietaker, "nb") : a[fordringSort.key] - b[fordringSort.key],
+    );
+    return fordringSort.dir === 1 ? sortert : sortert.reverse();
+  }, [idagIso, fordringSort]);
+
+  const sumForfalt30 = fordringer.reduce((s, f) => s + f.forfalt30, 0);
+  const visteFordringer = visAlleFordringer ? fordringer : fordringer.slice(0, 8);
+
+  function toggleSort(key: OvrigRisikoSortKey) {
+    setSort((prev) => (prev?.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: key === "belop" ? -1 : 1 }));
+  }
+  function toggleFordringSort(key: FordringSortKey) {
+    setFordringSort((prev) => (prev.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: key === "leietaker" ? 1 : -1 }));
+  }
+  function sortIkon(active: boolean, dir: 1 | -1) {
+    if (!active) return null;
+    return dir === 1 ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
+  }
+
+  if (rader.length === 0 && fordringer.length === 0) return null;
+
+  return (
+    <>
+      <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+        Øvrig risiko i prognosen <span className="font-normal normal-case tracking-normal text-ink-4">· inngår med fullt beløp, ikke vektet</span>
+      </p>
+      {rader.length > 0 && (
+        <div className="-mx-1 overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr className={TABELL_HODE_RAD}>
+                <th className="px-3 py-2">
+                  <button type="button" onClick={() => toggleSort("forhold")} className={tabellSortKnapp(sort?.key === "forhold")}>
+                    Forhold {sortIkon(sort?.key === "forhold", sort?.dir ?? 1)}
+                  </button>
+                </th>
+                <th className="px-3 py-2">
+                  <span className={tabellSortKnapp(false)}>Forklaring</span>
+                </th>
+                <th className="px-3 py-2 text-right">
+                  <button type="button" onClick={() => toggleSort("belop")} className={`${tabellSortKnapp(sort?.key === "belop")} ml-auto`}>
+                    Beløp {PROGNOSE_AR} {sortIkon(sort?.key === "belop", sort?.dir ?? -1)}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rader.map((r) => (
+                <tr key={r.forhold} className="border-t border-line">
+                  <td className="whitespace-nowrap px-3 py-2 text-ink-1">{r.forhold}</td>
+                  <td className="px-3 py-2 text-2xs text-ink-3">{r.forklaring}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(r.belop)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {fordringer.length > 0 && (
+        <>
+          <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+            Kundefordringer forfalt over 30 dager{" "}
+            <span className="font-normal normal-case tracking-normal text-ink-4">
+              · {fordringer.length} leietakere · {formatKr(sumForfalt30)} · NXT pr. {formatDateDMY(RECEIVABLES_HENTET_DATO)}
+            </span>
+          </p>
+          <div className="-mx-1 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className={TABELL_HODE_RAD}>
+                  <th className="px-3 py-2">
+                    <button type="button" onClick={() => toggleFordringSort("leietaker")} className={tabellSortKnapp(fordringSort.key === "leietaker")}>
+                      Leietaker {sortIkon(fordringSort.key === "leietaker", fordringSort.dir)}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <button type="button" onClick={() => toggleFordringSort("forfalt30")} className={`${tabellSortKnapp(fordringSort.key === "forfalt30")} ml-auto`}>
+                      Forfalt 30+ dager {sortIkon(fordringSort.key === "forfalt30", fordringSort.dir)}
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 text-right">
+                    <button type="button" onClick={() => toggleFordringSort("utestaende")} className={`${tabellSortKnapp(fordringSort.key === "utestaende")} ml-auto`}>
+                      Utestående {PROGNOSE_AR} {sortIkon(fordringSort.key === "utestaende", fordringSort.dir)}
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visteFordringer.map((f) => (
+                  <tr key={f.leietaker} className="border-t border-line">
+                    <td className="max-w-[260px] truncate px-3 py-2 text-ink-1">{f.leietaker}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(f.forfalt30)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(f.utestaende)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {fordringer.length > 8 && (
+            <button type="button" onClick={() => setVisAlleFordringer((v) => !v)} className="self-start text-2xs text-accent hover:underline">
+              {visAlleFordringer ? "Vis kun de 8 største" : `Vis alle (${fordringer.length})`}
+            </button>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
@@ -3838,6 +4068,11 @@ export default function IncomeForecastSection() {
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
                 usikre={usikreInntekter}
+                remaining={remainingTenantsSnapshot}
+                omsetning={omsetningsavregning}
+                potential={potential}
+                manualLines={manualLines}
+                idagIso={idagIso}
               />
               <LedigeLokalerBlock rows={justertDelALeietakerRader} />
 
