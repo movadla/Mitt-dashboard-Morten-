@@ -891,6 +891,7 @@ function MainForecastBox({
   history,
   idagIso,
   kpi,
+  loading = false,
 }: {
   prognose: Hovedprognose;
   potential: PotentialIncomeSnapshot | null;
@@ -900,6 +901,11 @@ function MainForecastBox({
   // KPI-flisene, rendret nederst i breakdownen (v30). Sendes inn som node i stedet for å tre
   // avvik/budsjett/antall/freshness gjennom denne komponenten, som ikke bruker noen av dem selv.
   kpi?: React.ReactNode;
+  // v56 (2026-09-18, Morten: "får først opp et tall som endrer seg etter 1-2 sekunder og så
+  // endrer seg igjen"): totalen avhenger av fem API-kall (manuelle linjer, kontraktsutløp,
+  // omsetningsavregning, potensial, signaler) som kom inn hver for seg og ga tre ulike tall på
+  // rad. Til alle er lastet vises en plassholder i stedet for et foreløpig tall.
+  loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const { bokfort, manuelleLinjer, gjenstar, reforhandlingFull, omsetningsavregningSum, potensiellFremtidig, ledigeLokaler, annet, total } = prognose;
@@ -938,13 +944,22 @@ function MainForecastBox({
           <p className="text-sm font-semibold uppercase tracking-wide text-ink-4">Full prognose {PROGNOSE_AR}</p>
           {open ? <ChevronUp className="h-4 w-4 shrink-0 text-ink-4" /> : <ChevronDown className="h-4 w-4 shrink-0 text-ink-4" />}
         </div>
-        <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
-        {/* v29: flyttet hit fra KpiStrip sin (nå fjernede) duplikat-flis - trenden hører hjemme
-            under tallet den beskriver, ikke i en egen boks med samme beløp. */}
-        <TrendIndicator history={history} fraDato={idagIso} naverendeTotal={bokfort + gjenstar} />
-        {!open && <p className="text-2xs text-accent">Se breakdown ↓</p>}
+        {loading ? (
+          <>
+            <div className="my-1 h-8 w-56 max-w-full animate-pulse rounded-md bg-surface-3" aria-label="Laster prognose" />
+            <div className="h-3 w-40 max-w-full animate-pulse rounded bg-surface-3" />
+          </>
+        ) : (
+          <>
+            <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
+            {/* v29: flyttet hit fra KpiStrip sin (nå fjernede) duplikat-flis - trenden hører hjemme
+                under tallet den beskriver, ikke i en egen boks med samme beløp. */}
+            <TrendIndicator history={history} fraDato={idagIso} naverendeTotal={bokfort + gjenstar} />
+          </>
+        )}
+        {!open && !loading && <p className="text-2xs text-accent">Se breakdown ↓</p>}
       </button>
-      {open && (
+      {open && !loading && (
         <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
           <IncomeWaterfall segments={waterfallSegments} total={total} />
           {/* v50 (2026-09-11, Morten: "overflødig å liste opp bokført, gjenstår osv. igjen etter
@@ -1158,36 +1173,38 @@ function KpiStrip({
   // stor skrift - samme tall to ganger med seksti piksler mellom seg, pluss "Kjernetall" oppe i
   // kortheaderen. Flisen er fjernet og trendlinjen flyttet ned under hero-boksens egen total, der
   // den står ved siden av tallet den faktisk beskriver.
+  const avvikFarge = avvikTotal >= 0 ? "text-status-positive" : "text-status-danger";
+  const boks = "flex min-w-0 items-center rounded-xl border border-line bg-surface-2 px-2 py-2 text-left transition hover:border-line-strong sm:px-3 sm:py-2.5";
+  const tall = "truncate text-sm font-semibold tabular-nums sm:text-lg";
   return (
     // v52 (2026-09-18, Morten): "vs. budsjett" som to bokser - kroner og prosent - uten
-    // forklaringstekst under, og Risiko med kun tallet pluss et infoikon.
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-      <a href="#leieinntekter" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
-        <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
-        <p className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
-          {formatKr(avvikTotal, true)}
-        </p>
-      </a>
-      <a href="#leieinntekter" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
-        <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
-        <p className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg ${avvikTotal >= 0 ? "text-status-positive" : "text-status-danger"}`}>
-          {avvikPct === null
-            ? "—"
-            : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
-        </p>
-      </a>
-      <a href="#kontrakter-pa-utlop" className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5 text-left transition hover:border-line-strong">
-        <p className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+    // forklaringstekst, og Risiko med kun tallet pluss et infoikon.
+    // v56 (2026-09-18, Morten: "«vs. budsjett» skrives bare én gang og så vises de to tallene
+    // under i to bokser. Så en egen boks med risiko"): etikettene står OVER boksene, ikke inni -
+    // én "vs. budsjett" for begge avvikstallene, og Risiko som egen gruppe ved siden av.
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="min-w-0 sm:flex-[2]">
+        <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
+        <div className="grid grid-cols-2 gap-2">
+          <a href="#leieinntekter" className={boks}>
+            <p className={`${tall} ${avvikFarge}`}>{formatKr(avvikTotal, true)}</p>
+          </a>
+          <a href="#leieinntekter" className={boks}>
+            <p className={`${tall} ${avvikFarge}`}>
+              {avvikPct === null
+                ? "—"
+                : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
+            </p>
+          </a>
+        </div>
+      </div>
+      <div className="min-w-0 sm:flex-1">
+        <p className="mb-1 flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
           <span className="truncate">Risiko</span>
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
-                  aria-label="Hva risikotallet er"
-                  onClick={(e) => e.preventDefault()}
-                  className="shrink-0 text-ink-4 hover:text-ink-1"
-                >
+                <button type="button" aria-label="Hva risikotallet er" className="shrink-0 text-ink-4 hover:text-ink-1">
                   <Info className="h-3 w-3" />
                 </button>
               }
@@ -1195,8 +1212,10 @@ function KpiStrip({
             <TooltipContent>Kontrakter på utløp, med sannsynlig reforhandling.</TooltipContent>
           </Tooltip>
         </p>
-        <p className="mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg text-ink-1">{formatKr(reforhandlingVektet)}</p>
-      </a>
+        <a href="#kontrakter-pa-utlop" className={boks}>
+          <p className={`${tall} text-ink-1`}>{formatKr(reforhandlingVektet)}</p>
+        </a>
+      </div>
     </div>
   );
 }
@@ -1720,7 +1739,10 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
           <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">2026</p>
           {/* Samme bokstil som KPI-stripen. Etikettene er korte ("Budsjett", ikke "Budsjett 2026")
               nettopp fordi de ikke skal brekke over to linjer på mobil - året står i overskriften. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {/* v56 (2026-09-18, Morten: "tre bokser på samme linje"): alltid tre kolonner, også på
+              mobil - derfor mindre skrift og trangere padding under sm, så "14 755 808 kr" får
+              plass i ~100 px uten å bli avkuttet. */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
             {(
               [
                 ["Budsjett", totalBudsjett, "text-ink-1"],
@@ -1728,9 +1750,9 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                 ["Over/under", totalAvvik, avvikFarge(totalAvvik)],
               ] as const
             ).map(([label, belop, color]) => (
-              <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-2 py-2 sm:px-3 sm:py-2.5">
+              <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1.5 py-2 sm:px-3 sm:py-2.5">
                 <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
-                <p className={"mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg " + color}>
+                <p className={"mt-1 truncate text-xs font-semibold tabular-nums sm:text-lg " + color}>
                   {formatKr(belop, label === "Over/under")}
                 </p>
               </div>
@@ -3127,10 +3149,13 @@ export default function IncomeForecastSection() {
   const [contractExpiry2026, setContractExpiry2026] = useState<ContractExpiry2026Snapshot | null>(null);
   const [loadingContractExpiry2026, setLoadingContractExpiry2026] = useState(true);
   const [potential, setPotential] = useState<PotentialIncomeSnapshot | null>(null);
+  const [loadingPotential, setLoadingPotential] = useState(true);
   const [tenantSignals, setTenantSignals] = useState<TenantSignal[]>([]);
+  const [loadingTenantSignals, setLoadingTenantSignals] = useState(true);
   const [omsetningsavregning, setOmsetningsavregning] = useState<OmsetningsavregningSnapshot | null>(null);
   const [loadingOmsetningsavregning, setLoadingOmsetningsavregning] = useState(true);
   const [tenantForecastTable, setTenantForecastTable] = useState<TenantForecastTableSnapshot | null>(null);
+  const [loadingTenantForecastTable, setLoadingTenantForecastTable] = useState(true);
   // v17 (2026-09-07, "gjør som en inntektskontroller"-gjennomgangen): løftet opp fra
   // LeieforholdReviewBlock/VacantAreasBlock sine egne fetch-kall - trengs nå OGSÅ av KpiStrip
   // (antall til gjennomgang, datakilde-alder) og LedigeLokalerBlock (kvm-kryssreferanse), så
@@ -3157,12 +3182,18 @@ export default function IncomeForecastSection() {
       .catch(() => setLoadingContractExpiry2026(false));
     fetch("/api/income-forecast/potential")
       .then((r) => r.json())
-      .then((data) => setPotential(data.snapshot ?? null))
-      .catch(() => {});
+      .then((data) => {
+        setPotential(data.snapshot ?? null);
+        setLoadingPotential(false);
+      })
+      .catch(() => setLoadingPotential(false));
     fetch("/api/income-forecast/tenant-signals")
       .then((r) => r.json())
-      .then((data) => setTenantSignals(data.signals ?? []))
-      .catch(() => {});
+      .then((data) => {
+        setTenantSignals(data.signals ?? []);
+        setLoadingTenantSignals(false);
+      })
+      .catch(() => setLoadingTenantSignals(false));
     fetch("/api/income-forecast/omsetningsavregning")
       .then((r) => r.json())
       .then((data) => {
@@ -3172,8 +3203,11 @@ export default function IncomeForecastSection() {
       .catch(() => setLoadingOmsetningsavregning(false));
     fetch("/api/income-forecast/tenant-forecast-table")
       .then((r) => r.json())
-      .then((data) => setTenantForecastTable(data.snapshot ?? null))
-      .catch(() => {});
+      .then((data) => {
+        setTenantForecastTable(data.snapshot ?? null);
+        setLoadingTenantForecastTable(false);
+      })
+      .catch(() => setLoadingTenantForecastTable(false));
     fetch("/api/income-forecast/remaining-tenants")
       .then((r) => r.json())
       .then((data) => {
@@ -3292,6 +3326,10 @@ export default function IncomeForecastSection() {
     () => beregnHovedprognose(rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential),
     [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential],
   );
+  // v56: hero-tallet (og avvik/budsjett-boksene under det) er først endelig når ALLE kildene det
+  // regnes fra er hentet - se `loading`-kommentaren i MainForecastBox.
+  const heroReady =
+    !loadingManual && !loadingContractExpiry2026 && !loadingOmsetningsavregning && !loadingPotential && !loadingTenantSignals && !loadingTenantForecastTable;
 
   // v19 (2026-09-07, "visuell/avstemming"-gjennomgangen): samme avvik-sum som Leieinntekter/
   // Parkering-tabellenes egne Totalt-rader - MÅ inkludere samme pr.-rad reforhandlingsjustering
@@ -3387,6 +3425,9 @@ export default function IncomeForecastSection() {
   // besøk (ikke pr. re-render), og kun etter at rollup faktisk har reelle tall (unngår å lagre et
   // falskt 0-punkt før snapshottene er hentet ferdig). Se lib/incomeForecastHistory.ts.
   useEffect(() => {
+    // v56: ikke logg et foreløpig tall - bokført inkluderer de manuelle linjene, som kommer fra et
+    // eget API-kall (se heroReady).
+    if (!heroReady) return;
     if (historyRecordedRef.current) return;
     if (prognose.bokfort === 0 && prognose.gjenstar === 0) return;
     historyRecordedRef.current = true;
@@ -3398,7 +3439,7 @@ export default function IncomeForecastSection() {
       .then((r) => r.json())
       .then((data) => setHistory(data.punkter ?? []))
       .catch(() => {});
-  }, [prognose.bokfort, prognose.gjenstar, idagIso]);
+  }, [prognose.bokfort, prognose.gjenstar, idagIso, heroReady]);
 
   return (
     <div className="border-t-2 border-t-yellow-400/60 p-4">
@@ -3428,6 +3469,7 @@ export default function IncomeForecastSection() {
                 onPotentialUpdated={handlePotentialUpdated}
                 history={history}
                 idagIso={idagIso}
+                loading={!heroReady}
                 kpi={
                   <KpiStrip
                     avvikTotal={avvikTotal}
