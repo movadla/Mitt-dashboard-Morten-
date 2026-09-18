@@ -366,38 +366,27 @@ const OMSETNINGSLEIE_LEIETAKERE = new Map([
 // samme leietaker ikke skal påvirkes. Krediterer `alleredeFakturertDelA` og trekker tilsvarende
 // fra `gjenstarDelA` - eksakt beløp verifisert direkte mot NXT sine posteringer (2026-08-29, se
 // project_income-forecast-controller-audit-2026-08-29.md i minnet).
-const HISTORISK_KUNDENUMMER_KORREKSJON = new Map([
-  [
-    "norconsult norge as||lilleakerveien 4a",
-    {
-      belopA: 3085104.24,
-      forklaring:
-        "Norconsult Norge AS overtok denne leien fra Dr. Ing. A. Aas-Jakobsen AS (NXT-kundenr. 11134) og Geovita AS (kundenr. 10455) rundt mai 2026. Januar-april-leien (2 797 254,78 + 287 849,46 = 3 085 104,24 kr) ble reelt betalt og bokført i NXT, men under de gamle kundenumrene - Norconsult sitt eget kundenummer (10619) har 0 kr postert i Lilleakerveien 4A før 01.05.2026 (bekreftet direkte mot NXT generalLedgerTransaction, 2026-08-29). Kreditert her siden Aas-Jakobsen/Geovita ikke lenger finnes som egne Fazile-leietakere å attribuere beløpet til.",
-    },
-  ],
-  // v11 (2026-09-03) - samme prinsipp som over, men for PARKERING (Del B). Aas-Jakobsen og
-  // Geovita sine gamle kundenumre (11134/10455) hadde EGNE, separate garasje-/parkeringsposteringer
-  // i 2026 - usynlige for Norconsult sin Del B-gjenstår siden HISTORISK_KUNDENUMMER_KORREKSJON
-  // over kun dekket Del A da den ble laget. Beløp verifisert direkte mot NXT
-  // generalLedgerTransaction (customerNo 11134/10455), inkl. duplikat-/reverseringsposteringer i
-  // periode 5 nettet ut.
-  [
-    "norconsult norge as||lilleakerveien 10",
-    {
-      belopB: 472303.55,
-      forklaring:
-        "Aas-Jakobsen (kundenr. 11134, 402 787,58 kr) og Geovita (kundenr. 10455, 69 515,97 kr) sin garasjeleie i Lilleakerveien 10, bokført under de gamle kundenumrene i 2026 - usynlig for Norconsult sin egen Del B-gjenstår. Samme mønster/årsak som Del A-korreksjonen over.",
-    },
-  ],
-  [
-    "norconsult norge as||lilleakerveien 4a uteparkering",
-    {
-      belopB: 53627.92,
-      forklaring:
-        "Aas-Jakobsen (kundenr. 11134) sin parkeringsleie i Lilleakerveien 4A Uteparkering, bokført under det gamle kundenummeret i 2026 - usynlig for Norconsult sin egen Del B-gjenstår. Samme mønster/årsak som Del A-korreksjonen over.",
-    },
-  ],
-]);
+// v55c (2026-09-18, Morten: "ja" til dynamisk alias): de tre faste fusjons-korreksjonene som lå
+// her (Del A 3 085 104,24 på hovedbygget, Del B 472 303,55 + 53 627,92 på garasje/uteparkering,
+// verifisert 2026-08-29/09-03) er FJERNET. NXT fortsatte å bokføre på de gamle kundenumrene etter
+// at beløpene ble låst - avstemmingen mot BOOKED (`avstemmingMotNxt`) viste 3 790 098 bokført mot
+// 3 611 036 kreditert, dvs. 179 062 kr for mye gjenstår. Nå følger tallet NXT automatisk via
+// KUNDENUMMER_ALIASER under. Mekanismen (Map) beholdes tom for eventuelle senere tilfeller der et
+// gammelt kundenummer IKKE kan behandles som alias (f.eks. delt mellom to nåværende leietakere).
+const HISTORISK_KUNDENUMMER_KORREKSJON = new Map();
+
+// v55c: NXT-kundenumre som skal regnes som SAMME leietaker som et nåværende kundenummer -
+// typisk gamle numre etter en selskapsfusjon der Fazile bare har det nye selskapet, men NXT
+// fortsatt bokfører (deler av) 2026-leien på de gamle. Nøkkel = kundenummeret crosswalk'en gir
+// for Fazile-kontrakten, verdi = gamle numre. Brukes i matchViaCustomerNo() (Del A + Del B pr.
+// bygg) og nxtDelBPoolForCustomer() (kundenummer-bred parkeringspool), og aliasnøklene merkes
+// som konsumert i avstemmingen. Byggkode må fortsatt stemme - et aliasbeløp på et bygg
+// leietakeren ikke har Fazile-linje i, dukker opp i `avstemmingMotNxt.ikkeKonsumertNxt`.
+// Kun tall her (ANONYMISERING.md) - hvem numrene tilhører står i minnefila om fusjonen.
+const KUNDENUMMER_ALIASER = new Map([[10619, [11134, 10455]]]);
+function kundenummerMedAliaser(customerNo) {
+  return [Number(customerNo), ...(KUNDENUMMER_ALIASER.get(Number(customerNo)) || [])].map(String);
+}
 
 // v12 (2026-09-03): DEL_A_INNEHOLDER_PARKERING_NOTAT (PGS 688 543 kr bevisst i Del A) er FJERNET -
 // Morten snudde samme dag ("parkering må inneholde alt som er på parkeringskontoer uavhengig av
@@ -818,24 +807,30 @@ function main() {
     if (!selskaper) return { ...tom, customerNo }; // bygg finnes ikke i noe NXT-selskap sin buildings-liste
     let nxt = null;
     const byggKeys = [];
+    let aliasBelop = 0; // v55c: hvor mye av tallet som kom fra gamle kundenumre (KUNDENUMMER_ALIASER)
     for (const selskap of selskaper) {
-      const key = selskap + "||" + customerNo + "||" + normalizeName(bygg);
-      const g = nxtGroupsByCustomerNo.get(key);
-      if (!g) continue;
-      byggKeys.push(key);
-      konsumerteKundeNokler.add(key);
-      if (!nxt) {
-        nxt = { alleredeA: g.alleredeA, alleredeB: g.alleredeB, kontoerA: new Map(g.kontoerA), kontoerB: new Map(g.kontoerB) };
-      } else {
-        // Samme bygg-navn i to selskap for samme kunde (f.eks. Mustad Eiendom AS + Lilleakerveien
-        // 14 AS på "Lilleakerveien 14") - summeres, ikke "siste vinner".
-        nxt.alleredeA = round2(nxt.alleredeA + g.alleredeA);
-        nxt.alleredeB = round2(nxt.alleredeB + g.alleredeB);
-        for (const [k, v] of g.kontoerA) nxt.kontoerA.set(k, round2((nxt.kontoerA.get(k) || 0) + v));
-        for (const [k, v] of g.kontoerB) nxt.kontoerB.set(k, round2((nxt.kontoerB.get(k) || 0) + v));
+      // v55c: hovednummeret først, så eventuelle gamle numre - summeres på samme måte som
+      // "samme bygg i to selskap" under.
+      for (const nr of kundenummerMedAliaser(customerNo)) {
+        const key = selskap + "||" + nr + "||" + normalizeName(bygg);
+        const g = nxtGroupsByCustomerNo.get(key);
+        if (!g) continue;
+        byggKeys.push(key);
+        konsumerteKundeNokler.add(key);
+        if (nr !== String(customerNo)) aliasBelop = round2(aliasBelop + g.alleredeA + g.alleredeB);
+        if (!nxt) {
+          nxt = { alleredeA: g.alleredeA, alleredeB: g.alleredeB, kontoerA: new Map(g.kontoerA), kontoerB: new Map(g.kontoerB) };
+        } else {
+          // Samme bygg-navn i to selskap for samme kunde (f.eks. Mustad Eiendom AS + Lilleakerveien
+          // 14 AS på "Lilleakerveien 14") - summeres, ikke "siste vinner".
+          nxt.alleredeA = round2(nxt.alleredeA + g.alleredeA);
+          nxt.alleredeB = round2(nxt.alleredeB + g.alleredeB);
+          for (const [k, v] of g.kontoerA) nxt.kontoerA.set(k, round2((nxt.kontoerA.get(k) || 0) + v));
+          for (const [k, v] of g.kontoerB) nxt.kontoerB.set(k, round2((nxt.kontoerB.get(k) || 0) + v));
+        }
       }
     }
-    return { nxt, usikker: false, customerNo, byggKeys };
+    return { nxt, usikker: false, customerNo, byggKeys, aliasBelop };
   }
 
   // v12 (2026-09-03) - ALL Del B-bokføring (parkeringskonto 3640-3642, eller ikke-parkeringskonto
@@ -850,9 +845,10 @@ function main() {
   function nxtDelBPoolForCustomer(customerNo, excludeByggKeys) {
     let sum = 0;
     const kontoer = new Map();
+    const numre = new Set(kundenummerMedAliaser(customerNo)); // v55c: gamle kundenumre teller med i poolen
     for (const [key, g] of nxtGroupsByCustomerNo) {
       const deler = key.split("||");
-      if (deler[1] !== String(customerNo)) continue;
+      if (!numre.has(deler[1])) continue;
       if (excludeByggKeys && excludeByggKeys.has(key)) continue;
       if (g.alleredeB !== 0) pooletDelBNokler.add(key);
       sum += g.alleredeB;
@@ -1237,6 +1233,12 @@ function main() {
         .filter((k) => Math.abs(k.belop) >= 1)
         .sort((a, b) => Math.abs(b.belop) - Math.abs(a.belop));
 
+    // v55c: gjør det synlig i drilldownen når deler av "allerede fakturert" er hentet fra gamle
+    // kundenumre (KUNDENUMMER_ALIASER) - tallet er reelt bokført, bare under et annet nummer.
+    if (idMatch.aliasBelop) {
+      const notat = `Herav ${idMatch.aliasBelop.toLocaleString("nb-NO")} kr bokført i NXT på et tidligere kundenummer for samme leietaker (fusjon) - regnet med automatisk via kundenummer-alias.`;
+      forklaring = forklaring ? `${forklaring} ${notat}` : notat;
+    }
     tenant.byggGrupper.push({
       bygg: g.bygg,
       fullArsverdi2026DelA: fullA,

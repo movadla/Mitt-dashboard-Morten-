@@ -712,6 +712,18 @@ async function main() {
       },
     ],
   };
+  // v55c: oppføringer som navngir leietakere i `kort`/`beskrivelse` holdes i en gitignored fil
+  // (ANONYMISERING.md), samme mønster som MANUAL_FLYTTET_INN_PRIVATE_FILE. Form: { "<fullt
+  // byggnavn>": [ { kort, beskrivelse, linjeMatch, maksLinjer?, overforTil? } ] } - slås sammen med
+  // (legges etter) de committede oppføringene for samme bygg.
+  const MANUAL_UNTRACKED_PRIVATE_FILE = path.join(__dirname, "refresh-data", "_private-untracked-overtakelser.json");
+  if (fs.existsSync(MANUAL_UNTRACKED_PRIVATE_FILE)) {
+    const privateUntracked = JSON.parse(fs.readFileSync(MANUAL_UNTRACKED_PRIVATE_FILE, "utf8"));
+    for (const [bygg, poster] of Object.entries(privateUntracked)) {
+      if (bygg.startsWith("_") || !Array.isArray(poster)) continue;
+      MANUAL_UNTRACKED_OVERTAKELSER[bygg] = [...(MANUAL_UNTRACKED_OVERTAKELSER[bygg] || []), ...poster];
+    }
+  }
 
   // Kjører async pga. kommentar-oppslag/skriving mot Redis (overskriver aldri en kommentar
   // Morten har skrevet manuelt, se settAutoKommentar).
@@ -860,7 +872,9 @@ async function main() {
         continue;
       }
       for (const p of poster) {
-        const matchendeLinjer = finnLinjer(ledigRad, fulltBygg, p.linjeMatch);
+        // v55c: `maksLinjer` begrenser hvor mange like linjer som tas ut (Excel kan ha flere
+        // identiske "areal X"-linjer der bare én er dobbeltbudsjettert - uten grensen forsvant alle).
+        const matchendeLinjer = finnLinjer(ledigRad, fulltBygg, p.linjeMatch).slice(0, p.maksLinjer || Infinity);
         if (matchendeLinjer.length === 0) continue;
         const belop = round2(matchendeLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
         let type = "usporet";
