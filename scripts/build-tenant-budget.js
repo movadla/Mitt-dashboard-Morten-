@@ -148,7 +148,7 @@ const AVSTEMMING_LABEL = "Avstemmingsdifferanse (Excel redigert etter at 'harde 
 
 const fs = require("fs");
 const path = require("path");
-const { loadEnvLocal, getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
+const { loadEnvLocal, getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal, konsernNavn } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "budsjett-2026-excel-raw.json");
 const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
@@ -161,7 +161,10 @@ const DEL_B_LEIETYPER = new Set(["parkering", "garasje"]);
 // kontrakt-navn for vakante lokaler - oppdaget 2026-08-26 da 755 rader (13,4 mill kr) med
 // "Ledig <sted>"-prefiks falt gjennom til "uten treff" i stedet for å telles som Ledig.
 const LEDIG_PREFIX = /^ledig\b/;
-const MUSTAD_INTERN_NAVN = new Set(["mustad eiendom as", "mustad eiendomsdrift as"]);
+// v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern. Resten skal gi
+// leieinntekter") - Mustad Eiendomsdrift AS er tatt ut og får sin egen budsjettrad som en
+// vanlig leietaker (samme endring i build-remaining-summary.js sitt INTERN_MUSTAD_NAMES).
+const MUSTAD_INTERN_NAVN = new Set(["mustad eiendom as"]);
 
 // Håndkurert, delvis gjenbrukt fra EXCEL_TO_FAZILE_ALIASES i build-omsetningsavregning.js
 // (samme CC Vest-handelsnavn-problem, Morten-bekreftet der 2026-08-24/25) - IKKE utvidet med
@@ -389,7 +392,11 @@ async function main() {
   }
 
   function findTenant(row) {
-    const norm = normalizeName(row.kontrakt);
+    // v55: Excel-navnet mappes til konsern-visningsnavn FØR oppslaget (REMAINING-radene er
+    // allerede slått sammen til konsernnavn i build-remaining-summary.js) - en juridisk enhets
+    // Excel-navn skal treffe konsernraden, ikke falle gjennom til "uten treff".
+    const kontraktNavn = konsernNavn(row.kontrakt);
+    const norm = normalizeName(kontraktNavn);
     if (BYGG_BESKRIVELSE_FALSE_POSITIVES.has(norm)) return { navn: null, via: "uten treff" };
     const alias = EXCEL_TO_FAZILE_ALIASES[norm];
     if (alias) {
@@ -400,7 +407,7 @@ async function main() {
     const exact = byExactName.get(norm);
     if (exact) return { navn: exact, via: "eksakt" };
 
-    const core = coreName(row.kontrakt);
+    const core = coreName(kontraktNavn);
     const coreHit = byCoreName.get(core);
     if (coreHit && coreHit.size === 1) return { navn: [...coreHit][0], via: "kjerne-navn" };
 
@@ -493,12 +500,12 @@ async function main() {
     const { navn, via } = findTenant(row);
     viaCount[via] = (viaCount[via] || 0) + 1;
     if (navn && MUSTAD_INTERN_NAVN.has(normalizeName(navn))) {
-      // Rå kontrakt-navnet var IKKE en eksakt "Mustad Eiendom AS"/"Mustad Eiendomsdrift AS"-
-      // streng (f.eks. "Mustad Eiendom - Gjenbrukslager", "Mustad Eiendomsdrift" uten "AS") - men
-      // findTenant() sin fuzzy-matching løste den likevel til Mustad sin egen REMAINING-post.
-      // Uten denne sjekken havnet disse som EGNE, separate rader ("Mustad Eiendom as" 664 084 kr,
-      // "Mustad Eiendomsdrift AS" 363 031 kr) ved siden av MUSTAD_INTERN_LABEL-bøtta - samme
-      // reelle intern-selskap, to ulike rader (oppdaget 2026-08-26). Rutes nå til samme bøtte.
+      // Rå kontrakt-navnet var IKKE en eksakt "Mustad Eiendom AS"-streng (f.eks. "Mustad Eiendom
+      // - Gjenbrukslager") - men findTenant() sin fuzzy-matching løste den likevel til Mustad sin
+      // egen REMAINING-post. Uten denne sjekken havnet disse som EGNE, separate rader ("Mustad
+      // Eiendom as" 664 084 kr) ved siden av MUSTAD_INTERN_LABEL-bøtta - samme reelle intern-
+      // selskap, to ulike rader (oppdaget 2026-08-26). Rutes nå til samme bøtte. (Mustad
+      // Eiendomsdrift AS gikk samme vei til og med v54 - fra v55 er det en vanlig leietakerrad.)
       mustadBelop = round2(mustadBelop + belopJustert);
       viaCount["mustad-intern-via-fazile-match"] = (viaCount["mustad-intern-via-fazile-match"] || 0) + 1;
       continue;

@@ -56,6 +56,42 @@ function coreName(name) {
     .trim();
 }
 
+// v55 (2026-09-18, Morten: fire navngitte konsern skal vises som én leietaker hver): konsern
+// med flere juridiske enheter vises som ÉN leietaker overalt i
+// Inntektsprognosen (leietakertabell, budsjett, kontraktsutløp, omsetningsavregning, signaler).
+// Gruppene ligger i en gitignored fil (leietakernavn, jf. ANONYMISERING.md):
+//   { "<visningsnavn>": ["<medlemsnavn slik det står i Fazile/NXT/Excel>", ...] }
+// NXT-/Fazile-matching skjer fortsatt pr. juridisk enhet (kundenummer og kontrakt-id) -
+// sammenslåingen gjøres på leietaker-nivå i build-remaining-summary.js, og de andre scriptene
+// slår opp via konsernNavn() så navnene treffer. Et navn som ikke er med i noen gruppe
+// returneres uendret, så funksjonen er trygg å kalle på alle navn.
+const KONSERN_GRUPPER_FILE = path.join(__dirname, "..", "refresh-data", "_private-konsern-grupper.json");
+let konsernIndeks = null; // normalisert medlemsnavn -> visningsnavn (lastes én gang pr. prosess)
+let konsernGrupperCache = null; // visningsnavn -> [medlemsnavn]
+function loadKonsernGrupper() {
+  if (konsernIndeks) return konsernIndeks;
+  konsernIndeks = new Map();
+  konsernGrupperCache = {};
+  if (!fs.existsSync(KONSERN_GRUPPER_FILE)) return konsernIndeks;
+  const grupper = JSON.parse(fs.readFileSync(KONSERN_GRUPPER_FILE, "utf8"));
+  for (const [visningsnavn, medlemmer] of Object.entries(grupper)) {
+    if (visningsnavn.startsWith("_") || !Array.isArray(medlemmer)) continue;
+    konsernGrupperCache[visningsnavn] = medlemmer;
+    for (const m of medlemmer) konsernIndeks.set(normalizeName(m), visningsnavn);
+  }
+  return konsernIndeks;
+}
+function konsernNavn(name) {
+  if (!name) return name;
+  return loadKonsernGrupper().get(normalizeName(name)) || name;
+}
+// Alle grupper (visningsnavn -> medlemsnavn) - brukt til f.eks. å flytte manuelle kommentarer
+// fra de gamle enhetsnavnene over på konsernraden.
+function konsernGrupper() {
+  loadKonsernGrupper();
+  return konsernGrupperCache;
+}
+
 function loadBuildingRegistry() {
   if (!fs.existsSync(BUILDING_REGISTRY_FILE)) return null;
   return JSON.parse(fs.readFileSync(BUILDING_REGISTRY_FILE, "utf8"));
@@ -135,4 +171,6 @@ module.exports = {
   getFromRedis,
   normalizeName,
   coreName,
+  konsernNavn,
+  konsernGrupper,
 };

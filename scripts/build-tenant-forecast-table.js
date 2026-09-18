@@ -31,17 +31,18 @@
 // (som ville krevd en ny rå-henting via leietakerliste/rent_roll - vurdert for stor jobb for
 // denne runden, se plan-filen).
 //
-// "Mustad Eiendom AS/Mustad Eiendomsdrift AS" (intern-mustad-status) er ekskludert fra
-// leietaker-grupperingen (ikke et reelt eksternt leieforhold) - bygg/leietype-grupperingen tar
-// dem derimot med (samme prinsipp som budsjett-scriptet: bygg/leietype dekker ALT, uavhengig
-// av om det er en navngitt ekstern leietaker).
+// "Mustad Eiendom AS" (intern-mustad-status) er ekskludert fra leietaker-grupperingen (ikke et
+// reelt eksternt leieforhold) - bygg/leietype-grupperingen tar den derimot med (samme prinsipp
+// som budsjett-scriptet: bygg/leietype dekker ALT, uavhengig av om det er en navngitt ekstern
+// leietaker). v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern. Resten
+// skal gi leieinntekter"): Mustad Eiendomsdrift AS er en vanlig leietakerrad fra nå av.
 //
 // Kjør: node scripts/build-tenant-forecast-table.js (etter build-remaining-summary.js OG
 // build-tenant-budget.js)
 
 const fs = require("fs");
 const path = require("path");
-const { getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
+const { getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal, konsernGrupper } = require("./lib/refresh-helpers");
 
 const REMAINING_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const BUDGET_KEY = "jobb:inntektsprognose-leietaker-budsjett";
@@ -124,6 +125,31 @@ async function settAutoKommentar(navn, kommentar) {
   if (!eksisterende && !kommentar) return false;
   await pushToRedis(KOMMENTAR_HASH_KEY, felt, { navn, kommentar, sistOppdatert: new Date().toISOString().slice(0, 10), auto: true });
   return true;
+}
+
+// v55 (2026-09-18): når juridiske enheter slås sammen til en konsernrad (se konsernNavn() i
+// lib/refresh-helpers.js), forsvinner radene kommentarene sto på. Mortens egne kommentarer på
+// enhetsnavnene (uten `auto`/`forfatter`) flyttes derfor over på konsernraden - samlet, med
+// enhetsnavnet som prefiks - hvis konsernraden ikke allerede har en manuell kommentar. De gamle
+// oppføringene beholdes (harmløse; radene finnes ikke lenger). Claude-kommentarer ("||claude"-
+// nøkler) genereres på nytt av analysen og migreres ikke.
+async function migrerKonsernKommentarer() {
+  const grupper = konsernGrupper();
+  let flyttet = 0;
+  for (const [visningsnavn, medlemmer] of Object.entries(grupper)) {
+    const kanoniskFelt = visningsnavn.trim().toLowerCase();
+    const eksisterende = await getFromRedis(KOMMENTAR_HASH_KEY, kanoniskFelt);
+    if (!erAutoKommentar(eksisterende)) continue; // Morten har allerede skrevet noe på konsernraden
+    const deler = [];
+    for (const m of medlemmer) {
+      const e = await getFromRedis(KOMMENTAR_HASH_KEY, normalizeName(m));
+      if (e && e.kommentar && !erAutoKommentar(e)) deler.push(`${m}: ${e.kommentar.trim()}`);
+    }
+    if (deler.length === 0) continue;
+    await pushToRedis(KOMMENTAR_HASH_KEY, kanoniskFelt, { navn: visningsnavn, kommentar: deler.join(" | "), sistOppdatert: new Date().toISOString().slice(0, 10) });
+    flyttet++;
+  }
+  if (flyttet > 0) console.log(`Konsern-kommentarer: ${flyttet} manuelle kommentarer flyttet fra enhetsnavn til konsernrad.`);
 }
 
 // v15: Finance sin egen månedlige innflyttingslogg for Ledig-linjene (juli-prognosefila, se
@@ -433,6 +459,7 @@ function sortByAvvik(rows) {
 }
 
 async function main() {
+  await migrerKonsernKommentarer();
   const remaining = await getFromRedis(REMAINING_KEY, FIELD);
   const budget = await getFromRedis(BUDGET_KEY, FIELD);
   if (!remaining) throw new Error(`Fant ikke snapshot i Redis: ${REMAINING_KEY}/${FIELD} - kjør build-remaining-summary.js først.`);
@@ -609,6 +636,17 @@ async function main() {
     // 24 744 kr) i mars uten kommentar; Partikkel AS (budsjett 0, husleie + lager i LV31 fra
     // 2026-01-01, 98 550 kr/år) er den eneste nye LV31-leietakeren med oppstart som passer.
     "partikkel as": { bygg: "Lilleakerveien 31", linjeMatch: ["b3.8", "b3.9", "b3.10", "b3.11"] },
+    // v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern. Resten skal gi
+    // leieinntekter"): Mustad Eiendomsdrift AS er en vanlig leietaker. De to Ledig-linjene som
+    // til og med v54 ble flyttet til intern-raden via MANUAL_UNTRACKED_OVERTAKELSER (P-Bro-
+    // lagrene, Finance mai 2026: "Skrevet kontrakt på 123.000/51.000/39.000 pr år"; garderobe/
+    // trimrom i Vollsveien 19, masterfila: "Internleie") blir nå Eiendomsdrifts eget budsjett.
+    // MERK: P-Bro-inntekten ligger i Del B (parkeringsseksjon i Fazile) mens budsjettet er
+    // Del A - samme asymmetri som all annen parkering (Del B budsjetteres ikke pr. leietaker).
+    "mustad eiendomsdrift as": [
+      { bygg: "P-Bro", linjeMatch: "husleie avg.fritt" },
+      { bygg: "Vollsveien 19", linjeMatch: "internleie" },
+    ],
   };
   // Privatpersoner (og enkeltpersonforetak uten selskapsform) holdes i en gitignored fil - samme
   // verdiformer som over (streng eller objekt).
@@ -630,10 +668,11 @@ async function main() {
   //     Eternal Clothing AS) som ALLEREDE har egne, komplette budsjettrader (457 917,81 kr og
   //     123 482,87 kr) - de to Ledig-linjene var rene, ikke-oppdaterte levninger i Excel-arket.
   //  2) Ikke utleibart areal Finance selv har nullet (V21 U.01 "Fellesareal").
-  //  3) INTERNLEIE (v15) - arealet leies av Mustad Eiendomsdrift selv (P-Bro-lagrene, garderobe/
-  //     trimrom i Vollsveien 19). Inntekten ligger på intern-mustad-byggGruppene i REMAINING og
-  //     vises på MUSTAD_INTERN_LABEL-raden - `overforTil` flytter budsjettet dit, så den raden
-  //     måles mot riktig budsjett i stedet for at Ledig-raden ser ut som tapt inntekt.
+  //  3) INTERNLEIE (v15, utgått i v55) - P-Bro-lagrene og garderobe/trimrom i Vollsveien 19 ble
+  //     flyttet til MUSTAD_INTERN_LABEL-raden via `overforTil` så lenge Mustad Eiendomsdrift
+  //     var intern. Fra v55 (Morten 2026-09-18) er Eiendomsdrift en vanlig leietaker, og de to
+  //     linjene ligger i MANUAL_FLYTTET_INN_OVERRIDES over i stedet. `overforTil` beholdes som
+  //     mekanisme for eventuelle senere tilfeller.
   // `linjeMatch`: delstreng (case-insensitive) som identifiserer HVILKEN/HVILKE linje(r) i
   // Ledig-radens linjer[] dette gjelder - kan matche flere linjer (f.eks. RCCL sine to rom).
   // Beløpet regnes ut fra de FAKTISKE linjeverdiene (ikke håndskrevet), og linjene fjernes fra
@@ -660,22 +699,6 @@ async function main() {
         kort: "Parkly AS (egen budsjettrad)",
         beskrivelse: "Dobbeltbudsjettert: Finance (mars 2026): \"Parkly leier her.\" - Parkly AS har egen, full budsjettrad andre steder i tabellen.",
         linjeMatch: "rom nr 7",
-      },
-    ],
-    "P-Bro": [
-      {
-        kort: "Internleie Mustad Eiendomsdrift (P-Bro-lagre)",
-        beskrivelse: "Internleie: lagrene i P-Bro leies av Mustad Eiendomsdrift AS (Finance mai 2026: \"Skrevet kontrakt på 123.000/51.000/39.000 pr år\"; tre Fazile-linjer på P-Bro mellom LV8 og LV4, Del B). Budsjettet er flyttet til intern-raden.",
-        linjeMatch: "husleie avg.fritt",
-        overforTil: MUSTAD_INTERN_LABEL,
-      },
-    ],
-    "Vollsveien 19": [
-      {
-        kort: "Internleie Mustad Eiendomsdrift (garderobe/trimrom)",
-        beskrivelse: "Internleie (masterfila: \"Internleie\"): garderobe/trimrom i Vollsveien 19 leies av Mustad Eiendomsdrift AS. Budsjettet er flyttet til intern-raden.",
-        linjeMatch: "internleie",
-        overforTil: MUSTAD_INTERN_LABEL,
       },
     ],
   };

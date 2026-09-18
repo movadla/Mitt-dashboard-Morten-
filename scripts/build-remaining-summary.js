@@ -236,7 +236,7 @@ const BUILDING_ALIASES = {
   "strandveien uteparkering": "Strandveien 10", // Vedeld: 19 924,03 vs. forventet 20 118,72 (liten rest, trolig delvis år)
 };
 
-const { loadEnvLocal, pushToRedis, normalizeName, coreName, verifyTotal } = require("./lib/refresh-helpers");
+const { loadEnvLocal, pushToRedis, normalizeName, coreName, verifyTotal, konsernNavn } = require("./lib/refresh-helpers");
 
 // Onepark AS - parkeringsdrift utenfor Fazile rent_roll (etterfakturert basert på tilsendt
 // omsetningsrapport, ikke en vanlig leiekontrakt). De 6 leieforholdene under nulles derfor
@@ -277,7 +277,12 @@ const OMSETNINGSAVREGNING_2025_ANDRE_NAVN = "andre (bokført uten leietakerrefer
 // Interne Mustad-selskaper som noen ganger opptrer som "leietaker" i Fazile-data (egne
 // lokaler/administrative posteringer) - ikke reelle eksterne leieforhold. Flagges separat
 // (status "intern-mustad") i stedet for å telles som et vanlig usikkert avvik.
-const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as", "mustad eiendomsdrift as"]);
+// v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern. Resten skal gi
+// leieinntekter"): Mustad Eiendomsdrift AS er tatt UT av settet - driftsselskapet betaler reell
+// leie til eierselskapene (P-Bro-lagre, garderobe/trimrom V19, varmepumpe/enøk-tiltak) og skal
+// stå som en vanlig leietaker med budsjett og inntekt. Samme endring i build-tenant-budget.js
+// (MUSTAD_INTERN_NAVN), build-contract-expiry-2026.js og build-tenant-forecast-table.js.
+const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as"]);
 // v14 (2026-09-05): "Mustad Eiendom as" (NXT-kunde 10401) som Fazile-leietaker i et bygg som KUN
 // eies av Mustad Eiendom AS selv (selskap 2397991) er egenleie innenfor samme juridiske enhet -
 // et selskap kan ikke fakturere seg selv. Verifisert mot NXT generalLedgerTransaction: kunde 10401
@@ -550,6 +555,16 @@ const DRIFTSAVTALE_REGEX = /driftsavtale|vaktmester/i;
 // prinsipp som markedsbidrag/felleskostnader over.
 const SD_ANLEGG_REGEX = /sd.?anlegg/i;
 
+// Forvaltningshonorar (Mustad Eiendom AS sitt honorar for å forvalte de 50 %-eide selskapene
+// Strandveien 4-8 AS, Strandveien 10 AS og Strandveien Eiendomsinvest AS - Fazile-seksjon
+// "Mustad Eiendom AS - øvrige tjenester", RENT-linjer på 1,49 mill kr) bokføres på NXT konto
+// 3400, IKKE i 36xx-serien. Verifisert 2026-09-18 mot generalLedgerTransaction i Mustad Eiendom
+// AS for kunde 31297 (Strandveien 4-8 AS): 2025 = 1 359 687 kr på 3400, 2026 = 1 166 832,54 kr
+// på 3400 (= Fazile-linjens årsverdi, altså allerede fakturert i år), 0 kr på 36xx begge år.
+// Uten filteret lå hele årsbeløpet som "gjenstår" i 36xx-prognosen selv om det både er utenfor
+// kontoserien og allerede sendt. Inntekten er reell, men hører hjemme i en annen prognose.
+const FORVALTNINGSHONORAR_REGEX = /forvaltningshonorar/i;
+
 function resolveNxtBuilding(fazileSeksjon, nxtBuildingSet) {
   const norm = normalizeName(fazileSeksjon);
   if (BUILDING_ALIASES[norm]) return BUILDING_ALIASES[norm];
@@ -585,6 +600,13 @@ function main() {
   for (const t of nxtData.tenants) for (const l of t.lines) nxtBuildingSet.add(l.bygg);
   const nxtGroups = new Map(); // "tenant||bygg" -> { alleredeA, alleredeB }
   const nxtGruppeByggNavn = new Map(); // samme nøkkel som nxtGroupsByCustomerNo -> ekte byggnavn
+  // v55 (2026-09-18, Morten: "alle tall avstemt på tvers ... systemer"): hvilke NXT-grupper som
+  // faktisk ble tatt inn i et leieforhold. Brukes til avstemmingen mot BOOKED nederst
+  // (`avstemmingMotNxt` i snapshotet) - det som IKKE er konsumert er bokføring på kunder som
+  // mangler Fazile-kontrakt, og forklarer differansen mellom leietaker-summen og kontosummen.
+  const konsumerteKundeNokler = new Set(); // "selskap||customerNo||bygg" tatt inn via kundenummer (hele gruppen)
+  const pooletDelBNokler = new Set(); // samme nøkler der KUN Del B-delen er tatt inn via v12-poolen
+  const konsumerteNavneNokler = new Set(); // "navn||bygg" tatt inn via navnematching (nxtGroups)
 
   // v49 (2026-09-11, Morten: "skjønner ikke hvorfor vi ikke bare kan kode det inn hos PGS og vise
   // det faktiske avviket"): posteringer som mangler kundenummer i NXT, men der bilagsteksten
@@ -801,6 +823,7 @@ function main() {
       const g = nxtGroupsByCustomerNo.get(key);
       if (!g) continue;
       byggKeys.push(key);
+      konsumerteKundeNokler.add(key);
       if (!nxt) {
         nxt = { alleredeA: g.alleredeA, alleredeB: g.alleredeB, kontoerA: new Map(g.kontoerA), kontoerB: new Map(g.kontoerB) };
       } else {
@@ -831,6 +854,7 @@ function main() {
       const deler = key.split("||");
       if (deler[1] !== String(customerNo)) continue;
       if (excludeByggKeys && excludeByggKeys.has(key)) continue;
+      if (g.alleredeB !== 0) pooletDelBNokler.add(key);
       sum += g.alleredeB;
       for (const [k, v] of g.kontoerB) kontoer.set(k, round2((kontoer.get(k) || 0) + v));
     }
@@ -863,13 +887,25 @@ function main() {
   // kontraktslinje-id/kontrakt-id her for å finne leieforholdet; konto avgjør om linjen teller.
   const alleFazileRader = [];
 
-  for (const file of files) {
-    const rows = JSON.parse(fs.readFileSync(path.join(FAZILE_DIR, file), "utf8"));
+  // v55 (2026-09-18, Morten: legg inn en nysignert kontrakt som forventet inntekt): signerte kontrakter som
+  // ennå ikke er registrert i Fazile leses fra en gitignored fil med rader i nøyaktig samme form
+  // som rent_roll-radene, og behandles som om de kom fra Fazile (kontrakt_id med MANUELL-prefiks,
+  // så de aldri treffer crosswalk/fakturaplan - de får status "fazile-plan-mangler" med modellens
+  // dagsproporsjonale gjenstår). Raden MÅ fjernes fra fila når kontrakten dukker opp i Fazile.
+  const MANUELLE_KONTRAKTER_FILE = path.join(__dirname, "refresh-data", "_private-manuelle-kontrakter.json");
+  const manuelleRader = fs.existsSync(MANUELLE_KONTRAKTER_FILE) ? JSON.parse(fs.readFileSync(MANUELLE_KONTRAKTER_FILE, "utf8")).rader || [] : [];
+  const radKilder = files.map((file) => JSON.parse(fs.readFileSync(path.join(FAZILE_DIR, file), "utf8")));
+  if (manuelleRader.length > 0) {
+    radKilder.push(manuelleRader);
+    console.log(`Manuelle kontrakter (ikke i Fazile ennå): ${manuelleRader.length} rad(er) fra _private-manuelle-kontrakter.json lagt til rent_roll-grunnlaget.`);
+  }
+  for (const rows of radKilder) {
     for (const row of rows) {
       alleFazileRader.push(row);
       if (MARKEDSBIDRAG_REGEX.test(row.beskrivelse || "")) continue; // føres ikke på 36xx, se v2-avsnitt i filhodet
       if (FELLESKOST_KANTINE_REGEX.test((row.beskrivelse || "").trim())) continue; // tatt bort fra tegnestykket, se v2-avsnitt i filhodet
       if (SD_ANLEGG_REGEX.test(row.beskrivelse || "")) continue; // faktureres på konto 3900, ikke 36xx - se kommentar ved SD_ANLEGG_REGEX
+      if (FORVALTNINGSHONORAR_REGEX.test(row.beskrivelse || "")) continue; // faktureres på konto 3400, ikke 36xx - se kommentar ved FORVALTNINGSHONORAR_REGEX
       if (ENERGI_REGEX.test(row.beskrivelse || "")) continue; // faktureres utenfor 36xx-serien - se kommentar ved ENERGI_REGEX
       if (EIENDOMSSKATT_REGEX.test(row.beskrivelse || "")) continue; // viderefakturert kostnad, ikke reell leieinntekt - se kommentar ved EIENDOMSSKATT_REGEX
       if (ADMINISTRASJONSBIDRAG_REGEX.test(row.beskrivelse || "")) continue; // viderefakturert kostnad - se kommentar ved ADMINISTRASJONSBIDRAG_REGEX
@@ -962,28 +998,36 @@ function main() {
 
     // Fallback-kjede (navnematching) - kun hvis ID-koblingen ikke fant noe.
     if (!nxt) {
-      nxt = nxtGroups.get(normalizeName(g.leietaker) + "||" + bygg);
-      if (nxt) matchVia = "navn-eksakt";
+      const navneNokkel = normalizeName(g.leietaker) + "||" + bygg;
+      nxt = nxtGroups.get(navneNokkel);
+      if (nxt) {
+        matchVia = "navn-eksakt";
+        konsumerteNavneNokler.add(navneNokkel);
+      }
     }
     if (!nxt) {
       const resolvedName = resolveNxtTenantName(g.leietaker);
       if (resolvedName) {
-        const viaCoreName = nxtGroups.get(normalizeName(resolvedName) + "||" + bygg);
+        const navneNokkel = normalizeName(resolvedName) + "||" + bygg;
+        const viaCoreName = nxtGroups.get(navneNokkel);
         if (viaCoreName) {
           nxt = viaCoreName;
           matchVia = "kjerne-navn";
           countMatchedViaCoreName++;
+          konsumerteNavneNokler.add(navneNokkel);
         }
       }
     }
     if (!nxt) {
       const alias = FAZILE_TO_NXT_ALIASES[normalizeName(g.leietaker)];
       if (alias) {
-        const viaAlias = nxtGroups.get(alias + "||" + bygg);
+        const navneNokkel = alias + "||" + bygg;
+        const viaAlias = nxtGroups.get(navneNokkel);
         if (viaAlias) {
           nxt = viaAlias;
           matchVia = "alias";
           countMatchedViaAlias++;
+          konsumerteNavneNokler.add(navneNokkel);
         }
       }
     }
@@ -1206,6 +1250,10 @@ function main() {
       status,
       forklaring,
       nxtMatch: matchVia,
+      // v55: den juridiske enheten bak gruppen (Fazile-leietakernavnet). Etter konsern-
+      // sammenslåingen kan én leietakerrad ha grupper fra flere enheter i SAMME bygg - v15-
+      // merge'n av like bygg lenger ned nullstiller bare modellrester når enheten er den samme.
+      juridiskEnhet: g.leietaker,
       // v12 - interne felt (prefiks "_"), ALDRI i det publiserte snapshotet (slettes etter
       // poolingen, samme mønster som _kommentarRaw i build-tenant-forecast-table.js).
       _key: historiskNokkel, // leieforhold-nøkkel (leietaker||bygg) - v13-fakturaplanen slår opp gruppen på denne
@@ -1256,6 +1304,33 @@ function main() {
     metesa.byggGrupper.push(...medu.byggGrupper);
     metesa.lines.push(...medu.lines);
     tenantMap.delete(MEDU_KEY);
+  }
+
+  // v55 (2026-09-18, Morten: fire navngitte konsern skal vises som én leietaker hver): konsern
+  // med flere juridiske enheter slås sammen til ÉN leietakerrad HER -
+  // etter Head/Medu-mergene over (samme mønster) og FØR v12-poolingen og fakturaplan-overlegget,
+  // slik at budsjett (build-tenant-budget.js), Ledig-kobling (build-tenant-forecast-table.js),
+  // kontraktsutløp og omsetningsavregning alle ser samme navn. Gruppene ligger i gitignored
+  // _private-konsern-grupper.json (leietakernavn), se konsernNavn() i lib/refresh-helpers.js.
+  // NXT-matchingen over er allerede gjort pr. juridisk enhet (kundenummer/kontrakt-id), så
+  // ingen bokføring blandes - kun radene legges sammen. Den opprinnelige enheten står igjen på
+  // hver byggGruppe (`juridiskEnhet`) og listes på leietakeren (`konsernMedlemmer`).
+  let countKonsernSlattSammen = 0;
+  for (const [tKey, tenant] of [...tenantMap.entries()]) {
+    const visningsnavn = konsernNavn(tenant.navn);
+    if (visningsnavn === tenant.navn) continue;
+    const kKey = normalizeName(visningsnavn);
+    if (!tenantMap.has(kKey)) tenantMap.set(kKey, { navn: visningsnavn, byggGrupper: [], lines: [], konsernMedlemmer: [] });
+    const maal = tenantMap.get(kKey);
+    if (!maal.konsernMedlemmer) maal.konsernMedlemmer = [];
+    maal.byggGrupper.push(...tenant.byggGrupper);
+    maal.lines.push(...tenant.lines);
+    maal.konsernMedlemmer.push(tenant.navn);
+    tenantMap.delete(tKey);
+    countKonsernSlattSammen++;
+  }
+  if (countKonsernSlattSammen > 0) {
+    console.log(`Konsern-sammenslåing: ${countKonsernSlattSammen} juridiske enheter slått sammen til konsernrader (_private-konsern-grupper.json).`);
   }
 
   // v12 (2026-09-03, Morten etter Q4-revisjonen: "Parkering må inneholde alt som er på
@@ -1750,7 +1825,10 @@ function main() {
           // stoppet manuelt, eller reelt ikke mer å fakturere. Beholdes (ikke nullstilt stille) med
           // egen status så Morten kan avgjøre.
           bg.gjenstarKilde = "modell";
-          bg.status = "fazile-plan-mangler";
+          // v55: intern-mustad (Mustad Eiendom AS som "leietaker") beholdes - før ble statusen
+          // overskrevet her, og Mustad Eiendom dukket opp som en vanlig ekstern leietakerrad i
+          // Leietaker-tabellen ved siden av internraden (593 304 kr fakturert på Lilleakerveien 14).
+          if (bg.status !== "intern-mustad") bg.status = "fazile-plan-mangler";
           const notat = `Fazile har INGEN planlagt faktura for dette leieforholdet for resten av 2026, men modellen (Fazile-årsverdi minus NXT-bokført) gir ${fmtKr(modellTotal)} kr gjenstår. Beholdt inntil videre - avgjør: kontrakt ikke aktivert i Fazile ennå (ingen faktura generert), fakturering stoppet, eller reelt ikke mer å fakturere (da skal beløpet ut av prognosen).`;
           bg.forklaring = bg.forklaring ? `${bg.forklaring} ${notat}` : notat;
           countPlanMangler++;
@@ -1773,11 +1851,14 @@ function main() {
     // Plan-linjer uten eksisterende byggGruppe (kontrakt opprettet etter siste rent_roll-uttrekk,
     // eller leieforhold som falt helt ut av modellen) - egne rader.
     for (const [key, p] of plan) {
-      const tKey = normalizeName(p.leietaker);
+      // v55: konsern-visningsnavn også her, ellers får en juridisk enhet uten rent_roll-rad
+      // sin egen rad ved siden av konsernraden (se konsernNavn() i lib/refresh-helpers.js).
+      const visningsnavn = konsernNavn(p.leietaker);
+      const tKey = normalizeName(visningsnavn);
       if (tKey === ONEPARK_LEIETAKER_KEY) continue;
       const planTotal = round2(p.delA + p.delB);
       if (planTotal === 0) continue;
-      if (!tenantMap.has(tKey)) tenantMap.set(tKey, { navn: p.leietaker, byggGrupper: [], lines: [] });
+      if (!tenantMap.has(tKey)) tenantMap.set(tKey, { navn: visningsnavn, byggGrupper: [], lines: [] });
       const erIntern = INTERN_MUSTAD_NAMES.has(tKey);
       tenantMap.get(tKey).byggGrupper.push({
         bygg: p.seksjon,
@@ -1900,7 +1981,7 @@ function main() {
       // artefakt av v12-poolingen (kundenummerets parkeringsbokføring ble fordelt proporsjonalt på
       // begge linjene) - ikke penger som skal faktureres. Fakturaplanen er per kontrakt: hadde det
       // avsluttede leieforholdet hatt noe igjen, hadde det stått under sin egen nøkkel.
-      if (prim.gjenstarKilde === "fazile-fakturaplan" && sek.status === "fazile-plan-mangler") {
+      if (prim.gjenstarKilde === "fazile-fakturaplan" && sek.status === "fazile-plan-mangler" && prim.juridiskEnhet === sek.juridiskEnhet) {
         const bort = sek.gjenstarTotal;
         sek.gjenstarDelA = 0;
         sek.gjenstarDelB = 0;
@@ -2015,9 +2096,72 @@ function main() {
         totalBelop,
         byggGrupper: t.byggGrupper.sort((a, b) => b.gjenstarTotal - a.gjenstarTotal),
         lines: t.lines.sort((a, b) => b.fullArsverdi2026 - a.fullArsverdi2026),
+        ...(t.konsernMedlemmer && t.konsernMedlemmer.length ? { konsernMedlemmer: [...t.konsernMedlemmer].sort() } : {}),
       };
     })
     .sort((a, b) => b.totalBelop - a.totalBelop);
+
+  // v55 (2026-09-18, Morten punkt 1: "alle tall avstemt på tvers av ... systemer"): forklarer
+  // differansen mellom leietaker-summen av "allerede fakturert" og den kontobaserte NXT-summen
+  // (BOOKED_3600_3699 bygges fra nøyaktig samme nxt-booked-tenants/-filer). Komponentene er de
+  // bevisste grepene i dette scriptet; det som står igjen etter dem er NXT-bokføring på kunder/
+  // bygg som ingen Fazile-kontrakt tok inn (listet med navn, størst først) pluss en uforklart rest
+  // som skal være ~0. Vises i avstemmingspanelet - ikke bare i konsollen.
+  let nxtRaaSum = 0;
+  for (const company of nxtCompaniesByNo.values()) for (const l of company.lines) nxtRaaSum += -l.belop;
+  nxtRaaSum = round2(nxtRaaSum);
+  const remainingFakturert = round2(tenantList.reduce((s, t) => s + t.alleredeFakturertNxt2026, 0));
+  const syntetiskeKontoer = new Map(); // ikke-numeriske konto-etiketter (Overtatt fra gammelt kundenummer, Manglende linje lagt til, ...)
+  for (const t of tenantList) {
+    for (const bg of t.byggGrupper) {
+      for (const k of [...(bg.kontoFordelingDelA || []), ...(bg.kontoFordelingDelB || [])]) {
+        if (/^\d+$/.test(String(k.konto))) continue;
+        if (String(k.konto).startsWith("3650 (") || String(k.konto).startsWith("3690 (")) continue; // husleiekonto regnet som parkering - ekte NXT-beløp, bare omklassifisert A->B
+        if (k.konto === AVREGNING_3630_KONTO_LABEL) continue; // allerede med som egen post (sumAvregning3630Noytralisert) - ikke tell den to ganger
+        syntetiskeKontoer.set(k.konto, round2((syntetiskeKontoer.get(k.konto) || 0) + k.belop));
+      }
+    }
+  }
+  const ikkeKonsumert = [];
+  for (const [key, g] of nxtGroupsByCustomerNo) {
+    const [selskap, customerNo, byggNorm] = key.split("||");
+    if (Number(customerNo) === 0) continue; // ligger på "Ukodet bokføring"-raden
+    if (konsumerteKundeNokler.has(key)) continue;
+    const company = [...nxtCompaniesByNo.values()].find((c) => c.selskap === selskap);
+    const navn = (company && company.tenantNames[String(customerNo)]) || `kunde ${customerNo}`;
+    if (konsumerteNavneNokler.has(normalizeName(navn) + "||" + byggNorm)) continue;
+    // Kun kreditnota-etiketten fra 3630-paringen (ikke ekte konto) skal ikke telles her.
+    const ekteA = round2([...g.kontoerA.entries()].filter(([k]) => /^\d+$/.test(String(k))).reduce((s, [, v]) => s + v, 0));
+    const ekteB = round2([...g.kontoerB.entries()].filter(([k]) => /^\d+$/.test(String(k))).reduce((s, [, v]) => s + v, 0));
+    const belop = round2(ekteA + (pooletDelBNokler.has(key) ? 0 : ekteB));
+    if (Math.abs(belop) < 1) continue;
+    ikkeKonsumert.push({ selskap, customerNo: Number(customerNo), navn, bygg: nxtGruppeByggNavn.get(key) || byggNorm, belop });
+  }
+  ikkeKonsumert.sort((a, b) => Math.abs(b.belop) - Math.abs(a.belop));
+  const sumIkkeKonsumert = round2(ikkeKonsumert.reduce((s, r) => s + r.belop, 0));
+  const forklart = [
+    { post: "3630-kreditnotaer for 2025-omsetningsavregningen lagt tilbake i fakturert (ligger som negative beløp i NXT-summen)", belop: round2(sumAvregning3630Noytralisert) },
+    { post: "Konto 3632 (2025-avregningen: fordelt til leietakere minus avsetning) holdt utenfor leietaker-summen, men med i kontosummen", belop: round2(-(sumOmsetningsavregning2025Fordelt + sumOmsetningsavregning2025Avsetning)) },
+    ...[...syntetiskeKontoer.entries()].map(([post, belop]) => ({ post: `Syntetisk kontopost «${post}» (lagt til i fakturert uten NXT-motpost)`, belop })),
+    { post: `NXT-bokføring på ${ikkeKonsumert.length} kunde/bygg-grupper uten Fazile-leieforhold (mangler i leietaker-summen, med i kontosummen)`, belop: round2(-sumIkkeKonsumert) },
+  ];
+  const differanse = round2(remainingFakturert - nxtRaaSum);
+  const uforklartRest = round2(differanse - forklart.reduce((s, f) => s + f.belop, 0));
+  const avstemmingMotNxt = {
+    nxtBokfort36xx: nxtRaaSum,
+    remainingFakturert,
+    differanse,
+    forklart,
+    uforklartRest,
+    ikkeKonsumertNxt: { antall: ikkeKonsumert.length, sum: sumIkkeKonsumert, storste: ikkeKonsumert.slice(0, 40) },
+  };
+  console.log(`\nAvstemming mot NXT (BOOKED): leietaker-sum ${remainingFakturert.toLocaleString("nb-NO")} - kontosum ${nxtRaaSum.toLocaleString("nb-NO")} = ${differanse.toLocaleString("nb-NO")} kr`);
+  for (const f of forklart) console.log(`  ${f.belop >= 0 ? "+" : ""}${f.belop.toLocaleString("nb-NO")}  ${f.post}`);
+  console.log(`  uforklart rest: ${uforklartRest.toLocaleString("nb-NO")} kr`);
+  if (ikkeKonsumert.length) {
+    console.log(`  NXT-grupper uten Fazile-leieforhold (${ikkeKonsumert.length}, sum ${sumIkkeKonsumert.toLocaleString("nb-NO")}), de største:`);
+    for (const r of ikkeKonsumert.slice(0, 25)) console.log(`    ${r.belop.toLocaleString("nb-NO").padStart(12)}  ${r.navn} | ${r.bygg} | ${r.selskap} | kunde ${r.customerNo}`);
+  }
 
   const snapshot = {
     sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : "2026-08-26",
@@ -2025,6 +2169,7 @@ function main() {
     totalBelop: round2(sumTotalDelA + sumTotalDelB),
     antallLeietakere: tenantList.length,
     tenants: tenantList,
+    avstemmingMotNxt,
     // Se OMSETNINGSAVREGNING_2025_KONTI-kommentaren - sporer avsetningen (avsetning, "Andre"
     // uten leietakerreferanse) og fordelingen til reelle leietakere separat, i stedet for å la
     // begge forsvinne stille når konto 3632 ekskluderes fra leietakernes 2026-gjenstår. Begge

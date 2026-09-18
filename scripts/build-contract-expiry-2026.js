@@ -47,7 +47,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { loadEnvLocal, pushToRedis, getFromRedis, loadOwnershipShares, andelForBygg, normalizeName } = require("./lib/refresh-helpers");
+const { loadEnvLocal, pushToRedis, getFromRedis, loadOwnershipShares, andelForBygg, normalizeName, konsernNavn } = require("./lib/refresh-helpers");
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "kontraktsutlop-raw-full.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-kontraktsutlop-2026";
@@ -158,10 +158,12 @@ async function main() {
     ["UC8685", "127844 (kontrakt_id, relokasjon til Vollsveien 17, ikke-lenket)"],
   ]);
 
-  // Mustad sine egne selskaper som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
-  // build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen
-  // (2026-09-04: Mustad Eiendomsdrift ON2603, 12 704 kr lå inne som potensial).
-  const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as", "mustad eiendomsdrift as"]);
+  // Mustad Eiendom AS som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
+  // build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen.
+  // v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern"): Mustad
+  // Eiendomsdrift AS er tatt ut av settet og telles som en vanlig leietaker igjen (ON2603,
+  // 12 704 kr, som ble fjernet 2026-09-04, er dermed tilbake som potensial).
+  const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as"]);
 
   let antallEierandelKorrigert = 0;
   const groups = new Map();
@@ -173,10 +175,14 @@ async function main() {
     const manueltBekreftetNy = MANUELT_BEKREFTET_REFORHANDLET.get(r.kontraktsnokkel);
     const erReforhandlet = r.reforhandlet || Boolean(manueltBekreftetNy);
 
-    const key = `${r.leietaker}||${r.kontraktsnokkel}`;
+    // v55: konsern-visningsnavn (fra _private-konsern-grupper.json) - samme navn som REMAINING/Leietaker-
+    // tabellen bruker, se konsernNavn() i lib/refresh-helpers.js. Kontraktsnøkkelen er fortsatt
+    // pr. juridisk enhet, så to enheters kontrakter blir to rader under samme navn.
+    const leietaker = konsernNavn(r.leietaker);
+    const key = `${leietaker}||${r.kontraktsnokkel}`;
     if (!groups.has(key)) {
       groups.set(key, {
-        leietaker: r.leietaker,
+        leietaker,
         kontraktsnokkel: r.kontraktsnokkel,
         byggSet: new Set(),
         totalArsleie: 0,

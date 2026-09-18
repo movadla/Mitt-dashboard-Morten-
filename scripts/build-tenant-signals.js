@@ -18,7 +18,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { loadEnvLocal } = require("./lib/refresh-helpers");
+const { loadEnvLocal, konsernNavn } = require("./lib/refresh-helpers");
 
 const SF_RAW_FILE = path.join(__dirname, "refresh-data", "sf-prosjekt-reforhandling-ledig-lokale-raw.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-signaler";
@@ -54,7 +54,9 @@ async function main() {
 
   if (contractSnap) {
     const sfReforhandlingByLeietaker = new Map(
-      sf.records.filter((r) => r.type === "Reforhandling" && r.leietaker).map((r) => [r.leietaker.toLowerCase(), r]),
+      // v55: konsernNavn() på begge sider - kontraktsutløp-snapshotet bruker konsern-visningsnavn
+      // (fra _private-konsern-grupper.json), SF-prosjektene den juridiske enheten.
+      sf.records.filter((r) => r.type === "Reforhandling" && r.leietaker).map((r) => [konsernNavn(r.leietaker).toLowerCase(), r]),
     );
     for (const c of contractSnap.contracts) {
       const id = c.kontraktsnokkel;
@@ -75,7 +77,7 @@ async function main() {
           sistOppdatert: sf.hentetDato,
         };
       } else {
-        const sfHit = sfReforhandlingByLeietaker.get(c.leietaker.toLowerCase());
+        const sfHit = sfReforhandlingByLeietaker.get(konsernNavn(c.leietaker).toLowerCase());
         if (sfHit) {
           const alder = monthsAgo(sfHit.lastModified);
           signal = {

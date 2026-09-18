@@ -29,7 +29,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { getFromRedis, pushToRedis } = require("./lib/refresh-helpers");
+const { getFromRedis, pushToRedis, normalizeName, konsernNavn } = require("./lib/refresh-helpers");
 
 const OMSETNING_FILE = path.join(__dirname, "refresh-data", "omsetningsleie-cc-vest.json");
 const MAPPING_FILE = path.join(__dirname, "refresh-data", "omsetningsavregning-butikk-mapping.json");
@@ -165,7 +165,10 @@ async function main() {
     };
 
     if (entry.remainingNavn) {
-      const tenant = rem.tenants.find((t) => t.navn === entry.remainingNavn);
+      // v55: mapping-fila peker på den juridiske enheten; REMAINING kan ha slått den sammen til
+      // et konsern-visningsnavn (se konsernNavn() i lib/refresh-helpers.js) - slå opp via begge.
+      const remainingKey = normalizeName(konsernNavn(entry.remainingNavn));
+      const tenant = rem.tenants.find((t) => t.navn === entry.remainingNavn) || rem.tenants.find((t) => normalizeName(t.navn) === remainingKey);
       const bg = tenant && tenant.byggGrupper.find((g) => g.bygg === entry.bygg);
       if (!tenant || !bg) {
         advarsler.push(`${b.butikk}: "${entry.remainingNavn}" / ${entry.bygg} finnes ikke i REMAINING`);
