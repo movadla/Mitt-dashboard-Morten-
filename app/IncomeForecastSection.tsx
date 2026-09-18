@@ -31,7 +31,6 @@ import {
   LEIETYPE_BREAKDOWN,
   MANUAL_NXT,
   OWNERSHIP_SHARE_RULES,
-  RECONCILIATION,
   REMAINING,
   type ReconciliationStatus,
 } from "@/lib/incomeForecast";
@@ -83,7 +82,6 @@ function oldestSnapshotDate(): string | null {
     BOOKED_3600_3699.sistOppdatert,
     REMAINING.sistOppdatert,
     MANUAL_NXT.sistOppdatert,
-    RECONCILIATION.sistOppdatert,
   ].filter(
     (d) => d && d.length > 0,
   );
@@ -146,7 +144,6 @@ type OmsetningsavregningSortKey =
 // hver tabell sin egen variant (små/store bokstaver, medium/semibold, ink-2/ink-4, med/uten
 // bunnlinje under hodet). Kolonnetitler og innhold er uendret - bare utformingen er samlet her.
 const TABELL_HODE_RAD = "border-b border-line-strong text-left text-ink-2";
-const TABELL_TH = "text-2xs font-semibold uppercase tracking-wide text-ink-2";
 const tabellSortKnapp = (active: boolean) =>
   `inline-flex items-center gap-0.5 text-2xs font-semibold uppercase tracking-wide transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-2"}`;
 const TABELL_RAD_KLIKKBAR = "cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
@@ -568,57 +565,220 @@ function ContractExpiryDetails({ contract }: { contract: ContractExpiry2026Snaps
 
 // v28: `advarsler` er live datakvalitetsvarsler fra siste pipeline-kjoring (snapshotenes
 // advarsler-felt), `erUtdatert` settes nar RECONCILIATION er eldre enn de andre datakildene.
-function ReconciliationPanel({ advarsler, erUtdatert }: { advarsler: string[]; erUtdatert: boolean }) {
-  if (RECONCILIATION.checks.length === 0 && advarsler.length === 0) {
-    return <p className="text-sm text-ink-3">Ingen avstemmingskontroller kjørt ennå.</p>;
-  }
+// v58 (2026-09-18, Morten: "Hele verktøy og avstemming må gås gjennom grundig og ryddes i ... pass
+// på at infoen stemmer med de faktiske tallene ... og at det oppdaterer seg fremover"): de
+// håndskrevne, daterte RECONCILIATION-kontrollene (kronebeløp i fritekst som var utdaterte dagen
+// etter, med et eget "kontrollene er eldre enn datakildene"-varsel på toppen) er tatt ut av UI-en.
+// Erstattet av kontroller som regnes LIVE fra de samme snapshotene tabellene bruker - én linje med
+// status pr. kontroll, tall og forklaring bak "Detaljer" for den som trenger det.
+function LiveVarsler({ advarsler }: { advarsler: string[] }) {
+  if (advarsler.length === 0) return <p className="text-2xs text-ink-4">Ingen varsler fra siste datakjøring.</p>;
   return (
-    <div className="flex flex-col gap-3">
-      {erUtdatert && RECONCILIATION.checks.length > 0 && (
-        <p className="flex items-start gap-1.5 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2 text-2xs text-ink-2">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-warning" />
-          Kontrollene under er fra {formatDateDMY(RECONCILIATION.sistOppdatert)} — eldre enn andre datakilder i dag. Kronebeløp
-          sitert i fritekst (f.eks. &quot;totalsum-plausibel&quot;) kan referere utdaterte tall, selv om selve funnet fortsatt
-          stemmer.
-        </p>
-      )}
-      {advarsler.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-status-warning">
-            <AlertTriangle className="h-3.5 w-3.5" /> Live varsler fra siste datakjøring ({advarsler.length})
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {advarsler.map((msg, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
-                {/* "ADVARSEL: "-prefikset i selve strengen er redundant her - varseltrekanten og
-                    seksjonsoverskriften sier allerede at dette er et varsel. */}
-                <p className="min-w-0 text-2xs text-ink-2">{msg.replace(/^ADVARSEL:\s*/, "")}</p>
-              </div>
-            ))}
-          </div>
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {advarsler.map((msg, i) => (
+        <div key={i} className="flex items-start gap-2 rounded-xl border border-status-warning/30 bg-status-warning/5 px-3 py-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
+          {/* "ADVARSEL: "-prefikset i selve strengen er redundant her - varseltrekanten sier det. */}
+          <p className="min-w-0 text-2xs text-ink-2">{msg.replace(/^ADVARSEL:\s*/, "")}</p>
         </div>
-      )}
-      {RECONCILIATION.checks.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          {advarsler.length > 0 && <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Undersøkte kontroller (historikk)</p>}
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {RECONCILIATION.checks.map((c) => {
-              const Icon = RECONCILIATION_ICON[c.status];
-              return (
-                <div key={c.id} className="flex items-start gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${RECONCILIATION_COLOR[c.status]}`} />
-                  <div className="min-w-0">
-                    <p className="text-sm text-ink-1">{c.label}</p>
-                    <p className="mt-0.5 text-2xs text-ink-4">{c.notat}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      ))}
     </div>
+  );
+}
+
+interface KontrollLinje {
+  id: string;
+  status: ReconciliationStatus;
+  tekst: string;
+  detaljer?: React.ReactNode;
+}
+
+function KontrollRad({ k }: { k: KontrollLinje }) {
+  const [open, setOpen] = useState(false);
+  const Icon = RECONCILIATION_ICON[k.status];
+  return (
+    <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${RECONCILIATION_COLOR[k.status]}`} />
+        <p className="min-w-0 flex-1 text-sm text-ink-1">{k.tekst}</p>
+        {k.detaljer && (
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="shrink-0 text-2xs font-medium text-ink-3 transition hover:text-ink-1">
+            {open ? "Skjul" : "Detaljer"}
+          </button>
+        )}
+      </div>
+      {open && k.detaljer && <div className="mt-2 border-t border-line pt-2 text-2xs text-ink-2">{k.detaljer}</div>}
+    </li>
+  );
+}
+
+const HUSLEIEKONTO_SOM_PARKERING = /\(husleiekonto, regnet som parkering\)/;
+
+function AvstemmingPanel({ remaining, tabell }: { remaining: RemainingTenantsSnapshot | null; tabell: TenantForecastTableSnapshot | null }) {
+  if (!remaining || !tabell) return <SkeletonRows count={3} />;
+  const a = remaining.avstemmingMotNxt ?? null;
+  const li = (tekst: React.ReactNode, key: string | number) => (
+    <li key={key} className="flex items-baseline justify-between gap-3">
+      {tekst}
+    </li>
+  );
+
+  // 1) Toppboksens to konstanter (BOOKED/REMAINING i incomeForecast.local.ts) mot live-snapshotene.
+  //    Dette er lim-inn-steget som glipper stille når datoen er den samme (skjedde 2026-09-18).
+  const bookedDiff = a ? Math.round(a.nxtBokfort36xx - BOOKED_3600_3699.totalBelop) : null;
+  const konstantGjenstar = REMAINING.totalDelA + REMAINING.totalDelB;
+  const gjenstarDiff = Math.round(remaining.totalBelop - konstantGjenstar);
+
+  // 2) Budsjettet skal summere identisk uansett gruppering (leietaker/bygg/leietype).
+  const sumBud = (rows: { budsjett: number | null }[]) => rows.reduce((s, r) => s + (r.budsjett ?? 0), 0);
+  const bud = { leietaker: sumBud(tabell.delA.leietaker), bygg: sumBud(tabell.delA.bygg), leietype: sumBud(tabell.delA.leietype) };
+  const budsjettTier = Math.abs(bud.leietaker - bud.bygg) < 1 && Math.abs(bud.leietaker - bud.leietype) < 1;
+
+  // 3) Del A/B: tabellen bruker samme regel som toppboksen (parkeringskonto ELLER parkeringsbygg),
+  //    pluss husleiekonto-postering på RENE parkeringsleieforhold - den vises som egen post.
+  const sumFakt = (rows: { fakturert: number }[]) => rows.reduce((s, r) => s + r.fakturert, 0);
+  const faktA = sumFakt(tabell.delA.leietaker);
+  const faktB = sumFakt(tabell.delB.leietaker);
+  const omklassifisert = tabell.delB.leietaker.reduce(
+    (s, r) => s + (r.kontoer ?? []).filter((k) => HUSLEIEKONTO_SOM_PARKERING.test(k.konto)).reduce((t, k) => t + k.belop, 0),
+    0,
+  );
+  const delADiff = Math.round(faktA - BOOKED_3600_3699.totalDelA);
+  const delBDiff = Math.round(faktB - BOOKED_3600_3699.totalDelB);
+
+  const plan = remaining.fazileFakturaplan ?? null;
+
+  const kontroller: KontrollLinje[] = [
+    {
+      id: "bokfort",
+      status: bookedDiff === null ? "varsel" : Math.abs(bookedDiff) < 1 ? "ok" : "feil",
+      tekst:
+        bookedDiff === null
+          ? "Avstemmingen mot NXT mangler i siste datakjøring – kjør pipelinen på nytt."
+          : Math.abs(bookedDiff) < 1
+            ? `Bokført 3600–3699 i toppboksen stemmer med NXT-uttrekket (${formatKr(BOOKED_3600_3699.totalBelop)}).`
+            : `Bokført i toppboksen (${formatKr(BOOKED_3600_3699.totalBelop)}) avviker ${formatKr(bookedDiff, true)} fra NXT-uttrekket – BOOKED-konstanten må limes inn på nytt.`,
+    },
+    {
+      id: "gjenstar",
+      status: Math.abs(gjenstarDiff) < 1 ? "ok" : "feil",
+      tekst:
+        Math.abs(gjenstarDiff) < 1
+          ? `Gjenstår i toppboksen stemmer med siste datakjøring (${formatKr(remaining.totalBelop)}).`
+          : `Gjenstår i toppboksen (${formatKr(konstantGjenstar)}) avviker ${formatKr(gjenstarDiff, true)} fra siste datakjøring (${formatKr(remaining.totalBelop)}) – REMAINING-konstanten må oppdateres.`,
+    },
+    {
+      id: "leietakersum",
+      status: a ? (Math.abs(a.uforklartRest) < 1 ? "ok" : "varsel") : "varsel",
+      tekst: a
+        ? Math.abs(a.uforklartRest) < 1
+          ? `Fakturert pr. leietaker (${formatKr(a.remainingFakturert)}) er avstemt mot bokført til kronen – differansen på ${formatKr(a.differanse, true)} er forklart.`
+          : `Fakturert pr. leietaker avviker ${formatKr(a.differanse, true)} fra bokført, hvorav ${formatKr(a.uforklartRest, true)} er uforklart.`
+        : "Leietaker-summen kan ikke avstemmes før pipelinen er kjørt med v55.",
+      detaljer: a ? (
+        <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-0.5">
+            {a.forklart.map((f, i) =>
+              li(
+                <>
+                  <span className="min-w-0 text-ink-3">{f.post}</span>
+                  <span className="shrink-0 tabular-nums">{formatKr(f.belop, true)}</span>
+                </>,
+                i,
+              ),
+            )}
+            {li(
+              <>
+                <span className="font-medium">Uforklart rest</span>
+                <span className="shrink-0 font-medium tabular-nums">{formatKr(a.uforklartRest, true)}</span>
+              </>,
+              "rest",
+            )}
+          </ul>
+          {a.ikkeKonsumertNxt.antall > 0 && (
+            <>
+              <p className="font-medium text-ink-1">
+                Bokført i NXT uten Fazile-kontrakt: {a.ikkeKonsumertNxt.antall} kunde/bygg-grupper, {formatKr(a.ikkeKonsumertNxt.sum)} – de største:
+              </p>
+              <ul className="flex flex-col gap-0.5">
+                {a.ikkeKonsumertNxt.storste.slice(0, 12).map((r, i) =>
+                  li(
+                    <>
+                      <span className="min-w-0 truncate">
+                        {r.navn} <span className="text-ink-4">· {r.bygg}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">{formatKr(r.belop, true)}</span>
+                    </>,
+                    i,
+                  ),
+                )}
+              </ul>
+              <p className="text-ink-4">Beløp som netter hverandre (samme kunde, to bygg) er omkoding mellom bygg i NXT, ikke manglende inntekt.</p>
+            </>
+          )}
+        </div>
+      ) : undefined,
+    },
+    {
+      id: "budsjett",
+      status: budsjettTier ? "ok" : "feil",
+      tekst: budsjettTier
+        ? `Budsjettet summerer likt i alle tre grupperinger (${formatKr(bud.leietaker)}).`
+        : `Budsjettet summerer ulikt: leietaker ${formatKr(bud.leietaker)}, bygg ${formatKr(bud.bygg)}, leietype ${formatKr(bud.leietype)}.`,
+    },
+    {
+      id: "delAB",
+      // Summen av A- og B-differansen ER leietakersum-differansen over (forklart der) - OK når de
+      // stemmer overens, varsel hvis fordelingen avviker med mer enn det.
+      status: a && Math.abs(delADiff + delBDiff - a.differanse) < 1 ? "ok" : "varsel",
+      tekst: `Leie/parkering-fordelingen følger samme regel i toppboksen og tabellen; ${formatKr(omklassifisert)} husleiekonto-postering på rene parkeringsleieforhold vises som parkering.`,
+      detaljer: (
+        <ul className="flex flex-col gap-0.5">
+          {li(
+            <>
+              <span>Leie (Del A): tabell {formatKr(faktA)} mot toppboks {formatKr(BOOKED_3600_3699.totalDelA)}</span>
+              <span className="shrink-0 tabular-nums">{formatKr(delADiff, true)}</span>
+            </>,
+            "a",
+          )}
+          {li(
+            <>
+              <span>Parkering (Del B): tabell {formatKr(faktB)} mot toppboks {formatKr(BOOKED_3600_3699.totalDelB)}</span>
+              <span className="shrink-0 tabular-nums">{formatKr(delBDiff, true)}</span>
+            </>,
+            "b",
+          )}
+          <li className="text-ink-4">Summen er lik; forskjellen er omklassifisering fra leie til parkering pluss avstemmingspostene over.</li>
+        </ul>
+      ),
+    },
+    ...(plan
+      ? [
+          {
+            id: "plan",
+            status: (plan.antallPlanMangler > 0 ? "varsel" : "ok") as ReconciliationStatus,
+            tekst:
+              plan.antallPlanMangler > 0
+                ? `${plan.antallPlanMangler} leieforhold har ${formatKr(plan.sumPlanMangler)} gjenstår uten planlagt faktura i Fazile – modelltall, må avgjøres (se statusen «fazile-plan-mangler» i tabellen).`
+                : "Alle leieforhold med gjenstår har planlagt faktura i Fazile.",
+            detaljer: (
+              <ul className="flex flex-col gap-0.5">
+                <li>Fakturaplan hentet {plan.uttrekksdato}, dekker fra {plan.planStart}: {plan.antallFakturaer} fakturaer, {formatKr(plan.sumPlan36xx)} på 36xx.</li>
+                <li>{plan.antallLeieforholdMedPlan} leieforhold følger planen; {plan.antallPlanMangler} bruker modellen (kontraktsverdi minus bokført).</li>
+                {plan.ekstrapolertBelop > 0 && <li>{formatKr(plan.ekstrapolertBelop)} er ekstrapolert for {plan.antallEkstrapolerteLinjer} månedsfakturerte linjer Fazile ikke har generert ennå.</li>}
+              </ul>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {kontroller.map((k) => (
+        <KontrollRad key={k.id} k={k} />
+      ))}
+    </ul>
   );
 }
 
@@ -1002,7 +1162,7 @@ function VerktoyOgAvstemming({ children }: { children: React.ReactNode }) {
     <div className="rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
         title="Verktøy og avstemming"
-        subtitle="Manuelle linjer, backup og varsler fra siste datakjøring"
+        subtitle="Oppfølging, avstemming, manuelle linjer og backup"
         collapsed={collapsed}
         onToggleCollapse={toggleCollapsed}
         icon={Settings}
@@ -1027,7 +1187,6 @@ function dataSourceFreshnessList(extra: DataSourceFreshness[]): DataSourceFreshn
     { label: "Bokført konto 3600-3699", dato: BOOKED_3600_3699.sistOppdatert },
     { label: "Gjenstår (Fazile)", dato: REMAINING.sistOppdatert },
     { label: "Manuelle bilag i NXT", dato: MANUAL_NXT.sistOppdatert },
-    { label: "Avstemmingskontroller", dato: RECONCILIATION.sistOppdatert },
     // v20 (2026-09-07): manglet her tidligere - begge er hardkodede konstanter med egen
     // sistOppdatert, samme "kan gå stille foreldet"-risiko som resten av lista.
     { label: "Full 2026-verdi per leietype", dato: LEIETYPE_BREAKDOWN.sistOppdatert },
@@ -1329,8 +1488,22 @@ function ManglerFaktureringBlock({
 
   return (
     <div id="mangler-fakturering" className="scroll-mt-4 rounded-xl border border-status-danger/30 bg-status-danger/[0.06] p-3">
+      {/* v58: forklaringen som sto som avsnitt under lista ligger nå bak infoikonet. */}
       <p className="mb-2 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-status-danger">
         <AlertTriangle className="h-3.5 w-3.5" /> Mangler fakturering ({rader.length})
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button type="button" aria-label="Om lista" className="shrink-0 text-ink-4 hover:text-ink-1">
+                <Info className="h-3 w-3" />
+              </button>
+            }
+          />
+          <TooltipContent className="max-w-xs">
+            Leieforhold du har merket «mangler fakturering» i gjennomgangen. Beløpene står i prognosen og er ikke usikre – det er
+            faktureringen som mangler. Følges opp mot Fazile/regnskap.
+          </TooltipContent>
+        </Tooltip>
       </p>
       <div className="flex flex-col gap-1">
         {rader.map((m) => (
@@ -1347,9 +1520,6 @@ function ManglerFaktureringBlock({
         <span className="text-ink-2">Sum ikke fakturert</span>
         <span className="tabular-nums text-ink-1">{formatKr(sum)}</span>
       </div>
-      <p className="mt-1 text-3xs leading-snug text-ink-4">
-        Beløpene står i prognosen og er ikke usikre — det er faktureringen som mangler. Følges opp mot Fazile/regnskap.
-      </p>
     </div>
   );
 }
@@ -3456,13 +3626,7 @@ export default function IncomeForecastSection() {
     [remainingTenantsSnapshot, tenantForecastTable, omsetningsavregning, contractExpiry2026, vacantAreas],
   );
 
-  // v20 (2026-09-07): eksplisitt varsel når RECONCILIATION (de håndskrevne, daterte
-  // avstemmingsnotatene) er eldre enn den ferskeste andre datakilden - "Eldste datakilde"-KPI-en
-  // viser allerede DATOEN, men sier ikke rett ut at INNHOLDET i kontrollene (kronebeløp sitert i
-  // fritekst, f.eks. "totalsum-plausibel") kan referere utdaterte tall.
-  const nyesteKilde = dataSourceFreshness[dataSourceFreshness.length - 1] ?? null;
-  const reconciliationErUtdatert = nyesteKilde !== null && RECONCILIATION.sistOppdatert < nyesteKilde.dato;
-
+  // v58: RECONCILIATION (håndskrevne, daterte kontroller) vises ikke lenger - se AvstemmingPanel.
   const idagIso = localDateString();
   // v36: merkene fra Leieforhold til gjennomgang, løftet hit slik at Leieinntekter/Parkering-
   // tabellene kan vise "Usikker"-brikken på de samme leietakerne.
@@ -3582,36 +3746,19 @@ export default function IncomeForecastSection() {
                    3) Live varsler fra siste datakjøring - datakvalitetsavvik som ellers bare står
                       i konsollen til den som kjørte pipelinen. */}
               <VerktoyOgAvstemming>
+                {/* v58 (2026-09-18, Morten): rekkefølge etter relevans - det som krever handling
+                    først, så kontrollene, så verktøyene. Hver del har samme etikettstil, og
+                    detaljtall ligger bak "Detaljer" i stedet for i løpende tekst. */}
                 <div className="flex flex-col gap-4">
-                  {/* v39: flyttet hit fra hovedflyten på Mortens forespørsel. NB: "Tillegg"-fanen
-                      finnes ikke lenger (fjernet i v31) - denne kollapsede seksjonen er det som ble
-                      igjen av den, og er derfor det nærmeste vi kommer "tilleggsfanen". */}
-                  <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
                   <div className="flex flex-col gap-1.5">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemmingskontroller</p>
-                    <ReconciliationPanel advarsler={advarslerLive} erUtdatert={reconciliationErUtdatert} />
-                    <p className="mt-0.5 flex w-fit items-center gap-1">
-                      <a
-                        href="/api/income-forecast/backup"
-                        download={`inntektsprognose-backup-${idagIso}.json`}
-                        className="text-2xs font-medium text-accent hover:text-accent/80"
-                      >
-                        Last ned backup av manuelt innhold (JSON)
-                      </a>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <button type="button" aria-label="Om backupen" className="shrink-0 text-ink-4 hover:text-ink-1">
-                              <Info className="h-3 w-3" />
-                            </button>
-                          }
-                        />
-                        <TooltipContent>
-                          Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler - finnes KUN i Redis, ikke
-                          re-utledbart fra Fazile/NXT. Ta en kopi av og til.
-                        </TooltipContent>
-                      </Tooltip>
-                    </p>
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Til oppfølging</p>
+                    <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
+                    <LiveVarsler advarsler={advarslerLive} />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemming</p>
+                    <AvstemmingPanel remaining={remainingTenantsSnapshot} tabell={tenantForecastTable} />
                   </div>
 
                   <div className="flex flex-col gap-1.5">
@@ -3654,6 +3801,32 @@ export default function IncomeForecastSection() {
                         ))}
                       </ul>
                     )}
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Backup</p>
+                    <p className="flex w-fit items-center gap-1">
+                      <a
+                        href="/api/income-forecast/backup"
+                        download={`inntektsprognose-backup-${idagIso}.json`}
+                        className="text-2xs font-medium text-accent hover:text-accent/80"
+                      >
+                        Last ned backup av manuelt innhold (JSON)
+                      </a>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <button type="button" aria-label="Om backupen" className="shrink-0 text-ink-4 hover:text-ink-1">
+                              <Info className="h-3 w-3" />
+                            </button>
+                          }
+                        />
+                        <TooltipContent>
+                          Kommentarer, manuelle linjer, potensial-anslag og reforhandlingssignaler finnes kun i Redis og kan ikke
+                          utledes på nytt fra Fazile/NXT. Ta en kopi av og til.
+                        </TooltipContent>
+                      </Tooltip>
+                    </p>
                   </div>
                 </div>
               </VerktoyOgAvstemming>

@@ -102,6 +102,23 @@ interface FazileFakturaplanInfo {
   antallEkstrapolerteLinjer: number;
 }
 
+// v55 (2026-09-18): avstemming av leietaker-summen ("allerede fakturert" summert over alle
+// byggGrupper) mot den kontobaserte NXT-summen (samme grunnlag som BOOKED_3600_3699) - regnet ut i
+// scripts/build-remaining-summary.js. `forklart` er de bevisste grepene i scriptet, `ikkeKonsumertNxt`
+// er NXT-bokføring på kunder/bygg ingen Fazile-kontrakt tok inn, og `uforklartRest` skal være ~0.
+export interface AvstemmingMotNxt {
+  nxtBokfort36xx: number;
+  remainingFakturert: number;
+  differanse: number;
+  forklart: { post: string; belop: number }[];
+  uforklartRest: number;
+  ikkeKonsumertNxt: {
+    antall: number;
+    sum: number;
+    storste: { selskap: string; customerNo: number; navn: string; bygg: string; belop: number }[];
+  };
+}
+
 export interface RemainingTenantsSnapshot {
   sistOppdatert: string;
   ar: number;
@@ -110,6 +127,7 @@ export interface RemainingTenantsSnapshot {
   tenants: RemainingTenant[];
   omsetningsavregning2025: Omsetningsavregning2025Info;
   fazileFakturaplan?: FazileFakturaplanInfo | null;
+  avstemmingMotNxt?: AvstemmingMotNxt;
   // v17 (2026-09-07): data-kvalitetsvarsler fra scripts/build-remaining-summary.js sin egen
   // kjøring (manglende crosswalk/detaljfiler, ekstrapoleringskandidater uten kontraktslinje-
   // sluttdato, o.l.) - tidligere kun synlig i konsollen til den som kjørte scriptet, nå med i
