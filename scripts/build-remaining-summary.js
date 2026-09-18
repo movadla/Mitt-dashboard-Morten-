@@ -408,6 +408,22 @@ function kundenummerMedAliaser(customerNo) {
 //    fakturert/avvik.
 // Legges til BEGGE i g.fullA/alleredeA rett før gjenstår/avvik-utregningen, se anvendelsen der.
 const MANGLENDE_LINJE_KORREKSJON = new Map([
+  // v55d (2026-09-18, Mortens spørsmål "har vi kontroll på PGS?" - svaret var nei): Fazile har
+  // INGEN rabattlinje for den forhåndsperiodiserte leierabatten på 800 000 kr (bilag 14864,
+  // kodet om til kunde 10385 i UKODET_KUNDEKODING), så Fazile-årsverdien er BRUTTO mens NXT
+  // netto er 800 000 lavere. Modellen viste derfor 800 000 "gjenstår" - men NXT har allerede
+  // bokført Q4 (periode 10: 4 618 006 på 3600 + parkering/annet), verifisert 2026-09-18 mot
+  // generalLedgerTransaction pr. periode: hele 2026 er fakturert, ingenting gjenstår. Negativ
+  // manglende linje = rabatten Fazile skulle hatt. Fjern når Fazile får en DISCOUNT-linje for den.
+  [
+    "pgs geophysical as||lilleakerveien 4c",
+    {
+      fullABelop: -800000,
+      alleredeABelop: 0,
+      forklaring:
+        "Leierabatt 2026 på 800 000 kr er periodisert i NXT (bilag 14864, konto 3652) men finnes ikke som rabattlinje i Fazile - årsverdien der er brutto. Uten denne korreksjonen viste modellen 800 000 kr gjenstår selv om NXT allerede har bokført hele 2026 inkl. Q4 (periode 10).",
+    },
+  ],
   [
     "head norway as||vollsveien 13h",
     {
