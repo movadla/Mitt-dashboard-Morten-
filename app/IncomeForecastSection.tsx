@@ -502,12 +502,29 @@ function SignalEditor({
     );
   }
 
+  // v54 (2026-09-18, Morten): kun prosenten i cellen. Kilde og notat ligger bak et infoikon i stedet
+  // for å stå i klartekst under - notatene var gjerne to-tre linjer og gjorde hver rad høy på mobil.
+  // Prosenten og infoikonet er to SEPARATE knapper: en TooltipTrigger inni redigeringsknappen ville
+  // gitt <button> i <button>, som er ugyldig HTML og gir hydration-feil (se DESIGN.md om asChild).
   return (
-    <button type="button" onClick={() => setEditing(true)} className="mt-1 block text-left">
-      <span className="text-2xs font-medium text-ink-2">{signal.sannsynlighetProsent}% sannsynlighet</span>
-      <span className="ml-1.5 text-2xs text-ink-4">({signal.kilde})</span>
-      {signal.notat && <p className="text-2xs text-ink-4">{signal.notat}</p>}
-    </button>
+    <span className="mt-1 flex items-center gap-1">
+      <button type="button" onClick={() => setEditing(true)} className="text-2xs font-medium text-ink-2 hover:text-ink-1">
+        {signal.sannsynlighetProsent}%
+      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button type="button" aria-label="Kilde og notat for sannsynligheten" className="shrink-0 text-ink-4 hover:text-ink-1">
+              <Info className="h-3 w-3" />
+            </button>
+          }
+        />
+        <TooltipContent className="max-w-xs">
+          <p>{signal.kilde}</p>
+          {signal.notat && <p className="mt-1">{signal.notat}</p>}
+        </TooltipContent>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -2067,12 +2084,9 @@ function KontrakterPaUtlopBlock({
       />
       {!collapsed && (
         <>
-          {snapshot && (
-            <p className="text-2xs text-ink-3">
-              {formatKr(totalEkstraVektet)} ekstra inntekt hvis reforhandlet (av {formatKr(snapshot.totalEkstraI2026)}{" "}
-              hvis alt reforhandles til samme vilkår)
-            </p>
-          )}
+          {/* v54 (2026-09-18, Morten): hjelpeteksten "X kr ekstra inntekt hvis reforhandlet (av Y kr
+              hvis alt reforhandles ...)" er fjernet. Det vektede tallet står allerede i kortheaderen,
+              og fullt potensial vises pr. kontrakt i tabellen. */}
           <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
             <input
