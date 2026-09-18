@@ -2041,6 +2041,53 @@ function main() {
     tenant.byggGrupper = [...perBygg.values()];
   }
 
+  // v56 (2026-09-18, Morten: en kontrakt med estimert, ikke bekreftet oppstart "bør ligge i
+  // risikobeløpet"): leieforhold listet i gitignored _private-usikre-kontrakter.json tas UT av
+  // gjenstår her (status "usikker-oppstart", gjenstår 0) og legges i `usikreInntekter` med
+  // beløpet modellen ga. UI-en (Risikoforhold) vekter dem med en sannsynlighet Morten setter og
+  // legger det vektede beløpet inn i prognosen ÉN gang - samme mekanikk som kontrakter på utløp.
+  // Gjøres etter fakturaplan-overlegget og byggmerge'n, slik at beløpet som flyttes er det
+  // endelige. Rader uten treff varsles - da er avtalen trolig sikret/omdøpt og skal ut av fila.
+  const USIKRE_KONTRAKTER_FILE = path.join(__dirname, "refresh-data", "_private-usikre-kontrakter.json");
+  const usikreInntekter = [];
+  if (fs.existsSync(USIKRE_KONTRAKTER_FILE)) {
+    const usikreRader = JSON.parse(fs.readFileSync(USIKRE_KONTRAKTER_FILE, "utf8")).rader || [];
+    for (const u of usikreRader) {
+      let treff = false;
+      for (const tenant of tenantMap.values()) {
+        if (normalizeName(tenant.navn) !== normalizeName(u.leietaker)) continue;
+        for (const bg of tenant.byggGrupper) {
+          if (normalizeName(bg.bygg) !== normalizeName(u.bygg)) continue;
+          treff = true;
+          const belop = round2(bg.gjenstarTotal);
+          if (belop === 0) continue;
+          const linjer = tenant.lines.filter((l) => normalizeName(l.bygg) === normalizeName(bg.bygg) && l.startDato);
+          const startDato = linjer.map((l) => l.startDato).sort()[0] || null;
+          usikreInntekter.push({
+            leietaker: tenant.navn,
+            bygg: bg.bygg,
+            kontraktId: u.kontraktId ?? null,
+            leietype: u.leietype || null,
+            startDato,
+            belop,
+            belopDelA: round2(bg.gjenstarDelA),
+            belopDelB: round2(bg.gjenstarDelB),
+            forklaring: u.forklaring || "",
+          });
+          bg.gjenstarDelA = 0;
+          bg.gjenstarDelB = 0;
+          bg.gjenstarTotal = 0;
+          bg.status = "usikker-oppstart";
+          bg.forklaring = `Ikke sikret avtale: ${belop.toLocaleString("nb-NO")} kr er tatt ut av gjenstår og ligger under Risikoforhold, vektet med sannsynlighet. ${u.forklaring || ""}`.trim();
+        }
+      }
+      if (!treff) varsel(`ADVARSEL: usikker kontrakt "${u.leietaker}" / "${u.bygg}" finnes ikke i leieforhold-datasettet - sikret/omdøpt? Fjern raden fra _private-usikre-kontrakter.json.`);
+    }
+    if (usikreInntekter.length > 0) {
+      console.log(`Usikre kontrakter: ${usikreInntekter.length} leieforhold (${usikreInntekter.reduce((s, u) => s + u.belop, 0).toLocaleString("nb-NO")} kr) flyttet fra gjenstår til risiko.`);
+    }
+  }
+
   // v12: REMAINING-totalene beregnes fra de ENDELIGE byggGruppene (etter pooling, Head-merge og
   // Onepark) - v11 justerte gruppene uten å oppdatere sumTotalDelA/B (latent avvik mot summen av
   // radene). Onepark-tillegget ligger allerede i sin egen gruppe, så ingen separat += lenger.
@@ -2193,6 +2240,7 @@ function main() {
     antallLeietakere: tenantList.length,
     tenants: tenantList,
     avstemmingMotNxt,
+    usikreInntekter,
     // Se OMSETNINGSAVREGNING_2025_KONTI-kommentaren - sporer avsetningen (avsetning, "Andre"
     // uten leietakerreferanse) og fordelingen til reelle leietakere separat, i stedet for å la
     // begge forsvinne stille når konto 3632 ekskluderes fra leietakernes 2026-gjenstår. Begge

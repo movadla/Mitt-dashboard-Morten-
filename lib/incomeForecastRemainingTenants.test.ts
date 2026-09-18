@@ -26,6 +26,7 @@ const ALLE_STATUSER = [
   "forklart-parkering-onepark",
   "forklart-parkering-uten-fazile-linje",
   "fazile-plan-mangler",
+  "usikker-oppstart",
 ] as const satisfies readonly RemainingByggStatus[];
 
 // `satisfies` over fanger retningen "listen inneholder bare gyldige statuser".

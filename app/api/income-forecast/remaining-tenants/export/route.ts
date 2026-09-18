@@ -22,6 +22,7 @@ const STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
   "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
   "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
+  "usikker-oppstart": "Ikke sikret, ligger i risiko",
 };
 
 const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
@@ -38,6 +39,7 @@ const STATUS_FILL: Record<Exclude<RemainingByggStatus, "ok">, string> = {
   "forklart-parkering-onepark": "FFC6E0B4",
   "forklart-parkering-uten-fazile-linje": "FFFFEB9C",
   "fazile-plan-mangler": "FFFFEB9C",
+  "usikker-oppstart": "FFFFEB9C",
 };
 
 const HEADERS = ["Leietaker", "Bygg", "Status", "Full årsverdi 2026", "Allerede fakturert (NXT)", "Gjenstår", "Forklaring"];

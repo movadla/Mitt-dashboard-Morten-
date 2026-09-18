@@ -35,7 +35,7 @@ import {
   type ReconciliationStatus,
 } from "@/lib/incomeForecast";
 import type { BookedTenantsSnapshot } from "@/lib/incomeForecastBookedTenants";
-import type { RemainingByggStatus, RemainingTenantsSnapshot } from "@/lib/incomeForecastRemainingTenants";
+import type { RemainingByggStatus, RemainingTenantsSnapshot, UsikkerInntekt } from "@/lib/incomeForecastRemainingTenants";
 import type { ContractExpiry2026Snapshot } from "@/lib/contractExpiry2026";
 import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/incomeForecastPotential";
 // isSystemRow importeres fra tenantForecastSystemRow, IKKE tenantForecastTable - sistnevnte
@@ -111,6 +111,7 @@ const BYGG_STATUS_LABEL: Record<RemainingByggStatus, string> = {
   "forklart-parkering-onepark": "Onepark-estimat lagt til",
   "forklart-parkering-uten-fazile-linje": "Parkering uten Fazile-linje",
   "fazile-plan-mangler": "Ingen Fazile-faktura planlagt",
+  "usikker-oppstart": "Ikke sikret, ligger i risiko",
 };
 
 const LEIETYPE_STYLE: Record<OmsetningsavregningSnapshot["butikker"][number]["leietype"], string> = {
@@ -892,12 +893,29 @@ function PotentialCategoryTile({
 // garanterer at de to ALLTID viser nøyaktig samme sannsynlighetsvektede sum (v2, 2026-08-29,
 // Morten: "tenk som en inntektskontroller" - fant at toppboksen tidligere brukte det u-vektede
 // totalEkstraI2026, uavhengig av hva som faktisk var satt pr. kontrakt).
-function beregnVektetReforhandlingTotal(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[]): number {
-  if (!snapshot) return 0;
+// v56 (2026-09-18, Morten: "Kontrakter på utløp burde hete Risikoforhold og innebære kontrakter
+// på utløp, samt avtaler vi regner med inntekt fra, men ikke har garantert"):
+// usikre inntekter (REMAINING.usikreInntekter, tatt UT av gjenstår i build-remaining-summary.js)
+// vektes med en sannsynlighet Morten setter, med samme signal-mekanikk som kontraktene. Signal-
+// id-en er stabil pr. leietaker+bygg, så vurderingen overlever nye datakjøringer.
+function usikkerSignalId(u: UsikkerInntekt): string {
+  return `usikker||${u.leietaker.trim().toLowerCase()}||${u.bygg.trim().toLowerCase()}`;
+}
+function usikkerSannsynlighet(u: UsikkerInntekt, signalsById: Map<string, TenantSignal>): number {
+  return signalsById.get(usikkerSignalId(u))?.sannsynlighetProsent ?? 100;
+}
+
+// Vektet risiko = kontrakter på utløp (ekstra ved reforhandling × sannsynlighet) + ikke sikrede
+// avtaler (beløp × sannsynlighet). Ingen av delene ligger i gjenstår, så de telles én gang.
+function beregnVektetReforhandlingTotal(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[], usikre: UsikkerInntekt[] = []): number {
   const signalsById = new Map(signals.map((s) => [s.id, s]));
-  return snapshot.contracts
-    .filter((c) => c.status === "apen")
-    .reduce((sum, c) => sum + c.ekstraI2026 * ((signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100) / 100), 0);
+  const kontrakter = snapshot
+    ? snapshot.contracts
+        .filter((c) => c.status === "apen")
+        .reduce((sum, c) => sum + c.ekstraI2026 * ((signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100) / 100), 0)
+    : 0;
+  const usikreVektet = usikre.reduce((sum, u) => sum + u.belop * (usikkerSannsynlighet(u, signalsById) / 100), 0);
+  return kontrakter + usikreVektet;
 }
 
 // Delt mellom KontrakterPaUtlopBlock (som viser dette pr. KONTRAKT) og TenantForecastTable
@@ -906,8 +924,8 @@ function beregnVektetReforhandlingTotal(snapshot: ContractExpiry2026Snapshot | n
 // reflekteres fortsatt ikke opp i leieinntekter" - uten dette viste de to tabellene ulike +/-
 // for samme leietaker, siden justeringen tidligere kun ble regnet ut lokalt inni
 // KontrakterPaUtlopBlock.
-function beregnEkstraVedReforhandlingByNavn(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[]): Map<string, number> {
-  return beregnReforhandlingJustering(snapshot, signals).leietaker;
+function beregnEkstraVedReforhandlingByNavn(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[], usikre: UsikkerInntekt[] = []): Map<string, number> {
+  return beregnReforhandlingJustering(snapshot, signals, usikre).leietaker;
 }
 
 // v51 (2026-09-11, Morten: "forskjellig avvik i de tre fanene leietaker, bygg og leietype"):
@@ -927,14 +945,22 @@ const AREALTYPE_TIL_LEIETYPE: Record<string, string> = {
   Kantine: "Restaurant",
 };
 
-function beregnReforhandlingJustering(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[]): ReforhandlingJustering {
+function beregnReforhandlingJustering(snapshot: ContractExpiry2026Snapshot | null, signals: TenantSignal[], usikre: UsikkerInntekt[] = []): ReforhandlingJustering {
   const result: ReforhandlingJustering = { leietaker: new Map(), bygg: new Map(), leietype: new Map() };
-  if (!snapshot) return result;
   const signalsById = new Map(signals.map((s) => [s.id, s]));
   const leggTil = (m: Map<string, number>, key: string, belop: number) => {
     const k = key.trim().toLowerCase();
     m.set(k, (m.get(k) ?? 0) + belop);
   };
+  // v56: ikke sikrede avtaler - vektet beløp legges på leietakerens rad (gjenstår der er 0), på
+  // bygget og på leietypen fila oppgir, så alle tre fanene i Leieinntekter viser samme total.
+  for (const u of usikre) {
+    const p = usikkerSannsynlighet(u, signalsById) / 100;
+    leggTil(result.leietaker, u.leietaker, u.belop * p);
+    leggTil(result.bygg, u.bygg, u.belop * p);
+    leggTil(result.leietype, u.leietype ?? "Uklassifisert", u.belop * p);
+  }
+  if (!snapshot) return result;
   for (const c of snapshot.contracts) {
     if (c.status !== "apen") continue;
     const p = (signalsById.get(c.kontraktsnokkel)?.sannsynlighetProsent ?? 100) / 100;
@@ -974,6 +1000,7 @@ function beregnHovedprognose(
   tenantSignals: TenantSignal[],
   omsetningsavregning: OmsetningsavregningSnapshot | null,
   potential: PotentialIncomeSnapshot | null,
+  usikre: UsikkerInntekt[] = [],
 ): Hovedprognose {
   // manuelleLinjer holdes også som EGET felt (under) i tillegg til å telle med i `bokfort` under -
   // `bokfort` (og dermed `total`/"kjernetallet" kjørehistorikken sporer, se lib/incomeForecastHistory.ts)
@@ -990,7 +1017,7 @@ function beregnHovedprognose(
     rollup.delB.manueltNxtHittil +
     manuelleLinjer;
   const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
-  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals);
+  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals, usikre);
   const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
   const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
   const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
@@ -1087,7 +1114,8 @@ function MainForecastBox({
     { label: "Mine manuelle linjer", value: manuelleLinjer, sikkerhet: 0.75 },
     { label: "Gjenstår", value: gjenstar, sikkerhet: 0.82 },
     { label: "Omsetningsavregning", value: omsetningsavregningSum, sikkerhet: 0.62 },
-    { label: "Reforhandling (vektet)", value: reforhandlingFull, sikkerhet: 0.46 },
+    // v56: "Reforhandling (vektet)" -> "Risiko (vektet)" - inneholder nå også ikke sikrede avtaler.
+    { label: "Risiko (vektet)", value: reforhandlingFull, sikkerhet: 0.46 },
     { label: "Potensiell fremtidig", value: potensiellFremtidig, sikkerhet: 0.3 },
     { label: "Ledige lokaler", value: ledigeLokaler, sikkerhet: 0.3 },
     { label: "Annet", value: annet, sikkerhet: 0.3 },
@@ -1375,7 +1403,7 @@ function KpiStrip({
                 </button>
               }
             />
-            <TooltipContent>Kontrakter på utløp, med sannsynlig reforhandling.</TooltipContent>
+            <TooltipContent>Kontrakter på utløp med sannsynlig reforhandling, og avtaler som ikke er sikret ennå. Vektet med sannsynlighet.</TooltipContent>
           </Tooltip>
         </p>
         <a href="#kontrakter-pa-utlop" className={boks}>
@@ -2130,12 +2158,15 @@ function KontrakterPaUtlopBlock({
   signals,
   onSignalUpdated,
   leietakerRader,
+  usikre = [],
 }: {
   snapshot: ContractExpiry2026Snapshot | null;
   loading: boolean;
   signals: TenantSignal[];
   onSignalUpdated: (next: TenantSignal) => void;
   leietakerRader: TenantForecastRow[];
+  // v56: ikke sikrede avtaler (REMAINING.usikreInntekter) - vises som egen gruppe under kontraktene.
+  usikre?: UsikkerInntekt[];
 }) {
   const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter på utløp", true);
   const [search, setSearch] = useState("");
@@ -2282,12 +2313,16 @@ function KontrakterPaUtlopBlock({
 
   // Samme delte funksjon som MainForecastBox (toppboksen) bruker - garanterer at de to alltid
   // viser identisk tall, i stedet for to uavhengige utregninger som kan drifte fra hverandre.
-  const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals);
+  const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals, usikre);
+  const kontrakterVektet = beregnVektetReforhandlingTotal(snapshot, signals);
+  const usikreVektet = totalEkstraVektet - kontrakterVektet;
 
   return (
     <div id="kontrakter-pa-utlop" className="flex scroll-mt-4 flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
       <CardHeader
-        title="Kontrakter på utløp"
+        // v56 (2026-09-18, Morten): "Kontrakter på utløp" -> "Risikoforhold" - inntekt vi regner
+        // med men ikke har sikret: kontrakter på utløp OG avtaler uten bekreftet oppstart.
+        title="Risikoforhold"
         // v28 (2026-09-08): headeren viste FULLT potensial (totalEkstraI2026) mens toppboksens
         // waterfall viste "Reforhandling (vektet)" - to ulike tall for samme begrep synlig
         // samtidig på skjermen, uten at noe sa hva forskjellen var. Nå vises det VEKTEDE tallet,
@@ -2320,6 +2355,9 @@ function KontrakterPaUtlopBlock({
               className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
             />
           </div>
+          <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
+            Kontrakter på utløp <span className="font-normal normal-case tracking-normal text-ink-4">· {formatKr(kontrakterVektet)} vektet</span>
+          </p>
           {loading ? (
             <SkeletonRows count={4} />
           ) : apneKontrakter.length === 0 ? (
@@ -2433,6 +2471,73 @@ function KontrakterPaUtlopBlock({
             >
               Vis {Math.min(20, sorted.length - visible.length)} til ({sorted.length - visible.length} gjenstår)
             </button>
+          )}
+          {/* v56: ikke sikrede avtaler - beløpet er tatt ut av Gjenstår (build-remaining-summary.js)
+              og telles kun her, vektet. Samme SignalEditor som kontraktene over. */}
+          {usikre.length > 0 && (
+            <>
+              <p className="mt-2 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+                Ikke sikret avtale <span className="font-normal normal-case tracking-normal text-ink-4">· {formatKr(usikreVektet)} vektet</span>
+              </p>
+              <div className="-mx-1 overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead>
+                    <tr className={TABELL_HODE_RAD}>
+                      {["Leietaker", "Bygg", "Oppstart", "Beløp 2026", "Sannsynlighet", "Vektet"].map((t, i) => (
+                        <th key={t} className={`px-3 py-2 ${i === 3 || i === 5 ? "text-right" : ""}`}>
+                          <span className={tabellSortKnapp(false)}>{t}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usikre.map((u) => {
+                      const id = usikkerSignalId(u);
+                      const signal = signalsById.get(id);
+                      const visSignal: TenantSignal =
+                        signal ??
+                        ({
+                          id,
+                          type: "utleie",
+                          navn: u.leietaker,
+                          bygg: u.bygg,
+                          sannsynlighetProsent: 100,
+                          notat: "",
+                          kilde: "Standard (ingen vurdering satt ennå)",
+                          sistOppdatert: "",
+                        } satisfies TenantSignal);
+                      const vektet = (u.belop * visSignal.sannsynlighetProsent) / 100;
+                      return (
+                        <tr key={id} className="border-t border-line">
+                          <td className="max-w-[150px] px-3 py-2 text-ink-1">
+                            <span className="flex min-w-0 items-center gap-1">
+                              <span className="truncate">{u.leietaker}</span>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  render={
+                                    <button type="button" aria-label="Hvorfor avtalen regnes som usikker" className="shrink-0 text-ink-4 hover:text-ink-1">
+                                      <Info className="h-3 w-3" />
+                                    </button>
+                                  }
+                                />
+                                <TooltipContent className="max-w-xs">{u.forklaring}</TooltipContent>
+                              </Tooltip>
+                            </span>
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 text-2xs text-ink-3">{u.bygg}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-3">{u.startDato ? formatDateDMY(u.startDato) : "—"}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(u.belop)}</td>
+                          <td className="px-3 py-2">
+                            <SignalEditor id={id} type="utleie" signal={visSignal} fallbackNavn={u.leietaker} fallbackBygg={u.bygg} onUpdated={onSignalUpdated} />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-ink-1">{formatKr(vektet)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </>
       )}
@@ -3552,14 +3657,18 @@ export default function IncomeForecastSection() {
 
   // Samme grunnlag som KontrakterPaUtlopBlock - garanterer at Leieinntekter viser samme
   // reforhandlingsjusterte Gjenstår/+/- for en leietaker med utløpende kontrakt(er) i 2026.
-  const reforhandlingJustering = useMemo(() => beregnReforhandlingJustering(contractExpiry2026, tenantSignals), [contractExpiry2026, tenantSignals]);
+  const usikreInntekter = useMemo(() => remainingTenantsSnapshot?.usikreInntekter ?? [], [remainingTenantsSnapshot]);
+  const reforhandlingJustering = useMemo(
+    () => beregnReforhandlingJustering(contractExpiry2026, tenantSignals, usikreInntekter),
+    [contractExpiry2026, tenantSignals, usikreInntekter],
+  );
   const ekstraVedReforhandlingByNavn = reforhandlingJustering.leietaker;
 
   // v17: hovedprognosen regnes ut ÉN gang her og deles av MainForecastBox (breakdown) og KpiStrip
   // (alltid synlig total) - se beregnHovedprognose sin kommentar.
   const prognose = useMemo(
-    () => beregnHovedprognose(rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential),
-    [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential],
+    () => beregnHovedprognose(rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential, usikreInntekter),
+    [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential, usikreInntekter],
   );
   // v56: hero-tallet (og avvik/budsjett-boksene under det) er først endelig når ALLE kildene det
   // regnes fra er hentet - se `loading`-kommentaren i MainForecastBox.
@@ -3728,6 +3837,7 @@ export default function IncomeForecastSection() {
                 signals={tenantSignals}
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
+                usikre={usikreInntekter}
               />
               <LedigeLokalerBlock rows={justertDelALeietakerRader} />
 

@@ -35,7 +35,25 @@ export type RemainingByggStatus =
   // v13: modellen sier det gjenstår penger, men Fazile har ingen planlagt faktura for resten av
   // året - beholdt modelltall, må avgjøres manuelt (kontrakt ikke aktivert / fakturering stoppet /
   // reelt ferdig fakturert).
-  | "fazile-plan-mangler";
+  | "fazile-plan-mangler"
+  // v56: avtale/oppstart ikke sikret - gjenstår er tatt ut herfra og ligger i `usikreInntekter`
+  // (vektes under Risikoforhold i UI-en).
+  | "usikker-oppstart";
+
+// v56 (2026-09-18): inntekt modellen regner med, men som ikke er sikret (estimert oppstart,
+// avtale ikke endelig). Tatt UT av gjenstår i REMAINING; UI-en legger det vektede beløpet inn i
+// prognosen én gang, med sannsynlighet fra jobb:inntektsprognose-signaler (id = usikkerSignalId).
+export interface UsikkerInntekt {
+  leietaker: string;
+  bygg: string;
+  kontraktId: number | null;
+  leietype: string | null;
+  startDato: string | null;
+  belop: number;
+  belopDelA: number;
+  belopDelB: number;
+  forklaring: string;
+}
 
 export interface RemainingKontoBelop {
   konto: string;
@@ -128,6 +146,7 @@ export interface RemainingTenantsSnapshot {
   omsetningsavregning2025: Omsetningsavregning2025Info;
   fazileFakturaplan?: FazileFakturaplanInfo | null;
   avstemmingMotNxt?: AvstemmingMotNxt;
+  usikreInntekter?: UsikkerInntekt[];
   // v17 (2026-09-07): data-kvalitetsvarsler fra scripts/build-remaining-summary.js sin egen
   // kjøring (manglende crosswalk/detaljfiler, ekstrapoleringskandidater uten kontraktslinje-
   // sluttdato, o.l.) - tidligere kun synlig i konsollen til den som kjørte scriptet, nå med i
@@ -142,6 +161,7 @@ function anonymizeSnapshot(snapshot: RemainingTenantsSnapshot): RemainingTenants
   return {
     ...snapshot,
     tenants: snapshot.tenants.map((t) => ({ ...t, navn: anonymizeIfPerson(t.navn) })),
+    usikreInntekter: snapshot.usikreInntekter?.map((u) => ({ ...u, leietaker: anonymizeIfPerson(u.leietaker) })),
   };
 }
 
