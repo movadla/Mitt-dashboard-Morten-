@@ -141,7 +141,12 @@ type OmsetningsavregningSortKey =
 const TABELL_HODE_RAD = "border-b border-line-strong text-left text-ink-2";
 const tabellSortKnapp = (active: boolean) =>
   `inline-flex items-center gap-0.5 text-2xs font-semibold uppercase tracking-wide transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-2"}`;
-const TABELL_RAD_KLIKKBAR = "cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
+// v60 (2026-09-19, Morten: "alle linjer har samme høyde ... ser fint og naturlig ut som en tabell
+// med lik høyde på linjene"): `h-12` er en MINIMUMSHØYDE for <tr> (CSS-tabellrader kan ikke bli
+// lavere enn innholdet trenger, kun høyere), satt til å romme den TALLESTE vanlige raden - to
+// stablede, komprimerte kommentarlinjer (se KommentarCell) - slik at alle andre rader strekkes opp
+// til samme høyde i stedet for at kommentarraden skal klemmes ned mot en for lav grense.
+const TABELL_RAD_KLIKKBAR = "h-12 cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
 
 function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["butikker"][number] }) {
   const gulvavvik = b.gulvavvik ?? null;
@@ -1793,7 +1798,7 @@ function KommentarCell({
               e.stopPropagation();
               setDraft(value);
             }}
-            className={`block w-full max-w-[180px] truncate rounded-md border border-transparent px-1.5 py-1 text-left text-2xs outline-none transition hover:border-line hover:bg-surface-2 ${
+            className={`block w-full max-w-[180px] truncate rounded-md border border-transparent px-1.5 py-0.5 text-left text-2xs leading-tight outline-none transition hover:border-line hover:bg-surface-2 ${
               fraClaude ? "italic text-accent" : "text-ink-2"
             }`}
             title={fraClaude ? "Forklaring skrevet av Claude - rediger for å gjøre den til din" : undefined}
@@ -3270,7 +3275,7 @@ function TenantForecastTable({
                 return (
                   <Fragment key={row.navn}>
                     <tr
-                      className={`border-t border-line transition-colors ${kanEkspandere ? "cursor-pointer hover:bg-surface-2/50" : ""}`}
+                      className={`h-12 border-t border-line transition-colors ${kanEkspandere ? "cursor-pointer hover:bg-surface-2/50" : ""}`}
                       onClick={kanEkspandere ? () => toggle(row.navn) : undefined}
                     >
                       <td className="max-w-[160px] px-3 py-2 text-ink-1">
@@ -3394,24 +3399,29 @@ function TenantForecastTable({
                         {row.avvik === null ? "—" : formatKr(row.avvik, true)}
                       </td>
                       {gruppering === "leietaker" && (
-                        <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
                           {/* v53: Mortens kommentar og Claudes forklaring lever side om side. Claude
                               sin lagres under nøkkelen "<navn>||claude" og vises som egen linje i
-                              accent-farge under Mortens, slik at ingen av dem overskriver den andre. */}
-                          <KommentarCell
-                            navn={row.navn}
-                            value={commentOverrides[row.navn] ?? row.kommentar ?? ""}
-                            onSave={saveComment}
-                            fraClaude={erClaudeKommentar(row.navn)}
-                          />
-                          {commentOverrides[`${row.navn.trim().toLowerCase()}||claude`] && (
+                              accent-farge under Mortens, slik at ingen av dem overskriver den andre.
+                              v60: stablet tett (gap-0) og hver linje komprimert i KommentarCell, slik
+                              at raden holder seg innenfor TABELL_RAD_KLIKKBAR sin faste minstehøyde
+                              selv når begge linjene vises. */}
+                          <div className="flex flex-col gap-0">
                             <KommentarCell
-                              navn={`${row.navn}||claude`}
-                              value={commentOverrides[`${row.navn.trim().toLowerCase()}||claude`]}
+                              navn={row.navn}
+                              value={commentOverrides[row.navn] ?? row.kommentar ?? ""}
                               onSave={saveComment}
-                              fraClaude
+                              fraClaude={erClaudeKommentar(row.navn)}
                             />
-                          )}
+                            {commentOverrides[`${row.navn.trim().toLowerCase()}||claude`] && (
+                              <KommentarCell
+                                navn={`${row.navn}||claude`}
+                                value={commentOverrides[`${row.navn.trim().toLowerCase()}||claude`]}
+                                onSave={saveComment}
+                                fraClaude
+                              />
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
