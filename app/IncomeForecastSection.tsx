@@ -841,37 +841,28 @@ interface WaterfallSegment {
 function IncomeWaterfall({ segments, total }: { segments: WaterfallSegment[]; total: number }) {
   if (total <= 0 || segments.length === 0) return null;
 
-  const bars = segments.map((s) => ({ ...s, widthPct: (Math.abs(s.value) / total) * 100 }));
-  // v53 (2026-09-18, Morten: "på mobil faller tallene litt utfor boksen"): raden hadde to FASTE
-  // kolonner (10,5rem etikett + 8,5rem beløp). På en 360px-skjerm er det mer enn hele bredden når
-  // kortets egen padding trekkes fra, så beløpet ble skjøvet utenfor kanten. Nå brekker raden:
-  // etikett og beløp på én linje med stolpen under i full bredde, og først fra sm: den opprinnelige
-  // tre-kolonners rekka - der er etikettkolonnen fortsatt fast, slik at søylene starter på samme x.
-  const radKlasse =
-    "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[10.5rem_minmax(0,1fr)_8.5rem] sm:gap-y-0";
+  // v53 (2026-09-18, Morten): søylene er fjernet - dette er en ren tall-oversikt. Søylene tilførte
+  // lite (alle unntatt "Bokført" er så små mot totalen at de knapt er synlige), men krevde en egen
+  // kolonne midt i raden. Med to faste sidekolonner (10,5rem + 8,5rem) ble det mer enn hele bredden
+  // på en 360px-skjerm, så beløpet ble skjøvet utenfor kortkanten. Uten søylen er raden bare
+  // etikett + beløp, og problemet finnes ikke lenger.
+  //
+  // `sikkerhet` på segmentene brukes ikke til noe her nå - feltet beholdes i WaterfallSegment fordi
+  // det fortsatt beskriver datagrunnlaget, men det kodes ikke visuelt.
+  const radKlasse = "flex items-baseline justify-between gap-3";
 
   return (
-    <div className="mb-2 flex flex-col gap-2.5">
-      {bars.map((b) => (
-        <div key={b.label} className={radKlasse}>
-          <span className="min-w-0 truncate text-xs text-ink-2 sm:order-1">{b.label}</span>
-          <span className="whitespace-nowrap text-right text-xs tabular-nums text-ink-2 sm:order-3">{formatKr(b.value)}</span>
-          <div className="col-span-2 h-2.5 w-full overflow-hidden rounded-full bg-ink-4/15 sm:order-2 sm:col-span-1">
-            <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(b.widthPct, 0.6)}%`, opacity: b.sikkerhet }} />
-          </div>
+    <div className="mb-2 flex flex-col gap-2">
+      {segments.map((s) => (
+        <div key={s.label} className={radKlasse}>
+          <span className="min-w-0 truncate text-xs text-ink-2">{s.label}</span>
+          <span className="whitespace-nowrap text-right text-xs tabular-nums text-ink-2">{formatKr(s.value)}</span>
         </div>
       ))}
-      <div className={`${radKlasse} mt-0.5`}>
-        <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-ink-2 sm:order-1">Sum prognose</span>
-        <span className="whitespace-nowrap text-right text-xs font-semibold tabular-nums text-ink-1 sm:order-3">{formatKr(total)}</span>
-        <div className="col-span-2 h-3 w-full overflow-hidden rounded-full bg-ink-4/15 sm:order-2 sm:col-span-1">
-          <div className="h-full w-full rounded-full bg-accent" />
-        </div>
+      <div className={`${radKlasse} mt-0.5 border-t border-line pt-2`}>
+        <span className="min-w-0 truncate text-xs font-semibold uppercase tracking-wide text-ink-2">Sum prognose</span>
+        <span className="whitespace-nowrap text-right text-xs font-semibold tabular-nums text-ink-1">{formatKr(total)}</span>
       </div>
-      {/* v29 (2026-09-08): kortet ned fra to setninger. At søylene stables ser man; det som IKKE
-          er selvforklarende er hva opasiteten koder. Resten var overlapp med kortets undertittel
-          ("avstemt manuelt mot Visma NXT og Fazile") og med linja under lista, som er fjernet. */}
-      <p className="text-2xs leading-snug text-ink-4">Jo blekere fyll, jo mindre sikkert tallet.</p>
     </div>
   );
 }
