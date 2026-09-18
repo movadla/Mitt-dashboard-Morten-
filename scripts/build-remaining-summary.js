@@ -2088,6 +2088,24 @@ function main() {
     }
   }
 
+  // v59 (2026-09-19, Morten om en av de manuelle linjene: "Bør i så fall kun ligge under
+  // kundefordringer under risiko?" -> "Flytt til Øvrig risiko, ingen fratrekk"): rene
+  // informasjonsrisikoer som
+  // IKKE skal telle i noen sum - kun vises under "Øvrig risiko i prognosen" i UI-en. I motsetning
+  // til usikreInntekter over påvirker dette INGENTING i gjenstår/byggGrupper - bare en passthrough.
+  const OVRIG_RISIKO_FILE = path.join(__dirname, "refresh-data", "_private-ovrig-risiko.json");
+  let ovrigRisikoManuell = [];
+  if (fs.existsSync(OVRIG_RISIKO_FILE)) {
+    ovrigRisikoManuell = (JSON.parse(fs.readFileSync(OVRIG_RISIKO_FILE, "utf8")).rader || []).map((r) => ({
+      leietaker: r.leietaker,
+      forklaring: r.forklaring,
+      belop: r.belop,
+    }));
+    if (ovrigRisikoManuell.length > 0) {
+      console.log(`Øvrig risiko (informasjon, ikke fratrukket): ${ovrigRisikoManuell.length} rad(er).`);
+    }
+  }
+
   // v12: REMAINING-totalene beregnes fra de ENDELIGE byggGruppene (etter pooling, Head-merge og
   // Onepark) - v11 justerte gruppene uten å oppdatere sumTotalDelA/B (latent avvik mot summen av
   // radene). Onepark-tillegget ligger allerede i sin egen gruppe, så ingen separat += lenger.
@@ -2241,6 +2259,7 @@ function main() {
     tenants: tenantList,
     avstemmingMotNxt,
     usikreInntekter,
+    ovrigRisikoManuell,
     // Se OMSETNINGSAVREGNING_2025_KONTI-kommentaren - sporer avsetningen (avsetning, "Andre"
     // uten leietakerreferanse) og fordelingen til reelle leietakere separat, i stedet for å la
     // begge forsvinne stille når konto 3632 ekskluderes fra leietakernes 2026-gjenstår. Begge

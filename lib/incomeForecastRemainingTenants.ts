@@ -43,6 +43,15 @@ export type RemainingByggStatus =
 // v56 (2026-09-18): inntekt modellen regner med, men som ikke er sikret (estimert oppstart,
 // avtale ikke endelig). Tatt UT av gjenstår i REMAINING; UI-en legger det vektede beløpet inn i
 // prognosen én gang, med sannsynlighet fra jobb:inntektsprognose-signaler (id = usikkerSignalId).
+// v59 (2026-09-19): rene informasjonsrisikoer for "Øvrig risiko i prognosen" - teller ALDRI i noen
+// sum (verken gjenstår, vektet risiko eller hovedprognosen), kun en opplysende rad i UI-en. Se
+// scripts/refresh-data/_private-ovrig-risiko.json.
+export interface OvrigRisikoManuellRad {
+  leietaker: string;
+  forklaring: string;
+  belop: number;
+}
+
 export interface UsikkerInntekt {
   leietaker: string;
   bygg: string;
@@ -147,6 +156,7 @@ export interface RemainingTenantsSnapshot {
   fazileFakturaplan?: FazileFakturaplanInfo | null;
   avstemmingMotNxt?: AvstemmingMotNxt;
   usikreInntekter?: UsikkerInntekt[];
+  ovrigRisikoManuell?: OvrigRisikoManuellRad[];
   // v17 (2026-09-07): data-kvalitetsvarsler fra scripts/build-remaining-summary.js sin egen
   // kjøring (manglende crosswalk/detaljfiler, ekstrapoleringskandidater uten kontraktslinje-
   // sluttdato, o.l.) - tidligere kun synlig i konsollen til den som kjørte scriptet, nå med i
@@ -162,6 +172,7 @@ function anonymizeSnapshot(snapshot: RemainingTenantsSnapshot): RemainingTenants
     ...snapshot,
     tenants: snapshot.tenants.map((t) => ({ ...t, navn: anonymizeIfPerson(t.navn) })),
     usikreInntekter: snapshot.usikreInntekter?.map((u) => ({ ...u, leietaker: anonymizeIfPerson(u.leietaker) })),
+    ovrigRisikoManuell: snapshot.ovrigRisikoManuell?.map((r) => ({ ...r, leietaker: anonymizeIfPerson(r.leietaker) })),
   };
 }
 

@@ -2639,6 +2639,12 @@ function OvrigRisikoBlock({
     const aktive = manualLines.filter((l) => l.aktiv);
     const manuellSum = aktive.reduce((s, l) => s + l.belop, 0);
     if (manuellSum !== 0) ut.push({ forhold: `Mine manuelle linjer (${aktive.length})`, forklaring: "Egne linjer utenfor Fazile og NXT", belop: manuellSum });
+    // v59 (2026-09-19): ren informasjonsrisiko (f.eks. konkursrisiko hos en leietaker), teller IKKE
+    // med i noen sum - forskjellig fra alle radene over, som alle inngår i prognosen et sted. Se
+    // ovrigRisikoManuell / scripts/refresh-data/_private-ovrig-risiko.json (gitignored, ekte navn).
+    for (const r of remaining?.ovrigRisikoManuell ?? []) {
+      ut.push({ forhold: `${r.leietaker} (ikke i prognosen)`, forklaring: r.forklaring, belop: r.belop });
+    }
     if (!sort) return ut;
     const sortert = [...ut].sort((a, b) => (sort.key === "forhold" ? a.forhold.localeCompare(b.forhold, "nb") : a.belop - b.belop));
     return sort.dir === 1 ? sortert : sortert.reverse();
