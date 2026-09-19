@@ -840,16 +840,20 @@ function main() {
   // mer enn de faktiske møterom-beløpene der (45 900 kr) - fordi gruppesummen også inneholder annen,
   // uverifisert 3650-aktivitet for samme par. Derfor: et eget TRANSAKSJONSNIVÅ-uttrekk (samme
   // oppskrift som NXT_3630_3632_DIR over) med bilagstekst, der KUN de eksakte beløpene som er
-  // tekst-bekreftet som møterom/auditorium/lokalutleie trekkes fra - ikke hele kontolinjen. Dekker i
-  // dag kun Mustad Eiendom AS (der alle 6 bekreftede tilfellene ble funnet) - de 8 andre selskapene
-  // er ikke sjekket for samme mønster ennå. Datakilde: refresh-data/nxt-moterom-detalj/<companyNo>.json
-  // (generalLedgerTransaction, konto 3650, bilagstekst LIKE møterom/auditor/lokalutleie).
+  // tekst-bekreftet som møterom/auditorium/lokalutleie trekkes fra - ikke hele kontolinjen.
+  // Sveipet over ALLE 9 NXT-selskaper (2026-09-19) - kun Mustad Eiendom AS hadde treff, de 8 andre
+  // har ingen slike posteringer i 2026 (se meta.json i mappen under). Datakilde:
+  // refresh-data/nxt-moterom-detalj/<companyNo>.json (generalLedgerTransaction, konto 3650,
+  // bilagstekst LIKE møterom/auditor/lokalutleie).
   //
-  // IKKE selvvedlikeholdende: rå-uttrekket i nxt-booked-tenants/ er gruppert uten bilagstekst, så en
-  // helt automatisk versjon som også fanger NYE møterom-leietakere neste kvartal uten manuell
-  // oppdatering krever at selve uttrekksrutinen (refresh-nxt-booked-tenants.js) utvides til å hente
-  // bilagstekst pr. transaksjon - en større endring, ikke gjort her. Sjekk avstemmingspanelets
-  // "møterom/auditorium"-linje jevnlig og oppdater nxt-moterom-detalj/ manuelt ved behov.
+  // "Automatisk i fremtiden" (Morten, samme dag): datahentingen er og blir manuell/interaktiv
+  // for ALT NXT/Fazile-grunnlag i denne appen (kan strukturelt ikke skeduleres, se toppen av
+  // refresh-nxt-booked-tenants.js) - men denne sjekken er nå gjort til et FAST, gjentakende steg
+  // (1b) i akkurat den oppskriften, for alle 9 selskap hver gang, ikke en engangs-undersøkelse.
+  // Dermed fanges et NYTT møterom-mønster hos en hvilken som helst leietaker/selskap opp av seg
+  // selv neste gang steg 1 uansett kjøres på nytt - ingen kodeendring trengs her, kun en fersk
+  // JSON-fil i mappen. Sjekk likevel avstemmingspanelets "møterom/auditorium"-linje etter hver
+  // kjøring for å bekrefte at steget faktisk ble gjort.
   let countMoteromEkskludert = 0;
   if (fs.existsSync(NXT_MOTEROM_DIR) && nxtCompaniesByNo.size > 0) {
     for (const file of fs.readdirSync(NXT_MOTEROM_DIR).filter((f) => f.endsWith(".json") && f !== "meta.json")) {

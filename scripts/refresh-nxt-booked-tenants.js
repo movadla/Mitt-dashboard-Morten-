@@ -33,6 +33,49 @@
 //    engangs node-kommando som trekker ut kun customerNo/accountNo/orgUnit3/beløp til en
 //    kompakt CSV/JSON - se historikken i git for eksempel (commit som la til dette scriptet).
 //
+// 1b. OBLIGATORISK ved HVER kjøring (lagt til v63, 2026-09-19, Morten: "kan det lages en regel
+//     for å sikre dette automatisk?"): steg 1 sin generalLedgerTransaction-spørring er GRUPPERT
+//     og har derfor ingen bilagstekst - det gjør at ad-hoc møterom-/auditorium-/lokalutleie
+//     (konto 3650) som deler byggkode med en leietakers ordinære kontorleie, kan bli summert inn
+//     i "allerede fakturert" for feil leieforhold uten at noen merker det (se v63-notatet i
+//     build-remaining-summary.js for hele funnet). Siden datahentingen uansett er manuell/
+//     interaktiv (kan ikke skedule-automatiseres, se toppen av denne filen), er "automatisk" her:
+//     gjør denne sjekken til en FAST, gjentakende del av SAMME oppskrift, ikke en engangs-
+//     undersøkelse - da fanges nye tilfeller opp av seg selv hver gang steg 1 uansett kjøres på
+//     nytt, uten at noen må huske å tenke på det spesifikt.
+//
+//     For HVERT av de 9 selskapene (samme liste som steg 1 - ikke bare de som hadde treff sist
+//     gang, et NYTT selskap kan begynne å fakturere møterom når som helst), kjør:
+//
+//     query MoteromDetalj($cid: Int!) {
+//       useCompany(no: $cid) {
+//         generalLedgerTransaction(
+//           filter: { _and: [
+//             { accountNo: { _eq: 3650 } }
+//             { year: { _eq: <ÅR> } }
+//             { _or: [
+//               { text: { _like: "%øterom%" } }
+//               { text: { _like: "%uditor%" } }
+//               { text: { _like: "%okalutleie%" } }
+//             ] }
+//           ] }
+//           orderBy: [{ customerNo: ASC }, { orgUnit3: ASC }]
+//           first: 200
+//         ) {
+//           items { customerNo orgUnit3 postedAmountDomestic text voucherDate }
+//         }
+//       }
+//     }
+//
+//     Skriv treffene (kun for selskap med treff - de fleste vil returnere tomt) til
+//     scripts/refresh-data/nxt-moterom-detalj/<companyNo>.json, SAMME fasong som filene der i
+//     dag: { companyNo, selskap, sistOppdatert, ar, kilde, transaksjoner: [{ customerNo, orgUnit3,
+//     belop (sign-flippet, IKKE ta -postedAmountDomestic direkte - se eksisterende filer), text,
+//     voucherDate: "YYYY-MM-DD" }] }. Oppdater deretter
+//     scripts/refresh-data/nxt-moterom-detalj/meta.json (sistOppdatert, sjekketSelskaper,
+//     selskaperMedTreff). build-remaining-summary.js leser denne mappen automatisk - ingen
+//     kodeendring nødvendig for et nytt treff, kun den ferske JSON-filen.
+//
 // 2. Hent leietakernavn separat (billigere, samme spørring men groupBy KUN customerNo, med
 //    joinup_Associate_via_Customer { name }) - se samme fil for mønsteret.
 //

@@ -34,7 +34,8 @@ de leser kun det som allerede ligger som JSON/Excel i den mappen. Å hente FERSK
 automatiseres i et script - det krever Claude sin interaktive Fazile/NXT MCP-tilkobling. Be Claude
 følge oppskriften i:
 - `scripts/refresh-fazile-remaining-tenants.js` (Fazile rent_roll for gjenstår)
-- `scripts/refresh-nxt-booked-tenants.js` (NXT bokført pr. leietaker)
+- `scripts/refresh-nxt-booked-tenants.js` (NXT bokført pr. leietaker) - inkluderer nå steg 1b:
+  møterom-/auditoriedetalj (`nxt-moterom-detalj/`), FAST del av samme oppskrift, se filhodet
 - `scripts/refresh-fazile-kontrakt-crosswalk.js` (kontrakt_id → NXT customerNo)
 
 Se ellers de enkelte byggeskriptenes filhoder for hvilken rå-fil hvert av dem forventer.
