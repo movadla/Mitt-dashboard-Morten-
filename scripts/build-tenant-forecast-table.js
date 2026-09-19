@@ -684,10 +684,10 @@ async function main() {
   //  1) DOBBELTBUDSJETTERT - Excel sin "Ledig"-linje er aldri fjernet etter at arealet faktisk ble
   //     leid ut, MENS leietakeren allerede har sin EGEN, fulle, separate budsjettlinje et annet
   //     sted i samme Excel-ark. Å overføre beløpet HIT i tillegg ville dobbelttalt det - oppdaget
-  //     2026-08-29 (Morten): Vollsveien 21 sine linjer "Utleid til RCCL fra 01.01.2026" og "Uteleid
-  //     til Eternal Clothing AS fra 01.01.2025" pekte begge på leietakere (RCL Cruises Ltd.,
-  //     Eternal Clothing AS) som ALLEREDE har egne, komplette budsjettrader (457 917,81 kr og
-  //     123 482,87 kr) - de to Ledig-linjene var rene, ikke-oppdaterte levninger i Excel-arket.
+  //     2026-08-29 (Morten) for to leietakere i Vollsveien 21 som begge allerede hadde egne,
+  //     komplette budsjettrader et annet sted - Ledig-linjene der var rene, ikke-oppdaterte
+  //     levninger i Excel-arket. Leietakernavnene ligger i MANUAL_UNTRACKED_PRIVATE_FILE
+  //     (ANONYMISERING.md), ikke her.
   //  2) Ikke utleibart areal Finance selv har nullet (V21 U.01 "Fellesareal").
   //  3) INTERNLEIE (v15, utgått i v55) - P-Bro-lagrene og garderobe/trimrom i Vollsveien 19 ble
   //     flyttet til MUSTAD_INTERN_LABEL-raden via `overforTil` så lenge Mustad Eiendomsdrift
@@ -695,33 +695,14 @@ async function main() {
   //     linjene ligger i MANUAL_FLYTTET_INN_OVERRIDES over i stedet. `overforTil` beholdes som
   //     mekanisme for eventuelle senere tilfeller.
   // `linjeMatch`: delstreng (case-insensitive) som identifiserer HVILKEN/HVILKE linje(r) i
-  // Ledig-radens linjer[] dette gjelder - kan matche flere linjer (f.eks. RCCL sine to rom).
-  // Beløpet regnes ut fra de FAKTISKE linjeverdiene (ikke håndskrevet), og linjene fjernes fra
-  // linjer[]. `kort` = etikett i Ledig-radens postliste/auto-kommentar, `beskrivelse` = full
-  // begrunnelse (hover i UI).
+  // Ledig-radens linjer[] dette gjelder - kan matche flere linjer. Beløpet regnes ut fra de
+  // FAKTISKE linjeverdiene (ikke håndskrevet), og linjene fjernes fra linjer[]. `kort` = etikett
+  // i Ledig-radens postliste/auto-kommentar, `beskrivelse` = full begrunnelse (hover i UI).
+  // v65b (2026-09-19, leak-check): de leietaker-navngitte oppføringene som lå her (Vollsveien 21
+  // og Lilleakerveien 2C) er flyttet til MANUAL_UNTRACKED_PRIVATE_FILE under - de inneholdt ekte
+  // leietakernavn i committet kode (ANONYMISERING.md-brudd, oppdaget under en gjennomgang av
+  // "Usporede overtakelser"-raden). Se den gitignorede filen for de faktiske oppføringene.
   const MANUAL_UNTRACKED_OVERTAKELSER = {
-    "Vollsveien 21": [
-      {
-        kort: "RCL Cruises Ltd. (egen budsjettrad)",
-        beskrivelse: "Dobbeltbudsjettert: arealet er allerede utleid til RCL Cruises Ltd. (RCCL), som har sin egen, fulle budsjettlinje andre steder i tabellen - denne Ledig-linjen var en levning i Excel-arket.",
-        linjeMatch: "utleid til rccl",
-      },
-      {
-        kort: "Eternal Clothing AS (egen budsjettrad)",
-        beskrivelse: "Dobbeltbudsjettert: arealet er allerede utleid til Eternal Clothing AS, som har sin egen, fulle budsjettlinje andre steder i tabellen - denne Ledig-linjen var en levning i Excel-arket.",
-        linjeMatch: "uteleid til eternal clothing",
-      },
-      // U.01 "Fellesareal" (20 140 kr) fjernes IKKE her selv om Finance nullet den i mars - den er
-      // et reelt budsjettbeløp som ikke kommer, og skal vises som "nullet" Ledig-linje (mangel mot
-      // budsjett), ikke forsvinne fra budsjettsummen slik de dobbeltbudsjetterte linjene gjør.
-    ],
-    "Lilleakerveien 2C": [
-      {
-        kort: "Parkly AS (egen budsjettrad)",
-        beskrivelse: "Dobbeltbudsjettert: Finance (mars 2026): \"Parkly leier her.\" - Parkly AS har egen, full budsjettrad andre steder i tabellen.",
-        linjeMatch: "rom nr 7",
-      },
-    ],
   };
   // v55c: oppføringer som navngir leietakere i `kort`/`beskrivelse` holdes i en gitignored fil
   // (ANONYMISERING.md), samme mønster som MANUAL_FLYTTET_INN_PRIVATE_FILE. Form: { "<fullt
@@ -1030,13 +1011,34 @@ async function main() {
       ),
     );
     if (usporetSum !== 0) {
+      // v65b (2026-09-19, Morten: "de må listes opp når man trykker på den linjen"): hver enkelt
+      // usporet-postering vises nå som en egen "linje" på samleraden (samme form som en vanlig
+      // leietaker-linje, bygg = Ledig-radens kortnavn), i stedet for et tomt array - før dette var
+      // beløpet kun synlig fordelt på de RESPEKTIVE Ledig-radenes egen "Flyttet inn her"-liste, ikke
+      // på selve samleraden man faktisk trykker på.
+      const usporetLinjer = [];
+      for (const [ledigNavn, o] of overforinger) {
+        for (const p of o.poster) {
+          if (p.type !== "usporet") continue;
+          usporetLinjer.push({
+            eiendom: ledigNavn,
+            bygg: ledigNavn,
+            linjetype: "CUSTOM",
+            beskrivelse: p.beskrivelse || p.navn,
+            del: "A",
+            fullArsverdi2026: p.belop,
+            startDato: null,
+            sluttDato: null,
+          });
+        }
+      }
       delALeietakerRader.push({
         navn: USPORET_OVERTAKELSE_LABEL,
         fakturert: 0,
         gjenstar: 0,
         budsjett: usporetSum,
         avvik: round2(-usporetSum),
-        linjer: [],
+        linjer: usporetLinjer,
       });
       console.log(
         `Usporede overtakelser: ${fmt(usporetSum)} kr budsjett samlet på raden "${USPORET_OVERTAKELSE_LABEL}" (trukket fra Ledig-rader uten mottakerrad).`,

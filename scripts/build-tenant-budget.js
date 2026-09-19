@@ -133,6 +133,9 @@ const BYGG_KORTKODE = new Map([
   ["Vollsveien 13B", "V13B"],
   ["Mustadsvei 10 Fåbro gård", "MV10"],
   ["Strandveien 4-8", "SV4-8"],
+  ["Lilleakerveien 31", "LV31"],
+  ["Lilleakerveien 26", "LV26"],
+  ["Vollsveien 19", "V19"],
 ]);
 const MUSTAD_INTERN_LABEL = "Mustad Eiendom (intern bruk, ikke leieforhold)";
 const AVSTEMMING_LABEL = "Avstemmingsdifferanse (Excel redigert etter at 'harde tall' ble limt inn i Oppsummering-arket)";
