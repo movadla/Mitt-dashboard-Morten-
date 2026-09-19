@@ -383,7 +383,16 @@ const HISTORISK_KUNDENUMMER_KORREKSJON = new Map();
 // som konsumert i avstemmingen. Byggkode må fortsatt stemme - et aliasbeløp på et bygg
 // leietakeren ikke har Fazile-linje i, dukker opp i `avstemmingMotNxt.ikkeKonsumertNxt`.
 // Kun tall her (ANONYMISERING.md) - hvem numrene tilhører står i minnefila om fusjonen.
-const KUNDENUMMER_ALIASER = new Map([[10619, [11134, 10455]]]);
+// v61 (2026-09-19): én leietaker fikk nytt NXT-kundenummer i løpet av 2026 (samme mønster som
+// Norconsult-fusjonen) - kontrollert mot faktisk fakturahistorikk: det gamle nummeret har 3
+// kvartalsfakturaer i 2026, det nye har 1. Uten alias dukket kvartalet på det ukoblede nummeret
+// opp BÅDE som "ikke konsumert i NXT" OG som gjenstår - et reelt dobbelttelt beløp (57 897 kr),
+// funnet ved at de to diagnoselistene viste identisk sum for samme leietaker+bygg. Hvem det
+// gjelder står i den gitignorede minnefila om funnet, ikke her (ANONYMISERING.md).
+const KUNDENUMMER_ALIASER = new Map([
+  [10619, [11134, 10455]],
+  [10821, [11098]],
+]);
 function kundenummerMedAliaser(customerNo) {
   return [Number(customerNo), ...(KUNDENUMMER_ALIASER.get(Number(customerNo)) || [])].map(String);
 }
