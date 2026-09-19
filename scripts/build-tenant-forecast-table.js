@@ -309,21 +309,27 @@ function buildLeietypeClassifier(budsjettOppslag) {
   // `leietaker` kan være ÉN streng eller en liste [juridisk enhet, konsernrad] (v55): Excel
   // budsjetterer pr. selskap, så enhetens eget navn prøves først; konsernraden (som eier
   // budsjettoppslaget etter sammenslåingen) er fallback. For alle andre er lista ett navn.
+  // v62 (2026-09-19, Morten: "en butikk registrert som kontor ville ikke vist seg" - stikkprøve
+  // avdekket akkurat dette): FØR denne runden sto de "entydige" Fazile-beskrivelse-nøkkelordene
+  // (garasje/parkering/lagerleie/kontorleie/minimumsleie) FØRST, og vant over Excel sin egen
+  // leietype-kolonne. "Minimumsleie avg.pl." er IKKE et Butikk-ord, det er navnet Fazile bruker på
+  // kjerneleien uansett bransje - flere restaurant-/kafé-/hurtigmatleietakere (til sammen ~8,6 mill
+  // kr) sto derfor som Butikk i stedet for Restaurant, og Excel sin egen Restaurant/Service-helse/
+  // Annet-kolonne for akkurat disse leieforholdene ble aldri konsultert. Stikkprøven fant dette ved
+  // å sammenligne Excel-radenes EGEN leietype-kolonne mot hva nøkkelordene ville gitt - 22 rader
+  // avvek, størst en enkeltleietaker på 2 099 792 kr. Rekkefølgen er nå snudd: Excel (steg 1-2,
+  // Finance sin egen vurdering) vinner FØR nøkkelordene (steg 3-4), samme prinsipp som allerede
+  // gjaldt for steg 4 sine "mindre entydige ord" - nå gjelder det konsekvent for ALLE nøkkelord,
+  // ikke bare de svakeste.
   function classifyRaa(beskrivelse, bygg, leietaker, del, fullArsverdi2026) {
     const navneliste = [...new Set((Array.isArray(leietaker) ? leietaker : [leietaker]).filter(Boolean))];
     leietaker = navneliste[0] || null;
     const b = (beskrivelse || "").toLowerCase();
-    // 1) Entydige ord i Fazile-beskrivelsen.
-    if (/garasje/.test(b)) return "Garasje";
-    if (/parkering|p-plass/.test(b)) return "Parkering";
-    if (/lagerleie/.test(b)) return "Lager";
-    if (/kontorleie/.test(b)) return "Kontor";
-    if (/minimumsleie|omsetningsbasert|butikkleie/.test(b)) return "Butikk";
-    // 2) Bygg + beskrivelse finnes ordrett som "Kontrakt-objekt" i Excel.
+    // 1) Bygg + beskrivelse finnes ordrett som "Kontrakt-objekt" i Excel.
     const key = normalizeName(bygg || "") + "||" + normalizeName(beskrivelse || "");
     const types = byggBeskrivelse.get(key);
     if (types && types.size === 1) return [...types][0];
-    // 3) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias) -
+    // 2) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias) -
     //    juridisk enhet først, deretter konsernraden (v55, se navneliste over).
     for (const navn of navneliste) {
       const direkte = viaNavn(navn, bygg, del);
@@ -336,8 +342,13 @@ function buildLeietypeClassifier(budsjettOppslag) {
         if (t) return t;
       }
     }
-    // 4) Mindre entydige ord - først NÅ, siden Excel-typen for leietakeren skal vinne over
-    //    linjeteksten (en Restaurant-leietaker med "Omsetningsleie"-linje skal stå som Restaurant).
+    // 3) Entydige ord i Fazile-beskrivelsen - kun for leieforhold Excel ikke sier noe om.
+    if (/garasje/.test(b)) return "Garasje";
+    if (/parkering|p-plass/.test(b)) return "Parkering";
+    if (/lagerleie/.test(b)) return "Lager";
+    if (/kontorleie/.test(b)) return "Kontor";
+    if (/minimumsleie|omsetningsbasert|butikkleie/.test(b)) return "Butikk";
+    // 4) Mindre entydige ord.
     if (/omsetningsleie|omsetningsjustert|leie handel|pop up|tilleggsleie/.test(b)) return "Butikk";
     if (/kontor/.test(b)) return "Kontor";
     if (/lager/.test(b)) return "Lager";

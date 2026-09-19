@@ -397,6 +397,13 @@ function kundenummerMedAliaser(customerNo) {
   return [Number(customerNo), ...(KUNDENUMMER_ALIASER.get(Number(customerNo)) || [])].map(String);
 }
 
+// v63 (2026-09-19, Morten: "Tror det er flere som sporadisk leier møterom i samme bygg som de
+// leier kontor. Sjekk dette på tvers og legg inn i koden slik at det blir riktig i fremtiden") -
+// se NXT_MOTEROM_DIR-blokken lenger ned for selve mekanismen og full forklaring.
+const NXT_MOTEROM_DIR = path.join(__dirname, "refresh-data", "nxt-moterom-detalj");
+const MOTEROM_TEKST_REGEX = /øterom|uditor|okalutleie/i;
+let sumMoteromEkskludertFraAlleredeFakturert = 0;
+
 // v12 (2026-09-03): DEL_A_INNEHOLDER_PARKERING_NOTAT (PGS 688 543 kr bevisst i Del A) er FJERNET -
 // Morten snudde samme dag ("parkering må inneholde alt som er på parkeringskontoer uavhengig av
 // bygg"), så beløpet ligger nå i Del B via den kundenummer-brede poolen (se v12-blokken).
@@ -812,6 +819,66 @@ function main() {
     }
   } else {
     varsel("ADVARSEL: fant ikke nxt-3630-3632-detalj/ - 3630-kreditnotaer for 2025-avregningen nøytraliseres IKKE (gjenstår blir for høyt for berørte leietakere).");
+  }
+
+  // v63 (2026-09-19, Morten: "Tror det er flere som sporadisk leier møterom i samme bygg som de
+  // leier kontor. Sjekk dette på tvers og legg inn i koden slik at det blir riktig i fremtiden"):
+  // ad-hoc møterom-/auditorium-/lokalutleie (konto 3650, "Leie av møterom [dato]" i NXT-
+  // bilagsteksten - en KJENT og legitim inntektskategori Fazile aldri kan fange, se v5/v6-notatet i
+  // filhodet) bokføres på leietakerens EGET kundenummer. Når leietakeren OGSÅ har sin ordinære
+  // kontorleie i SAMME bygg (samme orgUnit3), havner møterom-beløpet i SAMME grupperte 3650-sum som
+  // nxt-booked-tenants/ (rå-uttrekket, gruppert pr. kundenummer+konto+bygg UTEN bilagstekst) bruker
+  // i "allerede fakturert" - uten egen linje eller advarsel, og gjenstår blir for lavt med nøyaktig
+  // møterom-beløpet. Bekreftet ved å krysse bilagstekst mot alle andre posteringer på samme
+  // (kundenummer, bygg): 6 par der et lite møterom-/auditoriebilag deler byggkode med leietakerens
+  // mye større ordinære leiepostering.
+  //
+  // IKKE et "ekskluder konto 3650"-grep - kontoen brukes også til store, ekte kontraktsfestede
+  // tilleggsinntekter hos andre leietakere (funnet ved samme gjennomgang: flere enkeltleietakere med
+  // sekssifrede/millionbeløp nettopp på denne kontoen). Et første forsøk på å ekskludere HELE den
+  // grupperte 3650-linjen for de 6 bekreftede (kundenummer,bygg)-parene fjernet 232 530 kr - langt
+  // mer enn de faktiske møterom-beløpene der (45 900 kr) - fordi gruppesummen også inneholder annen,
+  // uverifisert 3650-aktivitet for samme par. Derfor: et eget TRANSAKSJONSNIVÅ-uttrekk (samme
+  // oppskrift som NXT_3630_3632_DIR over) med bilagstekst, der KUN de eksakte beløpene som er
+  // tekst-bekreftet som møterom/auditorium/lokalutleie trekkes fra - ikke hele kontolinjen. Dekker i
+  // dag kun Mustad Eiendom AS (der alle 6 bekreftede tilfellene ble funnet) - de 8 andre selskapene
+  // er ikke sjekket for samme mønster ennå. Datakilde: refresh-data/nxt-moterom-detalj/<companyNo>.json
+  // (generalLedgerTransaction, konto 3650, bilagstekst LIKE møterom/auditor/lokalutleie).
+  //
+  // IKKE selvvedlikeholdende: rå-uttrekket i nxt-booked-tenants/ er gruppert uten bilagstekst, så en
+  // helt automatisk versjon som også fanger NYE møterom-leietakere neste kvartal uten manuell
+  // oppdatering krever at selve uttrekksrutinen (refresh-nxt-booked-tenants.js) utvides til å hente
+  // bilagstekst pr. transaksjon - en større endring, ikke gjort her. Sjekk avstemmingspanelets
+  // "møterom/auditorium"-linje jevnlig og oppdater nxt-moterom-detalj/ manuelt ved behov.
+  let countMoteromEkskludert = 0;
+  if (fs.existsSync(NXT_MOTEROM_DIR) && nxtCompaniesByNo.size > 0) {
+    for (const file of fs.readdirSync(NXT_MOTEROM_DIR).filter((f) => f.endsWith(".json") && f !== "meta.json")) {
+      const d = JSON.parse(fs.readFileSync(path.join(NXT_MOTEROM_DIR, file), "utf8"));
+      const company = nxtCompaniesByNo.get(String(d.companyNo));
+      if (!company) continue;
+      for (const tx of d.transaksjoner) {
+        if (nxtCacheDato && tx.voucherDate > nxtCacheDato) continue;
+        if (!MOTEROM_TEKST_REGEX.test(tx.text || "")) continue;
+        if (Number(tx.customerNo) === 0) continue; // "Andre" - ikke koblet til noe leieforhold uansett
+        let bygg = company.buildings[String(tx.orgUnit3)];
+        if (!bygg) continue;
+        bygg = BYGG_UNDERBYGG_TIL_HOVEDBYGG.get(bygg) || bygg;
+        const key = company.selskap + "||" + tx.customerNo + "||" + normalizeName(bygg);
+        const g = nxtGroupsByCustomerNo.get(key);
+        if (!g) continue; // ingen postering på denne nøkkelen i hovedgrupperingen - ingenting å trekke fra
+        const belop = -tx.belop; // sign-flip, samme konvensjon som resten av scriptet
+        const erParkeringsbygg = PARKERING_LINJE_REGEX.test(bygg);
+        const kontoMap = erParkeringsbygg ? g.kontoerB : g.kontoerA;
+        kontoMap.set(3650, round2((kontoMap.get(3650) || 0) - belop));
+        if (erParkeringsbygg) g.alleredeB = round2(g.alleredeB - belop);
+        else g.alleredeA = round2(g.alleredeA - belop);
+        sumMoteromEkskludertFraAlleredeFakturert = round2(sumMoteromEkskludertFraAlleredeFakturert + belop);
+        countMoteromEkskludert++;
+      }
+    }
+    if (countMoteromEkskludert) {
+      console.log(`v63: ${countMoteromEkskludert} møterom-/auditoriebeløp (${sumMoteromEkskludertFraAlleredeFakturert.toLocaleString("nb-NO")} kr) trukket ut av "allerede fakturert".`);
+    }
   }
   // Slår opp NXT-bokføring for et leieforhold via kontrakt_id -> customerNo -> selskap+bygg.
   // Returnerer null (ikke funnet/usikkert) i stedet for å kaste - kalleren faller da tilbake til
@@ -2241,6 +2308,7 @@ function main() {
     { post: "Konto 3632 (2025-avregningen: fordelt til leietakere minus avsetning) holdt utenfor leietaker-summen, men med i kontosummen", belop: round2(-(sumOmsetningsavregning2025Fordelt + sumOmsetningsavregning2025Avsetning)) },
     ...[...syntetiskeKontoer.entries()].map(([post, belop]) => ({ post: `Syntetisk kontopost «${post}» (lagt til i fakturert uten NXT-motpost)`, belop })),
     { post: `NXT-bokføring på ${ikkeKonsumert.length} kunde/bygg-grupper uten Fazile-leieforhold (mangler i leietaker-summen, med i kontosummen)`, belop: round2(-sumIkkeKonsumert) },
+    { post: "Konto 3650 møterom-/auditorieutleie som deler bygg med leietakerens ordinære leie - bevisst holdt utenfor «allerede fakturert» (v63)", belop: round2(-sumMoteromEkskludertFraAlleredeFakturert) },
   ];
   const differanse = round2(remainingFakturert - nxtRaaSum);
   const uforklartRest = round2(differanse - forklart.reduce((s, f) => s + f.belop, 0));
@@ -2250,7 +2318,11 @@ function main() {
     differanse,
     forklart,
     uforklartRest,
-    ikkeKonsumertNxt: { antall: ikkeKonsumert.length, sum: sumIkkeKonsumert, storste: ikkeKonsumert.slice(0, 40) },
+    // v62 (2026-09-19, Morten: er vi sikre på at det ikke finnes flere saker av samme type der ute):
+    // hevet fra 40 til 200 - med kun 47 rader i praksis viser dette nå ALLE, ikke bare de største.
+    // Poenget er nettopp at et dobbeltkoblet-kundenummer-avvik (se KUNDENUMMER_ALIASER over) kan
+    // være et lite beløp, og en avkuttet liste ville skjult akkurat den typen sak fra gjennomgangen.
+    ikkeKonsumertNxt: { antall: ikkeKonsumert.length, sum: sumIkkeKonsumert, storste: ikkeKonsumert.slice(0, 200) },
   };
   console.log(`\nAvstemming mot NXT (BOOKED): leietaker-sum ${remainingFakturert.toLocaleString("nb-NO")} - kontosum ${nxtRaaSum.toLocaleString("nb-NO")} = ${differanse.toLocaleString("nb-NO")} kr`);
   for (const f of forklart) console.log(`  ${f.belop >= 0 ? "+" : ""}${f.belop.toLocaleString("nb-NO")}  ${f.post}`);
