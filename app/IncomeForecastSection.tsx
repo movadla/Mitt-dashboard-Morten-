@@ -1725,11 +1725,11 @@ function TenantDrilldownRows({
 // gjenstår ser rart ut (kontrakten dekker bare en DEL av året). Tar tidligste start og seneste
 // slutt blant linjer som faktisk faller innenfor 2026 - representerer leietakerens "inn"/"ut"-
 // tidspunkt for de fleste tilfeller (én hovedlinje pr. leietaker+bygg er normalt).
-// v2 (2026-08-29, Morten: AFRY-funn - "start 20.04 · slutt 31.03" så ut som en umulig,
+// v2 (2026-08-29, Morten: fant en leietaker der "start 20.04 · slutt 31.03" så ut som en umulig,
 // baklengs kontraktsperiode). Rotårsak: en leietaker med mange UAVHENGIGE linjer (typisk mange
 // enkeltstående parkeringsplass-kontrakter, hver med egen historikk) fikk tidligere den TIDLIGSTE
 // 2026-startdatoen og den SENESTE 2026-sluttdatoen plukket ut hver for seg, uansett om de kom fra
-// SAMME linje - for AFRY Norway AS var det to helt urelaterte garasjeplasser (én sluttet 31.03,
+// SAMME linje - i dette tilfellet var det to helt urelaterte garasjeplasser (én sluttet 31.03,
 // en helt annen startet 20.04), ikke én reell kontrakt med en baklengs periode. Sporer nå hvilken
 // linje hver dato kom fra - `sammeLinje` er kun true når ÉN OG SAMME linje faktisk både startet
 // OG sluttet i 2026 (en reell kort delårskontrakt), IKKE når datoene stammer fra ulike linjer.
