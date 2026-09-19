@@ -776,8 +776,22 @@ async function main() {
     }
     // Leietakerens egen fullårsverdi på ETT spesifikt bygg (summen av deres EGNE Fazile-linjer der) -
     // uavhengig av hva som ble trukket fra Ledig-budsjettet. Brukes kun til faktiskInntekt over.
+    // v65 (2026-09-19, Morten: en leietaker sto med 10 mnok i fakturert under en Ledig-rad de bare
+    // hadde tatt en liten del av - "det er vel hele leieforholdet? Under Ledig måtte kun vise
+    // beløpene som gjelder det de har overtatt"): summerte tidligere ALLE leietakerens linjer i
+    // bygget, inkludert deres allerede eksisterende leieforhold FØR de tok over noe ledig areal -
+    // for en stor, langsiktig leietaker (leieforhold siden 2024, tok i tillegg over en ledig
+    // LV2B-post i 2026) ga det et tall som så ut som "dette er verdien av det ledige arealet de
+    // overtok" når det egentlig var nesten hele deres eksisterende leieforhold i bygget. Begrenset
+    // nå til KUN linjer som selv startet i inneværende
+    // prognoseår - en linje som allerede løp fra et tidligere år er per definisjon ikke en del av
+    // årets ledig-areal-overtakelse. Faller tilbake til full sum hvis leietakeren ikke har NOEN linje
+    // som startet i år på bygget (dvs. en helt ny leietaker der - da er alt reelt nytt uansett).
     function faktiskInntektPaBygg(rad, bygg) {
-      return round2((rad.linjer || []).filter((l) => normalizeName(l.bygg) === normalizeName(bygg)).reduce((s, l) => s + l.fullArsverdi2026, 0));
+      const byggLinjer = (rad.linjer || []).filter((l) => normalizeName(l.bygg) === normalizeName(bygg));
+      const nyeIAr = byggLinjer.filter((l) => l.startDato && l.startDato >= `${remaining.ar}-01-01` && l.startDato <= `${remaining.ar}-12-31`);
+      const brukLinjer = nyeIAr.length > 0 ? nyeIAr : byggLinjer;
+      return round2(brukLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
     }
     function finnLinjer(ledigRad, fulltBygg, linjeMatch) {
       const treff = [];
