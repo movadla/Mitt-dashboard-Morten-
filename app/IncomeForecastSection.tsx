@@ -1733,27 +1733,50 @@ function TenantDrilldownRows({
 // en helt annen startet 20.04), ikke én reell kontrakt med en baklengs periode. Sporer nå hvilken
 // linje hver dato kom fra - `sammeLinje` er kun true når ÉN OG SAMME linje faktisk både startet
 // OG sluttet i 2026 (en reell kort delårskontrakt), IKKE når datoene stammer fra ulike linjer.
+// v3 (2026-09-19, Morten): "start 12.06 · slutt 04.09"-mønsteret på en leietaker var i
+// virkeligheten en kortkontrakt som gikk RETT OVER i en ny, 5-årig kontraktslinje samme dag den
+// gamle sluttet, ikke en reell utflytting; samme feil ga en annen leietaker en falsk "start"/
+// "slutt" fra Fazile sin årlige linje-fornyelse (en videreført leietaker får en NY linjeversjon
+// med startDato 1. januar hvert år/ved reforhandling, selv om selve leieforholdet er flere år
+// gammelt). "Morten: start/slutt skal kun gjelde NYE eller UTFLYTTEDE leietakere, ikke
+// fornyelser/linjeskifter." Fikset ved å sammenligne mot leietakerens EGEN historikk PÅ TVERS AV
+// ALLE ÅR (ikke bare 2026): en linjes
+// startDato vises kun som "start" når det er leietakerens aller TIDLIGSTE kjente linje totalt
+// (ingen linje - i noe år - startet før), og en linjes sluttDato vises kun som "slutt" når det er
+// den aller SENESTE kjente sluttdatoen OG ingen annen linje starter på/etter det tidspunktet (dvs.
+// ingen forlengelse/erstatningslinje tar over) og ingen linje mangler sluttdato helt (løpende
+// forhold). Reflekterer leietakeren som HELHET (alle bygg/linjer i raden), ikke bygg for bygg.
 function finn2026StartSlutt(
   linjer: { startDato: string | null; sluttDato: string | null }[],
 ): { start: string | null; slutt: string | null; sammeLinje: boolean } {
-  let start: string | null = null;
-  let startLinje: (typeof linjer)[number] | null = null;
-  let slutt: string | null = null;
-  let sluttLinje: (typeof linjer)[number] | null = null;
+  let tidligsteStart: string | null = null;
+  let senesteSlutt: string | null = null;
+  let harApenLinje = false; // en linje uten sluttDato = leietakeren har et løpende forhold der
   for (const l of linjer) {
-    if (l.startDato && l.startDato >= `${PROGNOSE_AR}-01-01` && l.startDato <= `${PROGNOSE_AR}-12-31`) {
-      if (!start || l.startDato < start) {
-        start = l.startDato;
-        startLinje = l;
-      }
-    }
-    if (l.sluttDato && l.sluttDato >= `${PROGNOSE_AR}-01-01` && l.sluttDato <= `${PROGNOSE_AR}-12-31`) {
-      if (!slutt || l.sluttDato > slutt) {
-        slutt = l.sluttDato;
-        sluttLinje = l;
-      }
+    if (l.startDato && (!tidligsteStart || l.startDato < tidligsteStart)) tidligsteStart = l.startDato;
+    if (l.sluttDato) {
+      if (!senesteSlutt || l.sluttDato > senesteSlutt) senesteSlutt = l.sluttDato;
+    } else if (l.startDato) {
+      harApenLinje = true;
     }
   }
+  const i2026 = (d: string | null) => !!d && d >= `${PROGNOSE_AR}-01-01` && d <= `${PROGNOSE_AR}-12-31`;
+
+  let start: string | null = null;
+  let startLinje: (typeof linjer)[number] | null = null;
+  if (tidligsteStart && i2026(tidligsteStart)) {
+    start = tidligsteStart;
+    startLinje = linjer.find((l) => l.startDato === tidligsteStart) ?? null;
+  }
+
+  let slutt: string | null = null;
+  let sluttLinje: (typeof linjer)[number] | null = null;
+  const harEtterfolger = !!senesteSlutt && linjer.some((l) => l.startDato && l.startDato >= senesteSlutt!);
+  if (senesteSlutt && i2026(senesteSlutt) && !harApenLinje && !harEtterfolger) {
+    slutt = senesteSlutt;
+    sluttLinje = linjer.find((l) => l.sluttDato === senesteSlutt) ?? null;
+  }
+
   return { start, slutt, sammeLinje: startLinje !== null && startLinje === sluttLinje };
 }
 
