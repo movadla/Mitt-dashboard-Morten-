@@ -196,10 +196,23 @@ export async function getTenantForecastTable(): Promise<TenantForecastTableSnaps
   ]);
   if (!snapshot) return null;
   // Kommentarer kobles inn FØR anonymisering (matcher på ekte navn - se withComments).
+  // v69 (2026-09-20, Morten: "enkel forklarbar kommentar til avvikene pr. leietype ... og
+  // forklaring også på avvikene pr. bygg"): bygg-/leietype-radene har samme auto-kommentar-
+  // mekanisme som leietaker-radene (skrevet av settAutoKommentarAggregat() i
+  // build-tenant-forecast-table.js) - må derfor kobles inn her på samme måte, ellers vises de
+  // aldri (withComments ble tidligere kun kalt på leietaker-arrayene).
   const withKommentarer: TenantForecastTableSnapshot = {
     ...snapshot,
-    delA: { ...snapshot.delA, leietaker: withComments(snapshot.delA.leietaker, comments) },
-    delB: { ...snapshot.delB, leietaker: withComments(snapshot.delB.leietaker, comments) },
+    delA: {
+      leietaker: withComments(snapshot.delA.leietaker, comments),
+      bygg: withComments(snapshot.delA.bygg, comments),
+      leietype: withComments(snapshot.delA.leietype, comments),
+    },
+    delB: {
+      leietaker: withComments(snapshot.delB.leietaker, comments),
+      bygg: withComments(snapshot.delB.bygg, comments),
+      leietype: withComments(snapshot.delB.leietype, comments),
+    },
   };
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden
   // (kun demokunder tillatt) mot SAMME Redis - anonymiser derfor privatpersoner i farten

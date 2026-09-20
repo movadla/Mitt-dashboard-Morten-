@@ -127,6 +127,54 @@ async function settAutoKommentar(navn, kommentar) {
   return true;
 }
 
+// v69 (2026-09-20, Morten: "enkel forklarbar kommentar til avvikene pr. leietype ... og
+// forklaring også på avvikene pr. bygg"): samme auto-kommentar-mekanisme som leietaker-radene
+// (settAutoKommentar over), men for bygg-/leietype-summeringsradene. Siden disse er summer av
+// MANGE leietakere, forklares avviket ved å peke på HVEM som bidrar mest til det - leietakerens
+// EGET, allerede korrekt budsjett-matchede avvik (fra den ferdige leietaker-grupperingen) - ikke
+// ved å prøve å regne ut en egen bygg-/leietype-spesifikk budsjettandel her (det ville krevd å
+// gjenskape hele Excel-alias-matchingen på nytt inne i denne funksjonen, sårbart for samme type
+// feil v68 nettopp fikset). Privatpersoner navngis ALDRI i kommentaren (kun "en privat
+// leietaker") - dette er fritekst lagret i samme Redis-hash som leietakerkommentarene, og
+// anonymiseringen ved lesing (lib/tenantForecastTable.ts) anonymiserer kun rad-navn/linjer, ikke
+// fritekst inni selve kommentarfeltet.
+async function settAutoKommentarAggregat(rader, leietakerRader) {
+  const AVVIK_TERSKEL = 20000;
+  const avvikPrLeietaker = new Map();
+  for (const r of leietakerRader) {
+    if (r.avvik === null || r.avvik === undefined) continue;
+    avvikPrLeietaker.set(normalizeName(r.navn), { navn: r.navn, avvik: r.avvik });
+  }
+  const erSelskap = (navn) => /\b(as|asa|nuf|ab|a\/s|ltd|gmbh|kommune|forening|forbund|klubb|club|senter|drift|holding)\b/i.test(navn) || /\d/.test(navn);
+  const fmt = (n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString("nb-NO")} kr`;
+  for (const rad of rader) {
+    if (rad.navn.startsWith("Ledig ") || rad.navn === MUSTAD_INTERN_LABEL || rad.navn === USPORET_OVERTAKELSE_LABEL || rad.navn.startsWith("Avstemmingsdifferanse") || rad.navn.startsWith("Ukodet bokføring")) {
+      continue; // egne, allerede selvforklarende systemrader - ikke overskriv med en generisk kommentar
+    }
+    if (rad.avvik === null || rad.avvik === undefined || Math.abs(rad.avvik) < AVVIK_TERSKEL) {
+      await settAutoKommentar(rad.navn, "");
+      continue;
+    }
+    const belopPrLeietaker = new Map();
+    for (const l of rad.linjer || []) {
+      if (!l.leietaker) continue;
+      const key = normalizeName(l.leietaker);
+      belopPrLeietaker.set(key, (belopPrLeietaker.get(key) || 0) + l.fullArsverdi2026);
+    }
+    const bidrag = [...belopPrLeietaker.keys()]
+      .map((key) => avvikPrLeietaker.get(key))
+      .filter((a) => a && Math.abs(a.avvik) >= 10000)
+      .sort((a, b) => Math.abs(b.avvik) - Math.abs(a.avvik))
+      .slice(0, 4);
+    if (bidrag.length === 0) {
+      await settAutoKommentar(rad.navn, `Avvik på ${fmt(rad.avvik)} er spredt over mange leietakere uten at noen enkelt står for mesteparten.`);
+      continue;
+    }
+    const delar = bidrag.map((b) => `${erSelskap(b.navn) ? b.navn : "en privat leietaker"} (${fmt(b.avvik)})`);
+    await settAutoKommentar(rad.navn, `Avvik på ${fmt(rad.avvik)} - størst bidrag fra: ${delar.join(", ")}.`);
+  }
+}
+
 // v55 (2026-09-18): når juridiske enheter slås sammen til en konsernrad (se konsernNavn() i
 // lib/refresh-helpers.js), forsvinner radene kommentarene sto på. Mortens egne kommentarer på
 // enhetsnavnene (uten `auto`/`forfatter`) flyttes derfor over på konsernraden - samlet, med
@@ -1271,6 +1319,8 @@ async function main() {
   const antallFlyttetInn = await kobleFlyttetInnOgTrekkFra(delA.leietaker);
   delA.leietaker = sortByAvvik(delA.leietaker); // budsjett/avvik er endret på Ledig- og leietaker-rader over
   console.log(`Flyttet-inn-kobling: ${antallFlyttetInn} leietaker(e) koblet til en Ledig-bygg-rad.`);
+  await settAutoKommentarAggregat(delA.bygg, delA.leietaker);
+  await settAutoKommentarAggregat(delA.leietype, delA.leietaker);
   // Del B: budsjett=null pr. rad (ingen pr.-leietaker/bygg/leietype-budsjett finnes - se
   // filhode) - budgetLookupB.* returnerer uansett alltid null siden budget.delB.* er tomme
   // arrays, men defaultBudsjett:null gjøres eksplisitt her for lesbarhet.
