@@ -91,6 +91,14 @@ function DiaryPicker({
   const [newLabel, setNewLabel] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // v70 (2026-09-20, Morten om Dagbok: "personer jeg har vært med bare kunne søkes på og dukke
+  // opp i nedrullsøiste"): "+ Nytt..."-feltet ble et rent friteksfelt for å legge til en NY
+  // person/sted - men etter mange dagbokoppføringer blir "Flere valg (N)"-listen for lang til å
+  // bla gjennom for å finne en person man allerede har lagt inn før. Samme felt fungerer nå også
+  // som søk: mens man skriver, filtreres ALLE presets (ikke bare de skjulte) til en nedtrekksliste
+  // man klikker på i stedet for å skrive hele navnet på nytt - "legg til ny" vises kun nederst når
+  // det ikke finnes et eksakt treff fra før.
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const top3 = presets.slice(0, 3);
   const rest = presets.slice(3);
@@ -98,10 +106,22 @@ function DiaryPicker({
   // ny, nettopp skrevet inn tekst — må fortsatt vises som en valgt chip.
   const extraSelected = selected.filter((s) => !presets.some((p) => p.label.toLowerCase() === s.toLowerCase()));
 
+  const sokTekst = newLabel.trim().toLowerCase();
+  const sokTreff = sokTekst ? presets.filter((p) => p.label.toLowerCase().includes(sokTekst)) : [];
+  const eksaktTreff = presets.some((p) => p.label.toLowerCase() === sokTekst);
+  const visNedtrekk = searchFocused && sokTekst.length > 0;
+
+  function velgFraNedtrekk(label: string) {
+    onToggle(label);
+    setNewLabel("");
+    setSearchFocused(false);
+  }
+
   function submitNew() {
     if (!newLabel.trim()) return;
     onToggle(newLabel.trim());
     setNewLabel("");
+    setSearchFocused(false);
   }
 
   function submitRename() {
@@ -196,25 +216,64 @@ function DiaryPicker({
           </button>
         </>
       )}
-      <div className="flex items-center gap-2">
+      <div className="relative flex items-center gap-2">
         <input
           type="text"
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") submitNew();
+            if (e.key === "Enter") {
+              // Enter med ett eksakt treff velger det treffet i stedet for å lage en duplikat-preset.
+              const eksakt = presets.find((p) => p.label.toLowerCase() === sokTekst);
+              if (eksakt) velgFraNedtrekk(eksakt.label);
+              else submitNew();
+            }
+            if (e.key === "Escape") setSearchFocused(false);
           }}
-          placeholder="+ Nytt..."
+          placeholder="Søk eller legg til ny..."
           className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
         />
         <button
           type="button"
           onClick={submitNew}
-          disabled={!newLabel.trim()}
+          disabled={!newLabel.trim() || eksaktTreff}
           className="shrink-0 rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Legg til
         </button>
+        {visNedtrekk && (
+          <div className="absolute top-full left-0 right-0 z-10 mt-1 max-h-56 overflow-y-auto rounded-lg border border-line-strong bg-surface-1 shadow-lg">
+            {sokTreff.length === 0 && !eksaktTreff && (
+              <p className="px-3 py-2 text-xs text-ink-4">Ingen treff blant de eksisterende.</p>
+            )}
+            {sokTreff.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => velgFraNedtrekk(p.label)}
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-2 ${
+                  includesLabel(selected, p.label) ? "text-accent-privat" : "text-ink-1"
+                }`}
+              >
+                {p.label}
+                {includesLabel(selected, p.label) && <span className="text-2xs uppercase text-accent-privat">Valgt</span>}
+              </button>
+            ))}
+            {!eksaktTreff && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={submitNew}
+                className="w-full border-t border-line px-3 py-2 text-left text-sm font-medium text-accent-privat hover:bg-surface-2"
+              >
+                + Legg til «{newLabel.trim()}»
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
