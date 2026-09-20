@@ -13,6 +13,7 @@
 // fargen her, og kommentaren i hver seksjon peker hit.
 export const SECTION_ACCENT: Record<string, string> = {
   today: "text-accent-privat",
+  aitips: "text-fuchsia-400",
   reminders: "text-accent-privat",
   calendar: "text-source-teams",
   events: "text-accent-privat",

@@ -17,6 +17,7 @@ import EventsSection from "./EventsSection";
 import NotesSection from "./NotesSection";
 import TreningSection from "./TreningSection";
 import ProjectsSection from "./ProjectsSection";
+import AiTipsSection from "./AiTipsSection";
 import DiarySection from "./DiarySection";
 import { CARD_SHELL, CardErrorBoundary, SkeletonRows, usePersistedOrder } from "../CardShell";
 import { SidebarNav, type NavItem } from "../SidebarNav";
@@ -39,16 +40,19 @@ import {
   Shirt,
   FolderKanban,
   Moon,
+  Sparkles,
 } from "lucide-react";
 
 const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
 
 // Ligger bak "Mer"-flisen nederst til høyre i mobil-rutenettet, slik at det
-// normalt er tre rader og ikke fire. Valgt fordi disse tre brukes sjeldnest —
-// ikke fordi de er mindre viktige.
-const SECONDARY_NAV_IDS = ["events", "alfred", "finance"];
+// normalt er tre rader og ikke fire. Prosjekter flyttet hit 2026-09-20 for å
+// gi plass til AI-tips i den synlige delen (jf. tilbakemelding) — ikke fordi
+// noen av de fire er mindre viktige.
+const SECONDARY_NAV_IDS = ["events", "alfred", "finance", "projects"];
 const DEFAULT_NAV_ORDER = [
   "today",
+  "aitips",
   "reminders",
   "calendar",
   "events",
@@ -70,6 +74,7 @@ const DEFAULT_NAV_ORDER = [
 // kommentaren i den filen for hvilke seksjoner som faktisk hadde driftet før dette.
 export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; iconColorClass: string }> = {
   today: { label: "I dag", icon: Home, iconColorClass: SECTION_ACCENT.today },
+  aitips: { label: "AI-tips", icon: Sparkles, iconColorClass: SECTION_ACCENT.aitips },
   reminders: { label: "Påminnelser", icon: Bell, iconColorClass: SECTION_ACCENT.reminders },
   calendar: { label: "Kalender", icon: Calendar, iconColorClass: SECTION_ACCENT.calendar },
   events: { label: "Hendelser", icon: PartyPopper, iconColorClass: SECTION_ACCENT.events },
@@ -126,6 +131,10 @@ export default function PrivatPanel() {
     jsonFetcher,
   );
   const ryggBadgeCount = (ryggBadgeData?.needsSessionToday ? 1 : 0) + (ryggBadgeData && !ryggBadgeData.yesterdayLogged ? 1 : 0);
+  // Badge på AI-tips: 1 så lenge dagens tips finnes men ikke er åpnet ennå —
+  // ALDRI generering herfra (se app/api/ai-tips/status), kun lesing.
+  const { data: aiTipsStatusData } = useSWR<{ hasToday: boolean; opened: boolean }>("/api/ai-tips/status", jsonFetcher);
+  const aiTipsBadgeCount = aiTipsStatusData?.hasToday && !aiTipsStatusData.opened ? 1 : 0;
   const [order, setOrder] = usePersistedOrder(NAV_ORDER_KEY, DEFAULT_NAV_ORDER);
   const [reorderMode, setReorderMode] = useState(false);
   // Et hopp som kom FRA Jobb-fanen ligger allerede klart før første render, så
@@ -217,6 +226,7 @@ export default function PrivatPanel() {
   // fra "fortsatt under lasting").
   const sectionNodes: Record<string, React.ReactNode> = {
     today: <TodaySummary onJump={handleSelect} onJumpToNews={handleJumpToNews} />,
+    aitips: <AiTipsSection />,
     reminders: <RemindersSection onJumpToLinked={handleJumpToLinked} />,
     calendar: (
       <CalendarSection
@@ -268,6 +278,7 @@ export default function PrivatPanel() {
     reminders: dueRemindersCount,
     calendar: todaysCalendarCount,
     trening: ryggBadgeCount,
+    aitips: aiTipsBadgeCount,
   };
   const navItems: NavItem[] = order
     .filter((id) => {
