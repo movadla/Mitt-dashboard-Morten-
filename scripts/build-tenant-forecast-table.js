@@ -923,6 +923,78 @@ async function main() {
       }
     }
 
+    // 3b) v67 (2026-09-20, Morten: "helt nye leietakere som flytter inn i et bygg hvor det er
+    // budsjettert med ledig, tar faktisk noe av det ledige arealet... ikke så relevant om vi har
+    // budsjettert med utleie på et ledig areal, men heller får utleid et annet areal som stod
+    // ledig i samme bygg"): automatisk kobling UTEN krav om at leietakeren traff akkurat den
+    // arealbeskrivelsen Excel brukte - kun at leietakeren er REELT ny (ingen tidligere linje noe
+    // sted, samme sjekk som Start/slutt-kolonnen i UI-en) OG bygget har gjenværende Ledig-budsjett.
+    // Sperre (Morten sitt eneste forbehold): IKKE koble hvis en ANNEN leietaker i SAMME bygg
+    // fraflyttet (linje sluttet uten fortsettelse for SAMME leietaker i SAMME bygg) i månedene
+    // rett før DENNE nye leietakerens startdato - det er da trolig en direkte overtakelse fra den
+    // fraflyttede leietakeren, ikke reell budsjettert langtidsledighet. 120 dager valgt som
+    // "rett før" - lang nok til normal ledigstand mellom oppussing/visning og ny leietaker, kort
+    // nok til at en fraflytting et halvt år tidligere (urelatert til DENNE innflyttingen) ikke
+    // blokkerer resten av bygget for resten av året. Leietakeren krediteres MIN(egen fullårsverdi
+    // i bygget, det som står igjen på Ledig-raden) - resten (om noen) blir stående som fortsatt
+    // reell ledighet.
+    const FRAFLYTTING_VINDU_DAGER = 120;
+    function harNyligFraflyttingFor(byggNavn, nyStartDato) {
+      const nyStartMs = new Date(`${nyStartDato}T00:00:00Z`).getTime();
+      return delALeietakerRader.some((r) => {
+        if (r.navn.startsWith(LEDIG_LABEL_PREFIX)) return false;
+        const byggLinjerForR = (r.linjer || []).filter((l) => normalizeName(l.bygg) === normalizeName(byggNavn));
+        return byggLinjerForR.some((l) => {
+          if (!l.sluttDato || l.sluttDato < `${remaining.ar}-01-01` || l.sluttDato > `${remaining.ar}-12-31`) return false;
+          const harEtterfolgerSammeBygg = byggLinjerForR.some((l2) => l2.startDato && l2.startDato >= l.sluttDato);
+          if (harEtterfolgerSammeBygg) return false; // bare linjefornyelse, ikke reell fraflytting
+          const sluttMs = new Date(`${l.sluttDato}T00:00:00Z`).getTime();
+          const dagerFor = (nyStartMs - sluttMs) / 86400000;
+          return dagerFor >= 0 && dagerFor <= FRAFLYTTING_VINDU_DAGER;
+        });
+      });
+    }
+    for (const ledigRad of ledigRader) {
+      if (ledigRad.linjer.length === 0) continue; // ingenting igjen å ta av
+      const byggNavn = ledigRad.linjer[0].bygg;
+      for (const rad of delALeietakerRader) {
+        if (rad === ledigRad || rad.navn.startsWith(LEDIG_LABEL_PREFIX)) continue;
+        if (rad.internleie || koblede.has(rad) || rad.flyttetInnI) continue;
+        const byggLinjer = (rad.linjer || []).filter((l) => normalizeName(l.bygg) === normalizeName(byggNavn));
+        if (byggLinjer.length === 0) continue;
+        const tidligsteStart = (rad.linjer || []).reduce((min, l) => (l.startDato && (!min || l.startDato < min) ? l.startDato : min), null);
+        if (!tidligsteStart || tidligsteStart < `${remaining.ar}-01-01` || tidligsteStart > `${remaining.ar}-12-31`) continue; // ikke "helt ny" i år
+        if (harNyligFraflyttingFor(byggNavn, tidligsteStart)) continue; // trolig overtatt fra en fraflyttet leietaker, ikke reell ledighet
+        const egenVerdi = round2(byggLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
+        if (egenVerdi <= 0) continue;
+        const igjen = round2(ledigRad.linjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
+        if (igjen <= 0) break; // Ledig-raden er tom - resten av leietakerne denne runden får ingenting
+        const andel = Math.min(egenVerdi, igjen);
+        rad.budsjett = round2((rad.budsjett || 0) + andel);
+        rad.flyttetInnI = ledigRad.navn;
+        oppdaterAvvik(rad);
+        leggTilOverforing(ledigRad, rad.navn, andel, "leietaker", "Automatisk koblet: helt ny leietaker i bygget, ingen fraflytting registrert i månedene før innflytting.", faktiskInntektPaBygg(rad, byggNavn));
+        koblede.add(rad);
+        // Trekk ut nok av de gjenværende linjene (minst først) til å dekke `andel` - fjerner hele
+        // linjer der det rekker, og barberer den ENE linjen som til slutt bare delvis dekkes, slik
+        // at "sum gjenværende linjer"-kontrollen i steg 4 fortsatt stemmer eksakt.
+        let restAndel = andel;
+        ledigRad.linjer.sort((a, b) => a.fullArsverdi2026 - b.fullArsverdi2026);
+        const behold = [];
+        for (const linje of ledigRad.linjer) {
+          if (restAndel <= 0) {
+            behold.push(linje);
+          } else if (restAndel >= linje.fullArsverdi2026 - 0.01) {
+            restAndel = round2(restAndel - linje.fullArsverdi2026);
+          } else {
+            behold.push({ ...linje, fullArsverdi2026: round2(linje.fullArsverdi2026 - restAndel) });
+            restAndel = 0;
+          }
+        }
+        ledigRad.linjer = behold;
+      }
+    }
+
     // 4) Pr.-Ledig-rad-oppdatering for ALLE Ledig-rader (også de uten overføringer, så feltene
     // alltid finnes for UI-en): opprinnelig/trukket ut/gjenstående, postliste, Finance-vurdering
     // pr. gjenværende linje, navnestripping og auto-kommentar.
