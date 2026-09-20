@@ -634,21 +634,15 @@ function main() {
   // utvetydig navngir leietakeren. Her kodes de om til riktig kundenummer FØR grupperingen, slik at
   // resten av maskineriet behandler dem som om NXT hadde kodet dem riktig - beløpet lander på
   // leietakerens rad, og avviket mot budsjett blir det reelle i stedet for å måtte bortforklares i
-  // en kommentar. Hver oppføring MÅ ha bilagsnummer og tekst i begrunnelsen, slik at den kan
+  // en kommentar. Hver oppføring MÅ ha bilagsnummer/periode og tekst i begrunnelsen, slik at den kan
   // etterprøves mot NXT. Rettes kodingen i NXT, skal oppføringen fjernes herfra.
-  const UKODET_KUNDEKODING = [
-    {
-      selskap: "Mustad Eiendom AS",
-      accountNo: 3652,
-      orgUnit3: 43, // Lilleakerveien 4C
-      customerNo: 10385, // PGS Geophysical AS
-      begrunnelse:
-        'Bilag 14864, datert 30.06.2023 men bokført på regnskapsår 2026, tekst "Periodisering ' +
-        'leierabatter PGS ny avtale 2026". 800 000 kr forhåndsperiodisert leierabatt. Budsjettet for ' +
-        "PGS er satt netto etter denne rabatten, så uten omkodingen framstår PGS med +812 320 kr i " +
-        "avvik mot budsjett i stedet for det reelle +12 321 kr.",
-    },
-  ];
+  // v66 (2026-09-20, leak-check): oppføringene her navnga leietakere direkte i committet kode
+  // (ANONYMISERING.md-brudd, samme type funn som v65b samme uke) - flyttet til en gitignored fil,
+  // samme mønster som MANUAL_UNTRACKED_PRIVATE_FILE i build-tenant-forecast-table.js.
+  const UKODET_KUNDEKODING_PRIVATE_FILE = path.join(__dirname, "refresh-data", "_private-ukodet-kundekoding.json");
+  const UKODET_KUNDEKODING = fs.existsSync(UKODET_KUNDEKODING_PRIVATE_FILE)
+    ? JSON.parse(fs.readFileSync(UKODET_KUNDEKODING_PRIVATE_FILE, "utf8")).oppforinger
+    : [];
   function omkodetKundeNo(selskap, accountNo, orgUnit3, customerNo) {
     if (Number(customerNo) !== 0) return customerNo;
     const treff = UKODET_KUNDEKODING.find(
