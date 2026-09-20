@@ -280,14 +280,23 @@ function buildLeietypeClassifier(budsjettOppslag) {
     kandidater.sort((a, b) => b[1] - a[1]);
     return kandidater[0][0];
   };
-  const viaNavn = (navn, bygg, del) => {
+  // v68 (2026-09-20, Morten: "kan det være klassifisering" - fant en leietaker med TO urelaterte
+  // leieforhold i Excel under samme navn, ett Butikk (via alias, bygg-spesifikt) og ett Kontor
+  // (direkte på eget navn, ANNET bygg) - den gamle viaNavn() prøvde bygg-spesifikt OG
+  // bygg-uavhengig for ETT navn av gangen, så det urelaterte Kontor-forholdet (funnet via det
+  // grovere bygg-uavhengige laget på DIREKTE navn) vant over det riktige Butikk-forholdet (som lå
+  // bak alias-oppslaget, aldri nådd). Splittet i to funksjoner - se bruken i classifyRaa: ALLE
+  // navnekandidater (direkte + alias) sjekkes bygg-SPESIFIKT først, uansett hvilket navn som
+  // treffer, FØR noen av dem faller tilbake til det bygg-uavhengige laget.
+  const viaNavnByggSpesifikk = (navn, bygg, del) => {
     if (!navn) return null;
     const n = normalizeName(navn);
-    return (
-      dominerende(perLeietakerBygg.get(n + "||" + normalizeName(kanoniskByggNavn(bygg))), del) ||
-      dominerende(perLeietaker.get(n), del) ||
-      dominerende(perKjerne.get(coreName(navn)), del)
-    );
+    return dominerende(perLeietakerBygg.get(n + "||" + normalizeName(kanoniskByggNavn(bygg))), del);
+  };
+  const viaNavnGenerelt = (navn, del) => {
+    if (!navn) return null;
+    const n = normalizeName(navn);
+    return dominerende(perLeietaker.get(n), del) || dominerende(perKjerne.get(coreName(navn)), del);
   };
   // Oppsummering til konsollen etter kjøring: hvilke leietakere som fikk leietype fra
   // BYGGETS dominerende type (svakeste laget - verdt et blikk fra Morten) og hva som sto igjen.
@@ -330,17 +339,22 @@ function buildLeietypeClassifier(budsjettOppslag) {
     const types = byggBeskrivelse.get(key);
     if (types && types.size === 1) return [...types][0];
     // 2) Leietakerens egen leietype i Excel (direkte på navn, så via budsjettsidens alias) -
-    //    juridisk enhet først, deretter konsernraden (v55, se navneliste over).
+    //    juridisk enhet først, deretter konsernraden (v55, se navneliste over). v68: ALLE
+    //    navnekandidater sjekkes bygg-SPESIFIKT (samme fysiske leieforhold) før noen av dem faller
+    //    tilbake til det bygg-uavhengige laget - se viaNavnByggSpesifikk/-Generelt-kommentaren.
+    const alleKandidatnavn = [];
     for (const navn of navneliste) {
-      const direkte = viaNavn(navn, bygg, del);
-      if (direkte) return direkte;
-    }
-    for (const navn of navneliste) {
+      alleKandidatnavn.push(navn);
       const budsjett = budsjettOppslag ? budsjettOppslag(navn) : null;
-      for (const excelNavn of (budsjett && budsjett.excelNavn) || []) {
-        const t = viaNavn(excelNavn, bygg, del);
-        if (t) return t;
-      }
+      for (const excelNavn of (budsjett && budsjett.excelNavn) || []) alleKandidatnavn.push(excelNavn);
+    }
+    for (const navn of alleKandidatnavn) {
+      const t = viaNavnByggSpesifikk(navn, bygg, del);
+      if (t) return t;
+    }
+    for (const navn of alleKandidatnavn) {
+      const t = viaNavnGenerelt(navn, del);
+      if (t) return t;
     }
     // 3) Entydige ord i Fazile-beskrivelsen - kun for leieforhold Excel ikke sier noe om.
     if (/garasje/.test(b)) return "Garasje";
