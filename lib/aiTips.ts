@@ -63,9 +63,16 @@ const PROFILE_FIELD = "state";
 // Selve tips-genereringen (buildSystemPrompt) har mange samtidige stilkrav
 // (bredt format, enkelt språk, unngå mekanikk, mitt-dashboard-fokus, osv.) —
 // Haiku klarte ikke holde alle sammen konsekvent (gled tilbake til smale
-// mekanikk-dykk til tross for eksplisitte instrukser, 2026-09-21), så denne
-// bruker Sonnet. Fortsatt trivielt billig ved ett kall/dag.
+// mekanikk-dykk til tross for eksplisitte instrukser, 2026-09-21), så DAGENS
+// (ett kall/dag, trivielt billig) bruker Sonnet.
 const MODEL = "claude-sonnet-5";
+// v2 (2026-09-21, Morten - kostnadsrunde etter et $10-hopp i API-forbruket, spurt
+// direkte fra platform.claude.com sin usage-graf): Lager fylles langt oftere enn Dagens
+// (opp til 10 stk × samme Sonnet+web_search-kall) og var hovedkilden til hoppet. Morten
+// aksepterer at Lager-tips kan bli noe mindre treffsikre stilmessig enn Dagens (samme kjente
+// Haiku-svakhet som over) MOT en stor kostnadsreduksjon på det volumet - Lager er den lavere-
+// innsats "les når du har tid"-fanen, ikke hoveddagligtipset.
+const STOCK_MODEL = "claude-haiku-4-5";
 // Forklaring av et enkelt markert ord/setning (explainConfusion) er en langt
 // enklere oppgave uten motstridende stilkrav — Haiku er fortsatt riktig valg der.
 const EXPLAIN_MODEL = "claude-haiku-4-5";
@@ -307,12 +314,12 @@ function stripCitationTags(text: string): string {
   return text.replace(/<\/?cite[^>]*>/g, "");
 }
 
-async function generateTip(profile: AiTipsProfile, forceCategory?: AiTipCategory): Promise<AiTip | null> {
+async function generateTip(profile: AiTipsProfile, forceCategory?: AiTipCategory, model: string = MODEL): Promise<AiTip | null> {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
-      model: MODEL,
+      model,
       // Det rikere, mer omfattende "details"-formatet (2026-09-21) + flere
       // web_search-runder bruker vesentlig mer av token-budsjettet enn det
       // smalere formatet gjorde — 4000 var for knapt og kuttet svaret midt i
@@ -449,7 +456,13 @@ export async function generateBackfillTip(category: AiTipCategory, dateIso: stri
 // brukt som Redis-nøkkel/API-parameter.
 const STOCK_HASH_KEY = "privat:ai-tips-stock";
 const STOCK_PROFILE_HASH_KEY = "privat:ai-tips-stock-profile";
-const STOCK_TARGET = 10;
+// v2 (2026-09-21, Morten - samme kostnadsrunde som STOCK_MODEL): senket fra 10 til 4 - Lagers
+// standende buffer var hovedkilden til et $10-hopp i API-forbruket (en pool på 10 fylles opp med
+// like mange Sonnet+web_search-kall som 10 "Dagens"-tips ville kostet, gjentatt hver gang Morten
+// krysser av). Eksisterende overskytende tips i Redis rører vi IKKE nå (Morten: "ikke vits å
+// fjerne eller legge til noe i lageret nå, bare når jeg går tom") - de blir liggende til han
+// leser dem ferdig, og etterfyllingen bruker det nye, lavere målet fra da av.
+export const STOCK_TARGET = 4;
 
 async function getStockProfile(): Promise<AiTipsProfile> {
   return loadProfile(STOCK_PROFILE_HASH_KEY);
@@ -471,7 +484,7 @@ export async function getStock(): Promise<AiTip[]> {
 async function generateStockItem(): Promise<AiTip | null> {
   const profile = await getStockProfile();
   const category = AI_TIPS_CATEGORIES[Math.floor(Math.random() * AI_TIPS_CATEGORIES.length)];
-  const tip = await generateTip(profile, category);
+  const tip = await generateTip(profile, category, STOCK_MODEL);
   if (!tip) return null;
   const id = randomUUID();
   const stockTip: AiTip = { ...tip, date: id };
@@ -496,15 +509,21 @@ const STOCK_FILL_LOCK_TTL_SECONDS = 300; // sikkerhetsnett hvis release() aldri 
 // Låst med incrWithExpiry: uten denne førte gjentatte GET-kall mot
 // /api/ai-tips/stock (f.eks. SWR-revalidering mens lageret fortsatt fylles
 // opp) til flere OVERLAPPENDE etterfyllinger som til sammen overskjøt målet
-// på 10 — observert i praksis (endte på 12), unødvendig API-kostnad.
+// på 10 — observert i praksis (endte på 12, senere verre: 23, unødvendig
+// API-kostnad — se kostnadsrunden 2026-09-21).
+// v2 (2026-09-21): lengden ble tidligere lest ÉN gang før løkken (`missing`/
+// `toGenerate` regnet ut på forhånd) - alt low var lengden fortsatt stale hvis
+// noe annet fikk skrevet til STOCK_HASH_KEY mens denne løkken kjørte (f.eks. en
+// lockholder hvis TTL utløp midt i en treg generering, se STOCK_FILL_LOCK_TTL_SECONDS).
+// Leser nå lengden PÅ NYTT før hver enkelt generering - et hardt, alltid ferskt
+// tak på STOCK_TARGET uansett hva som forårsaket forrige overskyting.
 export async function ensureStockFilled(): Promise<void> {
   const lockCount = await incrWithExpiry(STOCK_FILL_LOCK_KEY, STOCK_FILL_LOCK_TTL_SECONDS);
   if (lockCount > 1) return; // en annen fyller allerede opp
   try {
-    const current = await getStock();
-    const missing = Math.max(0, STOCK_TARGET - current.length);
-    const toGenerate = Math.min(missing, 2);
-    for (let i = 0; i < toGenerate; i++) {
+    for (let i = 0; i < 2; i++) {
+      const current = await getStock();
+      if (current.length >= STOCK_TARGET) break;
       await generateStockItem();
     }
   } finally {

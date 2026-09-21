@@ -821,7 +821,7 @@ function LagerSection() {
   return (
     <div>
       <p className="mb-2 text-2xs text-ink-4">
-        Ekstra tips å lese når du har tid. Tilbakemeldingen din her styrer kun fremtidige Lager-tips — den påvirker aldri «Dagens». Fylles automatisk opp til 10.
+        Ekstra tips å lese når du har tid. Tilbakemeldingen din her styrer kun fremtidige Lager-tips — den påvirker aldri «Dagens». Fylles automatisk opp til 4.
       </p>
       {isLoading ? (
         <SkeletonRows count={3} className="h-14" />
