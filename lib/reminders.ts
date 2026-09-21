@@ -3,6 +3,14 @@ import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
 export type Recurrence = "none" | "daily" | "weekly" | "monthly";
 
+// Hvor mye det haster/betyr NÅR ting gjøres — ikke det samme som frist-dato.
+// "lav" = kan gjøres når som helst i løpet av dagen (les AI-nyheter, fyll ut
+// dagbok), "middels" = bør gjøres innen et løst tidspunkt samme dag (hente
+// pakke før posten stenger), "hoy" = må skje på et bestemt klokkeslett/
+// tidsvindu (ringe barnehagen kl 11). Valgfritt — eldre påminnelser uten
+// verdi vises uten viktighets-indikator, ikke som "lav".
+export type ReminderImportance = "lav" | "middels" | "hoy";
+
 export interface Subtask {
   id: string;
   text: string;
@@ -13,7 +21,7 @@ export interface Subtask {
 // som CommentTargetType i lib/comments.ts, men holdt som en egen (smalere)
 // type her for å unngå at reminders.ts må importere hele comments-modulen
 // for kun to strengverdier.
-export type ReminderLinkTargetType = "calendar-event" | "life-event";
+export type ReminderLinkTargetType = "calendar-event" | "life-event" | "section";
 
 export interface ReminderLink {
   targetType: ReminderLinkTargetType;
@@ -36,6 +44,7 @@ export interface Reminder {
   order: number; // manuell prioritet i "i dag"-lista, lavest først
   subtasks?: Subtask[];
   linkedTo?: ReminderLink;
+  importance?: ReminderImportance;
 }
 
 export interface NewReminderInput {
@@ -44,6 +53,7 @@ export interface NewReminderInput {
   dueTime?: string;
   recurrence?: Recurrence;
   linkedTo?: ReminderLink;
+  importance?: ReminderImportance;
 }
 
 export interface ReminderUpdateInput {
@@ -51,6 +61,7 @@ export interface ReminderUpdateInput {
   dueDate?: string | null; // null fjerner fristen, undefined lar den stå urørt
   dueTime?: string | null;
   recurrence?: Recurrence;
+  importance?: ReminderImportance | null; // null fjerner viktigheten
 }
 
 const HASH_KEY = "privat:reminders";
@@ -123,6 +134,7 @@ export async function addReminder(input: NewReminderInput): Promise<Reminder> {
     done: false,
     order,
     linkedTo: input.linkedTo,
+    importance: input.importance,
   };
   await hsetJSON(HASH_KEY, reminder.id, reminder);
   return reminder;
@@ -159,6 +171,7 @@ export async function updateReminder(id: string, updates: ReminderUpdateInput): 
     dueDate: updates.dueDate !== undefined ? (updates.dueDate ?? undefined) : current.dueDate,
     dueTime: updates.dueTime !== undefined ? (updates.dueTime ?? undefined) : current.dueTime,
     recurrence: updates.recurrence !== undefined ? updates.recurrence : current.recurrence,
+    importance: updates.importance !== undefined ? (updates.importance ?? undefined) : current.importance,
   };
   await hsetJSON(HASH_KEY, id, next);
   return next;

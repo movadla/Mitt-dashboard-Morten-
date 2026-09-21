@@ -211,6 +211,12 @@ export default function PrivatPanel() {
   }
 
   function handleJumpToLinked(link: ReminderLink) {
+    // "section" peker rett på en nav-id (f.eks. "aitips"), ikke en enkelt
+    // kalender-/hendelsesrad som skal fremheves — bare bytt seksjon.
+    if (link.targetType === "section") {
+      handleSelect(link.targetId);
+      return;
+    }
     setHighlightTarget(link);
     handleSelect(link.targetType === "calendar-event" ? "calendar" : "events");
   }

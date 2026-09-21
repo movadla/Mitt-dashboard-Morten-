@@ -8,7 +8,7 @@ import { RatioBar } from "./DataStrips";
 import { CommentBadge, CommentThreadBody } from "../CommentsCell";
 import { commentKey, useComments } from "../useComments";
 import type { Comment } from "@/lib/comments";
-import type { Recurrence, Reminder, ReminderLink, Subtask } from "@/lib/reminders";
+import type { Recurrence, Reminder, ReminderImportance, ReminderLink, Subtask } from "@/lib/reminders";
 import { vibrate } from "@/lib/haptics";
 import { addDaysIso, localDateString, relativeDayLabel } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
@@ -36,6 +36,18 @@ const RECURRENCE_LABEL: Record<Recurrence, string> = {
   monthly: "Månedlig",
 };
 
+// Hvor mye det haster — IKKE det samme som frist-dato (se ReminderImportance
+// i lib/reminders.ts). Gjenbruker appens semantiske status-farger (samme
+// betydning de allerede har andre steder: danger=alvorlig/haster,
+// warning=trenger oppmerksomhet, positive=OK/uproblematisk), i stedet for å
+// finne opp en ny fargekode for "viktighet".
+const IMPORTANCE_META: Record<ReminderImportance, { label: string; dot: string }> = {
+  lav: { label: "Lav", dot: "bg-status-positive" },
+  middels: { label: "Middels", dot: "bg-status-warning" },
+  hoy: { label: "Høy", dot: "bg-status-danger" },
+};
+const IMPORTANCE_ORDER: ReminderImportance[] = ["lav", "middels", "hoy"];
+
 function formatDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}.${m}.${y}`;
@@ -55,6 +67,36 @@ function sortReminders(a: Reminder, b: Reminder): number {
   return a.dueDate.localeCompare(b.dueDate);
 }
 
+function ImportancePicker({
+  value,
+  onChange,
+}: {
+  value: ReminderImportance | undefined;
+  onChange: (v: ReminderImportance | undefined) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-transparent bg-surface-1 p-0.5">
+      {IMPORTANCE_ORDER.map((imp) => {
+        const isOn = value === imp;
+        return (
+          <button
+            key={imp}
+            type="button"
+            onClick={() => onChange(isOn ? undefined : imp)}
+            aria-pressed={isOn}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-2xs font-medium transition ${
+              isOn ? "bg-surface-2 text-ink-1" : "text-ink-4 hover:text-ink-2"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_META[imp].dot}`} />
+            {IMPORTANCE_META[imp].label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ReminderEditForm({
   reminder,
   onCancel,
@@ -65,16 +107,23 @@ function ReminderEditForm({
 }: {
   reminder: Reminder;
   onCancel: () => void;
-  onSave: (updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
+  onSave: (updates: {
+    text: string;
+    dueDate?: string;
+    dueTime?: string;
+    recurrence: Recurrence;
+    importance?: ReminderImportance;
+  }) => void;
 } & RowSubtaskProps) {
   const [text, setText] = useState(reminder.text);
   const [dueDate, setDueDate] = useState(reminder.dueDate ?? "");
   const [dueTime, setDueTime] = useState(reminder.dueTime ?? "");
   const [recurrence, setRecurrence] = useState<Recurrence>(reminder.recurrence);
+  const [importance, setImportance] = useState<ReminderImportance | undefined>(reminder.importance);
 
   function save() {
     if (!text.trim()) return;
-    onSave({ text: text.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence });
+    onSave({ text: text.trim(), dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence, importance });
   }
 
   return (
@@ -114,6 +163,7 @@ function ReminderEditForm({
             </option>
           ))}
         </select>
+        <ImportancePicker value={importance} onChange={setImportance} />
         <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
           Avbryt
         </button>
@@ -227,7 +277,15 @@ function ReminderRowContent({
             skjult handlings-prefiks foran. */}
         <span className="sr-only">Rediger: </span>
         <div className="flex items-baseline justify-between gap-2">
-          <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>{reminder.text}</p>
+          <span className="flex min-w-0 items-center gap-1.5">
+            {reminder.importance && (
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${IMPORTANCE_META[reminder.importance].dot}`}
+                title={`Viktighet: ${IMPORTANCE_META[reminder.importance].label}`}
+              />
+            )}
+            <p className={`min-w-0 truncate text-sm ${reminder.done ? "text-ink-4 line-through" : "font-medium text-ink-1"}`}>{reminder.text}</p>
+          </span>
           {reminder.dueTime && <span className="shrink-0 text-2xs tabular-nums text-ink-3">{reminder.dueTime}</span>}
         </div>
         {(reminder.dueDate || reminder.recurrence !== "none" || subtasks.length > 0 || completedLabel) && (
@@ -268,7 +326,9 @@ function ReminderRowContent({
         className="ml-9 flex items-center gap-1 self-start text-2xs font-medium text-accent-privat hover:text-accent-privat/80"
       >
         <ArrowUpRight className="h-3 w-3" />
-        {`Fra ${reminder.linkedTo.targetType === "calendar-event" ? "kalender" : "hendelser"}: ${reminder.linkedTo.label}`}
+        {reminder.linkedTo.targetType === "section"
+          ? `Åpne ${reminder.linkedTo.label}`
+          : `Fra ${reminder.linkedTo.targetType === "calendar-event" ? "kalender" : "hendelser"}: ${reminder.linkedTo.label}`}
       </button>
     )}
     </div>
@@ -381,7 +441,10 @@ type RowCallbacks = {
   onRemove: (id: string) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence }) => void;
+  onSaveEdit: (
+    id: string,
+    updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence; importance?: ReminderImportance },
+  ) => void;
   onJumpToLinked?: (link: ReminderLink) => void;
 };
 
@@ -579,6 +642,7 @@ export default function RemindersSection({
   const [dueDate, setDueDate] = useState(localDateString());
   const [dueTime, setDueTime] = useState("");
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
+  const [importance, setImportance] = useState<ReminderImportance | undefined>(undefined);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -605,7 +669,7 @@ export default function RemindersSection({
       const res = await fetch("/api/reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence }),
+        body: JSON.stringify({ text, dueDate: dueDate || undefined, dueTime: dueTime || undefined, recurrence, importance }),
       });
       if (!res.ok) {
         mutationError.show("Kunne ikke legge til påminnelsen. Prøv igjen.");
@@ -624,6 +688,7 @@ export default function RemindersSection({
       setDueDate(localDateString());
       setDueTime("");
       setRecurrence("none");
+      setImportance(undefined);
       setNotes("");
       setShowForm(false);
       window.dispatchEvent(new Event("mitt-dashboard:privat-refresh"));
@@ -685,7 +750,7 @@ export default function RemindersSection({
 
   async function handleSaveEdit(
     id: string,
-    updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence },
+    updates: { text: string; dueDate?: string; dueTime?: string; recurrence: Recurrence; importance?: ReminderImportance },
   ) {
     try {
       const res = await fetch(`/api/reminders/${id}`, {
@@ -696,6 +761,7 @@ export default function RemindersSection({
           dueDate: updates.dueDate ?? null,
           dueTime: updates.dueTime ?? null,
           recurrence: updates.recurrence,
+          importance: updates.importance ?? null,
         }),
       });
       if (!res.ok) throw new Error("save failed");
@@ -931,6 +997,7 @@ export default function RemindersSection({
                         </option>
                       ))}
                     </select>
+                    <ImportancePicker value={importance} onChange={setImportance} />
                   </div>
                   <textarea
                     value={notes}
