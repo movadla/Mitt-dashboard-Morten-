@@ -432,7 +432,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             </div>
           </div>
         </section>
-      ) : sessionsRemaining > 0 ? (
+      ) : (
         <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-4">
           <div className="flex items-baseline justify-between gap-2">
             <div>
@@ -443,6 +443,15 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             </div>
             {isDeload && <span className="text-2xs text-status-warning">Lettere uke</span>}
           </div>
+          {/* v1 (2026-09-21, Morten: "jeg vil ha den muligheten slik at jeg har kontroll på hvor
+              mange ganger jeg gjør det"): 3/3 er en ANBEFALING ("Faste regler"-lista under), ikke
+              en hard grense - blokkerte tidligere en 4. økt helt (viste "Hviledag" i stedet). Nå
+              kan han alltid logge en ekstra, med tydelig merket at det er utenom ukens 3. */}
+          {sessionsRemaining === 0 && (
+            <p className="rounded-lg bg-surface-1 px-2.5 py-1.5 text-2xs text-ink-3">
+              Ukens tre økter er allerede gjennomført - dette blir en ekstra, utenom planen.
+            </p>
+          )}
           <ul className="flex flex-col divide-y divide-line">
             {items.map((item, i) => {
               const exercise = getRyggExercise(item.exerciseId);
@@ -475,7 +484,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             })}
           </ul>
           <button type="button" onClick={startSession} className={PRIMARY_BTN}>
-            Start økt
+            {sessionsRemaining > 0 ? "Start økt" : "Logg en ekstra økt"}
           </button>
           <p className="text-center text-2xs text-ink-4">Etter økten registrerer du hvor tung den var og hvordan ryggen kjennes.</p>
           {!showPainCardOnSessionDay && !todayDaily && (
@@ -483,11 +492,6 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
               Ingen økt i dag? Logg bare ryggen
             </button>
           )}
-        </section>
-      ) : (
-        <section className="rounded-xl border border-line bg-surface-2 p-4">
-          <p className="text-sm font-semibold text-ink-1">Hviledag</p>
-          <p className="mt-0.5 text-sm text-ink-3">Alle tre øktene er gjennomført denne uken. Gå en tur på 20–30 minutter, og logg ryggen under.</p>
         </section>
       )}
 
