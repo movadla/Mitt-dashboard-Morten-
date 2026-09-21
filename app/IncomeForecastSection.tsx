@@ -342,7 +342,27 @@ function OmsetningsavregningBlock({
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
                               {b.fakturert2026 == null ? "—" : formatKr(b.fakturert2026)}
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{b.gjenstar2026 == null ? "—" : formatKr(b.gjenstar2026)}</td>
+                            <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
+                              {b.gjenstar2026 == null ? (
+                                "—"
+                              ) : b.heltFakturertIFazile ? (
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    render={
+                                      <span className="cursor-help text-ink-4" onClick={(e) => e.stopPropagation()}>
+                                        {formatKr(b.gjenstar2026)}
+                                      </span>
+                                    }
+                                  />
+                                  <TooltipContent className="max-w-xs">
+                                    Fazile har fakturert hele 2026 inkl. 4. kvartal - differansen skyldes bokføringsetterslep i NXT, ikke manglende
+                                    fakturering.
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                formatKr(b.gjenstar2026)
+                              )}
+                            </td>
                             <td
                               className={`whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums ${
                                 b.ekstrafakturering == null ? "text-ink-4" : b.ekstrafakturering > 0 ? "text-status-positive" : "text-ink-3"

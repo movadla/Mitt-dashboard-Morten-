@@ -34,6 +34,12 @@ interface OmsetningsavregningButikk {
   akonto2025?: number | null;
   remainingNavn?: string | null; // leietakernavn i REMAINING (kan avvike fra butikknavnet)
   remainingStatus?: string | null;
+  // v6 (2026-09-21, Morten: "virker rart at flere har gjenstår når 4Q-fakturaen er sendt"):
+  // true når remainingStatus="fazile-plan-mangler" ER verifisert direkte mot Fazile (ikke bare
+  // fakturaplanen) til å ha hele 2026 inkl. Q4 fakturert - gjenstår-tallet er da et
+  // bokføringsetterslep i NXT, ikke manglende fakturering. Dempes i UI, telles fortsatt normalt
+  // i alle summer (selve tallet er uendret - kun visningen signaliserer lav relevans).
+  heltFakturertIFazile?: boolean;
   kjerneLinjer?: string[];
   krevManuellSjekk?: boolean;
   kommentar?: string;

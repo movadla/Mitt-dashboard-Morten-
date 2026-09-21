@@ -34,6 +34,13 @@ const { getFromRedis, pushToRedis, normalizeName, konsernNavn } = require("./lib
 const OMSETNING_FILE = path.join(__dirname, "refresh-data", "omsetningsleie-cc-vest.json");
 const MAPPING_FILE = path.join(__dirname, "refresh-data", "omsetningsavregning-butikk-mapping.json");
 const AMESTO_FILE = path.join(__dirname, "refresh-data", "avregnet-omsetning-2025-amesto.json");
+// v6 (2026-09-21, Morten om "gjenstår" som henger igjen etter at 4Q-fakturaen er sendt): for
+// leieforhold med remainingStatus="fazile-plan-mangler" er det verifisert direkte mot Fazile
+// (invoice_line, ikke bare fakturaplanen) at hele 2026 inkl. Q4 faktisk ER fakturert - modellens
+// gjenstår skyldes da et bokføringsetterslep i NXT, ikke manglende fakturering. Manuelt
+// vedlikeholdt liste (ikke en live Fazile-spørring her - unngår timeout-risiko i pipelinen), kun
+// til å DEMPE visningen i Omsetningsavregning. Se filen for kilde/dato. Gitignored (leietakernavn).
+const HELT_FAKTURERT_FILE = path.join(__dirname, "refresh-data", "_private-omsetningsavregning-heltfakturert.json");
 const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REMAINING_FIELD = "snapshot";
 const OUTPUT_HASH_KEY = "jobb:inntektsprognose-omsetningsavregning";
@@ -119,6 +126,9 @@ async function main() {
   const amestoRaderAlle = amesto.rader || amesto;
   const rem = await getFromRedis(REMAINING_HASH_KEY, REMAINING_FIELD);
   if (!rem || !Array.isArray(rem.tenants)) throw new Error("Fant ikke REMAINING-snapshotet i Redis - kjør build-remaining-summary.js først");
+  const heltFakturertNavn = new Set(
+    fs.existsSync(HELT_FAKTURERT_FILE) ? JSON.parse(fs.readFileSync(HELT_FAKTURERT_FILE, "utf8")).remainingNavn || [] : [],
+  );
 
   const byButikk = new Map(mapping.butikker.map((e) => [e.butikk, e]));
   const rows = [];
@@ -157,6 +167,7 @@ async function main() {
       omsetningYoyPct: omsetning2025 > 0 ? round2(((b.omsetningKorr - omsetning2025) / omsetning2025) * 100) : null,
       remainingNavn: entry.remainingNavn,
       remainingStatus: null,
+      heltFakturertIFazile: false,
       kjerneLinjer: [],
       krevManuellSjekk: !!entry.krevManuellSjekk,
       kommentar: entry.kommentar || "",
@@ -178,6 +189,7 @@ async function main() {
         if (!k.kjerneLinjer.length) advarsler.push(`${b.butikk}: ingen kjerneleie-linjer funnet hos ${tenant.navn} / ${bg.bygg}`);
         row._kjerne = k;
         row.remainingStatus = bg.status || null;
+        row.heltFakturertIFazile = bg.status === "fazile-plan-mangler" && heltFakturertNavn.has(entry.remainingNavn);
         row.kjerneLinjer = k.kjerneLinjer;
         row.andelAvAr = round2(k.andelAvAr);
         row.forventetOmsetningsleie = round2(b.omsetningKorr * b.avtaltOmsProsent * k.andelAvAr);
