@@ -43,7 +43,9 @@
 // Halveres nå PER LINJE via den delte lib/data/ownership-shares.json (samme kilde som
 // build-nxt-budget.js), FØR gruppering til kontrakt-nivå.
 //
-// Kjør: node scripts/build-contract-expiry-2026.js
+// Kjør: node scripts/build-contract-expiry-2026.js [--dry-run]
+// v3 (2026-09-21): bygger na OGSA et Del B (parkering)-snapshot, samme metodikk som Del A - se
+// erParkeringsLinje()/buildKontraktSnapshot() under. Pusher til to Redis-nokler.
 
 const fs = require("fs");
 const path = require("path");
@@ -51,6 +53,7 @@ const { loadEnvLocal, pushToRedis, getFromRedis, loadOwnershipShares, andelForBy
 
 const RAW_FILE = path.join(__dirname, "refresh-data", "kontraktsutlop-raw-full.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-kontraktsutlop-2026";
+const REDIS_HASH_KEY_PARKERING = "jobb:inntektsprognose-kontraktsutlop-2026-parkering";
 const REDIS_FIELD = "snapshot";
 const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REMAINING_FIELD = "snapshot";
@@ -84,6 +87,19 @@ function erKjerneleieLinje(beskrivelse) {
   return true;
 }
 
+// v3 (2026-09-21, Morten: "parkering har kontrakter med reforhandlingspotensial ogsaa" - samme
+// spørsmål som Del A allerede fikk 2026-08-24, bare for Del B). Reell inklusjon i stedet for
+// erKjerneleieLinje() sin eksklusjon - PARKERING_LINJE_REGEX fanger nøyaktig leietype
+// "Parkering"/"Garasjeleie"/"Gjesteparkering" (verifisert mot rådataens eget leietype-felt,
+// 0 rader med disse leietypene falt utenfor regexen i en full sammenligning 2026-09-21) - de
+// tre kategoriene som utgjør Del B i resten av appen (build-remaining-summary.js). De ANDRE
+// kategoriene erKjerneleieLinje() ekskluderer (markedsbidrag/energi/eiendomsskatt/
+// administrasjonsbidrag/driftsavtale) er verken Del A eller Del B - rene admin-/
+// viderefaktureringsposter, ikke leieinntekt - forblir ekskludert her også.
+function erParkeringsLinje(beskrivelse) {
+  return PARKERING_LINJE_REGEX.test((beskrivelse || "").trim());
+}
+
 function ekstraI2026ForLinje(linjeSlutt, totalArsleie, reforhandlet) {
   if (reforhandlet) return 0;
   const slutt = new Date(`${linjeSlutt}T00:00:00Z`);
@@ -91,33 +107,17 @@ function ekstraI2026ForLinje(linjeSlutt, totalArsleie, reforhandlet) {
   return (totalArsleie / 365) * dagerEtter;
 }
 
-async function main() {
-  loadEnvLocal();
-  const raw = JSON.parse(fs.readFileSync(RAW_FILE, "utf8"));
-  const shares = loadOwnershipShares();
-  // v2 (2026-08-29, Morten): "denne listen må gjelde kontrakter med utløp fra i dag og ut resten
-  // av året" - eksempel Jernia, som allerede er reforhandlet men fortsatt dukket opp fordi
-  // status-baserte "reforhandlet"-deteksjonen har hull. Datofilter (linje_slutt >= i dag) er en
-  // robust sperre UAVHENGIG av om status-feltet er korrekt - en linje som allerede er utløpt er
-  // uansett ikke lenger en fremtidig reforhandlings-beslutning. I DAG regnes dynamisk (ikke en
-  // hardkodet dato), så scriptet forblir riktig neste gang det kjøres.
-  const I_DAG_ISO = new Date().toISOString().slice(0, 10);
-  const rows = (raw.rows || []).filter(
-    (r) =>
-      r.linje_slutt >= I_DAG_ISO &&
-      r.linje_slutt <= `${AR}-12-31` &&
-      r.total_arsleie > 0 &&
-      erKjerneleieLinje(r.linje_beskrivelse),
-  );
-
-  // Manuelt bekreftede tilfeller der en kontrakt ER reelt reforhandlet, men Fazile sitt eget
-  // "reforhandlet"-flagg (contract.renewed_contract_id) ikke har fanget det opp ennå - typisk en
-  // ALLEREDE SIGNED_BY_BOTH_PARTIES etterfølgerkontrakt som ikke er formelt LENKET til den gamle
-  // kontrakten i Fazile sin egen masterdata (2026-08-29, Erco Lighting-funn: WN1289 -> FA0929).
-  // Uten dette ville "ekstraI2026" her DOBBELTELLE samme beløp som allerede er lagt direkte inn i
-  // REMAINING sin fullA via MANGLENDE_LINJE_KORREKSJON i build-remaining-summary.js - én gang som
-  // reelt fakturert/gjenstår, én gang til som hypotetisk "hvis reforhandlet"-ekstra.
-  const MANUELT_BEKREFTET_REFORHANDLET = new Map([
+// Manuelt bekreftede tilfeller der en kontrakt ER reelt reforhandlet, men Fazile sitt eget
+// "reforhandlet"-flagg (contract.renewed_contract_id) ikke har fanget det opp ennå - typisk en
+// ALLEREDE SIGNED_BY_BOTH_PARTIES etterfølgerkontrakt som ikke er formelt LENKET til den gamle
+// kontrakten i Fazile sin egen masterdata (2026-08-29, Erco Lighting-funn: WN1289 -> FA0929).
+// Uten dette ville "ekstraI2026" her DOBBELTELLE samme beløp som allerede er lagt direkte inn i
+// REMAINING sin fullA via MANGLENDE_LINJE_KORREKSJON i build-remaining-summary.js - én gang som
+// reelt fakturert/gjenstår, én gang til som hypotetisk "hvis reforhandlet"-ekstra.
+// Alle registrerte tilfellene under er Del A-kontraktsnøkler (kjerneleie) - kontraktsnøkler er
+// globalt unike i Fazile, så delt bruk for Del B (parkering) under er harmløs: ingen av disse vil
+// noensinne matche en parkeringskontrakt, det er bare ikke nødvendig med to identiske, tomme lister.
+const MANUELT_BEKREFTET_REFORHANDLET = new Map([
     ["WN1289", "FA0929"],
     // Møllefossen Cafe AS (2026-08-29, funnet ved å lete etter FLERE tilfeller av samme
     // dobbelttellingsmønster som Erco Lighting): NY8348 sin "Husleie avg.pl."-linje (101 081
@@ -158,13 +158,18 @@ async function main() {
     ["UC8685", "127844 (kontrakt_id, relokasjon til Vollsveien 17, ikke-lenket)"],
   ]);
 
-  // Mustad Eiendom AS som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
-  // build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen.
-  // v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern"): Mustad
-  // Eiendomsdrift AS er tatt ut av settet og telles som en vanlig leietaker igjen (ON2603,
-  // 12 704 kr, som ble fjernet 2026-09-04, er dermed tilbake som potensial).
-  const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as"]);
+// Mustad Eiendom AS som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
+// build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen.
+// v55 (2026-09-18, Morten: "kun Mustad Eiendom klassifiseres som intern"): Mustad
+// Eiendomsdrift AS er tatt ut av settet og telles som en vanlig leietaker igjen (ON2603,
+// 12 704 kr, som ble fjernet 2026-09-04, er dermed tilbake som potensial).
+const INTERN_MUSTAD_NAMES = new Set(["mustad eiendom as"]);
 
+// v3 (2026-09-21): delt mellom Del A (kjerneleie) og Del B (parkering) - identisk logikk, kun
+// hvilket rad-sett som sendes inn og hvilket REMAINING-felt (alleredeFakturertDelA/DelB) som
+// brukes til "mulig allerede dekket"-sjekken skiller de to kallene. `label` er kun til
+// konsoll-logging.
+async function buildKontraktSnapshot(rows, shares, remaining, alleredeFakturertFelt, label) {
   let antallEierandelKorrigert = 0;
   const groups = new Map();
   for (const r of rows) {
@@ -242,7 +247,6 @@ async function main() {
   // (Fazile) vs. "CC Vest Senter" (NXT) som ellers ville skjult nettopp Follestad Trend);
   // fler-byggforhold krever et bygg-navn-treff, ellers IKKE flagget (konservativt - unngår
   // falske positiver fra multi-bygg-leietakere, se filhode).
-  const remaining = await getFromRedis(REMAINING_HASH_KEY, REMAINING_FIELD);
   let antallFlagget = 0;
   if (remaining) {
     const remainingByNavn = new Map(remaining.tenants.map((t) => [normalizeName(t.navn), t]));
@@ -253,11 +257,11 @@ async function main() {
       const reelleGrupper = t.byggGrupper.filter((bg) => bg.status !== "intern-mustad");
       let faktiskFakturert = null;
       if (reelleGrupper.length === 1) {
-        faktiskFakturert = reelleGrupper[0].alleredeFakturertDelA;
+        faktiskFakturert = reelleGrupper[0][alleredeFakturertFelt];
       } else if (reelleGrupper.length > 1) {
         const kontraktBygg = c.bygg.split(",").map((b) => normalizeName(b.trim()));
         const treff = reelleGrupper.filter((bg) => kontraktBygg.includes(normalizeName(bg.bygg)));
-        if (treff.length > 0) faktiskFakturert = treff.reduce((s, bg) => s + bg.alleredeFakturertDelA, 0);
+        if (treff.length > 0) faktiskFakturert = treff.reduce((s, bg) => s + bg[alleredeFakturertFelt], 0);
       }
       if (faktiskFakturert === null) continue;
       const sluttDato = new Date(`${c.maxSlutt}T00:00:00Z`);
@@ -272,10 +276,8 @@ async function main() {
         antallFlagget++;
       }
     }
-  } else {
-    console.warn("ADVARSEL: fant ikke REMAINING-snapshot - kunne ikke sjekke mulig dobbelttelling (muligAlleredeDekket forblir null for alle).");
   }
-  if (antallFlagget > 0) console.log(`Flagget ${antallFlagget} kontrakt(er) som mulig allerede dekket av tidligere fakturering.`);
+  if (antallFlagget > 0) console.log(`[${label}] Flagget ${antallFlagget} kontrakt(er) som mulig allerede dekket av tidligere fakturering.`);
 
   const totalArsleie = contracts.reduce((sum, c) => sum + c.totalArsleie, 0);
   const reforhandlet = contracts.filter((c) => c.status === "reforhandlet");
@@ -313,13 +315,53 @@ async function main() {
     ekstraI2026PerLeietaker,
   };
 
-  console.log(`Kontrakter som utløper i ${AR}: ${snapshot.antallKontrakter}`);
-  console.log(`  Total årsleie: ${snapshot.totalArsleie}`);
-  console.log(`  Reforhandlet (sikret): ${snapshot.antallReforhandlet} stk, ${snapshot.reforhandletArsleie} kr`);
-  console.log(`  Åpen (reell eksponering): ${snapshot.antallApen} stk, ${snapshot.reellEksponeringArsleie} kr`);
-  console.log(`  Ekstra i 2026 hvis alle åpne fornyes: ${snapshot.totalEkstraI2026} (${ekstraI2026PerLeietaker.length} leietakere)`);
+  console.log(`[${label}] Kontrakter som utløper i ${AR}: ${snapshot.antallKontrakter}`);
+  console.log(`[${label}]   Total årsleie: ${snapshot.totalArsleie}`);
+  console.log(`[${label}]   Reforhandlet (sikret): ${snapshot.antallReforhandlet} stk, ${snapshot.reforhandletArsleie} kr`);
+  console.log(`[${label}]   Åpen (reell eksponering): ${snapshot.antallApen} stk, ${snapshot.reellEksponeringArsleie} kr`);
+  console.log(`[${label}]   Ekstra i 2026 hvis alle åpne fornyes: ${snapshot.totalEkstraI2026} (${ekstraI2026PerLeietaker.length} leietakere)`);
 
-  return pushToRedis(REDIS_HASH_KEY, REDIS_FIELD, snapshot, "kontraktsutlop-2026-snapshot.json");
+  return snapshot;
+}
+
+async function main() {
+  loadEnvLocal();
+  const raw = JSON.parse(fs.readFileSync(RAW_FILE, "utf8"));
+  const shares = loadOwnershipShares();
+  // v2 (2026-08-29, Morten): "denne listen må gjelde kontrakter med utløp fra i dag og ut resten
+  // av året" - eksempel Jernia, som allerede er reforhandlet men fortsatt dukket opp fordi
+  // status-baserte "reforhandlet"-deteksjonen har hull. Datofilter (linje_slutt >= i dag) er en
+  // robust sperre UAVHENGIG av om status-feltet er korrekt - en linje som allerede er utløpt er
+  // uansett ikke lenger en fremtidig reforhandlings-beslutning. I DAG regnes dynamisk (ikke en
+  // hardkodet dato), så scriptet forblir riktig neste gang det kjøres.
+  const I_DAG_ISO = new Date().toISOString().slice(0, 10);
+  const iVindu = (r) => r.linje_slutt >= I_DAG_ISO && r.linje_slutt <= `${AR}-12-31` && r.total_arsleie > 0;
+  const rowsDelA = (raw.rows || []).filter((r) => iVindu(r) && erKjerneleieLinje(r.linje_beskrivelse));
+  // v3 (2026-09-21): Del B (parkering) - se erParkeringsLinje() over for hvorfor nøyaktig disse
+  // radene, ingen andre, tilsvarer Del B.
+  const rowsDelB = (raw.rows || []).filter((r) => iVindu(r) && erParkeringsLinje(r.linje_beskrivelse));
+
+  // Hentes ÉN gang, delt mellom begge kallene - samme REMAINING-snapshot har både
+  // alleredeFakturertDelA og alleredeFakturertDelB pr. byggGruppe.
+  const remaining = await getFromRedis(REMAINING_HASH_KEY, REMAINING_FIELD);
+  if (!remaining) {
+    console.warn("ADVARSEL: fant ikke REMAINING-snapshot - kunne ikke sjekke mulig dobbelttelling (muligAlleredeDekket forblir null for alle).");
+  }
+
+  const snapshotDelA = await buildKontraktSnapshot(rowsDelA, shares, remaining, "alleredeFakturertDelA", "Del A");
+  const snapshotDelB = await buildKontraktSnapshot(rowsDelB, shares, remaining, "alleredeFakturertDelB", "Del B parkering");
+
+  if (process.argv.includes("--dry-run")) {
+    const utA = path.join(__dirname, "refresh-data", "kontraktsutlop-2026-snapshot.json");
+    const utB = path.join(__dirname, "refresh-data", "kontraktsutlop-2026-parkering-snapshot.json");
+    fs.writeFileSync(utA, JSON.stringify(snapshotDelA, null, 2));
+    fs.writeFileSync(utB, JSON.stringify(snapshotDelB, null, 2));
+    console.log(`\n--dry-run: ikke lagret i Redis, skrevet til ${utA} og ${utB}`);
+    return;
+  }
+
+  await pushToRedis(REDIS_HASH_KEY, REDIS_FIELD, snapshotDelA, "kontraktsutlop-2026-snapshot.json");
+  return pushToRedis(REDIS_HASH_KEY_PARKERING, REDIS_FIELD, snapshotDelB, "kontraktsutlop-2026-parkering-snapshot.json");
 }
 
 main();

@@ -983,6 +983,9 @@ export interface Hovedprognose {
 function beregnHovedprognose(
   rollup: ForecastRollup,
   contractExpiry2026: ContractExpiry2026Snapshot | null,
+  // v70 (2026-09-21): Del B (parkering) sitt eget kontraktsutløp-snapshot - ALDRI usikre avtaler
+  // her (usikre er et Del A-konsept), se reforhandlingJusteringParkering i IncomeForecastSection().
+  contractExpiryParking2026: ContractExpiry2026Snapshot | null,
   tenantSignals: TenantSignal[],
   omsetningsavregning: OmsetningsavregningSnapshot | null,
   potential: PotentialIncomeSnapshot | null,
@@ -1003,8 +1006,13 @@ function beregnHovedprognose(
     rollup.delB.manueltNxtHittil +
     manuelleLinjer;
   const gjenstar = rollup.delA.gjenstaende + rollup.delB.gjenstaende;
-  const reforhandlingFull = beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals, usikre);
-  const potensiellEkstrainntektReforhandling100 = contractExpiry2026?.totalEkstraI2026 ?? 0;
+  // v70: full prognose-total inkluderer nå BÅDE Del A og Del B (parkering) sin vektede
+  // reforhandlingsrisiko - to uavhengige beregninger (egne snapshot/Map, se
+  // reforhandlingJusteringParkering) summert til ÉN linje i waterfallen/Risikoforhold-toppsummen.
+  const reforhandlingFull =
+    beregnVektetReforhandlingTotal(contractExpiry2026, tenantSignals, usikre) +
+    beregnVektetReforhandlingTotal(contractExpiryParking2026, tenantSignals, []);
+  const potensiellEkstrainntektReforhandling100 = (contractExpiry2026?.totalEkstraI2026 ?? 0) + (contractExpiryParking2026?.totalEkstraI2026 ?? 0);
   const omsetningsavregningSum = omsetningsavregning?.totalEkstrafakturering ?? 0;
   const potentialByKey = new Map((potential?.categories ?? []).map((c) => [c.key, c]));
   const potensiellFremtidig = potentialByKey.get("potensiell-fremtidig-inntekt")?.belop ?? 0;
@@ -2170,34 +2178,31 @@ type KontraktUtlopSortKey = "leietaker" | "bygg" | "utlop" | "fakturert" | "gjen
 // TenantSignal, TenantForecastRow) - ingen ny pipeline, ingen nytt API. Den eldre, mer detaljerte
 // "Kontrakter som utløper i 2026"-seksjonen i Tillegg-fanen (ContractExpiry2026Block) er
 // UBERØRT - dette er en tilleggsvisning, ikke en erstatning.
-function KontrakterPaUtlopBlock({
+// v70 (2026-09-21): utledet av KontrakterPaUtlopBlock - selve kontraktslisten (søk/sortering/
+// utvidbare rader/tabell) er nå en egen komponent slik at den kan rendres to ganger, én gang for
+// Del A (kjerneleie) og én gang for Del B (parkering) - se buildKontraktSnapshot i
+// scripts/build-contract-expiry-2026.js for hvorfor de er to helt separate snapshots. Hver
+// instans har SIN EGEN søk-/sorterings-/utvidelses-state (egne useState-kall pr. instans).
+function KontraktUtlopTabell({
   snapshot,
   loading,
   signals,
   onSignalUpdated,
   leietakerRader,
+  tittel,
+  // v56: ikke sikrede avtaler (REMAINING.usikreInntekter) - et Del A-konsept, ALDRI satt for
+  // Del B (parkering)-instansen. Påvirker kun footer-totalen her (se totalEkstraVektet under),
+  // ikke selve kontraktsrad-forhåndsvisningen (ekstraVedReforhandlingByNavn under bruker den ikke).
   usikre = [],
-  remaining,
-  omsetning,
-  potential,
-  manualLines,
-  idagIso,
 }: {
   snapshot: ContractExpiry2026Snapshot | null;
   loading: boolean;
   signals: TenantSignal[];
   onSignalUpdated: (next: TenantSignal) => void;
   leietakerRader: TenantForecastRow[];
-  // v56: ikke sikrede avtaler (REMAINING.usikreInntekter) - vises som egen gruppe under kontraktene.
+  tittel: string;
   usikre?: UsikkerInntekt[];
-  // v57: grunnlag for «Øvrig risiko i prognosen» (OvrigRisikoBlock).
-  remaining: RemainingTenantsSnapshot | null;
-  omsetning: OmsetningsavregningSnapshot | null;
-  potential: PotentialIncomeSnapshot | null;
-  manualLines: ManualIncomeLine[];
-  idagIso: string;
 }) {
-  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter på utløp", true);
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(20);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -2345,49 +2350,29 @@ function KontrakterPaUtlopBlock({
   const totalEkstraVektet = beregnVektetReforhandlingTotal(snapshot, signals, usikre);
 
   return (
-    <div id="kontrakter-pa-utlop" className="flex scroll-mt-4 flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
-      <CardHeader
-        // v56 (2026-09-18, Morten): "Kontrakter på utløp" -> "Risikoforhold" - inntekt vi regner
-        // med men ikke har sikret: kontrakter på utløp OG avtaler uten bekreftet oppstart.
-        title="Risikoforhold"
-        // v28 (2026-09-08): headeren viste FULLT potensial (totalEkstraI2026) mens toppboksens
-        // waterfall viste "Reforhandling (vektet)" - to ulike tall for samme begrep synlig
-        // samtidig på skjermen, uten at noe sa hva forskjellen var. Nå vises det VEKTEDE tallet,
-        // altså det som faktisk inngår i prognosen.
-        // v29: kortet ned fra "X vektet · Y fullt potensial" - undertittelen ble dobbelt så lang
-        // som naboseksjonenes og brøt beløpskolonnen til høyre. Fullt potensial står allerede i
-        // toppboksens tooltip og inne i selve seksjonen. v50: kun beløpet (Morten 2026-09-11).
-        subtitle={snapshot ? formatKr(totalEkstraVektet) : "Laster…"}
-        alwaysShowSubtitle
-        collapsed={collapsed}
-        onToggleCollapse={toggleCollapsed}
-        icon={CalendarClock}
-        iconColorClass="text-status-warning"
-      />
-      {!collapsed && (
-        <>
-          {/* v54 (2026-09-18, Morten): hjelpeteksten "X kr ekstra inntekt hvis reforhandlet (av Y kr
-              hvis alt reforhandles ...)" er fjernet. Det vektede tallet står allerede i kortheaderen,
-              og fullt potensial vises pr. kontrakt i tabellen. */}
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
-            <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setVisibleCount(20);
-              }}
-              placeholder="Søk leietaker eller bygg…"
-              className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
-            />
-          </div>
-          {/* v60 (2026-09-19, Morten): tallet er fjernet fra undertittelen - det vektede beløpet
-              per gruppe sto allerede i «Risikoforhold»-totalen lenger oppe (samme tall, dobbelt
-              opp). Undertitlene er samtidig gjort tydeligere (ink-2 i stedet for ink-4, videre
-              sperring) slik at de fire underseksjonene i Risikoforhold skiller seg fra hverandre. */}
-          <p className="text-2xs font-semibold uppercase tracking-wider text-ink-2">Kontrakter på utløp</p>
-          {loading ? (
+    <>
+      {/* v54 (2026-09-18, Morten): hjelpeteksten "X kr ekstra inntekt hvis reforhandlet (av Y kr
+          hvis alt reforhandles ...)" er fjernet. Det vektede tallet står allerede i kortheaderen,
+          og fullt potensial vises pr. kontrakt i tabellen. */}
+      <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-1 px-2.5 py-1.5">
+        <Search className="h-3.5 w-3.5 shrink-0 text-ink-4" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setVisibleCount(20);
+          }}
+          placeholder="Søk leietaker eller bygg…"
+          className="w-full bg-transparent text-sm text-ink-1 placeholder-ink-4 outline-none"
+        />
+      </div>
+      {/* v60 (2026-09-19, Morten): tallet er fjernet fra undertittelen - det vektede beløpet
+          per gruppe sto allerede i «Risikoforhold»-totalen lenger oppe (samme tall, dobbelt
+          opp). Undertitlene er samtidig gjort tydeligere (ink-2 i stedet for ink-4, videre
+          sperring) slik at de fire underseksjonene i Risikoforhold skiller seg fra hverandre. */}
+      <p className="text-2xs font-semibold uppercase tracking-wider text-ink-2">{tittel}</p>
+      {loading ? (
             <SkeletonRows count={4} />
           ) : apneKontrakter.length === 0 ? (
             <p className="text-sm text-ink-3">Ingen åpne kontrakter utløper i {snapshot ? snapshot.ar : PROGNOSE_AR}.</p>
@@ -2566,6 +2551,95 @@ function KontrakterPaUtlopBlock({
               </div>
             </>
           )}
+    </>
+  );
+}
+
+// v70 (2026-09-21): "Risikoforhold"-kortet selv - kollapsbar wrapper rundt to
+// KontraktUtlopTabell-instanser (Del A + Del B parkering) og OvrigRisikoBlock. Subtitle-tallet er
+// den KOMBINERTE vektede totalen (kontrakter + usikre avtaler, begge deler) - samme tall som
+// prognose.reforhandlingFull i beregnHovedprognose, se kommentaren der for hvorfor de alltid skal
+// tie ut mot hverandre.
+function KontrakterPaUtlopBlock({
+  snapshot,
+  loading,
+  parkeringSnapshot,
+  loadingParkering,
+  signals,
+  onSignalUpdated,
+  leietakerRader,
+  parkeringLeietakerRader,
+  usikre = [],
+  remaining,
+  omsetning,
+  potential,
+  manualLines,
+  idagIso,
+}: {
+  snapshot: ContractExpiry2026Snapshot | null;
+  loading: boolean;
+  parkeringSnapshot: ContractExpiry2026Snapshot | null;
+  loadingParkering: boolean;
+  signals: TenantSignal[];
+  onSignalUpdated: (next: TenantSignal) => void;
+  leietakerRader: TenantForecastRow[];
+  parkeringLeietakerRader: TenantForecastRow[];
+  // v56: ikke sikrede avtaler (REMAINING.usikreInntekter) - vises som egen gruppe under Del A sin
+  // kontraktsliste, ALDRI under Del B (parkering) sin - se KontraktUtlopTabell.
+  usikre?: UsikkerInntekt[];
+  // v57: grunnlag for «Øvrig risiko i prognosen» (OvrigRisikoBlock).
+  remaining: RemainingTenantsSnapshot | null;
+  omsetning: OmsetningsavregningSnapshot | null;
+  potential: PotentialIncomeSnapshot | null;
+  manualLines: ManualIncomeLine[];
+  idagIso: string;
+}) {
+  const [collapsed, toggleCollapsed] = usePersistedCollapse("Inntektsprognose: Kontrakter på utløp", true);
+  // Samme delte funksjon som MainForecastBox (toppboksen) og beregnHovedprognose bruker -
+  // garanterer at kortheaderen her ALLTID viser identisk tall til hero-waterfallens "Risiko
+  // (vektet)"-linje, i stedet for to uavhengige utregninger som kan drifte fra hverandre.
+  const totalEkstraVektet =
+    beregnVektetReforhandlingTotal(snapshot, signals, usikre) + beregnVektetReforhandlingTotal(parkeringSnapshot, signals, []);
+
+  return (
+    <div id="kontrakter-pa-utlop" className="flex scroll-mt-4 flex-col gap-2 rounded-xl border border-line bg-surface-2/40 p-3">
+      <CardHeader
+        // v56 (2026-09-18, Morten): "Kontrakter på utløp" -> "Risikoforhold" - inntekt vi regner
+        // med men ikke har sikret: kontrakter på utløp OG avtaler uten bekreftet oppstart.
+        title="Risikoforhold"
+        // v28 (2026-09-08): headeren viste FULLT potensial (totalEkstraI2026) mens toppboksens
+        // waterfall viste "Reforhandling (vektet)" - to ulike tall for samme begrep synlig
+        // samtidig på skjermen, uten at noe sa hva forskjellen var. Nå vises det VEKTEDE tallet,
+        // altså det som faktisk inngår i prognosen.
+        // v29: kortet ned fra "X vektet · Y fullt potensial" - undertittelen ble dobbelt så lang
+        // som naboseksjonenes og brøt beløpskolonnen til høyre. Fullt potensial står allerede i
+        // toppboksens tooltip og inne i selve seksjonen. v50: kun beløpet (Morten 2026-09-11).
+        subtitle={snapshot ? formatKr(totalEkstraVektet) : "Laster…"}
+        alwaysShowSubtitle
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapsed}
+        icon={CalendarClock}
+        iconColorClass="text-status-warning"
+      />
+      {!collapsed && (
+        <>
+          <KontraktUtlopTabell
+            snapshot={snapshot}
+            loading={loading}
+            signals={signals}
+            onSignalUpdated={onSignalUpdated}
+            leietakerRader={leietakerRader}
+            tittel="Kontrakter på utløp"
+            usikre={usikre}
+          />
+          <KontraktUtlopTabell
+            snapshot={parkeringSnapshot}
+            loading={loadingParkering}
+            signals={signals}
+            onSignalUpdated={onSignalUpdated}
+            leietakerRader={parkeringLeietakerRader}
+            tittel="Parkeringskontrakter på utløp"
+          />
           <OvrigRisikoBlock remaining={remaining} omsetning={omsetning} potential={potential} manualLines={manualLines} idagIso={idagIso} />
         </>
       )}
@@ -3518,6 +3592,9 @@ export default function IncomeForecastSection() {
   const includeLowConfidence = true;
   const [contractExpiry2026, setContractExpiry2026] = useState<ContractExpiry2026Snapshot | null>(null);
   const [loadingContractExpiry2026, setLoadingContractExpiry2026] = useState(true);
+  // v70 (2026-09-21): Del B (parkering)-motstykket - se lib/contractExpiryParking2026.ts.
+  const [contractExpiryParking2026, setContractExpiryParking2026] = useState<ContractExpiry2026Snapshot | null>(null);
+  const [loadingContractExpiryParking2026, setLoadingContractExpiryParking2026] = useState(true);
   const [potential, setPotential] = useState<PotentialIncomeSnapshot | null>(null);
   const [loadingPotential, setLoadingPotential] = useState(true);
   const [tenantSignals, setTenantSignals] = useState<TenantSignal[]>([]);
@@ -3550,6 +3627,13 @@ export default function IncomeForecastSection() {
         setLoadingContractExpiry2026(false);
       })
       .catch(() => setLoadingContractExpiry2026(false));
+    fetch("/api/income-forecast/contract-expiry-2026-parkering")
+      .then((r) => r.json())
+      .then((data) => {
+        setContractExpiryParking2026(data.snapshot ?? null);
+        setLoadingContractExpiryParking2026(false);
+      })
+      .catch(() => setLoadingContractExpiryParking2026(false));
     fetch("/api/income-forecast/potential")
       .then((r) => r.json())
       .then((data) => {
@@ -3661,17 +3745,32 @@ export default function IncomeForecastSection() {
     [contractExpiry2026, tenantSignals, usikreInntekter],
   );
   const ekstraVedReforhandlingByNavn = reforhandlingJustering.leietaker;
+  // v70 (2026-09-21): Del B (parkering)-motstykket til reforhandlingJustering over - EGEN Map,
+  // aldri slått sammen med Del A sin. En leietaker kan ha BÅDE en kontorkontrakt og
+  // en parkeringskontrakt under samme navn - et delt Map ville da lagt parkeringens beløp inn i
+  // Leieinntekter-radens Gjenstår (feil bygg, feil del). Ingen usikre avtaler i Del B (kun Del A
+  // har konseptet "ikke sikret avtale" i REMAINING.usikreInntekter pt.).
+  const reforhandlingJusteringParkering = useMemo(
+    () => beregnReforhandlingJustering(contractExpiryParking2026, tenantSignals, []),
+    [contractExpiryParking2026, tenantSignals],
+  );
 
   // v17: hovedprognosen regnes ut ÉN gang her og deles av MainForecastBox (breakdown) og KpiStrip
   // (alltid synlig total) - se beregnHovedprognose sin kommentar.
   const prognose = useMemo(
-    () => beregnHovedprognose(rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential, usikreInntekter),
-    [rollup, contractExpiry2026, tenantSignals, omsetningsavregning, potential, usikreInntekter],
+    () => beregnHovedprognose(rollup, contractExpiry2026, contractExpiryParking2026, tenantSignals, omsetningsavregning, potential, usikreInntekter),
+    [rollup, contractExpiry2026, contractExpiryParking2026, tenantSignals, omsetningsavregning, potential, usikreInntekter],
   );
   // v56: hero-tallet (og avvik/budsjett-boksene under det) er først endelig når ALLE kildene det
   // regnes fra er hentet - se `loading`-kommentaren i MainForecastBox.
   const heroReady =
-    !loadingManual && !loadingContractExpiry2026 && !loadingOmsetningsavregning && !loadingPotential && !loadingTenantSignals && !loadingTenantForecastTable;
+    !loadingManual &&
+    !loadingContractExpiry2026 &&
+    !loadingContractExpiryParking2026 &&
+    !loadingOmsetningsavregning &&
+    !loadingPotential &&
+    !loadingTenantSignals &&
+    !loadingTenantForecastTable;
 
   // v19 (2026-09-07, "visuell/avstemming"-gjennomgangen): samme avvik-sum som Leieinntekter/
   // Parkering-tabellenes egne Totalt-rader - MÅ inkludere samme pr.-rad reforhandlingsjustering
@@ -3821,15 +3920,19 @@ export default function IncomeForecastSection() {
                 title="Parkering"
                 grupper={tenantForecastTable?.delB ?? EMPTY_GRUPPER}
                 totalBudsjettOverride={tenantForecastTable?.delBBudsjettTotal}
+                reforhandlingJustering={reforhandlingJusteringParkering}
                 markerteNavn={markerteNavn}
               />
               <OmsetningsavregningBlock snapshot={omsetningsavregning} loading={loadingOmsetningsavregning} />
               <KontrakterPaUtlopBlock
                 snapshot={contractExpiry2026}
                 loading={loadingContractExpiry2026}
+                parkeringSnapshot={contractExpiryParking2026}
+                loadingParkering={loadingContractExpiryParking2026}
                 signals={tenantSignals}
                 onSignalUpdated={handleSignalUpdated}
                 leietakerRader={tenantForecastTable?.delA.leietaker ?? []}
+                parkeringLeietakerRader={tenantForecastTable?.delB.leietaker ?? []}
                 usikre={usikreInntekter}
                 remaining={remainingTenantsSnapshot}
                 omsetning={omsetningsavregning}
