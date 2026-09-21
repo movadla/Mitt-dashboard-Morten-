@@ -3028,7 +3028,11 @@ function TenantForecastTable({
 
   // v57 (2026-09-18, Morten: "alle tabeller ... trykke på tittelen til kolonnen og sortere"):
   // også Start/slutt (på datoen, slutt foran start) og Kommentar (alfabetisk, tomme sist).
-  type TabellSortKey = "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "startSlutt" | "kommentar";
+  // v70 (2026-09-21, Morten: flytt reforhandlingsjusteringen fra en hover-tooltip på Gjenstår til
+  // en egen, alltid synlig kolonne) - "reforhandling" er ikke et felt på TenantForecastRow (kun
+  // _reforhandlingsjustering på DisplayTenantRow), så den sorteres i en egen gren under, ikke via
+  // det generiske a[key]-oppslaget resten av kolonnene bruker.
+  type TabellSortKey = "navn" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "reforhandling" | "startSlutt" | "kommentar";
   const [sort, setSort] = useState<{ key: TabellSortKey; dir: 1 | -1 } | null>(null);
 
   function toggleSort(key: TabellSortKey) {
@@ -3065,6 +3069,9 @@ function TenantForecastTable({
         if (!kb) return -1;
         return ka.localeCompare(kb, "nb-NO") * dir;
       }
+      if (key === "reforhandling") {
+        return ((a._reforhandlingsjustering ?? 0) - (b._reforhandlingsjustering ?? 0)) * dir;
+      }
       const av = a[key];
       const bv = b[key];
       if (av === null && bv === null) return 0;
@@ -3082,6 +3089,14 @@ function TenantForecastTable({
   const totalAvvik =
     totalBudsjettOverride != null ? totalFakturert + totalGjenstar - totalBudsjettOverride : rows.reduce((s, r) => s + (r.avvik ?? 0), 0);
   const harBudsjett = totalBudsjettOverride != null || rows.some((r) => r.budsjett !== null);
+  // Kun satt for Leieinntekter (reforhandlingJustering-proppen) - Parkering får ingen kolonne,
+  // siden "Kontrakter på utløp" strukturelt ekskluderer alle parkeringslinjer (se
+  // PARKERING_LINJE_REGEX i build-contract-expiry-2026.js) og derfor ikke har noe å vise der.
+  // Summen tier NØYAKTIG med beregnVektetReforhandlingTotal (Risikoforhold-toppsummen), siden
+  // `rows` her er de samme reforhandlingsjusterte radene (inkl. "uplassert"-raden) som
+  // applyReforhandlingJustering bygger fra samme Map.
+  const harReforhandlingKolonne = !!reforhandlingJustering;
+  const totalReforhandling = rows.reduce((s, r) => s + (r._reforhandlingsjustering ?? 0), 0);
 
   // v42 (2026-09-11, Morten): overskriftene lå i text-ink-4/font-medium og forsvant i innholdet -
   // de var samme tone som dempede rader. Nå uppercase/semibold i text-ink-2. Rent typografisk;
@@ -3091,7 +3106,7 @@ function TenantForecastTable({
   // gjetninger. Nå kan hver kolonne dras i kanten av overskriften. Bredden lagres pr. tabell og
   // gruppering i localStorage, så oppsettet overlever reload. table-fixed står fortsatt, så
   // detaljradene kan aldri dytte kolonnene sidelengs.
-  type BredKolonne = "startSlutt" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "kommentar";
+  type BredKolonne = "startSlutt" | "fakturert" | "gjenstar" | "budsjett" | "avvik" | "reforhandling" | "kommentar";
   const lagringsNokkel = `inntektsprognose-kolonnebredder:${title}:${gruppering}`;
   // Leses i en lat initialisator, ikke i en effekt: å kalle setState synkront i en effekt gir en
   // ekstra render-runde (og React Compiler flagger det). `typeof window` holder serveren unna
@@ -3253,6 +3268,7 @@ function TenantForecastTable({
               <col style={kolonneStil("gjenstar", "7.5rem")} />
               <col style={kolonneStil("budsjett", "7.5rem")} />
               <col style={kolonneStil("avvik", "7.5rem")} />
+              {harReforhandlingKolonne && <col style={kolonneStil("reforhandling", "8.5rem")} />}
               {gruppering === "leietaker" && <col style={kolonneStil("kommentar", "13rem")} />}
             </colgroup>
             <thead>
@@ -3280,6 +3296,12 @@ function TenantForecastTable({
                   {headerButton("+/-", "avvik")}
                   {dragHandtak("avvik")}
                 </th>
+                {harReforhandlingKolonne && (
+                  <th className="relative px-3 py-2 text-right">
+                    {headerButton("Reforhandlingspotensial", "reforhandling")}
+                    {dragHandtak("reforhandling")}
+                  </th>
+                )}
                 {gruppering === "leietaker" && (
                   <th className="relative px-3 py-2 text-left">
                     {headerButton("Kommentar", "kommentar")}
@@ -3381,29 +3403,7 @@ function TenantForecastTable({
                         {formatKr(row.fakturert)}
                       </td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2`}>
-                        <span className="inline-flex items-center gap-1">
-                          {formatKr(row.gjenstar)}
-                          {row._reforhandlingsjustering ? (
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <button
-                                    type="button"
-                                    onClick={(e) => e.stopPropagation()}
-                                    aria-label="Justert for reforhandlingssannsynlighet"
-                                    className="shrink-0 text-accent hover:text-ink-1"
-                                  >
-                                    <Info className="h-3 w-3" />
-                                  </button>
-                                }
-                              />
-                              <TooltipContent>
-                                Inkluderer {formatKr(row._reforhandlingsjustering, true)} fra &quot;Kontrakter på utløp&quot; - valgt
-                                reforhandlingssannsynlighet for denne leietakerens utløpende kontrakt(er).
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : null}
-                        </span>
+                        {formatKr(row.gjenstar)}
                       </td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2`}>
                         {row.budsjett === null ? "—" : formatKr(row.budsjett)}
@@ -3421,6 +3421,11 @@ function TenantForecastTable({
                       >
                         {row.avvik === null ? "—" : formatKr(row.avvik, true)}
                       </td>
+                      {harReforhandlingKolonne && (
+                        <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
+                          {row._reforhandlingsjustering ? formatKr(row._reforhandlingsjustering, true) : "—"}
+                        </td>
+                      )}
                       {gruppering === "leietaker" && (
                         <td className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
                           {/* v53: Mortens kommentar og Claudes forklaring lever side om side. Claude
@@ -3454,7 +3459,7 @@ function TenantForecastTable({
                         flyttetInn={flyttetInnByLedigNavn.get(row.navn) ?? []}
                         harStartSluttKolonne={gruppering === "leietaker"}
                         harKommentarKolonne={gruppering === "leietaker"}
-                        antallKolonner={gruppering === "leietaker" ? 7 : 5}
+                        antallKolonner={(gruppering === "leietaker" ? 7 : 5) + (harReforhandlingKolonne ? 1 : 0)}
                         kommentarer={commentOverrides}
                         onSaveKommentar={saveComment}
                       />
@@ -3475,6 +3480,9 @@ function TenantForecastTable({
                 >
                   {harBudsjett ? formatKr(totalAvvik, true) : "—"}
                 </td>
+                {harReforhandlingKolonne && (
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalReforhandling, true)}</td>
+                )}
                 {gruppering === "leietaker" && <td className="px-3 py-2" />}
               </tr>
             </tbody>
