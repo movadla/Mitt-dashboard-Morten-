@@ -39,10 +39,30 @@ export interface AiTipResource {
 export interface AiTipFeedback {
   priorKnowledge: number; // 1-10: "Hvor mye kunne du fra før?"
   understanding: number; // 1-10: "Hvor mye forsto du av dette?"
+  interest: number; // 1-10: "Hvor interessert er du i dette?"
+  // 1-10: "Hvor godt traff dette tipset formen/strukturen du er ute etter?"
+  // (den brede, helhetlige gjennomgangs-formen han ba om 2026-09-21) — et
+  // signal om FORM, uavhengig av tema/vanskelighetsgrad.
+  formatFit: number;
   difficultTopics: string[]; // undermengde av tip.subtopics
   difficultNote?: string;
   wantMoreTopics: string[]; // undermengde av tip.subtopics
+  // Hva burde vært forklart bedre/dypere for å vært mest relevant for HAM —
+  // brukes til å gjøre et BESLEKTET tema dypere neste gang det uansett kommer
+  // opp i rotasjonen, ikke til å tvinge frem mer av akkurat dette temaet (se
+  // buildSystemPrompt i lib/aiTips.ts for hvorfor).
+  improvementNote?: string;
   ratedAt: string;
+}
+
+// Et markert utdrag av tekst — to typer, med helt ulik betydning:
+// "viktig" er ren personlig huking (aldri sett av AI-en), "forstår-ikke"
+// trigger en on-demand Claude-forklaring (samme "kun ved faktisk bruk"-
+// prinsipp som nyhets-berikelsen i lib/news.ts).
+export interface AiTipConfusion {
+  text: string;
+  explanation?: string;
+  explainedAt?: string;
 }
 
 export interface AiTip {
@@ -57,12 +77,27 @@ export interface AiTip {
   generatedAt: string;
   openedAt?: string;
   feedback?: AiTipFeedback;
+  highlights: string[]; // gul markering — "dette er viktig å ta med seg"
+  confusions: AiTipConfusion[]; // "jeg forstår ikke dette" — forklares av Claude
+  // Ferdig utkast til en instruks Morten kan lime rett inn til Claude Code,
+  // KUN satt når dagens tema gir en konkret, holdbar handling i ett av hans
+  // egne prosjekter (se buildSystemPrompt i lib/aiTips.ts).
+  actionablePrompt?: string;
+  // Kort anslag ("Lett · ~20 min") knyttet til actionablePrompt — kun satt
+  // sammen med den, aldri alene.
+  actionableEffort?: string;
+  // Gyldig Mermaid-syntaks (flowchart/sequenceDiagram/...) — kun satt når et
+  // diagram genuint gjør konseptet lettere å forstå enn ren tekst.
+  diagram?: string;
 }
 
 export interface AiTipFeedbackInput {
   priorKnowledge: number;
   understanding: number;
+  interest: number;
+  formatFit: number;
   difficultTopics: string[];
   difficultNote?: string;
   wantMoreTopics: string[];
+  improvementNote?: string;
 }
