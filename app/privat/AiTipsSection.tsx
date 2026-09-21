@@ -734,18 +734,13 @@ function PlainFormattedText({ text }: { text: string }) {
   );
 }
 
-function StockRow({
-  tip,
-  onUpdate,
-  onComplete,
-}: {
-  tip: AiTip;
-  onUpdate: (tip: AiTip) => void;
-  onComplete: (id: string) => void;
-}) {
+function StockRow({ tip, onUpdate }: { tip: AiTip; onUpdate: (tip: AiTip) => void }) {
   const [open, setOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const paragraphs = tip.details.split(/\n{2,}/).filter(Boolean);
+  // v3 (2026-09-21, Morten: "må ikke forsvinne, bare være faded bakgrunn og ligge nederst"):
+  // raden blir liggende (getStock sorterer den nederst server-side) - kun dempet her, ikke fjernet.
+  const lest = !!tip.lagerFerdigLestAt;
 
   async function handleSubmitFeedback(input: AiTipFeedbackInput) {
     const nextTip = await postJson("/api/ai-tips/stock/rate", { id: tip.date, ...input });
@@ -754,20 +749,13 @@ function StockRow({
 
   async function handleComplete() {
     setCompleting(true);
-    try {
-      await fetch("/api/ai-tips/stock/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: tip.date }),
-      });
-      onComplete(tip.date);
-    } catch {
-      setCompleting(false);
-    }
+    const nextTip = await postJson("/api/ai-tips/stock/complete", { id: tip.date });
+    setCompleting(false);
+    if (nextTip) onUpdate(nextTip);
   }
 
   return (
-    <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
+    <li className={`rounded-xl border border-line bg-surface-2 px-3 py-2 transition-opacity ${lest ? "opacity-50" : ""}`}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-start gap-2.5 text-left">
         <div className="min-w-0 flex-1">
           <span className="text-2xs font-semibold uppercase tracking-wide text-fuchsia-400">{AI_TIPS_CATEGORY_LABELS[tip.category]}</span>
@@ -789,18 +777,33 @@ function StockRow({
           ))}
           <ResourceList resources={tip.resources} />
           {tip.feedback ? <FeedbackSummary tip={tip} /> : <FeedbackForm tip={tip} onSubmit={handleSubmitFeedback} />}
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={completing}
-            className="self-start rounded-lg bg-fuchsia-400/15 px-3 py-1.5 text-xs font-semibold text-fuchsia-400 transition hover:bg-fuchsia-400/25 disabled:opacity-60"
-          >
-            {completing ? "…" : "Ferdig lest"}
-          </button>
+          {lest ? (
+            <p className="text-2xs text-ink-4">Ferdig lest {formatDMY(tip.lagerFerdigLestAt!.slice(0, 10))}</p>
+          ) : (
+            <button
+              type="button"
+              onClick={handleComplete}
+              disabled={completing}
+              className="self-start rounded-lg bg-fuchsia-400/15 px-3 py-1.5 text-xs font-semibold text-fuchsia-400 transition hover:bg-fuchsia-400/25 disabled:opacity-60"
+            >
+              {completing ? "…" : "Ferdig lest"}
+            </button>
+          )}
         </div>
       )}
     </li>
   );
+}
+
+// Speiler sorteringen i getStock (lib/aiTips.ts) - uleste først, ferdiglest nederst - slik at en
+// nettopp fullført rad hopper til bunnen med ÉN gang i stedet for å vente på neste refetch.
+function sortStock(stock: AiTip[]): AiTip[] {
+  return [...stock].sort((a, b) => {
+    const aLest = !!a.lagerFerdigLestAt;
+    const bLest = !!b.lagerFerdigLestAt;
+    if (aLest !== bLest) return aLest ? 1 : -1;
+    return (aLest ? a.lagerFerdigLestAt! : a.generatedAt).localeCompare(bLest ? b.lagerFerdigLestAt! : b.generatedAt);
+  });
 }
 
 function LagerSection() {
@@ -808,20 +811,19 @@ function LagerSection() {
   const stock = data?.stock ?? [];
 
   function handleUpdate(nextTip: AiTip) {
-    mutate({ stock: stock.map((t) => (t.date === nextTip.date ? nextTip : t)) }, { revalidate: false });
-  }
-
-  function handleComplete(id: string) {
-    mutate({ stock: stock.filter((t) => t.date !== id) }, { revalidate: false });
-    // Etterfyllingen skjer i bakgrunnen på serveren — hent på nytt om litt for
-    // å se om en ny har dukket opp, uten at brukeren må gjøre noe selv.
-    setTimeout(() => mutate(), 5000);
+    const wasUnreadNowRead = !!nextTip.lagerFerdigLestAt;
+    mutate({ stock: sortStock(stock.map((t) => (t.date === nextTip.date ? nextTip : t))) }, { revalidate: false });
+    if (wasUnreadNowRead) {
+      // Etterfyllingen (kun uleste teller mot målet) skjer i bakgrunnen på serveren -
+      // hent på nytt om litt for å se om en ny har dukket opp, uten at brukeren må gjøre noe selv.
+      setTimeout(() => mutate(), 5000);
+    }
   }
 
   return (
     <div>
       <p className="mb-2 text-2xs text-ink-4">
-        Ekstra tips å lese når du har tid. Tilbakemeldingen din her styrer kun fremtidige Lager-tips — den påvirker aldri «Dagens». Fylles automatisk opp til 4.
+        Ekstra tips å lese når du har tid. Tilbakemeldingen din her styrer kun fremtidige Lager-tips — den påvirker aldri «Dagens». Fylles automatisk opp til 4 uleste.
       </p>
       {isLoading ? (
         <SkeletonRows count={3} className="h-14" />
@@ -830,7 +832,7 @@ function LagerSection() {
       ) : (
         <ul className="flex flex-col gap-1.5">
           {stock.map((tip) => (
-            <StockRow key={tip.date} tip={tip} onUpdate={handleUpdate} onComplete={handleComplete} />
+            <StockRow key={tip.date} tip={tip} onUpdate={handleUpdate} />
           ))}
         </ul>
       )}

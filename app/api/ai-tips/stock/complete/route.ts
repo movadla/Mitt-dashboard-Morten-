@@ -8,7 +8,8 @@ export async function POST(request: NextRequest) {
   const id = typeof body?.id === "string" ? body.id : null;
   if (!id) return NextResponse.json({ error: "Mangler id" }, { status: 400 });
 
-  await completeStockItem(id);
+  const tip = await completeStockItem(id);
+  if (!tip) return NextResponse.json({ error: "Fant ikke tipset" }, { status: 404 });
   after(async () => {
     try {
       await ensureStockFilled();
@@ -16,5 +17,5 @@ export async function POST(request: NextRequest) {
       /* neste GET/complete-kall prøver igjen */
     }
   });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ tip });
 }

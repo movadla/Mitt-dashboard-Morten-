@@ -89,6 +89,10 @@ export interface AiTip {
   // Gyldig Mermaid-syntaks (flowchart/sequenceDiagram/...) — kun satt når et
   // diagram genuint gjør konseptet lettere å forstå enn ren tekst.
   diagram?: string;
+  // KUN for Lager-tips (se completeStockItem i lib/aiTips.ts) — satt når Morten trykker
+  // "Ferdig lest". Rettet 2026-09-21: tipset skal IKKE forsvinne fra lageret, bare merkes
+  // lest — vises dempet og sortert nederst i stedet for slettet.
+  lagerFerdigLestAt?: string;
 }
 
 export interface AiTipFeedbackInput {

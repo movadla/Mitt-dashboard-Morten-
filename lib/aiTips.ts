@@ -1,7 +1,7 @@
 import "server-only";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
-import { hgetJSON, hsetJSON, hgetallJSON, hdel, incrWithExpiry, del } from "./kv";
+import { hgetJSON, hsetJSON, hgetallJSON, incrWithExpiry, del } from "./kv";
 import { recordUsage } from "./aiUsage";
 import { localDateString } from "./payday";
 import {
@@ -472,9 +472,19 @@ async function saveStockProfile(profile: AiTipsProfile): Promise<void> {
   await persistProfile(STOCK_PROFILE_HASH_KEY, profile);
 }
 
+// v3 (2026-09-21, Morten: "må ikke forsvinne, bare være faded bakgrunn og ligge nederst"):
+// ferdiglest-tips blir liggende, bare sortert nederst (uleste først, deretter leste eldst->nyest
+// lest). UI-en (StockRow) dempes visuelt ut fra tip.lagerFerdigLestAt, ikke fra om raden finnes.
 export async function getStock(): Promise<AiTip[]> {
   const all = await hgetallJSON<AiTip>(STOCK_HASH_KEY);
-  return Object.values(all).map(normalizeTip).sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
+  return Object.values(all)
+    .map(normalizeTip)
+    .sort((a, b) => {
+      const aLest = !!a.lagerFerdigLestAt;
+      const bLest = !!b.lagerFerdigLestAt;
+      if (aLest !== bLest) return aLest ? 1 : -1;
+      return (aLest ? a.lagerFerdigLestAt! : a.generatedAt).localeCompare(bLest ? b.lagerFerdigLestAt! : b.generatedAt);
+    });
 }
 
 // Kategorien trekkes fortsatt tilfeldig (i motsetning til Dagens' egen
@@ -517,13 +527,17 @@ const STOCK_FILL_LOCK_TTL_SECONDS = 300; // sikkerhetsnett hvis release() aldri 
 // lockholder hvis TTL utløp midt i en treg generering, se STOCK_FILL_LOCK_TTL_SECONDS).
 // Leser nå lengden PÅ NYTT før hver enkelt generering - et hardt, alltid ferskt
 // tak på STOCK_TARGET uansett hva som forårsaket forrige overskyting.
+// v3 (2026-09-21): ferdiglest-tips slettes ikke lenger (se completeStockItem/getStock) - målet
+// gjelder derfor ULESTE tips, ikke hele lagerets størrelse, ellers ville poolen aldri fylt opp
+// igjen etter at Morten har lest seg gjennom nok av den akkumulerte historikken.
 export async function ensureStockFilled(): Promise<void> {
   const lockCount = await incrWithExpiry(STOCK_FILL_LOCK_KEY, STOCK_FILL_LOCK_TTL_SECONDS);
   if (lockCount > 1) return; // en annen fyller allerede opp
   try {
     for (let i = 0; i < 2; i++) {
       const current = await getStock();
-      if (current.length >= STOCK_TARGET) break;
+      const uleste = current.filter((t) => !t.lagerFerdigLestAt).length;
+      if (uleste >= STOCK_TARGET) break;
       await generateStockItem();
     }
   } finally {
@@ -531,10 +545,16 @@ export async function ensureStockFilled(): Promise<void> {
   }
 }
 
-// Fjerner ett lager-tips (Morten har "krysset det av") — etterfyllingen skjer
-// separat via ensureStockFilled, kalt fra samme API-rute.
-export async function completeStockItem(id: string): Promise<void> {
-  await hdel(STOCK_HASH_KEY, id);
+// v3 (2026-09-21, Morten: "må ikke forsvinne ... bare være faded bakgrunn og ligge nederst"):
+// merker tipset som lest i stedet for å slette det (var hdel). Blir liggende i lageret for godt -
+// etterfyllingen (ensureStockFilled) teller kun ULESTE mot målet, så dette frigjør fortsatt plass
+// til en ny generering akkurat som slettingen gjorde før.
+export async function completeStockItem(id: string): Promise<AiTip | null> {
+  const raw = await hgetJSON<AiTip>(STOCK_HASH_KEY, id);
+  if (!raw) return null;
+  const nextTip: AiTip = { ...normalizeTip(raw), lagerFerdigLestAt: new Date().toISOString() };
+  await hsetJSON(STOCK_HASH_KEY, id, nextTip);
+  return nextTip;
 }
 
 export async function getTodayTipStatus(): Promise<{ hasToday: boolean; opened: boolean }> {
