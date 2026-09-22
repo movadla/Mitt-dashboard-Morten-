@@ -70,7 +70,13 @@ const MUSTAD_INTERN_LABEL = "Mustad Eiendom (intern bruk, ikke leieforhold)";
 // v28 (2026-09-08): samlerad for budsjett trukket ut av en Ledig-rad uten at noen leietakerrad
 // tok imot det (MANUAL_UNTRACKED_OVERTAKELSER uten `overforTil`). Syntetisk radnavn på linje med
 // de to andre - må holdes i sync med SYSTEM_ROW_LABELS i lib/tenantForecastSystemRow.ts.
-const USPORET_OVERTAKELSE_LABEL = "Usporede overtakelser (ledig areal overtatt, mottaker ukjent)";
+// v2 (2026-09-22, Morten): mottakeren ER kjent for alle nåværende poster (navngitt i MANUAL_UNTRACKED_
+// OVERTAKELSER/den gitignorede private-filen under) - bevisst IKKE koblet via `overforTil` fordi de
+// allerede har egne, fullstendige budsjettrader andre steder; å koble dem ville lagt beløpet til
+// leietakerens rad EN GANG TIL og dobbelttalt budsjettet. "Mottaker ukjent" var derfor misvisende -
+// omdøpt til å beskrive HVA raden faktisk gjør (trekker ut duplisert budsjett), ikke en påstand om
+// at ingen vet hvem det er.
+const USPORET_OVERTAKELSE_LABEL = "Dobbeltbudsjettert (trukket ut for å unngå dobbelttelling)";
 
 function round2(n) {
   return Math.round(n * 100) / 100;
@@ -1000,6 +1006,47 @@ async function main() {
     // blokkerer resten av bygget for resten av året. Leietakeren krediteres MIN(egen fullårsverdi
     // i bygget, det som står igjen på Ledig-raden) - resten (om noen) blir stående som fortsatt
     // reell ledighet.
+    // v68 (2026-09-22, Morten spurte om en leietaker som egentlig hadde sittet i bygget i flere
+    // år kunne ha blitt v67-matchet feilaktig som "helt ny"): sperren over fanger kun at en ANNEN
+    // leietaker flyttet ut - den sjekket ALDRI om DENNE "nye" leietakeren selv bare fornyet en
+    // kontrakt de allerede hadde i samme bygg. Fazile gir en fornyelse et helt NYTT kontrakt-ID,
+    // så den gamle, avsluttede linjen forsvinner fra `alleFazileRader`/`rad.linjer` og
+    // "tidligsteStart" (under) ser dermed feilaktig ny ut. Bekreftet i en full gjennomgang
+    // 2026-09-22: minst 6 leietaker+bygg-kombinasjoner var faktisk kontraktsfornyelser (0-1 dags
+    // gap til forgjenger-kontrakten, `reforhandlet: true`) feilaktig v67-matchet som ny innflytting
+    // og dermed feilaktig kreditert budsjett fra en Ledig-rad for areal de aldri forlot - se
+    // prosjektnotater for hvilke leietakere/bygg/beløp. Kilde: scripts/refresh-data/
+    // kontraktsutlop-raw-full.json (samme Fazile-uttrekk build-contract-expiry-2026.js bruker -
+    // full portefølje, inkl. utløpte linjer, ingen ny Fazile-spørring her). Matcher på
+    // leietaker+bygg (ikke kontrakt-ID), siden noen linjer på samme kontrakt mangler byggnavn
+    // ("(ukjent bygg)" - felleskostnad-detaljlinjer) - bruker den FØRSTE linjen pr.
+    // kontraktsnøkkel som faktisk har et byggnavn.
+    const RAW_KONTRAKTSUTLOP_FILE = path.join(__dirname, "refresh-data", "kontraktsutlop-raw-full.json");
+    function lastKjenteFornyelser() {
+      if (!fs.existsSync(RAW_KONTRAKTSUTLOP_FILE)) {
+        varsel("ADVARSEL: kontraktsutlop-raw-full.json mangler - kan ikke sjekke om 'helt nye leietakere' (v67) egentlig er fornyelser. Hent den på nytt (se build-contract-expiry-2026.js sin filhode).");
+        return new Set();
+      }
+      const rows = JSON.parse(fs.readFileSync(RAW_KONTRAKTSUTLOP_FILE, "utf8")).rows || [];
+      const byggPrKontrakt = new Map();
+      for (const r of rows) {
+        if (!r.bygg || r.bygg === "(ukjent bygg)") continue;
+        if (!byggPrKontrakt.has(r.kontraktsnokkel)) byggPrKontrakt.set(r.kontraktsnokkel, r.bygg);
+      }
+      const fornyelser = new Set();
+      for (const r of rows) {
+        if (!r.reforhandlet) continue;
+        const bygg = byggPrKontrakt.get(r.kontraktsnokkel) || r.bygg;
+        if (!bygg || bygg === "(ukjent bygg)") continue;
+        fornyelser.add(`${normalizeName(r.leietaker)}||${normalizeName(kanoniskByggNavn(bygg))}`);
+      }
+      return fornyelser;
+    }
+    const KJENTE_FORNYELSER = lastKjenteFornyelser();
+    function erFornyelseAvEksisterendeLeieforhold(leietakerNavn, byggNavn) {
+      return KJENTE_FORNYELSER.has(`${normalizeName(leietakerNavn)}||${normalizeName(kanoniskByggNavn(byggNavn))}`);
+    }
+
     const FRAFLYTTING_VINDU_DAGER = 120;
     function harNyligFraflyttingFor(byggNavn, nyStartDato) {
       const nyStartMs = new Date(`${nyStartDato}T00:00:00Z`).getTime();
@@ -1027,6 +1074,7 @@ async function main() {
         const tidligsteStart = (rad.linjer || []).reduce((min, l) => (l.startDato && (!min || l.startDato < min) ? l.startDato : min), null);
         if (!tidligsteStart || tidligsteStart < `${remaining.ar}-01-01` || tidligsteStart > `${remaining.ar}-12-31`) continue; // ikke "helt ny" i år
         if (harNyligFraflyttingFor(byggNavn, tidligsteStart)) continue; // trolig overtatt fra en fraflyttet leietaker, ikke reell ledighet
+        if (erFornyelseAvEksisterendeLeieforhold(rad.navn, byggNavn)) continue; // v68: leietakeren fornyet sin EGEN kontrakt i bygget - ikke reelt ny
         const egenVerdi = round2(byggLinjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
         if (egenVerdi <= 0) continue;
         const igjen = round2(ledigRad.linjer.reduce((s, l) => s + l.fullArsverdi2026, 0));
