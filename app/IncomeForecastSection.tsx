@@ -2547,7 +2547,10 @@ function IkkeSikretAvtaleTabell({
 // de SAMME tallene som før lå summert i kortheaderen (kontrakter+usikre+parkering), bare nå
 // vist hver for seg - se beregnHovedprognose sin kommentar for hvorfor summen av alle fortsatt
 // MÅ tie ut mot hero-waterfallens "Risiko (vektet)".
-type RisikoTileKey = "kontrakter" | "parkering" | "fordringer" | "ovrig";
+// v74 (2026-09-22, Morten: "parkering og reforhandling kan legges sammen i seksjonen risikoforhold.
+// Bare legg til en kommentar på om det gjelder leie eller parkering pr. leietaker"): "parkering"
+// slått sammen inn i "kontrakter" - se TILES/panelet i RisikoforholdBlock. Fjernet som egen nøkkel.
+type RisikoTileKey = "kontrakter" | "fordringer" | "ovrig";
 
 function RisikoTile({
   label,
@@ -2663,9 +2666,14 @@ function RisikoforholdBlock({
   // (SignalEditor) - usikre avtaler beholder dermed justeringsmuligheten sin helt gratis, uten
   // noe eget mekanisme å bygge. Flisens beløp er summen av begge (samme tall som før lå i to
   // fliser), panelet viser begge tabellene stablet med hver sin underoverskrift.
+  // v74 (2026-09-22, Morten: "parkering og reforhandling kan legges sammen i seksjonen
+  // risikoforhold. Bare legg til en kommentar på om det gjelder leie eller parkering pr.
+  // leietaker"): parkeringVektet telles nå inn i samme flis som kontrakter+usikre - flisens beløp
+  // tier dermed EKSAKT mot hero-waterfallens "Reforhandlingspotensiale" (som alltid har vært
+  // kontrakter+usikre+parkering samlet, se beregnHovedprognose) i stedet for å måtte legges sammen
+  // manuelt fra to fliser.
   const TILES: { key: RisikoTileKey; label: string; belop: number; icon: LucideIcon }[] = [
-    { key: "kontrakter", label: "Reforhandlinger/nye kontrakter", belop: kontrakterVektet + usikreVektet, icon: CalendarClock },
-    { key: "parkering", label: "Parkering på utløp", belop: parkeringVektet, icon: Car },
+    { key: "kontrakter", label: "Reforhandlinger/nye kontrakter", belop: kontrakterVektet + usikreVektet + parkeringVektet, icon: CalendarClock },
     { key: "fordringer", label: "Kundefordringer 30+", belop: fordringerSum, icon: Receipt },
     { key: "ovrig", label: "Øvrige risikoforhold", belop: ovrigSum, icon: AlertTriangle },
   ];
@@ -2689,27 +2697,32 @@ function RisikoforholdBlock({
               const panel =
                 key === "kontrakter" ? (
                   <RisikoPanel key={`${key}-panel`} open={openTiles.has("kontrakter")}>
+                    {/* v74: "Leie"/"Parkering" som tydelig etikett pr. seksjon (Morten: "en
+                        kommentar på om det gjelder leie eller parkering pr. leietaker") - hver
+                        tabell inneholder kun én type, så all leietaker/kontrakt i en seksjon
+                        gjelder utvetydig det seksjonen sier. */}
                     <KontraktUtlopTabell
                       snapshot={snapshot}
                       loading={loading}
                       signals={signals}
                       onSignalUpdated={onSignalUpdated}
                       leietakerRader={leietakerRader}
-                      tittel="Kontrakter på utløp"
+                      tittel="Leie"
                     />
-                    <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">Ikke sikret avtale</p>
+                    <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">Ikke sikret avtale (leie)</p>
                     <IkkeSikretAvtaleTabell usikre={usikre} signals={signals} onSignalUpdated={onSignalUpdated} />
-                  </RisikoPanel>
-                ) : key === "parkering" ? (
-                  <RisikoPanel key={`${key}-panel`} open={openTiles.has("parkering")}>
-                    <KontraktUtlopTabell
-                      snapshot={parkeringSnapshot}
-                      loading={loadingParkering}
-                      signals={signals}
-                      onSignalUpdated={onSignalUpdated}
-                      leietakerRader={parkeringLeietakerRader}
-                      tittel="Parkeringskontrakter på utløp"
-                    />
+                    {/* KontraktUtlopTabell tegner selv sin "Parkering"-tittel (tittel-proppen) -
+                        her legges kun topp-skillelinjen til, ingen duplisert overskrift. */}
+                    <div className="mt-3 border-t border-line pt-2">
+                      <KontraktUtlopTabell
+                        snapshot={parkeringSnapshot}
+                        loading={loadingParkering}
+                        signals={signals}
+                        onSignalUpdated={onSignalUpdated}
+                        leietakerRader={parkeringLeietakerRader}
+                        tittel="Parkering"
+                      />
+                    </div>
                   </RisikoPanel>
                 ) : key === "fordringer" ? (
                   <RisikoPanel key={`${key}-panel`} open={openTiles.has("fordringer")}>
