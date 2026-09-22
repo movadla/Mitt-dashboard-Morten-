@@ -347,6 +347,9 @@ export interface Receivable {
   leietaker: string;
   utestaende: number;
   selskaper: ReceivableCompany[];
+  // v2 (2026-09-22) - se lib/widgets.local.ts. Ingen anonymiserte garanti-oppføringer her, feltet
+  // er derfor alltid undefined i prod/demo.
+  garanti?: { belop: number; kilde: string; dato: string };
 }
 
 /**
@@ -362,6 +365,11 @@ export interface Receivable {
  */
 // Datoen RECEIVABLES ble hentet fra NXT - speiler widgets.local.ts, se kommentaren der.
 export const RECEIVABLES_HENTET_DATO = "2026-08-14";
+
+// v2 (2026-09-22) - se lib/widgets.local.ts. Tomt i prod/demo: ekte leietakernavn hører ikke
+// hjemme her, og garanti-varselet skal derfor aldri vises på anonymiserte data.
+export const GARANTI_SJEKKET_DATO = "2026-09-22";
+export const GARANTI_SJEKKET_NAVN = new Set<string>();
 
 export const RECEIVABLES: Receivable[] = [
   { id: "r1", leietaker: "Demokunde 30", utestaende: 5262199.59, selskaper: [{ selskap: "Mustad Eiendomsdrift AS", belop: 5262199.59, antallLinjer: 1, fakturaer: [{ fakturaNr: "24441", belop: 5262199.59, forfallsdato: "2026-05-30" }] }] },

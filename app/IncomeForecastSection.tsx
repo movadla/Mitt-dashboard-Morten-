@@ -12,7 +12,6 @@ import {
   DoorOpen,
   Info,
   Loader2,
-  MessageSquare,
   Minus,
   Receipt,
   Search,
@@ -26,7 +25,7 @@ import {
 import { CardHeader, SkeletonRows, usePersistedCollapse } from "./CardShell";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RECEIVABLES, RECEIVABLES_HENTET_DATO, formatDateDMY, formatKr } from "@/lib/widgets";
+import { RECEIVABLES, RECEIVABLES_HENTET_DATO, GARANTI_SJEKKET_DATO, GARANTI_SJEKKET_NAVN, formatDateDMY, formatKr } from "@/lib/widgets";
 import { addDaysIso, localDateString } from "@/lib/payday";
 import {
   BOOKED_3600_3699,
@@ -51,7 +50,6 @@ import type { VacantAreasSnapshot } from "@/lib/vacantAreas";
 import type { TenantSignal, TenantSignalType } from "@/lib/tenantSignals";
 import { computeForecastRollup, type ForecastRollup } from "@/lib/incomeForecastCompute";
 import type { ManualIncomeLine } from "@/lib/incomeForecastManual";
-import type { HistoryPoint } from "@/lib/incomeForecastHistory";
 
 // v29 (2026-09-08): prognoseåret sto hardkodet som "2026" i et titalls overskrifter, brødtekster
 // og to datointervaller, mens alle snapshotene bærer et `ar`-felt. Det betyr at siden begynner å
@@ -1107,18 +1105,14 @@ function MainForecastBox({
   prognose,
   potential,
   onPotentialUpdated,
-  history,
-  idagIso,
   kpi,
   loading = false,
 }: {
   prognose: Hovedprognose;
   potential: PotentialIncomeSnapshot | null;
   onPotentialUpdated: (next: PotentialIncomeSnapshot["categories"][number]) => void;
-  history: HistoryPoint[];
-  idagIso: string;
-  // KPI-flisene, rendret nederst i breakdownen (v30). Sendes inn som node i stedet for å tre
-  // avvik/budsjett/antall/freshness gjennom denne komponenten, som ikke bruker noen av dem selv.
+  // KPI-flisene. Sendes inn som node i stedet for å tre avvik/budsjett/antall/freshness gjennom
+  // denne komponenten, som ikke bruker noen av dem selv.
   kpi?: React.ReactNode;
   // v56 (2026-09-18, Morten: "får først opp et tall som endrer seg etter 1-2 sekunder og så
   // endrer seg igjen"): totalen avhenger av fem API-kall (manuelle linjer, kontraktsutløp,
@@ -1140,7 +1134,9 @@ function MainForecastBox({
     { label: "Gjenstår", value: gjenstar, sikkerhet: 0.82 },
     { label: "Omsetningsavregning", value: omsetningsavregningSum, sikkerhet: 0.62 },
     // v56: "Reforhandling (vektet)" -> "Risiko (vektet)" - inneholder nå også ikke sikrede avtaler.
-    { label: "Risiko (vektet)", value: reforhandlingFull, sikkerhet: 0.46 },
+    // v58 (2026-09-22, Morten): "Risiko (vektet)" -> "Reforhandlingspotensiale" i waterfall-listen
+    // (kun visningsteksten her - variabelnavn/kommentarer/KpiStrip sin "Risiko"-boks er urørt).
+    { label: "Reforhandlingspotensiale", value: reforhandlingFull, sikkerhet: 0.46 },
     { label: "Potensiell fremtidig", value: potensiellFremtidig, sikkerhet: 0.3 },
     { label: "Ledige lokaler", value: ledigeLokaler, sikkerhet: 0.3 },
     { label: "Annet", value: annet, sikkerhet: 0.3 },
@@ -1173,24 +1169,23 @@ function MainForecastBox({
             <span className="text-sm">Henter tall …</span>
           </div>
         ) : (
-          <>
-            <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
-            {/* v29: flyttet hit fra KpiStrip sin (nå fjernede) duplikat-flis - trenden hører hjemme
-                under tallet den beskriver, ikke i en egen boks med samme beløp. */}
-            <TrendIndicator history={history} fraDato={idagIso} naverendeTotal={bokfort + gjenstar} />
-          </>
+          <p className="text-3xl font-bold tabular-nums text-ink-1">{formatKr(total)}</p>
         )}
         {!open && !loading && <p className="text-2xs text-accent">Se breakdown ↓</p>}
       </button>
       {open && !loading && (
         <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+          {/* v58 (2026-09-22, Morten): KPI-flisene flyttet TILBAKE over waterfall-listen (motsatt av
+              v30 sin begrunnelse - se den fjernede kommentaren i git-historikken) - Morten ville ha
+              dem øverst i breakdownen igjen, listen med bokført/gjenstår osv. under. */}
+          {kpi && <div className="border-b border-line pb-3">{kpi}</div>}
           <IncomeWaterfall segments={waterfallSegments} total={total} />
           {/* v50 (2026-09-11, Morten: "overflødig å liste opp bokført, gjenstår osv. igjen etter
               waterfall"): tallista som gjentok waterfallens beløp er fjernet. Den viste dessuten
               "Bokført inkl. manuelle linjer" (536,95 mill) rett under waterfallens "Bokført (NXT)"
               (537,47 mill) - to ulike tall bak nesten samme ord. Reforhandlings-tooltipen om øvre
               grense (fullt potensial ved 100 %) gikk med i samme slengen - fullt potensial vises
-              inne i "Kontrakter på utløp"-seksjonen. Under waterfallen ligger nå bare KPI-boksene. */}
+              inne i "Kontrakter på utløp"-seksjonen. */}
           {potential?.categories
             .filter((c) => c.belop !== 0)
             .map((c) => (
@@ -1198,11 +1193,6 @@ function MainForecastBox({
             ))}
           {/* v29: "Bokført + Gjenstår er avstemt mot NXT/Fazile." fjernet - sa det samme som
               kortets egen undertittel øverst ("avstemt manuelt mot Visma NXT og Fazile"). */}
-          {/* v30 (2026-09-08, Morten: "prognosen må stå øverst og boksene må ligge nederst i
-              breakdown"): KPI-flisene (avvik mot budsjett / til gjennomgang / eldste datakilde)
-              lå tidligere OVER denne boksen og skjøv selve prognosetallet ned. De er kontekst til
-              totalen, ikke noe man leser først, så de ligger nå nederst i breakdownen. */}
-          {kpi && <div className="mt-2 border-t border-line pt-3">{kpi}</div>}
         </div>
       )}
     </div>
@@ -1313,62 +1303,12 @@ function SyncVarsel({ avvik }: { avvik: SyncAvvik[] }) {
   );
 }
 
-// Finner punktet nærmest `dagerTilbake` dager før `fraDato` (ikke nødvendigvis eksakt, siden
-// punkter kun finnes for dager noen faktisk åpnet siden) - eldste punkt ELDRE ELLER LIK målet,
-// slik at en "7 dager siden"-sammenligning fortsatt fungerer selv om ingen så på siden akkurat
-// den dagen. Ren funksjon, bevisst holdt HER (ikke i lib/incomeForecastHistory.ts) - den filen
-// importerer kv.ts (server-only), og en verdi-import derfra ville dratt Redis-klienten inn i
-// klient-bundlen hvis noe herfra importeres som annet enn `import type`.
-function finnSammenligningspunkt(punkter: HistoryPoint[], fraDato: string, dagerTilbake: number): HistoryPoint | null {
-  const mal = new Date(fraDato + "T00:00:00Z");
-  mal.setUTCDate(mal.getUTCDate() - dagerTilbake);
-  const malIso = mal.toISOString().slice(0, 10);
-  const kandidater = punkter.filter((p) => p.dato <= malIso && p.dato !== fraDato).sort((a, b) => b.dato.localeCompare(a.dato));
-  return kandidater[0] ?? null;
-}
-
-// v18 (2026-09-07, "sikre tallgrunnlaget/visualiser bedre"-gjennomgangen): liten håndrullet
-// SVG-sparkline av kjørehistorikken - samme prinsipp som IncomeWaterfall (ingen chart-bibliotek i
-// prosjektet, og dette er for lite til å rettferdiggjøre å legge til ett). Kun retning/forløp, ikke
-// eksakte verdier - de vises allerede i TrendIndicator og selve totalen over.
-function HistorySparkline({ history }: { history: HistoryPoint[] }) {
-  if (history.length < 2) return null;
-  const width = 96;
-  const height = 24;
-  const verdier = history.map((p) => p.kjerneTotal);
-  const min = Math.min(...verdier);
-  const max = Math.max(...verdier);
-  const span = max - min || 1;
-  const punkter = history.map((p, i) => {
-    const x = (i / (history.length - 1)) * width;
-    const y = height - ((p.kjerneTotal - min) / span) * height;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="mt-1 text-ink-4" aria-hidden="true">
-      <polyline points={punkter.join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function TrendIndicator({ history, fraDato, naverendeTotal }: { history: HistoryPoint[]; fraDato: string; naverendeTotal: number }) {
-  const sammenligning = useMemo(() => finnSammenligningspunkt(history, fraDato, 7), [history, fraDato]);
-  // v39: returnerer null i stedet for "Ingen tidligere målepunkt ennå" - en linje som bare sier
-  // at det ikke finnes noe å vise er støy, og den sto rett under hovedtallet.
-  if (!sammenligning) return null;
-  const delta = Math.round(naverendeTotal - sammenligning.kjerneTotal);
-  const Icon = delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
-  return (
-    <>
-      <p className="mt-1 flex items-center gap-1 text-2xs text-ink-3">
-        <Icon className="h-3 w-3 shrink-0" />
-        {delta === 0 ? "Uendret" : formatKr(delta, true)} siden {formatDateDMY(sammenligning.dato)}
-        <span className="text-ink-4"> (bokført+gjenstår)</span>
-      </p>
-      <HistorySparkline history={history} />
-    </>
-  );
-}
+// v58 (2026-09-22, Morten: "fjern utviklingstekst og graf, vi tar heller det når vi starter på
+// 2027"): trendtekst/sparkline (som sammenlignet dagens kjernetall mot 7 dager tilbake) er fjernet
+// fra visningen - historikken samles fortsatt inn (se POST-kallet mot /api/income-forecast/history
+// lenger ned, uendret) slik at det er data å vise når visningen kommer tilbake. Selve komponentene
+// (tidligere finnSammenligningspunkt/HistorySparkline/TrendIndicator) er slettet herfra - se
+// git-historikken for gjenbruk i 2027 i stedet for å la dem ligge ubrukt.
 
 // v17 (2026-09-07, "gjør som en inntektskontroller"-gjennomgangen): alltid synlig oppsummerings-
 // stripe øverst på Prognose-fanen. Før dette var MainForecastBox og alle undertabeller kollapset
@@ -1396,48 +1336,53 @@ function KpiStrip({
   // kortheaderen. Flisen er fjernet og trendlinjen flyttet ned under hero-boksens egen total, der
   // den står ved siden av tallet den faktisk beskriver.
   const avvikFarge = avvikTotal >= 0 ? "text-status-positive" : "text-status-danger";
-  const boks = "flex min-w-0 items-center rounded-xl border border-line bg-surface-2 px-2 py-2 text-left transition hover:border-line-strong sm:px-3 sm:py-2.5";
-  const tall = "truncate text-sm font-semibold tabular-nums sm:text-lg";
+  // v58 (2026-09-22, Morten: "her må ikke teksten/tallet brytes/avkuttes, da må det heller
+  // komprimeres"): px-1.5/text-xs på mobil (var px-2/text-sm) - "+6 540 974 kr" fikk ikke plass i
+  // en av to halvbredde-bokser uten dette. sm:-verdiene (bredere skjerm) er uendret.
+  const boks = "flex min-w-0 items-center rounded-xl border border-line bg-surface-2 px-1.5 py-2 text-left transition hover:border-line-strong sm:px-3 sm:py-2.5";
+  const tall = "truncate text-xs font-semibold tabular-nums sm:text-lg";
   return (
     // v52 (2026-09-18, Morten): "vs. budsjett" som to bokser - kroner og prosent - uten
     // forklaringstekst, og Risiko med kun tallet pluss et infoikon.
     // v56 (2026-09-18, Morten: "«vs. budsjett» skrives bare én gang og så vises de to tallene
-    // under i to bokser. Så en egen boks med risiko"): etikettene står OVER boksene, ikke inni -
-    // én "vs. budsjett" for begge avvikstallene, og Risiko som egen gruppe ved siden av.
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-      <div className="min-w-0 sm:flex-[2]">
-        <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
-        <div className="grid grid-cols-2 gap-2">
-          <a href="#leieinntekter" className={boks}>
-            <p className={`${tall} ${avvikFarge}`}>{formatKr(avvikTotal, true)}</p>
-          </a>
-          <a href="#leieinntekter" className={boks}>
-            <p className={`${tall} ${avvikFarge}`}>
-              {avvikPct === null
-                ? "—"
-                : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
-            </p>
-          </a>
-        </div>
-      </div>
-      <div className="min-w-0 sm:flex-1">
-        <p className="mb-1 flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
-          <span className="truncate">Risiko</span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button type="button" aria-label="Hva risikotallet er" className="shrink-0 text-ink-4 hover:text-ink-1">
-                  <Info className="h-3 w-3" />
-                </button>
-              }
-            />
-            <TooltipContent>Kontrakter på utløp med sannsynlig reforhandling, og avtaler som ikke er sikret ennå. Vektet med sannsynlighet.</TooltipContent>
-          </Tooltip>
-        </p>
-        <a href="#kontrakter-pa-utlop" className={boks}>
-          <p className={`${tall} text-ink-1`}>{formatKr(reforhandlingVektet)}</p>
+    // under i to bokser. Så en egen boks med risiko"): én "vs. budsjett" for begge avvikstallene,
+    // og Risiko som egen gruppe ved siden av.
+    // v58 (2026-09-22, Morten: "vs. budsjett på samme linje som boksene, boksene til høyre for
+    // teksten. Risiko-teksten alignet med vs. budsjett, og risiko-boksen aligned med og like bred
+    // som de to boksene over"): fra etikett-over-bokser til et topunkts venstre/høyre-rutenett -
+    // begge etikettene ligger i samme (auto-brede) venstrekolonne, og Risiko-boksen ligger i SAMME
+    // høyrekolonne som vs. budsjett sine to bokser, og får dermed automatisk nøyaktig samme bredde.
+    <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
+      <div className="grid min-w-0 grid-cols-2 gap-2">
+        <a href="#leieinntekter" className={boks}>
+          <p className={`${tall} ${avvikFarge}`}>{formatKr(avvikTotal, true)}</p>
+        </a>
+        <a href="#leieinntekter" className={boks}>
+          <p className={`${tall} ${avvikFarge}`}>
+            {avvikPct === null
+              ? "—"
+              : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
+          </p>
         </a>
       </div>
+
+      <p className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
+        <span className="truncate">Risiko</span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button type="button" aria-label="Hva risikotallet er" className="shrink-0 text-ink-4 hover:text-ink-1">
+                <Info className="h-3 w-3" />
+              </button>
+            }
+          />
+          <TooltipContent>Kontrakter på utløp med sannsynlig reforhandling, og avtaler som ikke er sikret ennå. Vektet med sannsynlighet.</TooltipContent>
+        </Tooltip>
+      </p>
+      <a href="#kontrakter-pa-utlop" className={`${boks} min-w-0 justify-center`}>
+        <p className={`${tall} text-center text-ink-1`}>{formatKr(reforhandlingVektet)}</p>
+      </a>
     </div>
   );
 }
@@ -1729,7 +1674,7 @@ function TenantDrilldownRows({
       {flyttetInn.length > 0 && (
         <tr className="bg-surface-1">
           <td colSpan={antallKolonner} className="px-3 pt-1.5 text-2xs font-medium text-ink-3">
-            Flyttet inn her <span className="font-normal text-ink-4">— budsjettet under er beløpet trukket ut over</span>
+            Flyttet inn <span className="font-normal text-ink-4">- Budsjett trukket ut</span>
           </td>
         </tr>
       )}
@@ -2115,8 +2060,13 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                                   suffiks && linje.beskrivelse.endsWith(suffiks) ? linje.beskrivelse.slice(0, -suffiks.length) : linje.beskrivelse;
                                 return {
                                   navn: objekt,
-                                  // Begge er ledige i dag, men Finance sitt skille er verdt å se.
-                                  merke: linje.ledigVurdering === "nullet" ? "nullet" : "forventet utleid",
+                                  // v58 (2026-09-22, Morten: "her brytes teksten" + "fjern forventet
+                                  // utleid"): merket ("nullet"/"forventet utleid") og auto-kommentar-
+                                  // raden under ("Utleid/trukket ut fra denne Ledig-raden...") tok for
+                                  // mye bredde på mobil og fikk navnet til å brekke - fjernet, ikke
+                                  // bare forkortet, siden Finance sitt skille uansett sto i hover-
+                                  // teksten (tittelTekst) fra før.
+                                  merke: null,
                                   budsjett: linje.fullArsverdi2026,
                                   inntekt: 0,
                                   tittelTekst:
@@ -2126,18 +2076,6 @@ function LedigeLokalerBlock({ rows }: { rows: TenantForecastRow[] }) {
                                 };
                               })}
                             />
-                            <tr className="bg-surface-1/60">
-                              <td colSpan={4} className="px-2 pb-2.5 sm:px-3">
-                                <div className="flex items-center gap-2">
-                                  <MessageSquare className="h-3.5 w-3.5 shrink-0 text-ink-4" />
-                                  <KommentarCell
-                                    navn={d.row.navn}
-                                    value={commentOverrides[d.row.navn] ?? d.row.kommentar ?? ""}
-                                    onSave={saveComment}
-                                  />
-                                </div>
-                              </td>
-                            </tr>
                           </>
                         )}
                       </Fragment>
@@ -2637,10 +2575,14 @@ function RisikoTile({
         open ? "border-status-warning/50 bg-status-warning/[0.07]" : "border-line bg-surface-1 hover:border-line-strong"
       }`}
     >
+      {/* v58 (2026-09-22, Morten: "her brytes teksten"): truncate (ellipsis) erstattet med normal
+          tekstbryting - "Reforhandlinger/nye kontrakter" og "Øvrige risikoforhold" er for lange til
+          å alltid få plass på én linje på mobil ved siden av beløp+pil, og en avkuttet etikett er
+          verre enn en to-linjers etikett. */}
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-status-warning/10 text-status-warning">
         <Icon className="h-3.5 w-3.5" />
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{label}</span>
+      <span className="min-w-0 flex-1 text-sm font-medium text-ink-1">{label}</span>
       <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(belop)}</span>
       <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
     </button>
@@ -2735,39 +2677,53 @@ function RisikoforholdBlock({
       <CardHeader title="Risikoforhold" collapsed={collapsed} onToggleCollapse={toggleCollapsed} icon={CalendarClock} iconColorClass="text-status-warning" />
       {!collapsed && (
         <>
+          {/* v58 (2026-09-22, Morten: "når man trykker på en boks må detaljene komme opp rett
+              under den, ellers blir det rot"): flis+panel rendres nå parvis, ikke lenger alle
+              fire flisene først og alle fire panelene etterpå - detaljene til en flis kan da
+              aldri lenger dukke opp langt nede under en helt annen flis. */}
           <div className="flex flex-col gap-1.5">
             {TILES.map((t) => (
               <RisikoTile key={t.key} label={t.label} belop={t.belop} icon={t.icon} open={openTiles.has(t.key)} onClick={() => toggleTile(t.key)} />
-            ))}
+            )).reduce<ReactNode[]>((acc, tile, i) => {
+              const key = TILES[i].key;
+              const panel =
+                key === "kontrakter" ? (
+                  <RisikoPanel key={`${key}-panel`} open={openTiles.has("kontrakter")}>
+                    <KontraktUtlopTabell
+                      snapshot={snapshot}
+                      loading={loading}
+                      signals={signals}
+                      onSignalUpdated={onSignalUpdated}
+                      leietakerRader={leietakerRader}
+                      tittel="Kontrakter på utløp"
+                    />
+                    <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">Ikke sikret avtale</p>
+                    <IkkeSikretAvtaleTabell usikre={usikre} signals={signals} onSignalUpdated={onSignalUpdated} />
+                  </RisikoPanel>
+                ) : key === "parkering" ? (
+                  <RisikoPanel key={`${key}-panel`} open={openTiles.has("parkering")}>
+                    <KontraktUtlopTabell
+                      snapshot={parkeringSnapshot}
+                      loading={loadingParkering}
+                      signals={signals}
+                      onSignalUpdated={onSignalUpdated}
+                      leietakerRader={parkeringLeietakerRader}
+                      tittel="Parkeringskontrakter på utløp"
+                    />
+                  </RisikoPanel>
+                ) : key === "fordringer" ? (
+                  <RisikoPanel key={`${key}-panel`} open={openTiles.has("fordringer")}>
+                    <KundefordringerTabell fordringerListe={fordringerListe} />
+                  </RisikoPanel>
+                ) : (
+                  <RisikoPanel key={`${key}-panel`} open={openTiles.has("ovrig")}>
+                    <OvrigRisikoTabell rader={ovrigRader} />
+                  </RisikoPanel>
+                );
+              acc.push(tile, panel);
+              return acc;
+            }, [])}
           </div>
-          <RisikoPanel open={openTiles.has("kontrakter")}>
-            <KontraktUtlopTabell
-              snapshot={snapshot}
-              loading={loading}
-              signals={signals}
-              onSignalUpdated={onSignalUpdated}
-              leietakerRader={leietakerRader}
-              tittel="Kontrakter på utløp"
-            />
-            <p className="mt-3 border-t border-line pt-2 text-2xs font-semibold uppercase tracking-wider text-ink-2">Ikke sikret avtale</p>
-            <IkkeSikretAvtaleTabell usikre={usikre} signals={signals} onSignalUpdated={onSignalUpdated} />
-          </RisikoPanel>
-          <RisikoPanel open={openTiles.has("parkering")}>
-            <KontraktUtlopTabell
-              snapshot={parkeringSnapshot}
-              loading={loadingParkering}
-              signals={signals}
-              onSignalUpdated={onSignalUpdated}
-              leietakerRader={parkeringLeietakerRader}
-              tittel="Parkeringskontrakter på utløp"
-            />
-          </RisikoPanel>
-          <RisikoPanel open={openTiles.has("fordringer")}>
-            <KundefordringerTabell fordringerListe={fordringerListe} />
-          </RisikoPanel>
-          <RisikoPanel open={openTiles.has("ovrig")}>
-            <OvrigRisikoTabell rader={ovrigRader} />
-          </RisikoPanel>
         </>
       )}
     </div>
@@ -2913,10 +2869,25 @@ function OvrigRisikoTabell({ rader }: { rader: OvrigRisikoRad[] }) {
 // dager forfalt pr. i dag, og hva de totalt har utestående på årets fakturaer. Aldersfordelingen
 // regnes mot dagens dato, men datasettet er fra RECEIVABLES_HENTET_DATO - betalinger etter det
 // er ikke med, derfor vises uttrekksdatoen i overskriften.
-function computeFordringer(idagIso: string): { leietaker: string; forfalt30: number; utestaende: number }[] {
+interface FordringRad {
+  leietaker: string;
+  forfalt30: number;
+  utestaende: number;
+  // v2 (2026-09-22, Morten: "sjekk hvem vi har garanti på, for de er jo risikofrie"): satt kun når
+  // en verifisert garanti (Receivable.garanti, se lib/widgets.local.ts) DEKKER hele forfalt30 - en
+  // delvis/uklar garanti (kun noen av flere kontrakter dekket) skal IKKE dempes.
+  garantiDekket?: { belop: number; kilde: string };
+  // v3 (2026-09-22, Morten: "når det dukker opp nye leietakere med forfall 30+ dager så må det
+  // sjekkes om de har garanti"): true når leietakeren ALDRI er manuelt sjekket (GARANTI_SJEKKET_NAVN,
+  // se lib/widgets.local.ts) - uavhengig av om de senere viser seg å ha garanti eller ikke. Fanger
+  // opp nye leietakere som dukker opp i et fremtidig NXT-uttrekk og som ingen har vurdert ennå.
+  ikkeSjekketForGaranti?: boolean;
+}
+
+function computeFordringer(idagIso: string): FordringRad[] {
   const ar = String(PROGNOSE_AR);
   const idag = new Date(idagIso).getTime();
-  const ut: { leietaker: string; forfalt30: number; utestaende: number }[] = [];
+  const ut: FordringRad[] = [];
   for (const r of RECEIVABLES) {
     let forfalt30 = 0;
     let utestaende = 0;
@@ -2928,12 +2899,18 @@ function computeFordringer(idagIso: string): { leietaker: string; forfalt30: num
         if (dager > 30) forfalt30 += f.belop;
       }
     }
-    if (forfalt30 > 0) ut.push({ leietaker: r.leietaker, forfalt30, utestaende });
+    if (forfalt30 > 0) {
+      const garantiDekket = r.garanti && r.garanti.belop >= forfalt30 ? { belop: r.garanti.belop, kilde: r.garanti.kilde } : undefined;
+      // Kun meningsfullt når registeret faktisk er fylt ut (dev/lokalt) - i prod/demo er
+      // GARANTI_SJEKKET_NAVN tom med vilje, og da skal IKKE alle rader vises som usjekket.
+      const ikkeSjekketForGaranti = GARANTI_SJEKKET_NAVN.size > 0 && !GARANTI_SJEKKET_NAVN.has(r.leietaker);
+      ut.push({ leietaker: r.leietaker, forfalt30, utestaende, garantiDekket, ikkeSjekketForGaranti });
+    }
   }
   return ut;
 }
 
-function KundefordringerTabell({ fordringerListe }: { fordringerListe: { leietaker: string; forfalt30: number; utestaende: number }[] }) {
+function KundefordringerTabell({ fordringerListe }: { fordringerListe: FordringRad[] }) {
   const [fordringSort, setFordringSort] = useState<{ key: FordringSortKey; dir: 1 | -1 }>({ key: "forfalt30", dir: -1 });
   const [visAlleFordringer, setVisAlleFordringer] = useState(false);
 
@@ -2946,6 +2923,7 @@ function KundefordringerTabell({ fordringerListe }: { fordringerListe: { leietak
 
   const sumForfalt30 = useMemo(() => fordringer.reduce((s, f) => s + f.forfalt30, 0), [fordringer]);
   const visteFordringer = visAlleFordringer ? fordringer : fordringer.slice(0, 8);
+  const ikkeSjekket = useMemo(() => fordringer.filter((f) => f.ikkeSjekketForGaranti), [fordringer]);
 
   function toggleFordringSort(key: FordringSortKey) {
     setFordringSort((prev) => (prev.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: key === "leietaker" ? 1 : -1 }));
@@ -2962,6 +2940,12 @@ function KundefordringerTabell({ fordringerListe }: { fordringerListe: { leietak
       <p className="text-2xs text-ink-4">
         {fordringer.length} leietakere · {formatKr(sumForfalt30)} · NXT pr. {formatDateDMY(RECEIVABLES_HENTET_DATO)}
       </p>
+      {ikkeSjekket.length > 0 && (
+        <p className="flex items-center gap-1.5 rounded-lg bg-status-warning/10 px-2.5 py-1.5 text-2xs text-status-warning">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          {ikkeSjekket.length} leietaker{ikkeSjekket.length > 1 ? "e" : ""} nye siden garantisjekken {formatDateDMY(GARANTI_SJEKKET_DATO)} - ikke sjekket for garanti ennå.
+        </p>
+      )}
       <div className="-mx-1 overflow-x-auto">
         <table className="w-full min-w-[560px] text-sm">
           <thead>
@@ -2986,8 +2970,37 @@ function KundefordringerTabell({ fordringerListe }: { fordringerListe: { leietak
           <tbody>
             {visteFordringer.map((f) => (
               <tr key={f.leietaker} className="border-t border-line">
-                <td className="max-w-[260px] truncate px-3 py-2 text-ink-1">{f.leietaker}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(f.forfalt30)}</td>
+                <td className="max-w-[260px] truncate px-3 py-2 text-ink-1">
+                  <span className="inline-flex items-center gap-1">
+                    {f.ikkeSjekketForGaranti && (
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={<AlertTriangle className="h-3 w-3 shrink-0 text-status-warning" aria-label="Ikke sjekket for garanti" />}
+                        />
+                        <TooltipContent className="max-w-xs">Ny siden siste garantisjekk - ikke vurdert ennå.</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {f.leietaker}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
+                  {f.garantiDekket ? (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <span className="cursor-help text-ink-4" onClick={(e) => e.stopPropagation()}>
+                            {formatKr(f.forfalt30)}
+                          </span>
+                        }
+                      />
+                      <TooltipContent className="max-w-xs">
+                        Dekket av garanti ({formatKr(f.garantiDekket.belop)}, {f.garantiDekket.kilde}) - reelt risikofritt.
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    formatKr(f.forfalt30)
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(f.utestaende)}</td>
               </tr>
             ))}
@@ -3843,7 +3856,6 @@ export default function IncomeForecastSection() {
   // hardkodede BOOKED_3600_3699-konstanten (lim-inn-i-kildekode-tallet toppboksen faktisk bruker).
   const [bookedTenantsSnapshot, setBookedTenantsSnapshot] = useState<BookedTenantsSnapshot | null>(null);
   const [, setLoadingBookedTenants] = useState(true);
-  const [history, setHistory] = useState<HistoryPoint[]>([]);
   const historyRecordedRef = useRef(false);
 
   useEffect(() => {
@@ -3910,10 +3922,6 @@ export default function IncomeForecastSection() {
         setLoadingBookedTenants(false);
       })
       .catch(() => setLoadingBookedTenants(false));
-    fetch("/api/income-forecast/history")
-      .then((r) => r.json())
-      .then((data) => setHistory(data.punkter ?? []))
-      .catch(() => {});
   }, []);
 
   function handlePotentialUpdated(next: PotentialIncomeSnapshot["categories"][number]) {
@@ -4110,10 +4118,7 @@ export default function IncomeForecastSection() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dato: idagIso, kjerneTotal: prognose.bokfort + prognose.gjenstar }),
-    })
-      .then((r) => r.json())
-      .then((data) => setHistory(data.punkter ?? []))
-      .catch(() => {});
+    }).catch(() => {});
   }, [prognose.bokfort, prognose.gjenstar, idagIso, heroReady]);
 
   return (
@@ -4142,8 +4147,6 @@ export default function IncomeForecastSection() {
                 prognose={prognose}
                 potential={potential}
                 onPotentialUpdated={handlePotentialUpdated}
-                history={history}
-                idagIso={idagIso}
                 loading={!heroReady}
                 kpi={
                   <KpiStrip
@@ -4195,16 +4198,9 @@ export default function IncomeForecastSection() {
                   fakturering"): "Til oppfølging"-fellesetiketten, live datavarsler, "Mine manuelle
                   linjer" (skjema) og "Backup" er fjernet herfra. ManglerFaktureringBlock har sin
                   egen "Mangler fakturering (N)"-header og trenger derfor ingen ytre etikett. */}
-              <VerktoyOgAvstemming>
-                <div className="flex flex-col gap-4">
-                  <ManglerFaktureringBlock snapshot={remainingTenantsSnapshot} marks={reviewMarks} />
-
-                  <div className="flex flex-col gap-1.5">
-                    <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Avstemming</p>
-                    <AvstemmingPanel remaining={remainingTenantsSnapshot} tabell={tenantForecastTable} />
-                  </div>
-                </div>
-              </VerktoyOgAvstemming>
+              {/* v58 (2026-09-22, Morten: "skjul Verktøy og avstemming-seksjonen") - skjult fra
+                  siden, ikke slettet: VerktoyOgAvstemming/ManglerFaktureringBlock/AvstemmingPanel
+                  under er urørt og klare til å vises igjen ved å legge inn JSX-blokken på nytt. */}
         </div>
     </div>
   );
