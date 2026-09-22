@@ -2204,6 +2204,53 @@ function main() {
   // orgUnit3/belop) - men de er synlige, og differansen mot BOOKED krymper tilsvarende.
   // 3632-omsetningsavregningen er allerede ekskludert lenger opp (OMSETNINGSAVREGNING_2025_KONTI)
   // og håndteres av sin egen mekanisme - den skal ikke med her.
+  // v47 (2026-09-22, Morten: "Fant du ikke ut hva det var? Det må jo relateres til noe når det er
+  // fakturert"): en gjennomgang av bilagstekst direkte i NXT (generalLedgerTransaction, ikke i
+  // uttrekket dette scriptet leser - derfor manuelt her, ikke automatisk) identifiserte hele
+  // 756 821,31 kr på 2026-09-22 - ingen uidentifiserte poster gjensto den datoen. Brukes KUN når
+  // byggets totale beløp fortsatt stemmer med det som ble funnet da (± 50 kr, ny månedsbokføring
+  // kan ha lagt til noen kroner) - avviker det mer, er sammensetningen endret og den generiske
+  // "krever bilagstekst"-forklaringen brukes i stedet, for å aldri feste en foreldet forklaring på
+  // et bygg med reelt nye/andre posteringer. Se prosjektnotater for full bilagstekst-sporing.
+  const UKODET_FORKLARING_2026_09_22 = {
+    // Arnstein Arnebergs vei 4 har TO separate byggGrupper (én pr. selskap som bokfører der) -
+    // begge selskapets andel av samme utleiemegler-inntekt, derfor to gyldige beløp.
+    "Arnstein Arnebergs vei 4": {
+      belopMulig: [252851, 182851],
+      tekst:
+        "Fast, tilbakevendende månedlig inntekt (identifisert via NXT-bilagstekst 2026-09-22) fra en " +
+        "ekstern utleiemegler som forvalter utleie av enhet(er) i bygget på Mustads vegne - siden " +
+        "megleren, ikke sluttleietaker, er den NXT mottar penger fra, er det aldri opprettet " +
+        "kundenummer. Anbefaling: opprett et kundenummer for utleiemegleren (eller leietakeren " +
+        "megleren rapporterer for) i NXT.",
+    },
+    "Lilleakerveien 8": { belopMulig: [26500], tekst: MOTEROM_FORKLARING() },
+    "Lilleakerveien 4C": { belopMulig: [6500], tekst: MOTEROM_FORKLARING() },
+    "Lilleakerveien 2B": { belopMulig: [35600], tekst: MOTEROM_FORKLARING() },
+    "Lilleakerveien 2C": { belopMulig: [-10750], tekst: MOTEROM_FORKLARING() },
+    "Vollsveien 17": { belopMulig: [22750], tekst: MOTEROM_FORKLARING() },
+    // v47: byggnavnet fra rådataene er bare "Mustads vei 10" her, ikke "Mustads vei 10 Fåbro
+    // gård" (som andre steder i pipelinen bruker) - denne raden refererer altså IKKE bygget via
+    // kanoniskByggNavn()/BYGG_NAVN_ALIAS, matcher rått mot NXT sin egen skrivemåte.
+    "Mustads vei 10": { belopMulig: [218332], tekst: PARKERINGSAVREGNING_FORKLARING() },
+    "Vollsveien 21": { belopMulig: [22187], tekst: PARKERINGSAVREGNING_FORKLARING() },
+  };
+  function MOTEROM_FORKLARING() {
+    return (
+      "Enkeltstående romutleie (identifisert via NXT-bilagstekst 2026-09-22, f.eks. \"Leie av møterom " +
+      "<dato>\"/\"Leie av auditoriet <dato>\") - eksterne kunder/besøkende som leier møterom eller " +
+      "auditorium for én anledning, ikke et fast leieforhold. Lav prioritet å kode om - beløpene er " +
+      "små og bookingene er reelt anonyme engangshendelser."
+    );
+  }
+  function PARKERINGSAVREGNING_FORKLARING() {
+    return (
+      "Periodisk omsetningsbasert parkeringsavregning (identifisert via NXT-bilagstekst 2026-09-22, " +
+      "\"Avregning parkeringsomsetning ...\"), sannsynligvis fra en ekstern parkeringsoperatør - " +
+      "operatørnavnet står ikke i bilagsteksten selv, kun byggstedet. Bør kunne identifiseres endelig " +
+      "fra parkeringsavtalen for dette anlegget."
+    );
+  }
   const ukodetByggGrupper = [];
   for (const [key, g] of nxtGroupsByCustomerNo.entries()) {
     const [selskap, customerNo] = key.split("||");
@@ -2211,14 +2258,18 @@ function main() {
     const byggNavn = nxtGruppeByggNavn.get(key);
     if (!byggNavn) continue;
     if (round2(g.alleredeA) === 0 && round2(g.alleredeB) === 0) continue;
+    const kjentFunn = UKODET_FORKLARING_2026_09_22[byggNavn];
+    const belopTotalt = round2(g.alleredeA + g.alleredeB);
+    const kjentFunnStemmer = kjentFunn && kjentFunn.belopMulig.some((b) => Math.abs(belopTotalt - b) <= 50);
     ukodetByggGrupper.push({
       bygg: byggNavn,
       status: "ukodet-bokforing",
-      forklaring:
-        `Bokført i ${selskap} uten kundenummer i NXT, og kan derfor ikke knyttes til et leieforhold. ` +
-        "Beløpet er med i den kontobaserte bokførte summen (BOOKED_3600_3699), men mangler i " +
-        "leietaker-fordelingen - det er nettopp dette som gjorde at PGS Geophysical framsto med et " +
-        "avvik på 812 320 kr i stedet for 12 321 kr. Krever bilagstekst fra NXT for å kunne fordeles.",
+      forklaring: kjentFunnStemmer
+        ? kjentFunn.tekst
+        : `Bokført i ${selskap} uten kundenummer i NXT, og kan derfor ikke knyttes til et leieforhold. ` +
+          "Beløpet er med i den kontobaserte bokførte summen (BOOKED_3600_3699), men mangler i " +
+          "leietaker-fordelingen - det er nettopp dette som gjorde at PGS Geophysical framsto med et " +
+          "avvik på 812 320 kr i stedet for 12 321 kr. Krever bilagstekst fra NXT for å kunne fordeles.",
       fullArsverdi2026DelA: 0,
       fullArsverdi2026DelB: 0,
       alleredeFakturertDelA: round2(g.alleredeA),
@@ -2228,19 +2279,52 @@ function main() {
       gjenstarTotal: 0,
       kontoFordelingDelA: [...g.kontoerA.entries()].map(([konto, belop]) => ({ konto, belop })),
       kontoFordelingDelB: [...g.kontoerB.entries()].map(([konto, belop]) => ({ konto, belop })),
+      // v47: samme forklaringstekst som EN linje, slik at den vises i UI-en når raden åpnes -
+      // se TenantDrilldownRows (app/IncomeForecastSection.tsx) sin systemrad-visning.
+      _linje: {
+        eiendom: byggNavn,
+        bygg: byggNavn,
+        linjetype: "CUSTOM",
+        beskrivelse: kjentFunnStemmer ? kjentFunn.tekst : "Krever bilagstekst fra NXT for å kunne fordeles - se forklaring.",
+        del: g.alleredeB !== 0 && g.alleredeA === 0 ? "B" : "A",
+        fullArsverdi2026: belopTotalt,
+        startDato: null,
+        sluttDato: null,
+      },
     });
   }
-  if (ukodetByggGrupper.length > 0) {
-    const sumA = round2(ukodetByggGrupper.reduce((s2, b) => s2 + b.alleredeFakturertDelA, 0));
-    const sumB = round2(ukodetByggGrupper.reduce((s2, b) => s2 + b.alleredeFakturertDelB, 0));
+  // v47: flere selskap kan bokføre ukodet på SAMME bygg (f.eks. Arnstein Arnebergs vei 4) - slås
+  // sammen til ÉN byggGruppe pr. byggnavn her. build-tenant-forecast-table.js sin linje-matching
+  // (linjerIGruppe) matcher kun på byggnavn, ikke selskap - to byggGrupper med samme navn ville
+  // ellers begge plukket opp samme linje og vist beløpet dobbelt i UI-en.
+  const ukodetByggGrupperSlattSammen = [...new Map(ukodetByggGrupper.map((b) => [b.bygg, b])).values()].map((forste) => {
+    const alle = ukodetByggGrupper.filter((b) => b.bygg === forste.bygg);
+    if (alle.length === 1) return forste;
+    const alleredeFakturertDelA = round2(alle.reduce((s2, b) => s2 + b.alleredeFakturertDelA, 0));
+    const alleredeFakturertDelB = round2(alle.reduce((s2, b) => s2 + b.alleredeFakturertDelB, 0));
+    return {
+      ...forste,
+      forklaring: alle.find((b) => b.forklaring !== forste.forklaring)?.forklaring ?? forste.forklaring,
+      alleredeFakturertDelA,
+      alleredeFakturertDelB,
+      kontoFordelingDelA: alle.flatMap((b) => b.kontoFordelingDelA),
+      kontoFordelingDelB: alle.flatMap((b) => b.kontoFordelingDelB),
+      // _linje.fullArsverdi2026 må reflektere det SAMMENSLÅTTE beløpet, ikke bare den første
+      // byggGruppens andel - ellers vises kun én selskaps andel som "linja" i UI-en.
+      _linje: { ...forste._linje, fullArsverdi2026: round2(alleredeFakturertDelA + alleredeFakturertDelB) },
+    };
+  });
+  if (ukodetByggGrupperSlattSammen.length > 0) {
+    const sumA = round2(ukodetByggGrupperSlattSammen.reduce((s2, b) => s2 + b.alleredeFakturertDelA, 0));
+    const sumB = round2(ukodetByggGrupperSlattSammen.reduce((s2, b) => s2 + b.alleredeFakturertDelB, 0));
     varsel(
-      `ADVARSEL: ${ukodetByggGrupper.length} bygg har NXT-bokføring uten kundenummer (Del A ${sumA} kr, Del B ${sumB} kr) - ` +
+      `ADVARSEL: ${ukodetByggGrupperSlattSammen.length} bygg har NXT-bokføring uten kundenummer (Del A ${sumA} kr, Del B ${sumB} kr) - ` +
         'samlet på raden "Ukodet bokføring (uten kundenummer i NXT)". Bør kodes på riktig kunde i NXT.',
     );
     tenantMap.set("ukodet-bokforing", {
       navn: "Ukodet bokføring (uten kundenummer i NXT)",
-      byggGrupper: ukodetByggGrupper,
-      lines: [],
+      lines: ukodetByggGrupperSlattSammen.map((b) => b._linje),
+      byggGrupper: ukodetByggGrupperSlattSammen.map(({ _linje, ...rest }) => rest),
     });
   }
 

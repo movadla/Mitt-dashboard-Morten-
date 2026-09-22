@@ -43,6 +43,7 @@ import type { PotentialIncomeCategoryKey, PotentialIncomeSnapshot } from "@/lib/
 // isSystemRow importeres fra tenantForecastSystemRow, IKKE tenantForecastTable - sistnevnte
 // importerer kv.ts (server-only, Redis) på toppnivå, så et verdi-import derfra ville dratt hele
 // ioredis-pakken inn i denne klientkomponentens bundle og krasjet builden.
+import { isSystemRow } from "@/lib/tenantForecastSystemRow";
 import { finnMark, type ReviewMark, type ReviewMarkStatus } from "@/lib/incomeForecastReviewMarkTypes";
 import type { TenantForecastGrupper, TenantForecastGruppering, TenantForecastRow, TenantForecastTableSnapshot } from "@/lib/tenantForecastTable";
 import type { OmsetningsavregningSnapshot } from "@/lib/omsetningsavregning";
@@ -1660,10 +1661,29 @@ function TenantDrilldownRows({
         ),
       );
     }
-    if (Math.round(row.gjenstar) !== 0) {
+    // v75 (2026-09-22, Morten om "Dobbeltbudsjettert": "må kunne trykke og åpne for å se hva det
+    // er ... tenk det på alle linjer som ikke har leietakere at noen andre skal lese det som ikke
+    // vet hva det gjelder"): linjer ble tidligere KUN vist når gjenstår≠0 - riktig for en vanlig
+    // leietaker (der linjene forklarer nettopp gjenstår-tallet), men systemrader som
+    // "Dobbeltbudsjettert"/"Ukodet bokføring" kan ha reelt forklarende linjer selv om gjenstår=0
+    // (beløpet ligger i budsjett/fakturert i stedet) - da ble linjene aldri vist, og raden så ut
+    // som et uforklart tall uten noen måte å se hva den faktisk består av.
+    if (Math.round(row.gjenstar) !== 0 || (isSystemRow(row.navn) && row.linjer.length > 0)) {
       for (const [i, l] of row.linjer.entries()) {
         const navn = `${l.bygg ? `${l.bygg} — ` : ""}${l.beskrivelse}`;
-        rader.push(detaljRad(`linje-${i}`, navn, navn, undefined, l.gjenstarShare ?? l.fullArsverdi2026));
+        const belop = l.gjenstarShare ?? l.fullArsverdi2026;
+        // Har raden selv ikke noe gjenstår, hører linjebeløpet hjemme i den kolonnen SOM FAKTISK
+        // ER IKKE-NULL på raden i stedet - Fakturert for "Ukodet bokføring" (allerede bokført,
+        // aldri gjenstående), Budsjett for "Dobbeltbudsjettert" (aldri fakturert/bokført ennå).
+        // Viser dermed alltid tallet under kolonnen den faktisk forklarer, ikke under en som
+        // uansett viser 0.
+        if (l.gjenstarShare !== undefined || Math.round(row.gjenstar) !== 0) {
+          rader.push(detaljRad(`linje-${i}`, navn, navn, undefined, belop));
+        } else if (Math.round(row.fakturert) !== 0 && Math.round(row.budsjett ?? 0) === 0) {
+          rader.push(detaljRad(`linje-${i}`, navn, navn, belop, undefined, undefined));
+        } else {
+          rader.push(detaljRad(`linje-${i}`, navn, navn, undefined, undefined, belop));
+        }
       }
     }
   }

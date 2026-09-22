@@ -19,6 +19,10 @@ export const SYSTEM_ROW_LABELS = new Set([
   // bevisst IKKE koblet via `overforTil` siden de allerede har egne budsjettrader og en kobling
   // ville dobbelttalt beløpet. Se USPORET_OVERTAKELSE_LABEL.
   "Dobbeltbudsjettert (trukket ut for å unngå dobbelttelling)",
+  // v3 (2026-09-22): manglet her fra starten - "Ukodet bokføring" var derfor ALDRI behandlet som
+  // systemrad av isSystemRow(), og fikk aldri vist sine forklarende linjer i UI-en (se v75 i
+  // app/IncomeForecastSection.tsx, TenantDrilldownRows) siden den logikken forutsetter isSystemRow.
+  "Ukodet bokføring (uten kundenummer i NXT)",
 ]);
 // "Ledig (vakante lokaler)" er siden v6 (2026-08-28) splittet i én rad pr. bygg, og siden v8
 // (2026-08-29) med korte radnavn ("Ledig V13D" osv., se BYGG_KORTKODE i build-tenant-budget.js) -
