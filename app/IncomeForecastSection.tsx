@@ -2599,13 +2599,13 @@ function RisikoTile({
       }`}
     >
       {/* v58 (2026-09-22, Morten: "her brytes teksten"): truncate (ellipsis) erstattet med normal
-          tekstbryting - "Reforhandlinger/nye kontrakter" og "Øvrige risikoforhold" er for lange til
-          å alltid få plass på én linje på mobil ved siden av beløp+pil, og en avkuttet etikett er
-          verre enn en to-linjers etikett. */}
+          tekstbryting. v59 (samme dag, Morten: "komprimer slik at teksten ikke brytes i de andre
+          boksene"): text-sm -> text-xs på etiketten i stedet - "Kundefordringer 30+"/"Øvrige
+          risikoforhold" får dermed plass på én linje uten verken avkutting eller linjebryting. */}
       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-status-warning/10 text-status-warning">
         <Icon className="h-3.5 w-3.5" />
       </span>
-      <span className="min-w-0 flex-1 text-sm font-medium text-ink-1">{label}</span>
+      <span className="min-w-0 flex-1 text-xs font-medium text-ink-1">{label}</span>
       <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(belop)}</span>
       <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-ink-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
     </button>
@@ -2693,7 +2693,10 @@ function RisikoforholdBlock({
   // kontrakter+usikre+parkering samlet, se beregnHovedprognose) i stedet for å måtte legges sammen
   // manuelt fra to fliser.
   const TILES: { key: RisikoTileKey; label: string; belop: number; icon: LucideIcon }[] = [
-    { key: "kontrakter", label: "Reforhandlinger/nye kontrakter", belop: kontrakterVektet + usikreVektet + parkeringVektet, icon: CalendarClock },
+    // v59 (2026-09-22, Morten: "fjern teksten 'nye kontrakter', bare ha reforhandlingspotensial"):
+    // samme ord som allerede brukes for identisk beløp i hero-waterfallen (se beregnHovedprognose/
+    // MainForecastBox) - unngår to ulike navn på nøyaktig samme tall to steder på siden.
+    { key: "kontrakter", label: "Reforhandlingspotensiale", belop: kontrakterVektet + usikreVektet + parkeringVektet, icon: CalendarClock },
     { key: "fordringer", label: "Kundefordringer 30+", belop: fordringerSum, icon: Receipt },
     { key: "ovrig", label: "Øvrige risikoforhold", belop: ovrigSum, icon: AlertTriangle },
   ];
@@ -2780,6 +2783,16 @@ function formatManedAr(ym: string): string {
   return new Date(y, m - 1, 1).toLocaleDateString("nb-NO", { month: "short", year: "numeric" });
 }
 
+// v59 (2026-09-22, Morten: "forklaringene må forenkles slik at de får plass på en linje"): kort
+// "mnd-ÅÅ"-form ("mai-25") i stedet for "mnd. ÅÅÅÅ" ("mai 2025") - kortere nok til å ikke tvinge
+// frem linjebryting i OvrigRisikoTabell sin smale Forklaring-kolonne på mobil.
+function formatManedArKompakt(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  if (!y || !m) return ym;
+  const maned = new Date(y, m - 1, 1).toLocaleDateString("nb-NO", { month: "short" }).replace(".", "");
+  return `${maned}-${String(y).slice(-2)}`;
+}
+
 type OvrigRisikoSortKey = "forhold" | "belop";
 type FordringSortKey = "leietaker" | "forfalt30" | "utestaende";
 
@@ -2812,17 +2825,20 @@ function computeOvrigRisikoRader(
       }
     }
   }
-  if (onepark !== 0) ut.push({ forhold: "Onepark", forklaring: "Estimert fakturering resten av året basert på omsetning så langt", belop: onepark });
+  // v59 (2026-09-22, Morten: "forenkles slik at de får plass på en linje") - kortet ned, samme
+  // meningsinnhold. Omsetningsperioden er fortsatt live/dynamisk (formatManedArKompakt(p.fra/til)),
+  // endrer seg automatisk når omsetning.omsetningsperiode endrer seg i datakilden.
+  if (onepark !== 0) ut.push({ forhold: "Onepark", forklaring: "Estimert basert på YTD-fakturering", belop: onepark });
   if (omsetning && omsetning.totalEkstrafakturering !== 0) {
     const p = omsetning.omsetningsperiode;
     ut.push({
       forhold: "Avregning omsetning",
-      forklaring: p ? `Baserer seg på omsetning ${formatManedAr(p.fra)} til ${formatManedAr(p.til)}` : "Baserer seg på rullerende 12 mnd omsetning",
+      forklaring: p ? `Basert på omsetning ${formatManedArKompakt(p.fra)} → ${formatManedArKompakt(p.til)}` : "Basert på rullerende 12 mnd omsetning",
       belop: omsetning.totalEkstrafakturering,
     });
   }
   if (planMangler !== 0) {
-    ut.push({ forhold: `Gjenstår uten planlagt faktura i Fazile (${planManglerAntall})`, forklaring: "Modelltall, Fazile har ikke generert fakturaene ennå", belop: planMangler });
+    ut.push({ forhold: `Gjenstår uten planlagt faktura i Fazile (${planManglerAntall})`, forklaring: "Ikke generert faktura fra Fazile", belop: planMangler });
   }
   if (ikkeMatchet !== 0) {
     ut.push({ forhold: `Gjenstår uten bokføring i NXT (${ikkeMatchetAntall})`, forklaring: "Ingenting fakturert på leieforholdet i år", belop: ikkeMatchet });
@@ -2832,7 +2848,7 @@ function computeOvrigRisikoRader(
   }
   const aktive = manualLines.filter((l) => l.aktiv);
   const manuellSum = aktive.reduce((s, l) => s + l.belop, 0);
-  if (manuellSum !== 0) ut.push({ forhold: `Mine manuelle linjer (${aktive.length})`, forklaring: "Egne linjer utenfor Fazile og NXT", belop: manuellSum });
+  if (manuellSum !== 0) ut.push({ forhold: `Mine manuelle linjer (${aktive.length})`, forklaring: "Manuelle linjer", belop: manuellSum });
   // v59 (2026-09-19): ren informasjonsrisiko (f.eks. konkursrisiko hos en leietaker), teller IKKE
   // med i noen sum - forskjellig fra alle radene over, som alle inngår i prognosen et sted. Se
   // ovrigRisikoManuell / scripts/refresh-data/_private-ovrig-risiko.json (gitignored, ekte navn).
@@ -3034,7 +3050,11 @@ function KundefordringerTabell({ fordringerListe }: { fordringerListe: FordringR
                     formatKr(f.forfalt30)
                   )}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{formatKr(f.utestaende)}</td>
+                {/* v59 (2026-09-22, Morten: "endre 'utestående' til mer dempet farge slik at man
+                    ser at det er 30+ dager som er størst risiko"): ink-4 (svakeste tonen) i stedet
+                    for samme ink-2 som Forfalt 30+ - sistnevnte er den reelle risikoen, dette er
+                    kun kontekst (alt de skylder i år, inkl. ikke-forfalte fremtidige fakturaer). */}
+                <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-4">{formatKr(f.utestaende)}</td>
               </tr>
             ))}
           </tbody>
