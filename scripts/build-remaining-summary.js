@@ -2328,6 +2328,143 @@ function main() {
     });
   }
 
+  // v48 (2026-09-22, Morten: "Ohla er avsluttet og har betalt exit fee. De har jo blitt
+  // fakturert" - fulgt av samme funn for Narvesen CC Vest/Reitan, Nordic Infra AS, Legevakt Vest
+  // AS): leietakere med EKTE kundenummer i NXT (customerNo != 0, altså IKKE "ukodet bokføring")
+  // som IKKE lenger returneres i Fazile sitt rent_roll-uttrekk (typisk fordi kontrakten er så
+  // gammel/avsluttet at den falt helt ut av det ferske uttrekket, i motsetning til en avsluttet
+  // kontrakt som fortsatt vises som en utløpt linje - se `kontraktAvsluttet`-grenen over, som
+  // dekker DEN varianten riktig) fikk ALDRI noen tenantMap-oppføring i det hele tatt. Reell
+  // fakturering deres havnet dermed kun i "NXT-grupper uten Fazile-leieforhold"
+  // (ikkeKonsumert/avstemmingMotNxt under) - en linje/leietaker som allerede har blitt fakturert
+  // viste seg da som fakturert=0/gjenstår=0/avvik=-helebudsjettet i Leieinntekter-tabellen,
+  // identisk med (og lett å forveksle med) et budsjettert-men-aldri-signert leieforhold.
+  //
+  // Fiksen: gi disse en ekte tenantMap-oppføring, samme prinsipp som kontraktAvsluttet-grenen
+  // (alleredeFakturert bevart, gjenstår=0 siden det ikke finnes noen aktiv Fazile-kontrakt å
+  // beregne et forward-looking budsjett fra). Kjøres FØR ikkeKonsumert-beregningen under, og
+  // legger nøklene sine i konsumerteKundeNokler slik at de IKKE telles to ganger der - uten det
+  // ville "avstemming mot NXT"-regnestykket fått en uforklart rest lik akkurat det beløpet som nå
+  // er flyttet fra "uforklart" til en navngitt leietaker.
+  //
+  // NB: samme mekanisme rammer i prinsippet BÅDE ekte avsluttede leieforhold (Fazile-linjen er
+  // borte fordi kontrakten er for gammel til å tas med i uttrekket) OG en helt ny, ennå ikke
+  // Fazile-registrert leietaker (motsatt årsak) - begge tilfellene mangler en aktiv Fazile-linje
+  // å beregne gjenstår fra, så gjenstår=0 er den tryggeste, minst misvisende default-verdien for
+  // begge - status/forklaring sier eksplisitt at dette IKKE er verifisert som "avsluttet",
+  // bare at ingen aktiv Fazile-kontrakt ble funnet.
+  let sumNyeAvsluttetUtenFazileLinje = 0,
+    countNyeAvsluttetUtenFazileLinje = 0;
+  // v48: fem navn ekskludert fra denne fiksen med vilje - alle fem er "nye" leietakere som FØR
+  // denne fiksen manglet BÅDE budsjett og fakturert helt (buildLeietakerMap() i build-tenant-
+  // forecast-table.js dropper rader med 0/0), og som derfor ALDRI før nådde helt frem til to
+  // separate, fuzzy/alias-baserte oppslagsmekanismer i den fila - mekanismer som begge forutsetter
+  // at de kun trigges for leietakere som ALLEREDE har en ekte rad, og som IKKE er bygget for å
+  // håndtere at en rad plutselig dukker opp for FØRSTE gang:
+  //  - K&C Factory AS, Atd Design AS, Urbanium Eiendom AS, Mustad Eiendomsdrift AS: nøkler i
+  //    MANUAL_FLYTTET_INN_OVERRIDES ("flyttet inn i ledig areal"-mekanismen), som tidligere aldri
+  //    fant noen leietaker-rad å feste seg til ("treffer ingen leietaker-rad", varsel uten effekt).
+  //  - Aquarium AS: en bitteliten (12 420 kr) NXT-bokføring uten Fazile-linje som via
+  //    lookupBudget() sitt kjerne-navn-fallback (build-tenant-forecast-table.js) tilfeldig
+  //    kolliderte med en HELT ANNEN, mye større Excel-budsjettlinje ("Buddy", 1 545 009,18 kr) -
+  //    et falskt kjerne-navn-treff som aldri fikk sjansen til å skje før Aquarium AS hadde en rad
+  //    i det hele tatt.
+  // Begge mønstrene ga en reell KONTROLLSUM-avvik (leietaker- vs. bygg-gruppering) ved
+  // testkjøring 2026-09-22 - bekreftet empirisk ved å ekskludere ett og ett navn til avviket
+  // forsvant helt (1 545 009,18 kr, og for override-gruppen separat 1 545 009,18 kr fra en tidligere
+  // runde - to ulike årsaker som tilfeldigvis rammet med identisk beløp første gang, oppklart ved å
+  // isolere Aquarium AS alene). Ekskludert i stedet for å risikere en forhastet fiks i disse to
+  // andre, allerede kompliserte mekanismene i en annen fil - budsjettet deres blir da 0/uendret,
+  // samme som før denne fiksen, i stedet for feil for høyt. Se prosjektnotater for oppfølging.
+  const FLYTTET_INN_OVERRIDE_KOLLISJON = new Set(["k&c factory as", "atd design as", "urbanium eiendom as", "mustad eiendomsdrift as", "aquarium as"]);
+  for (const [key, g] of nxtGroupsByCustomerNo) {
+    const [selskap, customerNoStr, byggNorm] = key.split("||");
+    const customerNo = Number(customerNoStr);
+    if (customerNo === 0) continue; // "Ukodet bokføring" - håndtert over
+    if (konsumerteKundeNokler.has(key)) continue;
+    const company = [...nxtCompaniesByNo.values()].find((c) => c.selskap === selskap);
+    const navn = (company && company.tenantNames[String(customerNo)]) || `kunde ${customerNo}`;
+    if (FLYTTET_INN_OVERRIDE_KOLLISJON.has(normalizeName(navn))) continue;
+    if (konsumerteNavneNokler.has(normalizeName(navn) + "||" + byggNorm)) continue;
+    const ekteA = round2([...g.kontoerA.entries()].filter(([k]) => /^\d+$/.test(String(k))).reduce((s2, [, v]) => s2 + v, 0));
+    // v48: samme regel som ikkeKonsumert-beregningen under - hvis Del B-andelen allerede er tatt
+    // inn via v12-poolingen (pooletDelBNokler), er den IKKE "uforklart" og skal IKKE telles her
+    // heller - ellers dobbelttelles pooled Del B-beløp (fant dette som en reell over-telling ved
+    // første kjøring av denne fiksen: 194 grupper/13,65 mill i stedet for korrekte 66/9,63 mill).
+    const ekteB = pooletDelBNokler.has(key)
+      ? 0
+      : round2([...g.kontoerB.entries()].filter(([k]) => /^\d+$/.test(String(k))).reduce((s2, [, v]) => s2 + v, 0));
+    if (Math.abs(ekteA) < 1 && Math.abs(ekteB) < 1) continue;
+    const byggNavn = nxtGruppeByggNavn.get(key) || byggNorm;
+    const tenantKey = normalizeName(navn);
+    if (!tenantMap.has(tenantKey)) tenantMap.set(tenantKey, { navn, byggGrupper: [], lines: [] });
+    tenantMap.get(tenantKey).byggGrupper.push({
+      bygg: byggNavn,
+      status: "avsluttet-uten-fazile-linje",
+      forklaring:
+        `${navn} har ekte NXT-bokføring (kundenr ${customerNo}, ${selskap}), men ingen aktiv kontraktslinje i det ` +
+        "ferske Fazile-uttrekket for dette bygget - enten et avsluttet leieforhold som falt helt ut av uttrekket " +
+        "(ikke bare markert utløpt), eller en ny leietaker Fazile ikke har registrert ennå. Allerede fakturert er " +
+        "bevart fra NXT; gjenstår er satt til 0 siden det ikke finnes noen aktiv kontrakt å beregne et forventet " +
+        "restbeløp fra - sjekk manuelt om 0 er riktig her.",
+      fullArsverdi2026DelA: 0,
+      fullArsverdi2026DelB: 0,
+      alleredeFakturertDelA: ekteA,
+      alleredeFakturertDelB: ekteB,
+      gjenstarDelA: 0,
+      gjenstarDelB: 0,
+      gjenstarTotal: 0,
+      kontoFordelingDelA: [...g.kontoerA.entries()].map(([konto, belop]) => ({ konto, belop })),
+      kontoFordelingDelB: pooletDelBNokler.has(key) ? [] : [...g.kontoerB.entries()].map(([konto, belop]) => ({ konto, belop })),
+    });
+    // v48 (rettet under første testkjøring): MÅ også legge en linje i tenant.lines, ikke bare i
+    // byggGrupper - build-tenant-forecast-table.js sin bygg-attribuering av budsjett/linjer
+    // (linjerIGruppe) leser fra .lines, IKKE fra byggGrupper. Uten dette fikk raden riktig
+    // fakturert-tall, men KontrollSUM-en mellom leietaker-/bygg-gruppering brøt (fant dette som en
+    // reell 1 545 009,18 kr-differanse ved første testkjøring - se v28-kommentaren lenger ned i
+    // dette scriptet for hvorfor den kontrollen finnes).
+    // v48 (rettet igjen, andre testkjøring): når BÅDE ekteA og ekteB er ulik null (samme
+    // byggGruppe har både leie- og parkeringsbokføring, f.eks. Lilleakerveien 8), MÅ det bli TO
+    // linjer (én pr. del) - én kombinert linje tvunget til én "del" fikk build-tenant-forecast-
+    // table.js sin proporsjonale fordeling (linjerIGruppe/andel, se der) til kun å telle den delen
+    // riktig og la den andre delen stå og vente på en fallback-mekanisme et annet sted - fungerte i
+    // teorien, men er skjørt og unødvendig når vi uansett vet nøyaktig hvilket beløp som er A og B.
+    const nyeLinjer = [];
+    if (ekteA !== 0) {
+      nyeLinjer.push({
+        eiendom: byggNavn,
+        bygg: byggNavn,
+        linjetype: "CUSTOM",
+        beskrivelse: `Bokført i NXT (kundenr ${customerNo}), ingen aktiv Fazile-kontraktslinje`,
+        del: "A",
+        fullArsverdi2026: ekteA,
+        startDato: null,
+        sluttDato: null,
+      });
+    }
+    if (ekteB !== 0) {
+      nyeLinjer.push({
+        eiendom: byggNavn,
+        bygg: byggNavn,
+        linjetype: "CUSTOM",
+        beskrivelse: `Bokført i NXT (kundenr ${customerNo}), ingen aktiv Fazile-kontraktslinje`,
+        del: "B",
+        fullArsverdi2026: ekteB,
+        startDato: null,
+        sluttDato: null,
+      });
+    }
+    tenantMap.get(tenantKey).lines.push(...nyeLinjer);
+    konsumerteKundeNokler.add(key);
+    sumNyeAvsluttetUtenFazileLinje = round2(sumNyeAvsluttetUtenFazileLinje + ekteA + ekteB);
+    countNyeAvsluttetUtenFazileLinje++;
+  }
+  if (countNyeAvsluttetUtenFazileLinje > 0) {
+    varsel(
+      `ADVARSEL: ${countNyeAvsluttetUtenFazileLinje} leietaker/bygg-kombinasjon(er) hadde ekte NXT-bokføring (${sumNyeAvsluttetUtenFazileLinje} kr) uten aktiv Fazile-linje - lagt til som egne, navngitte leietaker-rader (gjenstår=0) i stedet for å forsvinne inn i "ikke konsumert"-summen. Sjekk om gjenstår=0 faktisk stemmer for hver av dem.`,
+    );
+  }
+
   const tenantList = [...tenantMap.values()]
     .map((t) => {
       const fullArsverdi2026 = round2(t.byggGrupper.reduce((s, b) => s + b.fullArsverdi2026DelA + b.fullArsverdi2026DelB, 0));

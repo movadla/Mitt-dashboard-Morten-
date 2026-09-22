@@ -568,11 +568,19 @@ async function main() {
       const linjerIGruppe = tenant.lines.filter((l) => normalizeName(l.bygg) === normalizeName(bg.bygg));
       const fullA = round2(linjerIGruppe.filter((l) => l.del === "A").reduce((s, l) => s + l.fullArsverdi2026, 0));
       const fullB = round2(linjerIGruppe.filter((l) => l.del === "B").reduce((s, l) => s + l.fullArsverdi2026, 0));
+      // v48: var "> 0", ikke "!== 0" - en byggGruppe der eneste Del A/B-linje er et NEGATIVT beløp
+      // (f.eks. en kreditering/reduksjon, ingen positiv motpost i samme del) fikk da fullA/fullB
+      // negativ, traff verken denne fordelingen ELLER fallback'en under (som kun trigger på
+      // fullA===0) - og forsvant dermed helt fra bygg/leietype-grupperingen mens leietaker-
+      // grupperingen (som leser bg.allerede... direkte) fortsatt hadde beløpet med. Fant dette som
+      // en reell KONTROLLSUM-differanse (420 532,99 kr) da "avsluttet uten Fazile-linje"-fiksen
+      // ga flere slike negative eneste-linjer (Mustadboliger AS, Standard Norge m.fl.) - andel-
+      // formelen under er uendret og fungerer identisk for negativ fullA/fullB.
       for (const line of linjerIGruppe) {
-        if (line.del === "A" && fullA > 0) {
+        if (line.del === "A" && fullA !== 0) {
           const andel = line.fullArsverdi2026 / fullA;
           linesA.push({ tenant, line, fakturertShare: round2(bg.alleredeFakturertDelA * andel), gjenstarShare: round2(bg.gjenstarDelA * andel) });
-        } else if (line.del === "B" && fullB > 0) {
+        } else if (line.del === "B" && fullB !== 0) {
           const andel = line.fullArsverdi2026 / fullB;
           linesB.push({ tenant, line, fakturertShare: round2(bg.alleredeFakturertDelB * andel), gjenstarShare: round2(bg.gjenstarDelB * andel) });
         }
