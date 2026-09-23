@@ -106,9 +106,11 @@
 //      "Ufordelt"-blob, i tilfelle fremtidige kilder har et større gap igjen.
 const OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026 = 665780066;
 const OFFICIAL_PARKERING_BUDSJETT_2026 = 58970570.16;
+// @override ar=2026 navn=OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026+OFFICIAL_PARKERING_BUDSJETT_2026 antall=2 status=todo -- MA erstattes med 2027-Excel-arkets "Oppsummering"-totaler for et nytt aar. Se scripts/check-override-freshness.js.
 // De 4 delt-eide byggene (Morten bekreftet direkte 2026-08-31) - halveres på BYGG-navn, ikke
 // via "Justert 2026 50%"-kolonnen (se v10-avsnittet i filhodet). Eksakte Excel-byggnavn.
 const HALVBYGG_50 = new Set(["Lilleakerveien 20 Audi", "Lilleakerveien 22 VW", "Strandveien 10", "Strandveien 4-8"]);
+// @override ar=2026 navn=HALVBYGG_50 antall=4 -- eierandel-data, reconfirm at ingen av disse 4 byggene har endret eierandel for 2027 (se lib/data/ownership-shares.json). Se scripts/check-override-freshness.js.
 // v6 (2026-08-28): "Ledig (vakante lokaler)" var tidligere ETT eksakt radnavn - er nå en PREFIX
 // for 15 forskjellige radnavn, ett pr. bygg (se ledigLinjerByBygg under).
 // lib/tenantForecastTable.ts sin anonymiserings-sjekk må derfor bruke prefix-match, ikke eksakt
@@ -342,6 +344,8 @@ const EXCEL_TO_FAZILE_ALIASES = {
 // "Aya Yoga AS"-raden (som fant budsjettet sitt via en ANNEN, mer liberal kjerne-navn-oppslag i
 // build-tenant-forecast-table.js) fikk BEGGE samme budsjettbeløp.
 const BYGG_BESKRIVELSE_FALSE_POSITIVES = new Set();
+// @override ar=2026 navn=EXCEL_TO_FAZILE_ALIASES antall=35 -- ALLE tidsbestemt til 2026-budsjettarkets eksakte stavemate. Ga gjennom hver linje mot 2027-arket, ikke anta at de bare "fortsatt virker". Privatperson-del i _private-tenant-aliases.json. Se scripts/check-override-freshness.js.
+// @override ar=2026 navn=BYGG_BESKRIVELSE_FALSE_POSITIVES antall=0 -- tom i dag; legg til nye "bygg+beskrivelse"-falske-positiver her etter hvert 2027-uttrekk (se metode i kommentaren over).
 
 // Alias for PRIVATPERSONER holdes UTENFOR denne committede fila (ANONYMISERING.md) - lastes fra
 // en gitignored fil i stedet. Se scripts/refresh-data/_private-tenant-aliases.json.

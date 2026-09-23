@@ -33,6 +33,27 @@ historien, men refererer til den der det er nyttig.
   (som denne filen, README.md og `assemble-nxt-booked-tenants.js`) er
   IKKE gitignored og blir committet som normalt.
 
+## 0.1 To verktøy som gjør denne filen sjekkbar, ikke bare lesbar (2026-09-23)
+
+- **`node scripts/check-override-freshness.js [--ar=2027]`** — leser `@override`-tagger rett
+  etter hver override-definisjon i de fire pipeline-scriptene (se seksjon 3) og
+  `_bekreftetForAr`-feltet i hver gitignoret `_private-*.json`-fil, og lister konkret hva som
+  IKKE er bekreftet for målåret ennå, pluss det som uansett MÅ bygges/rettes
+  (`status=todo`-tagger). Kjør denne FØRST når 2027-prognosen settes opp - den er den faktiske,
+  maskinsjekkbare versjonen av seksjon 3 under. Rent tekst-skann, kjører ALDRI noen kode fra
+  build-scriptene.
+- **`node scripts/verify-income-forecast.js`** — kjøres ETTER hele pipelinen (alle tre steg).
+  Fanger opp: (1) at REMAINING/BOOKED_3600_3699/INVOICED-konstantene i
+  `lib/incomeForecast.local.ts`/`.anon.ts` faktisk stemmer med det som ligger i Redis akkurat nå
+  (den klart vanligste "glemt å lime inn på nytt"-feilen denne høsten), (2) at
+  build-tenant-forecast-table.js faktisk er kjørt på nytt etter siste
+  build-remaining-summary.js-kjøring, (3) informativt: leieforhold med budsjett men
+  ~0 kr fakturert+gjenstår, og stort negativt gjenstår uten forklaringstekst. Exit code 1 ved
+  reelt avvik.
+
+Legg til en `@override`-tag (se eksisterende for mønster) eller et `_bekreftetForAr`-felt når du
+lager en NY tidsbestemt override, ellers blir den usynlig for `check-override-freshness.js`.
+
 ## 1. Pipeline — rekkefølge og datastrøm
 
 ```
@@ -382,10 +403,11 @@ privatpersoner er bevisst utelatt her, se seksjon 8.
 - **Vitusapotek (Norsk Medisinaldepot AS)** — tilleggsleie (konto 3620)
   holdes utenfor kjerneleien/avregningsgrunnlaget siden Amesto kun avregnet
   mot à konto. [ÅPENT: bekreft at dette er riktig praksis]
-- **Andresen Studio** (Mustads vei 10) — leier 1. etasje omsetningsbasert;
-  en annen leietaker (Ureist AS) leier 2. etasje separat i samme bygg. Én
-  av tre "Ledig MV10"-kontorlinjer er trolig identisk med Ureist AS sin
-  egen rad. [ÅPENT — mulig dobbelttelling, ikke avgjort]
+- **Ureist AS** (Mustads vei 10, 2. etasje) — en annen leietaker (privatperson/
+  enkeltpersonforetak, se gitignored `_private-flyttet-inn-overrides.json`)
+  leier 1. etasje i samme bygg, omsetningsbasert. Én av tre "Ledig MV10"-
+  kontorlinjer er trolig identisk med Ureist AS sin egen rad. [ÅPENT —
+  mulig dobbelttelling, ikke avgjort]
 
 ## 6. Kjente åpne/uløste punkter (kritisk — ikke glem til 2027)
 

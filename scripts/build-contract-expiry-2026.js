@@ -157,6 +157,7 @@ const MANUELT_BEKREFTET_REFORHANDLET = new Map([
     // i jobb:inntektsprognose-signaler gjaldt denne avtalen før den ble signert.
     ["UC8685", "127844 (kontrakt_id, relokasjon til Vollsveien 17, ikke-lenket)"],
   ]);
+// @override ar=2026 navn=MANUELT_BEKREFTET_REFORHANDLET antall=6 status=todo -- kontrakt-ID-par spesifikke for 2026-utlop. Nullstill/gjennomga ved arsskiftet - IKKE gjenbruk disse parene for 2027-utlop. Se scripts/check-override-freshness.js.
 
 // Mustad Eiendom AS som "leietaker" er internleie (samme sett som INTERN_MUSTAD_NAMES i
 // build-remaining-summary.js) - aldri et reforhandlingspotensial. Fjernes helt fra listen.

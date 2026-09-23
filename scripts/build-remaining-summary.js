@@ -277,6 +277,7 @@ const ONEPARK_ESTIMAT_2026 = 9457370.44; // Kilde: 2026_08_04_Inntektsprognose_J
 // 2027) er et eget tema Morten vil se nærmere på senere - IKKE bygget her.
 const OMSETNINGSAVREGNING_2025_KONTI = new Set([3632]);
 const OMSETNINGSAVREGNING_2025_ANDRE_NAVN = "andre (bokført uten leietakerreferanse)";
+// @override ar=2026 navn=OMSETNINGSAVREGNING_2025_KONTI antall=1 status=todo -- ekskluderer KUN 2025-avregningen. Den ekte 2026-omsetningsavregningen (betales ut ~2027) er IKKE bygget ennaa - bygg denne FOR 2027-prognosen, ikke bare bytt arstall her. Se TENANT_REGLER.md seksjon 2/3 og scripts/check-override-freshness.js.
 
 // Interne Mustad-selskaper som noen ganger opptrer som "leietaker" i Fazile-data (egne
 // lokaler/administrative posteringer) - ikke reelle eksterne leieforhold. Flagges separat
@@ -311,6 +312,7 @@ const ENGANGSGEBYR_LEIETAKERE = new Map([
   ["ohla norge - obrascón huarte lain s.a. norwegian branch nuf", "Termination agreement/sluttoppgjør, 919 312,11 kr (NXT bilag 2026-04-29, konto 3615 Erstatning)."],
   ["reitan convenience norway as/kiosk 814", "Utkjøpsbeløp ved avslutning av leieforhold, 600 000 kr (NXT bilag 2026-08-17, konto 3615 Erstatning)."],
 ]);
+// @override ar=2026 navn=ENGANGSGEBYR_LEIETAKERE antall=3 -- 2026-hendelser (exit fee/sluttoppgjor), gjentas IKKE identisk i 2027. Se scripts/check-override-freshness.js.
 
 // Funnet 2026-08-30 under gjennomgangen av "ikke-matchet-i-nxt"-leieforhold (Morten: "Hva sier
 // terminer? ... men årsbeløpet bør være fakturert i så fall") - sjekket direkte mot Fazile sin
@@ -334,6 +336,7 @@ const FAKTURERING_UTSATT_TIL_SENERE_AR = new Map([
     "Samme mønster som Sporveien Trikken (first_invoice_date=2027-01-01, i tillegg en tung rabattperiode fram til 2026-09-30) - antatt samme strukturelt utsatte fakturering, ikke individuelt bekreftet mot invoice-tabellen pga. lavt beløp.",
   ],
 ]);
+// @override ar=2026 navn=FAKTURERING_UTSATT_TIL_SENERE_AR antall=2 -- OBS: en av disse har first_invoice_date=2027-01-01, altsa forfaller i 2027 - sjekk om den skal telles med na. Se scripts/check-override-freshness.js.
 
 // Kontrakten er ikke signert/ferdigstilt i Fazile ennå (status DRAFT) - ikke en bekreftet
 // leieforpliktelse, bør derfor ikke telles som gjenstår før den er ferdigstilt. Funnet 2026-08-30
@@ -344,6 +347,7 @@ const DRAFT_KONTRAKT_LEIETAKERE = new Map([
     "Kontrakten (id 93590, «Parkering avg.pl», 26 000 kr/år) har status DRAFT i Fazile, ikke signert/aktiv - ikke en bekreftet leieforpliktelse ennå.",
   ],
 ]);
+// @override ar=2026 navn=DRAFT_KONTRAKT_LEIETAKERE antall=1 -- sjekk om kontrakten er signert i mellomtiden. Se scripts/check-override-freshness.js.
 
 // Leieforhold der Fazile sin kontraktslinje bevisst har en nominell/ubetydelig kontraktsverdi
 // (linjetype RENT, beskrivelse "Omsetningsleie avg.pl.") fordi omsetningsleie per definisjon
@@ -355,6 +359,7 @@ const DRAFT_KONTRAKT_LEIETAKERE = new Map([
 const OMSETNINGSLEIE_LEIETAKERE = new Map([
   ["4service facility as", "Omsetningsleie (Fazile-kontraktslinjen har kun en nominell plassholderverdi på 0,10 kr siden omsetningsleie ikke er et fast årsbeløp) - NXT sitt bokførte beløp er reell omsetningsbasert fakturering, ikke et avvik."],
 ]);
+// @override ar=2026 navn=OMSETNINGSLEIE_LEIETAKERE antall=1 -- strukturelt mønster, men verifiser leietakeren fortsatt finnes i 2027-uttrekket. Se scripts/check-override-freshness.js.
 
 // Leieforhold der negativ gjenstår skyldes en BEKREFTET feilkoding i NXT sin egen bokføring
 // (ikke en Fazile/matching-feil) - grundig verifisert direkte mot faktiske NXT-transaksjoner
@@ -397,6 +402,7 @@ const KUNDENUMMER_ALIASER = new Map([
   [10619, [11134, 10455]],
   [10821, [11098]],
 ]);
+// @override ar=2026 navn=KUNDENUMMER_ALIASER antall=2 -- historiske NXT-kundenummerbytter (fusjon/rebrand). Sjekk om restdiffen (-179 062 kr, se TENANT_REGLER.md) har lost seg i 2027-data. Se scripts/check-override-freshness.js.
 function kundenummerMedAliaser(customerNo) {
   return [Number(customerNo), ...(KUNDENUMMER_ALIASER.get(Number(customerNo)) || [])].map(String);
 }
@@ -477,6 +483,7 @@ const MANGLENDE_LINJE_KORREKSJON = new Map([
     },
   ],
 ]);
+// @override ar=2026 navn=MANGLENDE_LINJE_KORREKSJON antall=4 -- CUSTOM-linjer utenfor rent_roll sitt RENT-filter, hver leietaker-spesifikk. Sjekk om Fazile har rettet linjetypen for noen av disse i 2027-uttrekket (da blir korreksjonen overflodig/dobbelttalt). Se scripts/check-override-freshness.js.
 
 const NXT_FEILKODING_LEIETAKERE = new Map([
   [
@@ -488,6 +495,7 @@ const NXT_FEILKODING_LEIETAKERE = new Map([
     "Bekreftet dobbeltposterings-feil i NXT (konto 3650, «Overført fra Fazile», Lilleakerveien 4A): Fazile sin Lagerleie-linje (17 199 kr/år) er postet BÅDE som ett fullt årsbeløp (17 199 kr, 21.05) OG som tre kvartalsstore delbeløp (4 299,75 kr × 3, 21.05 og 01.07) - til sammen 30 098,25 kr, nesten dobbelt av kontraktens reelle årsverdi. Pluss en liten møterom-leie (1 750 kr) - se ENERGI/andre-leieinntekter-mønsteret i v5. IKKE en identitets-/navneforveksling (sjekket «AssisterMeg AS», NXT customerNo 10781 - kun små, urelaterte møterom-belastninger der, ingen kobling til denne kontraktslinjen).",
   ],
 ]);
+// @override ar=2026 navn=NXT_FEILKODING_LEIETAKERE antall=2 -- reelle NXT-bokforingsfeil ved kilden, IKKE rettet i NXT selv. Sjekk om Regnskap har rettet disse for 2027. Se scripts/check-override-freshness.js.
 
 function isDelB(seksjon) {
   const s = seksjon.toLowerCase();
@@ -513,6 +521,7 @@ const FAZILE_TO_NXT_ALIASES = {
   "reitan convenience norway as/kiosk 814": "reitan convenience norway as",
   "krinor as": "krinor as (benyttes ikke)",
 };
+// @override ar=2026 navn=FAZILE_TO_NXT_ALIASES antall=2 -- tidsbestemt til 2026 sin Fazile-stavemate, verifiser mot 2027-uttrekket. Privatperson-del i _private-fazile-to-nxt-aliases.json. Se scripts/check-override-freshness.js.
 const FAZILE_TO_NXT_PRIVATE_ALIASES_FILE = path.join(__dirname, "refresh-data", "_private-fazile-to-nxt-aliases.json");
 if (fs.existsSync(FAZILE_TO_NXT_PRIVATE_ALIASES_FILE)) {
   const privateAliases = JSON.parse(fs.readFileSync(FAZILE_TO_NXT_PRIVATE_ALIASES_FILE, "utf8"));
@@ -2381,6 +2390,7 @@ function main() {
   // andre, allerede kompliserte mekanismene i en annen fil - budsjettet deres blir da 0/uendret,
   // samme som før denne fiksen, i stedet for feil for høyt. Se prosjektnotater for oppfølging.
   const FLYTTET_INN_OVERRIDE_KOLLISJON = new Set(["k&c factory as", "atd design as", "urbanium eiendom as", "mustad eiendomsdrift as", "aquarium as"]);
+  // @override ar=2026 navn=FLYTTET_INN_OVERRIDE_KOLLISJON antall=5 status=todo -- disse 5 far budsjett=0 som fallback pga. en uloest kollisjon med to andre fuzzy-matching-mekanismer (se TENANT_REGLER.md seksjon 2, v48-mekanismen). Ekte kodegap, ikke bare en arstall-fornyelse. Se scripts/check-override-freshness.js.
   for (const [key, g] of nxtGroupsByCustomerNo) {
     const [selskap, customerNoStr, byggNorm] = key.split("||");
     const customerNo = Number(customerNoStr);

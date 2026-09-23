@@ -107,6 +107,7 @@ const BYGG_NAVN_ALIAS = {
   // Excel og Fazile uten - lå igjen som eneste Uklassifisert-post i Del A.
   "arnstein arnebergs vei 4": "Arnstein Arnebergsvei 4",
 };
+// @override ar=2026 navn=BYGG_NAVN_ALIAS antall=6 -- fysisk bygg-navngiving, sannsynligvis fortsatt gyldig i 2027 (strukturelt, ikke arsspesifikt), men reconfirm at ingen nye bygg-stavemate-mismatch har dukket opp. Se scripts/check-override-freshness.js.
 function kanoniskByggNavn(bygg) {
   const trimmed = (bygg || "").replace(/\s+/g, " ").trim();
   return BYGG_NAVN_ALIAS[trimmed.toLowerCase()] || trimmed;
@@ -759,6 +760,7 @@ async function main() {
       MANUAL_FLYTTET_INN_OVERRIDES[key] = value;
     }
   }
+  // @override ar=2026 navn=MANUAL_FLYTTET_INN_OVERRIDES antall=25 status=todo -- 100% tidsbestemt til 2026s ledig-til-leid-bevegelser. Bygg pa nytt fra scratch fra 2027s Finance-vakans-kommentarer, gjenbruk IKKE disse radene. Privatperson-del i _private-flyttet-inn-overrides.json. Se scripts/check-override-freshness.js.
   // v8 (2026-08-29): Ledig-linjer som fjernes UTEN å overføres til noen ekstern leietaker-rad.
   // Situasjoner:
   //  1) DOBBELTBUDSJETTERT - Excel sin "Ledig"-linje er aldri fjernet etter at arealet faktisk ble
@@ -796,6 +798,7 @@ async function main() {
       MANUAL_UNTRACKED_OVERTAKELSER[bygg] = [...(MANUAL_UNTRACKED_OVERTAKELSER[bygg] || []), ...poster];
     }
   }
+  // @override ar=2026 navn=MANUAL_UNTRACKED_OVERTAKELSER antall=0 status=todo -- committert objekt er tomt (alle 3 oppforinger flyttet til _private-untracked-overtakelser.json, 2026-09-19). 100% tidsbestemt - bygg pa nytt for 2027 fra Excel-arkets dobbeltbudsjetterte Ledig-linjer. Se scripts/check-override-freshness.js.
 
   // Kjører async pga. kommentar-oppslag/skriving mot Redis (overskriver aldri en kommentar
   // Morten har skrevet manuelt, se settAutoKommentar).
