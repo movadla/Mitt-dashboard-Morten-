@@ -38,5 +38,8 @@
 - **Økonomi** (`app/privat/FinanceSection.tsx`, `lib/accounting.ts`, `lib/loans.ts`, `lib/savings.ts`, `lib/salary.ts`) — inntekt/utgift-føring, lån og sparing; kontonumre lagres bevisst ikke
 - **Nyheter** (`app/privat/NewsSection.tsx`, `lib/news.ts`) — flere kilder, AI-berikelse kun on-demand (aldri automatisk) for å holde kostnaden nede
 
+## Sikkerhetsregler
+Spør alltid om eksplisitt bekreftelse før du gjør noe av følgende: (1) force-push eller sletting av git-historikk, (2) sletting av data i Redis eller andre datalagre, (3) endring av miljøvariabler/.env-filer, (4) deploy til produksjon på Vercel. Foreslå handlingen og vent på min "ja" før du utfører den.
+
 ## Vedlikehold av denne filen
 Oppdater denne filen sammen med Morten hver gang dere legger til en ny modul eller endrer en konvensjon, slik at neste økt starter med riktig kontekst med én gang.
