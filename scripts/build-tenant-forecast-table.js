@@ -1,3 +1,7 @@
+// Se scripts/refresh-data/TENANT_REGLER.md for samlet oversikt over leietaker-
+// fakta, alias-regler og metodikk pa tvers av hele Inntektsprognose-pipelinen
+// (les den FOR 2027-prognosen settes opp).
+//
 // Bygger Leieinntekter/Parkering-tabellene som Inntektsprognose-hovedvisningen bruker, i tre
 // parallelle grupperinger pr. Del: Leietaker | Bygg | Leietype. Alle med samme kolonner
 // (Fakturert | Gjenstår | Budsjett | +/-) og - viktigst - alle Del A-grupperinger summerer til

@@ -1,3 +1,7 @@
+// Se scripts/refresh-data/TENANT_REGLER.md for samlet oversikt over leietaker-
+// fakta, alias-regler og metodikk pa tvers av hele Inntektsprognose-pipelinen
+// (les den FOR 2027-prognosen settes opp).
+//
 // Bygger og oppdaterer:
 //  1) Redis-snapshotet for "Gjenstår per leietaker (Fazile)" (full leietaker/bygg-detalj)
 //  2) Konsollutskrift for REMAINING-aggregatet i lib/incomeForecast.local.ts/.anon.ts

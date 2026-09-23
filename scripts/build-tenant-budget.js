@@ -1,3 +1,7 @@
+// Se scripts/refresh-data/TENANT_REGLER.md for samlet oversikt over leietaker-
+// fakta, alias-regler og metodikk pa tvers av hele Inntektsprognose-pipelinen
+// (les den FOR 2027-prognosen settes opp).
+//
 // Bygger et budsjett-snapshot (pr. leietaker, pr. bygg, pr. leietype) fra Excel-arket
 // "Budsjett 2026 (redig)" (UTEN "(2)") i "Budsjett 2026 - Master.xlsx" (OneDrive: Budsjett/
 // MEAS/2026/1. Inntekter, i dag Morten sender over), som Del A/B-tabellene i
