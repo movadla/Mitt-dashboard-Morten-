@@ -240,7 +240,7 @@ const BUILDING_ALIASES = {
   "strandveien uteparkering": "Strandveien 10", // Vedeld: 19 924,03 vs. forventet 20 118,72 (liten rest, trolig delvis år)
 };
 
-const { loadEnvLocal, pushToRedis, normalizeName, coreName, verifyTotal, konsernNavn } = require("./lib/refresh-helpers");
+const { loadEnvLocal, pushToRedis, getFromRedis, normalizeName, coreName, verifyTotal, konsernNavn } = require("./lib/refresh-helpers");
 
 // Onepark AS - parkeringsdrift utenfor Fazile rent_roll (etterfakturert basert på tilsendt
 // omsetningsrapport, ikke en vanlig leiekontrakt). De 6 leieforholdene under nulles derfor
@@ -622,7 +622,7 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-function main() {
+async function main() {
   loadEnvLocal();
 
   const yearStart = new Date("2026-01-01");
@@ -1060,6 +1060,42 @@ function main() {
       if (del === "A") g.fullA += belop;
       else g.fullB += belop;
     }
+  }
+
+  // v70 (2026-09-24, controller-notat punkt 3, Morten: "legg den til, men ha den skjult i
+  // dashboardet"): fullstendighets-sjekk, ikke bare nøyaktighets-sjekk. Alt annet i denne
+  // pipelinen verifiserer at DET SOM ER FANGET OPP stemmer - ingenting sjekket tidligere om
+  // selve KILDEN (dette uttrekket av scripts/refresh-data/fazile-remaining-tenants/*.json)
+  // plutselig er ufullstendig (avbrutt henting, tom fil, autentiseringsfeil midt i en
+  // flersides-henting osv.). Sammenlignes mot FORRIGE kjørings tall (lest fra Redis FØR vi
+  // skriver over snapshotet) - et stort, uforklart fall i antall/beløp linjer er et
+  // varsel om at selve kildeuttrekket kan ha vært ufullstendig denne gangen, uavhengig av om
+  // resten av pipelinen regner riktig på det den fikk.
+  const antallKildelinjer = alleFazileRader.length;
+  const sumKildelinjer = round2(alleFazileRader.reduce((s, r) => s + (Number(r.arsleie_nok) || 0), 0));
+  const forrigeSnapshot = await getFromRedis(REDIS_HASH_KEY, REDIS_FIELD);
+  const forrigeSjekk = forrigeSnapshot && forrigeSnapshot.fullstendighetssjekk ? forrigeSnapshot.fullstendighetssjekk : null;
+  const FULLSTENDIGHET_VARSEL_TERSKEL_PROSENT = 5; // vilkårlig, men bevisst lav - se punkt 2 i controller-notatet om at dette bør bli en formelt godkjent terskel
+  let fullstendighetAvvikAntallPct = null;
+  let fullstendighetAvvikSumPct = null;
+  let fullstendighetMistenkelig = false;
+  if (forrigeSjekk && forrigeSjekk.antallKildelinjer > 0) {
+    fullstendighetAvvikAntallPct = round2(((antallKildelinjer - forrigeSjekk.antallKildelinjer) / forrigeSjekk.antallKildelinjer) * 100);
+    fullstendighetAvvikSumPct = forrigeSjekk.sumKildelinjer ? round2(((sumKildelinjer - forrigeSjekk.sumKildelinjer) / forrigeSjekk.sumKildelinjer) * 100) : null;
+    fullstendighetMistenkelig = fullstendighetAvvikAntallPct <= -FULLSTENDIGHET_VARSEL_TERSKEL_PROSENT || (fullstendighetAvvikSumPct !== null && fullstendighetAvvikSumPct <= -FULLSTENDIGHET_VARSEL_TERSKEL_PROSENT);
+  }
+  const fullstendighetssjekk = {
+    antallKildelinjer,
+    sumKildelinjer,
+    forrigeAntallKildelinjer: forrigeSjekk ? forrigeSjekk.antallKildelinjer : null,
+    forrigeSumKildelinjer: forrigeSjekk ? forrigeSjekk.sumKildelinjer : null,
+    forrigeSistOppdatert: forrigeSjekk ? forrigeSjekk.sistOppdatert : null,
+    avvikAntallPct: fullstendighetAvvikAntallPct,
+    avvikSumPct: fullstendighetAvvikSumPct,
+    mistenkelig: fullstendighetMistenkelig,
+  };
+  if (fullstendighetMistenkelig) {
+    console.log(`ADVARSEL (fullstendighetssjekk): antall Fazile-kildelinjer falt fra ${forrigeSjekk.antallKildelinjer} til ${antallKildelinjer} (${fullstendighetAvvikAntallPct}%) siden forrige kjøring (${forrigeSjekk.sistOppdatert}) - sjekk om kildeuttrekket ble avbrutt/ufullstendig denne gangen.`);
   }
 
   // Bygg leieforhold-nivå-resultater (for REMAINING-aggregatet) og grupper samtidig opp til
@@ -2589,6 +2625,8 @@ function main() {
     },
     // v13 - metadata om fakturaplan-kilden (null hvis mappen manglet og modellen ble brukt alene)
     fazileFakturaplan: fakturaplanInfo,
+    // v70 - se fullstendighetssjekk-blokken over (controller-notat punkt 3)
+    fullstendighetssjekk: { ...fullstendighetssjekk, sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : "2026-08-26" },
     ...(ADVARSLER.length ? { advarsler: ADVARSLER } : {}),
   };
 

@@ -1394,10 +1394,21 @@ function KpiStrip({
 // overskriften. Nå kun et info-ikon ytterst til høyre; hele lista ligger i tooltipen.
 // Ikonet blir gult når eldste kilde er 14 dager eller mer, så et reelt ferskhetsproblem
 // fortsatt synes uten å måtte hovre.
-function DatakildeHeaderInfo({ freshness, idagIso, lastUpdated }: { freshness: DataSourceFreshness[]; idagIso: string; lastUpdated: string | null }) {
+function DatakildeHeaderInfo({
+  freshness,
+  idagIso,
+  lastUpdated,
+  fullstendighet,
+}: {
+  freshness: DataSourceFreshness[];
+  idagIso: string;
+  lastUpdated: string | null;
+  fullstendighet?: RemainingTenantsSnapshot["fullstendighetssjekk"];
+}) {
   const eldste = freshness[0] ?? null;
   const dagerGammel = eldste ? Math.round((new Date(idagIso).getTime() - new Date(eldste.dato).getTime()) / 86400000) : null;
   const eldsteErGammel = dagerGammel !== null && dagerGammel >= 14;
+  const fullstendighetVarsel = fullstendighet?.mistenkelig ?? false;
   if (!lastUpdated && !eldste) return null;
   return (
     <Tooltip>
@@ -1406,7 +1417,7 @@ function DatakildeHeaderInfo({ freshness, idagIso, lastUpdated }: { freshness: D
           <span
             aria-label="Når dataene sist ble oppdatert"
             className={`grid h-7 w-7 shrink-0 cursor-default place-items-center rounded-full transition hover:bg-surface-2 ${
-              eldsteErGammel ? "text-status-warning" : "text-ink-4 hover:text-ink-2"
+              eldsteErGammel || fullstendighetVarsel ? "text-status-warning" : "text-ink-4 hover:text-ink-2"
             }`}
           >
             <Info className="h-4 w-4" />
@@ -1425,6 +1436,17 @@ function DatakildeHeaderInfo({ freshness, idagIso, lastUpdated }: { freshness: D
                 </p>
               ))}
             </>
+          )}
+          {/* v70 (2026-09-24, controller-notat punkt 3, Morten: "legg den til, men ha den skjult i
+              dashboardet") - fullstendighets-sjekk av selve Fazile-kildeuttrekket, kun synlig her
+              bak info-ikonet, ALDRI en egen synlig seksjon på siden. */}
+          {fullstendighet && (
+            <p className={fullstendighetVarsel ? "text-status-warning" : undefined}>
+              Fullstendighetssjekk: {fullstendighet.antallKildelinjer} Fazile-kildelinjer
+              {fullstendighet.forrigeAntallKildelinjer !== null && ` (forrige: ${fullstendighet.forrigeAntallKildelinjer})`}
+              {fullstendighet.avvikAntallPct !== null && ` — ${fullstendighet.avvikAntallPct > 0 ? "+" : ""}${fullstendighet.avvikAntallPct}%`}
+              {fullstendighetVarsel && " — sjekk om kildeuttrekket var ufullstendig denne kjøringen"}
+            </p>
           )}
         </div>
       </TooltipContent>
@@ -4185,7 +4207,14 @@ export default function IncomeForecastSection() {
         // den ikke hørte hjemme i en header. Tallet finnes fortsatt i breakdownen under.
         // v50: eldste datakilde flyttet hit fra KPI-boksene (Morten 2026-09-11).
         // v51: fra tekstlinje til info-ikon ytterst til høyre — se DatakildeHeaderInfo.
-        headerInfo={<DatakildeHeaderInfo freshness={dataSourceFreshness} idagIso={idagIso} lastUpdated={lastUpdated} />}
+        headerInfo={
+          <DatakildeHeaderInfo
+            freshness={dataSourceFreshness}
+            idagIso={idagIso}
+            lastUpdated={lastUpdated}
+            fullstendighet={remainingTenantsSnapshot?.fullstendighetssjekk}
+          />
+        }
         icon={TrendingUp}
         iconColorClass="text-yellow-400"
       />

@@ -162,6 +162,20 @@ export interface RemainingTenantsSnapshot {
   // sluttdato, o.l.) - tidligere kun synlig i konsollen til den som kjørte scriptet, nå med i
   // snapshotet slik at ReconciliationPanel (app/IncomeForecastSection.tsx) kan vise dem.
   advarsler?: string[];
+  // v70 (2026-09-24, controller-notat punkt 3): fullstendighets-sjekk av selve KILDEN (antall/
+  // beløp Fazile-kildelinjer i dette uttrekket vs. forrige kjøring), ikke bare nøyaktighet av
+  // det som ble fanget opp. Vises kun i det skjulte "Verktøy og avstemming"-panelet.
+  fullstendighetssjekk?: {
+    antallKildelinjer: number;
+    sumKildelinjer: number;
+    forrigeAntallKildelinjer: number | null;
+    forrigeSumKildelinjer: number | null;
+    forrigeSistOppdatert: string | null;
+    avvikAntallPct: number | null;
+    avvikSumPct: number | null;
+    mistenkelig: boolean;
+    sistOppdatert: string;
+  };
 }
 
 const HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
