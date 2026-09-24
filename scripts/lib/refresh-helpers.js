@@ -136,6 +136,29 @@ function getFromRedis(hashKey, field) {
     });
 }
 
+// v73 (2026-09-24, controller-notat punkt 11, Morten valgte "egen, datert Redis-nøkkel" fremfor
+// Vercel Blob - sistnevnte krever access:"public" (URL-basert, ikke ekte tilgangskontroll), og
+// ville lagt reelle leietakernavn/beløp et sted utenfor den allerede-stolte Redis-tilgangen).
+// IKKE ekte katastrofe-sikring (samme Redis-instans - ryker HELE instansen, ryker backupen med),
+// men fanger opp den mer sannsynlige feilen: en fremtidig kjøring som skriver et FEILAKTIG/tomt
+// snapshot over det gode - da finnes de siste BACKUP_DAGER dagenes versjoner å hente tilbake fra.
+// Egen hash pr. kildehash (`${hashKey}:backup`), ett felt pr. dato - `hkeys`/`hget` for å liste/
+// hente en tidligere dag manuelt ved behov (se TENANT_REGLER.md).
+const BACKUP_DAGER = 30;
+async function lagreBackup(redis, hashKey, snapshotJson) {
+  try {
+    const backupKey = `${hashKey}:backup`;
+    const dato = new Date().toISOString().slice(0, 10);
+    await redis.hset(backupKey, dato, snapshotJson);
+    const alleDatoer = await redis.hkeys(backupKey);
+    const utdaterte = alleDatoer.sort().slice(0, Math.max(0, alleDatoer.length - BACKUP_DAGER));
+    if (utdaterte.length > 0) await redis.hdel(backupKey, ...utdaterte);
+  } catch (err) {
+    // Backup skal ALDRI blokkere/kræsje selve pipeline-kjøringen - kun et varsel.
+    console.error(`ADVARSEL: klarte ikke å lagre backup for ${hashKey}:`, err.message || err);
+  }
+}
+
 function pushToRedis(hashKey, field, snapshot, fallbackFileName) {
   loadEnvLocal();
   if (!process.env.REDIS_URL) {
@@ -147,10 +170,12 @@ function pushToRedis(hashKey, field, snapshot, fallbackFileName) {
   }
   const Redis = require(path.join(__dirname, "..", "..", "node_modules", "ioredis"));
   const redis = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 3 });
+  const snapshotJson = JSON.stringify(snapshot);
   return redis
-    .hset(hashKey, field, JSON.stringify(snapshot))
-    .then(() => {
+    .hset(hashKey, field, snapshotJson)
+    .then(async () => {
       console.log(`Lagret i Redis under ${hashKey} / ${field}`);
+      await lagreBackup(redis, hashKey, snapshotJson);
       redis.disconnect();
     })
     .catch((err) => {

@@ -1615,6 +1615,18 @@ function TenantDrilldownRows({
   kommentarer?: Record<string, string>;
   onSaveKommentar?: (navn: string, kommentar: string) => void;
 }) {
+  const [forklaringKopiert, setForklaringKopiert] = useState(false);
+  async function handleKopierForklaring(e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(byggForklaringstekst(row));
+      setForklaringKopiert(true);
+      window.setTimeout(() => setForklaringKopiert(false), 2500);
+    } catch {
+      /* clipboard-tilgang blokkert - ingen kritisk funksjon, ignorer stille */
+    }
+  }
+
   const kontoer = row.kontoer ?? [];
   const erLedigRad = row.ledigOpprinneligBudsjett !== undefined;
   // Budsjett finnes KUN pr. leietaker, ikke pr. konto - det finnes ingen kontofordelt budsjettkilde
@@ -1712,6 +1724,20 @@ function TenantDrilldownRows({
 
   return (
     <>
+      {/* v72 (controller-notat punkt 10) - "forklar dette tallet" for en utenforstående (revisor/
+          ny controller) uten å måtte forstå koden bak. Alltid tilgjengelig, ikke bare for usikre
+          matcher (se matchKvalitetTekst over, som er noe annet). */}
+      <tr className="bg-surface-1">
+        <td colSpan={antallKolonner} className="px-3 py-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={handleKopierForklaring}
+            className="text-2xs text-ink-4 hover:text-ink-2 transition-colors"
+          >
+            {forklaringKopiert ? "Kopiert!" : "Kopier forklaring"}
+          </button>
+        </td>
+      </tr>
       {rader}
       {flyttetInn.length > 0 && (
         <tr className="bg-surface-1">
@@ -3273,6 +3299,40 @@ function matchKvalitetTekst(row: TenantForecastRow): string | null {
   }
   if (deler.length === 0) return null;
   return `Usikker kobling mellom kildene — ${deler.join(". ")}.`;
+}
+
+// v72 (2026-09-24, controller-notat punkt 10, Morten: "bygg det" - "en revisor må forstå ~5000
+// linjer Node-script for å etterprøve ett enkelt leietaker-tall"). Slår sammen ALT som allerede
+// finnes om raden (kilde, matchemetode, kontofordeling, kildelinjer) til én ren tekst en
+// utenforstående kan lese/lime inn andre steder UTEN å måtte forstå koden bak - i motsetning til
+// matchKvalitetTekst() over, som kun varsler når koblingen er USIKKER, tar denne alltid med hele
+// bildet (også når matchen er helt sikker), fordi "forklar dette tallet" må virke for ALLE rader,
+// ikke bare de mistenkelige.
+function byggForklaringstekst(row: TenantForecastRow): string {
+  const deler: string[] = [
+    row.navn,
+    `Fakturert: ${formatKr(row.fakturert)} kr  |  Gjenstår: ${formatKr(row.gjenstar)} kr  |  Budsjett: ${row.budsjett === null ? "—" : `${formatKr(row.budsjett)} kr`}  |  Avvik: ${row.avvik === null ? "—" : `${formatKr(row.avvik, true)} kr`}`,
+  ];
+  deler.push(`NXT-kobling: ${row.nxtMatch ? (NXT_MATCH_LABEL[row.nxtMatch] ?? row.nxtMatch) : "ikke satt"}`);
+  if (row.budsjettVia?.length) {
+    deler.push(`Budsjett funnet via: ${row.budsjettVia.map((v) => BUDSJETT_VIA_LABEL[v] ?? v).join(" → ")}`);
+  }
+  if (row.excelNavn?.length) deler.push(`Excel-arkets navn: ${row.excelNavn.join(", ")}`);
+  if (row.remainingStatuser?.length) deler.push(`Status: ${row.remainingStatuser.map(bygStatusLabel).join(", ")}`);
+  if (row.kommentar) deler.push(`Kommentar: ${row.kommentar}`);
+  if (row.kontoer?.length) {
+    deler.push("Kontofordeling (fakturert):");
+    for (const k of row.kontoer) deler.push(`  ${k.konto} ${KONTONAVN[String(k.konto)] ?? ""}: ${formatKr(k.belop)} kr`);
+  }
+  if (row.linjer?.length) {
+    deler.push("Kildelinjer (Fazile/NXT):");
+    for (const l of row.linjer) {
+      const periode = l.startDato || l.sluttDato ? ` (${l.startDato ?? "?"} – ${l.sluttDato ?? "løpende"})` : "";
+      deler.push(`  ${l.eiendom} / ${l.bygg} — ${l.beskrivelse} [${l.linjetype}, Del ${l.del}]: ${formatKr(l.fullArsverdi2026)} kr/år${periode}`);
+    }
+  }
+  deler.push(`Generert ${new Date().toISOString().slice(0, 10)} fra Inntektsprognosen (Mustad Eiendom, internt bruk).`);
+  return deler.join("\n");
 }
 
 function TenantForecastTable({
