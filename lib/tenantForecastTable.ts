@@ -1,6 +1,6 @@
 import { hgetJSON } from "./kv";
 import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
-import { getTenantForecastComments } from "./tenantForecastComments";
+import { getTenantForecastComments, getTenantForecastCommentAutoFlags } from "./tenantForecastComments";
 import { isSystemRow } from "./tenantForecastSystemRow";
 
 // Re-eksportert for eksisterende importer (lib/tenantForecastTable.test.ts) - selve
@@ -94,6 +94,15 @@ export interface TenantForecastRow {
   // hash (lib/tenantForecastComments.ts), IKKE i dette snapshotet, slik at kommentarer overlever
   // at pipelinen kjøres på nytt.
   kommentar?: string;
+  // v77 (2026-09-26, presentasjonsrevisjon): true når `kommentar` over er build-scriptets EGEN
+  // autogenererte tekst (settAutoKommentar()/-Aggregat() i build-tenant-forecast-table.js - f.eks.
+  // "Utleid/trukket ut fra denne Ledig-raden ...", "Exit fee ved flytting ..."), IKKE en reell
+  // kommentar Morten/Claude har skrevet inn. MERK: auto- og manuelle kommentarer lever i SAMME
+  // Redis-hash (lib/tenantForecastComments.ts) - "finnes en oppføring" alene sier IKKE noe om
+  // kilden, kun hashens eget `auto: true`-felt (satt av build-scriptet, aldri av UI-en) gjør. Satt
+  // i withComments() under fra getTenantForecastCommentAutoFlags(). Før dette feltet fantes var
+  // det umulig å se forskjell i UI-en: begge rendret identisk (samme font, samme farge).
+  kommentarErAuto?: boolean;
   // Navnet på en "Ledig <kortkode>"-rad denne leietakeren sannsynligvis flyttet inn i (satt av
   // scripts/build-tenant-forecast-table.js sin kobleFlyttetInnOgTrekkFra(), v7/v8 2026-08-28/29) -
   // UI-en nester slike rader under riktig Ledig-rad i stedet for å vise dem løsrevet, se
@@ -182,17 +191,24 @@ function anonymizeGrupper(grupper: TenantForecastGrupper): TenantForecastGrupper
   };
 }
 
-function withComments(rows: TenantForecastRow[], comments: Record<string, string>): TenantForecastRow[] {
+function withComments(
+  rows: TenantForecastRow[],
+  comments: Record<string, string>,
+  autoFlags: Record<string, boolean>,
+): TenantForecastRow[] {
   return rows.map((r) => {
-    const kommentar = comments[r.navn.trim().toLowerCase()];
-    return kommentar ? { ...r, kommentar } : r;
+    const key = r.navn.trim().toLowerCase();
+    const kommentar = comments[key];
+    if (!kommentar) return r;
+    return { ...r, kommentar, kommentarErAuto: autoFlags[key] === true };
   });
 }
 
 export async function getTenantForecastTable(): Promise<TenantForecastTableSnapshot | null> {
-  const [snapshot, comments] = await Promise.all([
+  const [snapshot, comments, autoFlags] = await Promise.all([
     hgetJSON<TenantForecastTableSnapshot>(HASH_KEY, FIELD),
     getTenantForecastComments(),
+    getTenantForecastCommentAutoFlags(),
   ]);
   if (!snapshot) return null;
   // Kommentarer kobles inn FØR anonymisering (matcher på ekte navn - se withComments).
@@ -204,14 +220,14 @@ export async function getTenantForecastTable(): Promise<TenantForecastTableSnaps
   const withKommentarer: TenantForecastTableSnapshot = {
     ...snapshot,
     delA: {
-      leietaker: withComments(snapshot.delA.leietaker, comments),
-      bygg: withComments(snapshot.delA.bygg, comments),
-      leietype: withComments(snapshot.delA.leietype, comments),
+      leietaker: withComments(snapshot.delA.leietaker, comments, autoFlags),
+      bygg: withComments(snapshot.delA.bygg, comments, autoFlags),
+      leietype: withComments(snapshot.delA.leietype, comments, autoFlags),
     },
     delB: {
-      leietaker: withComments(snapshot.delB.leietaker, comments),
-      bygg: withComments(snapshot.delB.bygg, comments),
-      leietype: withComments(snapshot.delB.leietype, comments),
+      leietaker: withComments(snapshot.delB.leietaker, comments, autoFlags),
+      bygg: withComments(snapshot.delB.bygg, comments, autoFlags),
+      leietype: withComments(snapshot.delB.leietype, comments, autoFlags),
     },
   };
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden

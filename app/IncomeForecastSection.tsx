@@ -139,6 +139,20 @@ type OmsetningsavregningSortKey =
 // (Leieinntekter/Parkering, Omsetningsavregning, Kontrakter på utløp, Ledige lokaler). Før hadde
 // hver tabell sin egen variant (små/store bokstaver, medium/semibold, ink-2/ink-4, med/uten
 // bunnlinje under hodet). Kolonnetitler og innhold er uendret - bare utformingen er samlet her.
+// v77 (2026-09-26, presentasjonsrevisjon): delt prosent-formatering - fantes tidligere som tre
+// separate inline-varianter (omsetningYoyPct, avtaltOmsProsent, avvikPct) med ulikt antall
+// desimaler OG uten `minimumFractionDigits` satt likt med maximum. Sistnevnte er den reelle
+// bugen: uten en satt minimum viser f.eks. avtaltOmsProsent en "hel" prosent som "8 %" men en
+// annen rad som "8,25 %" i SAMME kolonne - desimalantallet blir stille ujevnt avhengig av om
+// tallet tilfeldigvis er rundt, ikke fordi presisjonsbehovet faktisk er ulikt. `decimals` er
+// fortsatt en parameter (en avtalt omsetningsprosent kan trenge 2 desimaler, en beregnet
+// budsjettavvik-prosent trenger typisk bare 1) - poenget er at ALLE kall nå tvinger samme
+// desimalantall for HVER verdi, ikke at alle prosenttall i appen må se identiske ut.
+function formatPct(value: number, decimals = 1, signed = false): string {
+  const sign = signed && value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString("nb-NO", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} %`;
+}
+
 const TABELL_HODE_RAD = "border-b border-line-strong text-left text-ink-2";
 const tabellSortKnapp = (active: boolean) =>
   `inline-flex items-center gap-0.5 text-2xs font-semibold uppercase tracking-wide transition hover:text-ink-1 ${active ? "text-ink-1" : "text-ink-2"}`;
@@ -147,7 +161,17 @@ const tabellSortKnapp = (active: boolean) =>
 // lavere enn innholdet trenger, kun høyere), satt til å romme den TALLESTE vanlige raden - to
 // stablede, komprimerte kommentarlinjer (se KommentarCell) - slik at alle andre rader strekkes opp
 // til samme høyde i stedet for at kommentarraden skal klemmes ned mot en for lav grense.
-const TABELL_RAD_KLIKKBAR = "h-12 cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
+const TABELL_RAD_KLIKKBAR = "group h-12 cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50";
+// v77 (2026-09-26, presentasjonsrevisjon): felles klasser for en "frosset" (sticky) første kolonne
+// i brede tabeller - identifiserende navn/leietaker-kolonnen forsvinner ellers ut av bildet når
+// man scroller til høyre for å lese f.eks. Kommentar-kolonnen. `bg-surface-2` er en SOLID farge
+// (ikke /40 som kortcontaineren rundt) - en sticky celle må ha en ugjennomsiktig bakgrunn for i det
+// hele tatt å dekke innholdet som scroller under den. `group-hover:bg-surface-2/50` speiler
+// TABELL_RAD_KLIKKBAR sin rad-hover slik at den frosne cellen fortsatt lyser opp sammen med
+// resten av raden (radens :hover trigger via nettleserens vanlige hover-boble, IKKE via at man
+// faktisk hovrer selve cellen).
+const STICKY_KOL_TH = "sticky left-0 z-10 bg-surface-2";
+const STICKY_KOL_TD = "sticky left-0 z-10 bg-surface-2 group-hover:bg-surface-2/50";
 
 function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["butikker"][number] }) {
   const gulvavvik = b.gulvavvik ?? null;
@@ -183,7 +207,7 @@ function OmsetningsavregningDrilldown({ b }: { b: OmsetningsavregningSnapshot["b
           {b.omsetningYoyPct != null &&
             row(
               "Omsetning rullerende 12 mnd vs. 2025",
-              `${b.omsetningYoyPct > 0 ? "+" : ""}${b.omsetningYoyPct.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} %`,
+              formatPct(b.omsetningYoyPct, 1, true),
               Math.abs(b.omsetningYoyPct) >= 15 ? "text-status-warning" : "text-ink-2",
             )}
           {b.akonto2025 != null && row("À konto leie 2025", formatKr(b.akonto2025))}
@@ -308,7 +332,7 @@ function OmsetningsavregningBlock({
                 <table className="w-full min-w-[780px] text-sm">
                   <thead>
                     <tr className={TABELL_HODE_RAD}>
-                      <th className="px-3 py-2">{headerButton("Leietaker", "butikk")}</th>
+                      <th className={`px-3 py-2 ${STICKY_KOL_TH}`}>{headerButton("Leietaker", "butikk")}</th>
                       <th className="px-3 py-2">{headerButton("Bygg", "bygg")}</th>
                       <th className="px-3 py-2 text-right">{headerButton("Omsetning", "omsetningKorr")}</th>
                       <th className="px-3 py-2 text-right">{headerButton("Oms.-%", "avtaltOmsProsent")}</th>
@@ -324,7 +348,7 @@ function OmsetningsavregningBlock({
                       return (
                         <Fragment key={`${b.butikk}-${b.bygg}`}>
                           <tr className={TABELL_RAD_KLIKKBAR} onClick={() => toggleExpanded(b.butikk)}>
-                            <td className="max-w-[160px] truncate px-3 py-2 text-ink-1">
+                            <td className={`max-w-[160px] truncate px-3 py-2 text-ink-1 ${STICKY_KOL_TD}`}>
                               <span className="inline-flex items-center gap-1">
                                 {b.krevManuellSjekk && <AlertTriangle className="h-3 w-3 shrink-0 text-status-warning" aria-label="Krever manuell sjekk" />}
                                 {b.butikk}
@@ -333,7 +357,7 @@ function OmsetningsavregningBlock({
                             <td className="max-w-[130px] truncate px-3 py-2 text-ink-3">{b.bygg}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">{b.omsetningKorr == null ? "—" : formatKr(b.omsetningKorr)}</td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
-                              {b.avtaltOmsProsent == null ? "—" : `${(b.avtaltOmsProsent * 100).toLocaleString("nb-NO", { maximumFractionDigits: 2 })} %`}
+                              {b.avtaltOmsProsent == null ? "—" : formatPct(b.avtaltOmsProsent * 100, 2)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-2">
                               {b.forventetOmsetningsleie == null ? "—" : formatKr(b.forventetOmsetningsleie)}
@@ -383,7 +407,7 @@ function OmsetningsavregningBlock({
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-line-strong font-semibold">
-                      <td className="px-3 py-2 text-ink-1">Totalt ({filtered.length})</td>
+                      <td className={`px-3 py-2 text-ink-1 ${STICKY_KOL_TH}`}>Totalt ({filtered.length})</td>
                       <td className="px-3 py-2" />
                       <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalOmsetning)}</td>
                       <td className="px-3 py-2" />
@@ -534,7 +558,7 @@ function SignalEditor({
   return (
     <span className="mt-1 flex items-center gap-1">
       <button type="button" onClick={() => setEditing(true)} className="text-2xs font-medium text-ink-2 hover:text-ink-1">
-        {signal.sannsynlighetProsent}%
+        {formatPct(signal.sannsynlighetProsent, 0)}
       </button>
       <Tooltip>
         <TooltipTrigger
@@ -1361,19 +1385,22 @@ function KpiStrip({
         </a>
         <a href="#leieinntekter" className={boks}>
           <p className={`${tall} ${avvikFarge}`}>
-            {avvikPct === null
-              ? "—"
-              : `${avvikPct >= 0 ? "+" : ""}${avvikPct.toLocaleString("nb-NO", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`}
+            {avvikPct === null ? "—" : formatPct(avvikPct, 1, true)}
           </p>
         </a>
       </div>
 
+      {/* v77 (2026-09-26, presentasjonsrevisjon): omdøpt fra "Risiko" - dette tallet er KUN vektet
+          reforhandlingspotensiale (se tooltip-teksten), mens "Risikoforhold"-kortet lenger ned i
+          samme visning summerer DENNE posten OG Kundefordringer 30+ OG Øvrige risikoforhold til et
+          langt større totalbeløp under samme ord "Risiko" - to ulike omfang bak samme merkelapp.
+          Rent tekstendring, ingen tall/beregning er rørt. */}
       <p className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">
-        <span className="truncate">Risiko</span>
+        <span className="truncate">Reforhandlingsrisiko</span>
         <Tooltip>
           <TooltipTrigger
             render={
-              <button type="button" aria-label="Hva risikotallet er" className="shrink-0 text-ink-4 hover:text-ink-1">
+              <button type="button" aria-label="Hva reforhandlingsrisiko-tallet er" className="shrink-0 text-ink-4 hover:text-ink-1">
                 <Info className="h-3 w-3" />
               </button>
             }
@@ -1852,11 +1879,18 @@ function KommentarCell({
   value,
   onSave,
   fraClaude = false,
+  autoGenerert = false,
 }: {
   navn: string;
   value: string;
   onSave: (navn: string, value: string) => void;
   fraClaude?: boolean;
+  // v77 (2026-09-26, presentasjonsrevisjon): før dette fantes, rendret en autogenerert
+  // systemforklaring (f.eks. "Utleid/trukket ut fra denne Ledig-raden ...") IDENTISK med en ekte,
+  // manuelt skrevet kommentar - samme skrift, samme farge. En leser kunne ikke se forskjell uten å
+  // åpne cellen. `fraClaude` (over) er noe ANNET - Claudes EGEN, separat lagrede analyselinje - og
+  // dekker ikke dette tilfellet, siden en autogenerert tekst aldri har fraClaude=true.
+  autoGenerert?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -1878,9 +1912,15 @@ function KommentarCell({
               setDraft(value);
             }}
             className={`block w-full max-w-[180px] truncate rounded-md border border-transparent px-1.5 py-0.5 text-left text-2xs leading-tight outline-none transition hover:border-line hover:bg-surface-2 ${
-              fraClaude ? "italic text-accent" : "text-ink-2"
+              fraClaude ? "italic text-accent" : autoGenerert ? "text-ink-4" : "text-ink-2"
             }`}
-            title={fraClaude ? "Forklaring skrevet av Claude - rediger for å gjøre den til din" : undefined}
+            title={
+              fraClaude
+                ? "Forklaring skrevet av Claude - rediger for å gjøre den til din"
+                : autoGenerert
+                  ? "Automatisk generert forklaring fra pipelinen - ingen har skrevet en egen kommentar ennå. Klikk for å legge til din egen."
+                  : undefined
+            }
           >
             {value || <span className="text-ink-4">Kommentar…</span>}
           </button>
@@ -2419,7 +2459,7 @@ function KontraktUtlopTabell({
               <table className="w-full min-w-[960px] text-sm">
                 <thead>
                   <tr className={TABELL_HODE_RAD}>
-                    <th className="px-3 py-2">{headerButton("Leietaker", "leietaker")}</th>
+                    <th className={`px-3 py-2 ${STICKY_KOL_TH}`}>{headerButton("Leietaker", "leietaker")}</th>
                     <th className="px-3 py-2">{headerButton("Bygg", "bygg")}</th>
                     <th className="px-3 py-2">{headerButton("Utløp", "utlop")}</th>
                     <th className="px-3 py-2 text-right">{headerButton("Fakturert", "fakturert")}</th>
@@ -2440,7 +2480,7 @@ function KontraktUtlopTabell({
                     return (
                       <Fragment key={d.kontrakt.kontraktsnokkel}>
                         <tr className={TABELL_RAD_KLIKKBAR} onClick={() => toggle(d.kontrakt.kontraktsnokkel)}>
-                          <td className="max-w-[150px] px-3 py-2 text-ink-1">
+                          <td className={`max-w-[150px] px-3 py-2 text-ink-1 ${STICKY_KOL_TD}`}>
                             <span className="flex min-w-0 items-center gap-1">
                               <span className="truncate">{d.kontrakt.leietaker}</span>
                               {d.varsler.length > 0 && (
@@ -2548,7 +2588,7 @@ function IkkeSikretAvtaleTabell({
         <thead>
           <tr className={TABELL_HODE_RAD}>
             {["Leietaker", "Bygg", "Oppstart", "Beløp 2026", "Sannsynlighet", "Vektet"].map((t, i) => (
-              <th key={t} className={`px-3 py-2 ${i === 3 || i === 5 ? "text-right" : ""}`}>
+              <th key={t} className={`px-3 py-2 ${i === 3 || i === 5 ? "text-right" : ""} ${i === 0 ? STICKY_KOL_TH : ""}`}>
                 <span className={tabellSortKnapp(false)}>{t}</span>
               </th>
             ))}
@@ -2573,7 +2613,7 @@ function IkkeSikretAvtaleTabell({
             const vektet = (u.belop * visSignal.sannsynlighetProsent) / 100;
             return (
               <tr key={id} className="border-t border-line">
-                <td className="max-w-[150px] px-3 py-2 text-ink-1">
+                <td className={`max-w-[150px] px-3 py-2 text-ink-1 ${STICKY_KOL_TD}`}>
                   <span className="flex min-w-0 items-center gap-1">
                     <span className="truncate">{u.leietaker}</span>
                     <Tooltip>
@@ -3721,7 +3761,7 @@ function TenantForecastTable({
             </colgroup>
             <thead>
               <tr className={TABELL_HODE_RAD}>
-                <th className="relative px-3 py-2">{headerButton(GRUPPERING_LABEL[gruppering], "navn")}</th>
+                <th className={`relative px-3 py-2 ${STICKY_KOL_TH}`}>{headerButton(GRUPPERING_LABEL[gruppering], "navn")}</th>
                 {gruppering === "leietaker" && (
                   <th className="relative whitespace-nowrap px-3 py-2 text-left">
                     {headerButton(`Start/slutt ${PROGNOSE_AR}`, "startSlutt")}
@@ -3768,10 +3808,10 @@ function TenantForecastTable({
                 return (
                   <Fragment key={row.navn}>
                     <tr
-                      className={`h-12 border-t border-line transition-colors ${kanEkspandere ? "cursor-pointer hover:bg-surface-2/50" : ""}`}
+                      className={`h-12 border-t border-line transition-colors ${kanEkspandere ? "group cursor-pointer hover:bg-surface-2/50" : ""}`}
                       onClick={kanEkspandere ? () => toggle(row.navn) : undefined}
                     >
-                      <td className="max-w-[160px] px-3 py-2 text-ink-1">
+                      <td className={`max-w-[160px] px-3 py-2 text-ink-1 ${STICKY_KOL_TD}`}>
                         <span className="flex min-w-0 items-center gap-1">
                           {/* v42 (2026-09-11, Morten): internleie-radene var dempet til text-ink-3,
                               praktisk talt samme tone som kolonneoverskriftene (text-ink-4) - raden
@@ -3889,6 +3929,7 @@ function TenantForecastTable({
                               value={commentOverrides[row.navn] ?? row.kommentar ?? ""}
                               onSave={saveComment}
                               fraClaude={erClaudeKommentar(row.navn)}
+                              autoGenerert={commentOverrides[row.navn] === undefined && !!row.kommentarErAuto}
                             />
                             {commentOverrides[`${row.navn.trim().toLowerCase()}||claude`] && (
                               <KommentarCell
@@ -3917,7 +3958,7 @@ function TenantForecastTable({
                 );
               })}
               <tr className="border-t border-line-strong font-semibold">
-                <td className="px-3 py-2 text-ink-1">Totalt ({rows.length})</td>
+                <td className={`px-3 py-2 text-ink-1 ${STICKY_KOL_TH}`}>Totalt ({rows.length})</td>
                 {gruppering === "leietaker" && <td className="px-3 py-2" />}
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalFakturert)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink-1">{formatKr(totalGjenstar)}</td>
