@@ -90,21 +90,48 @@ function ContractRow({
           {c.kvm.toLocaleString("nb-NO", { maximumFractionDigits: 1 })}
         </td>
         <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.leietype}</td>
+        {/* v80 (2026-09-26, Morten: "kategoriserer om det er en helt ny kontrakt eller en
+            fornyelse av eksisterende"): "—" for de 139 eldre kontraktene som ikke er vurdert
+            ennå (se Contract.kategori sin definisjon) - ikke en feiltilstand. */}
+        <td className="whitespace-nowrap px-3 py-2">
+          {c.kategori ? (
+            <span
+              className={`rounded-full px-1.5 py-0.5 text-2xs font-medium ${
+                c.kategori === "ny" ? "bg-status-positive/15 text-status-positive" : "bg-status-action/15 text-status-action"
+              }`}
+            >
+              {c.kategori === "ny" ? "Ny" : "Fornyet"}
+            </span>
+          ) : (
+            <span className="text-ink-4">—</span>
+          )}
+        </td>
         <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
+      {/* v80 (2026-09-26, Morten: "wrapped tekst slik at jeg kan lese på mobilen uten å
+          scrolle"): td-en arver tabellens min-w-[620px] og strekkes videre av lang, u-wrappet
+          tekst i en vanlig (ikke table-fixed) tabell - "w-0 min-w-full" alene løser IKKE det på
+          mobil, siden 620px fortsatt er bredere enn en telefonskjerm. Det er derfor selve INNHOLDS-
+          diven som er sticky+bredde-begrenset til (tilnærmet) den faktiske skjermbredden, ikke
+          tabellens - se STICKY_KOL_TD-mønsteret i IncomeForecastSection.tsx for samme
+          "unnslipp scroll-containeren"-teknikk, brukt her på en hel rad i stedet for én kolonne. */}
       {detaljerOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={8} className="px-3 py-2 pl-9">
-            <ContractDetaljerPanel contract={c} detaljer={detaljer} />
+          <td colSpan={9} className="p-0">
+            <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[560px] px-3 py-2 pl-9">
+              <ContractDetaljerPanel contract={c} detaljer={detaljer} />
+            </div>
           </td>
         </tr>
       )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={8} className="px-3 py-2 pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
+          <td colSpan={9} className="p-0">
+            <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[560px] px-3 py-2 pl-9">
+              <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
+            </div>
           </td>
         </tr>
       )}
@@ -144,11 +171,25 @@ function ContractDetaljerPanel({ contract, detaljer }: { contract: Contract; det
       <div>
         <Seksjonstittel>Nøkkelinfo</Seksjonstittel>
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          {dt("Bygg")}
+          {dd(contract.bygg)}
+          {detaljer?.etasje && (
+            <>
+              {dt("Etasje")}
+              {dd(detaljer.etasje)}
+            </>
+          )}
+          {detaljer?.arealnavn && (
+            <>
+              {dt("Areal (navn)")}
+              {dd(detaljer.arealnavn)}
+            </>
+          )}
           {dt("Startdato")}
           {dd(formatDateDMY(contract.startdato))}
           {dt("Sluttdato")}
           {dd(detaljer?.sluttdato ? formatDateDMY(detaljer.sluttdato) : detaljer ? "Løpende, ingen avtalt sluttdato" : "—")}
-          {dt("Areal")}
+          {dt("Areal (kvm)")}
           {dd(`${contract.kvm.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} kvm`)}
           {detaljer?.kontraktsnummer && (
             <>
@@ -184,13 +225,25 @@ function ContractDetaljerPanel({ contract, detaljer }: { contract: Contract; det
               )}
             </>
           )}
+          {detaljer?.forrigeLeieforhold && (
+            <>
+              {dt("Forrige leieforhold")}
+              {dd(detaljer.forrigeLeieforhold)}
+            </>
+          )}
         </dl>
       </div>
 
-      {detaljer?.saerligeBestemmelser && (
+      {detaljer?.saerligeBestemmelser && detaljer.saerligeBestemmelser.length > 0 && (
         <div>
           <Seksjonstittel>Særlige bestemmelser</Seksjonstittel>
-          <p className="mt-1 text-sm text-ink-2">{detaljer.saerligeBestemmelser}</p>
+          <div className="mt-1 flex flex-col gap-1.5">
+            {detaljer.saerligeBestemmelser.map((punkt, i) => (
+              <p key={i} className="text-sm text-ink-2">
+                {punkt}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 
@@ -303,6 +356,7 @@ export default function JobbContractsSection({ today, onJumpToOppslag }: { today
                 <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
                 <th className="px-3 py-2 text-2xs font-medium text-right">Kvm</th>
                 <th className="px-3 py-2 text-2xs font-medium">Type</th>
+                <th className="px-3 py-2 text-2xs font-medium">Ny/Fornyet</th>
                 <th className="px-3 py-2 text-2xs font-medium">Notat</th>
               </tr>
             </thead>
@@ -311,7 +365,7 @@ export default function JobbContractsSection({ today, onJumpToOppslag }: { today
                   et ord — det leste som en lastefeil, ikke som "ingenting signert". */}
               {visibleRows.length === 0 && (
                 <tr className="border-t border-line">
-                  <td colSpan={8} className="px-3 py-2 text-sm text-ink-3">
+                  <td colSpan={9} className="px-3 py-2 text-sm text-ink-3">
                     {expanded
                       ? `Ingen kontrakter signert siden ${yearCutoff.slice(0, 4)}.`
                       : "Ingen kontrakter signert siste måned."}

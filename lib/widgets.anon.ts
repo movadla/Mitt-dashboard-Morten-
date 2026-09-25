@@ -169,6 +169,8 @@ export interface Contract {
   kvm: number;
   leietype: string;
   sfUrl: string | null;
+  // v80 (2026-09-26): se widgets.local.ts sin fyldige kommentar.
+  kategori?: "ny" | "fornyet";
 }
 
 // `id` er posisjonsbasert (c1, c2, ...) — IKKE avledet av kundenavn, siden navnet er
@@ -314,16 +316,16 @@ export const CONTRACTS: Contract[] = [
   { id: "c137", kunde: "Demokunde 275", signeringsdato: "2026-02-05", startdato: "2026-01-01", arsbelop: 25683, bygg: "Lilleakerveien 2E", kvm: 9.6, leietype: "Kontorleie", sfUrl: null },
   { id: "c138", kunde: "Demokunde 276 AS", signeringsdato: "2026-01-16", startdato: "2025-11-17", arsbelop: 50326.56, bygg: "Vollsveien 13-19", kvm: 25, leietype: "Parkering", sfUrl: null },
   { id: "c139", kunde: "Demokunde 277 AS", signeringsdato: "2026-01-16", startdato: "2026-01-01", arsbelop: 75000, bygg: "Vollsveien 13-19", kvm: 37.5, leietype: "Parkering", sfUrl: null },
-  { id: "c140", kunde: "Demokunde 278 AS", signeringsdato: "2026-09-18", startdato: "2026-09-23", arsbelop: 523200, bygg: "Vollsveien 13-19", kvm: 159, leietype: "Kontorleie", sfUrl: null },
-  { id: "c141", kunde: "Demokunde 29", signeringsdato: "2026-09-09", startdato: "2026-09-04", arsbelop: 690000, bygg: "Lilleakerveien 8", kvm: 163.3, leietype: "Husleie", sfUrl: null },
-  { id: "c142", kunde: "Demokunde 279", signeringsdato: "2026-09-09", startdato: "2026-09-01", arsbelop: 288120, bygg: "Arnstein Arnebergsvei 4", kvm: 0, leietype: "Husleie", sfUrl: null },
-  { id: "c143", kunde: "Demokunde 280", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 143856.74, bygg: "Vollsveien 13-19", kvm: 65.2, leietype: "Husleie", sfUrl: null },
-  { id: "c144", kunde: "Demokunde 281 AS", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 1050600, bygg: "Lilleakerveien 14", kvm: 511.6, leietype: "Kontorleie/Husleie", sfUrl: null },
-  { id: "c145", kunde: "Demokunde 282 AS", signeringsdato: "2026-08-28", startdato: "2026-09-01", arsbelop: 1986400, bygg: "Lilleakerveien 10", kvm: 601.9, leietype: "Husleie", sfUrl: null },
-  { id: "c146", kunde: "Demokunde 283 AS", signeringsdato: "2026-08-27", startdato: "2026-10-01", arsbelop: 1200000, bygg: "Lilleakerveien 8", kvm: 289.1, leietype: "Husleie", sfUrl: null },
-  { id: "c147", kunde: "Demokunde 284 AS", signeringsdato: "2026-08-26", startdato: "2026-10-01", arsbelop: 273703.02, bygg: "Lilleakerveien 8", kvm: 105.4, leietype: "Kontorleie/Lagerleie", sfUrl: null },
-  { id: "c148", kunde: "Demokunde 285 AS", signeringsdato: "2026-08-20", startdato: "2026-09-01", arsbelop: 280000, bygg: "Lilleakerveien 2 Garasje", kvm: 126.8, leietype: "Parkering", sfUrl: null },
-  { id: "c149", kunde: "Demokunde 286 AS", signeringsdato: "2026-08-18", startdato: "2026-07-01", arsbelop: 454581.82, bygg: "Lilleakerveien 14", kvm: 456.8, leietype: "Husleie", sfUrl: null },
+  { id: "c140", kunde: "Demokunde 278 AS", signeringsdato: "2026-09-18", startdato: "2026-09-23", arsbelop: 523200, bygg: "Vollsveien 13-19", kvm: 159, leietype: "Kontorleie", sfUrl: null, kategori: "ny" },
+  { id: "c141", kunde: "Demokunde 29", signeringsdato: "2026-09-09", startdato: "2026-09-04", arsbelop: 690000, bygg: "Lilleakerveien 8", kvm: 163.3, leietype: "Husleie", sfUrl: null, kategori: "fornyet" },
+  { id: "c142", kunde: "Demokunde 279", signeringsdato: "2026-09-09", startdato: "2026-09-01", arsbelop: 288120, bygg: "Arnstein Arnebergsvei 4", kvm: 0, leietype: "Husleie", sfUrl: null, kategori: "ny" },
+  { id: "c143", kunde: "Demokunde 280", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 143856.74, bygg: "Vollsveien 13-19", kvm: 65.2, leietype: "Husleie", sfUrl: null, kategori: "fornyet" },
+  { id: "c144", kunde: "Demokunde 281 AS", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 1050600, bygg: "Lilleakerveien 14", kvm: 511.6, leietype: "Kontorleie/Husleie", sfUrl: null, kategori: "ny" },
+  { id: "c145", kunde: "Demokunde 282 AS", signeringsdato: "2026-08-28", startdato: "2026-09-01", arsbelop: 1986400, bygg: "Lilleakerveien 10", kvm: 601.9, leietype: "Husleie", sfUrl: null, kategori: "ny" },
+  { id: "c146", kunde: "Demokunde 283 AS", signeringsdato: "2026-08-27", startdato: "2026-10-01", arsbelop: 1200000, bygg: "Lilleakerveien 8", kvm: 289.1, leietype: "Husleie", sfUrl: null, kategori: "fornyet" },
+  { id: "c147", kunde: "Demokunde 284 AS", signeringsdato: "2026-08-26", startdato: "2026-10-01", arsbelop: 273703.02, bygg: "Lilleakerveien 8", kvm: 105.4, leietype: "Kontorleie/Lagerleie", sfUrl: null, kategori: "fornyet" },
+  { id: "c148", kunde: "Demokunde 285 AS", signeringsdato: "2026-08-20", startdato: "2026-09-01", arsbelop: 280000, bygg: "Lilleakerveien 2 Garasje", kvm: 126.8, leietype: "Parkering", sfUrl: null, kategori: "ny" },
+  { id: "c149", kunde: "Demokunde 286 AS", signeringsdato: "2026-08-18", startdato: "2026-07-01", arsbelop: 454581.82, bygg: "Lilleakerveien 14", kvm: 456.8, leietype: "Husleie", sfUrl: null, kategori: "ny" },
 ];
 
 // v78 (2026-09-26): se widgets.local.ts sin fyldige kommentar for hva dette er og hvorfor.
@@ -334,6 +336,8 @@ export const CONTRACTS: Contract[] = [
 // er beholdt (samme som CONTRACTS sfUrl-feltet - peker uansett til et system kun Morten når).
 export interface ContractDetaljer {
   kontraktsnummer: string | null;
+  etasje: string | null;
+  arealnavn: string | null;
   sluttdato: string | null;
   opsjon: boolean | null;
   opsjonsbetingelser: string | null;
@@ -341,7 +345,8 @@ export interface ContractDetaljer {
   mvaType: string | null;
   garantitype: string | null;
   garantibelop: number | null;
-  saerligeBestemmelser: string | null;
+  saerligeBestemmelser: string[] | null;
+  forrigeLeieforhold: string | null;
   signertDato: string | null;
   salesforceUrl: string | null;
   oppsummering: string;
@@ -350,6 +355,8 @@ export interface ContractDetaljer {
 export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   c140: {
     kontraktsnummer: "00003338",
+    etasje: "1",
+    arealnavn: "Kontor",
     sluttdato: "2029-09-30",
     opsjon: true,
     opsjonsbetingelser: "Markedsvilkår",
@@ -357,8 +364,12 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Avgiftspliktig",
     garantitype: "Depositum",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Leiefritak i innflyttingsperioden til og med 31.10.2026 (øvrige kostnader betales som avtalt). Rett til forlengelse i 2 år på markedsvilkår. Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes.",
+    saerligeBestemmelser: [
+      "Leiefritak i innflyttingsperioden til og med 31.10.2026 (øvrige kostnader betales som avtalt).",
+      "Rett til forlengelse i 2 år på markedsvilkår.",
+      "Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes.",
+    ],
+    forrigeLeieforhold: null,
     signertDato: "2026-09-18",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000vIos4IAC",
     oppsummering:
@@ -366,6 +377,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c141: {
     kontraktsnummer: "00003329",
+    etasje: "1",
+    arealnavn: "Kontor",
     sluttdato: "2031-09-03",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -373,8 +386,13 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Avgiftspliktig",
     garantitype: "Depositum",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Erstatter tidligere avtale for 150 kvm i 5. etasje - overtar lokalene etter Demokunde 281 AS (som flytter til 5. etasje i samme bygg, anslått 4. september 2026). Leietaker kan si opp med 6 måneders varsel etter 3 års leietid.",
+    saerligeBestemmelser: [
+      "Erstatter tidligere avtale for 150 kvm i 5. etasje.",
+      "Overtar lokalene etter Demokunde 281 AS, som flytter til 5. etasje i samme bygg (anslått 4. september 2026).",
+      "Leietaker kan si opp med 6 måneders varsel etter 3 års leietid.",
+      "Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen».",
+    ],
+    forrigeLeieforhold: "Demokunde 281 AS - flyttet til 5. etasje i samme bygg (se egen kontrakt), anslått 04.09.2026.",
     signertDato: "2026-09-07",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000u0Xa5IAE",
     oppsummering:
@@ -382,6 +400,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c142: {
     kontraktsnummer: "00002567",
+    etasje: "U",
+    arealnavn: "3 rom + kjøkken og bad",
     sluttdato: "2029-08-30",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -389,8 +409,11 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Ikke avgiftspliktig",
     garantitype: "Depositum",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Boligleie (3 rom, kjøkken og bad, underetasje) underlagt husordensregler og antikvariske føringer (Byantikvaren) - ingen interiørendringer tillatt. Koblet til en 25%-stilling i et tilknyttet selskap med ansvar for oppfølging av eiendommene på stedet.",
+    saerligeBestemmelser: [
+      "Boligleie underlagt husordensregler og antikvariske føringer (Byantikvaren) - ingen interiørendringer tillatt.",
+      "Koblet til en 25%-stilling i et tilknyttet selskap med ansvar for oppfølging av eiendommene på stedet.",
+    ],
+    forrigeLeieforhold: null,
     signertDato: "2026-09-07",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/8009J0000001rykQAA",
     oppsummering:
@@ -398,6 +421,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c143: {
     kontraktsnummer: "00002111",
+    etasje: "1",
+    arealnavn: null,
     sluttdato: "2031-08-31",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -406,12 +431,15 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     garantitype: "Depositum",
     garantibelop: null,
     saerligeBestemmelser: null,
+    forrigeLeieforhold: null,
     signertDato: "2026-08-31",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/8005I000000hWKJQA2",
     oppsummering: "Tilleggsavtale (lokaler i Vollsveien 13B, 1. etg) til 31.08.2031.",
   },
   c144: {
     kontraktsnummer: "00003327",
+    etasje: "2",
+    arealnavn: "Kontor 2",
     sluttdato: "2031-08-31",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -419,8 +447,12 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Avgiftspliktig",
     garantitype: "Bankgaranti",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Rett til å fremleie deler av lokalet til et datterselskap og andre virksomheter (kun mva-pliktig kontorvirksomhet godkjennes). Tilgang til sykkelrom/garderobe i «P-bro» mellom Lilleakerveien 4C og 8. Fremtidig treningsromtilgang i Lilleakerveien 2B ventet (kr 3 000/bruker/år).",
+    saerligeBestemmelser: [
+      "Rett til å fremleie deler av lokalet til et datterselskap og andre virksomheter (kun mva-pliktig kontorvirksomhet godkjennes for øvrig fremleie).",
+      "Tilgang til sykkelrom/garderobe i «P-bro» mellom Lilleakerveien 4C og 8.",
+      "Fremtidig treningsromtilgang i Lilleakerveien 2B ventet (kr 3 000/bruker/år).",
+    ],
+    forrigeLeieforhold: null,
     signertDato: "2026-08-31",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000trdurIAA",
     oppsummering:
@@ -428,6 +460,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c145: {
     kontraktsnummer: "00003328",
+    etasje: "4",
+    arealnavn: "Kontor 4.1",
     sluttdato: "2031-08-31",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -435,7 +469,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Avgiftspliktig",
     garantitype: "Morselskapsgaranti",
     garantibelop: 1986000,
-    saerligeBestemmelser: "Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes.",
+    saerligeBestemmelser: ["Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes."],
+    forrigeLeieforhold: null,
     signertDato: "2026-08-28",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000u0PshIAE",
     oppsummering:
@@ -443,6 +478,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c146: {
     kontraktsnummer: "00003326",
+    etasje: "5",
+    arealnavn: null,
     sluttdato: "2031-08-31",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -450,8 +487,11 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Ikke avgiftspliktig",
     garantitype: "Depositum",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Intern relokalisering fra 1. til 5. etasje i samme bygg (Demokunde 29 overtar de gamle lokalene i 1. etasje). Egen sambruksavtale for fellestjenester i «Lilleakerbyen» signeres separat.",
+    saerligeBestemmelser: [
+      "Intern relokalisering fra 1. til 5. etasje i samme bygg (Demokunde 29 overtar de gamle lokalene i 1. etasje).",
+      "Egen sambruksavtale for fellestjenester i «Lilleakerbyen» signeres separat.",
+    ],
+    forrigeLeieforhold: null,
     signertDato: "2026-08-25",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000tjMfxIAE",
     oppsummering:
@@ -459,6 +499,8 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
   },
   c147: {
     kontraktsnummer: "00002134",
+    etasje: null,
+    arealnavn: null,
     sluttdato: "2027-09-30",
     opsjon: false,
     opsjonsbetingelser: null,
@@ -467,12 +509,15 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     garantitype: null,
     garantibelop: null,
     saerligeBestemmelser: null,
+    forrigeLeieforhold: null,
     signertDato: "2026-08-25",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/8005I000000hYmbQAE",
     oppsummering: "Tilleggsavtale (kontor/lager i Lilleakerveien 8) til 30.09.2027.",
   },
   c148: {
     kontraktsnummer: "00003322",
+    etasje: null,
+    arealnavn: "28.1041",
     sluttdato: null,
     opsjon: false,
     opsjonsbetingelser: null,
@@ -481,12 +526,15 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     garantitype: null,
     garantibelop: null,
     saerligeBestemmelser: null,
+    forrigeLeieforhold: null,
     signertDato: "2026-08-18",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000raL7TIAU",
     oppsummering: "Parkeringsavtale (fri-flyt) i Lilleakerveien 2B, løpende uten avtalt sluttdato.",
   },
   c149: {
     kontraktsnummer: "00001473",
+    etasje: "2",
+    arealnavn: "Kontor 2",
     sluttdato: "2030-04-30",
     opsjon: true,
     opsjonsbetingelser: "Markedsvilkår",
@@ -494,8 +542,12 @@ export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
     mvaType: "Ikke avgiftspliktig",
     garantitype: "Selvskyldnergaranti",
     garantibelop: null,
-    saerligeBestemmelser:
-      "Overtar (transportavtale) forrige leietakers eksisterende leieavtale som den er. Betinget opsjon på ytterligere 5 år til markedsleie, forutsatt at bygget ikke rives som ledd i «Lilleakerbyen»-utviklingen. Fortrinnsrett til relokalisering av treningssenter i nytt prosjekt.",
+    saerligeBestemmelser: [
+      "Overtar (transportavtale) forrige leietakers eksisterende leieavtale som den er.",
+      "Betinget opsjon på ytterligere 5 år til markedsleie, forutsatt at bygget ikke rives som ledd i «Lilleakerbyen»-utviklingen.",
+      "Fortrinnsrett til relokalisering av treningssenter i nytt prosjekt.",
+    ],
+    forrigeLeieforhold: "Forrige leietaker - transportavtale, ny leietaker trer inn i eksisterende leieavtale fra 01.06.2026.",
     signertDato: "2026-06-09",
     salesforceUrl: "https://mustadeiendom.my.salesforce.com/8001t000000hNQLAA2",
     oppsummering:
