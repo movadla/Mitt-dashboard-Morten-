@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 // A = leie (kontogruppe 3600-3699 ekskl. 3640/3641/3642), B = parkering (3640/3641/3642)
 export type IncomeForecastPart = "A" | "B";
@@ -55,9 +56,23 @@ function sortManualIncomeLines(lines: ManualIncomeLine[]): ManualIncomeLine[] {
   return [...lines].sort((a, b) => a.periodeFra.localeCompare(b.periodeFra));
 }
 
+// v76 (2026-09-25, revisjonsrunde 2): getManualIncomeLines() selv MÅ forbli rå - den brukes også
+// av lib/backup.ts (den CRON_SECRET-autoriserte, PIN-uavhengige /api/backup, se dens eget filhode)
+// som er en reell katastrofe-sikring av EKTE data og kjører i produksjon. Å anonymisere her ville
+// stille korrumpert den backupen permanent. Anonymisering skjer i stedet kun ved API-grensen som
+// faktisk eksponeres til /dele, se getManualIncomeLinesForApi() og
+// app/api/income-forecast/manual-lines/route.ts.
 export async function getManualIncomeLines(): Promise<ManualIncomeLine[]> {
   const map = await hgetallJSON<ManualIncomeLine>(HASH_KEY);
   return sortManualIncomeLines(Object.values(map));
+}
+
+// `selskap` er feltet Morten typisk fyller ut med et leietaker-/motpartsnavn, så det er dette
+// feltet som anonymiseres (samme mønster som andre navn-felt). `beskrivelse` er fri tekst og kan
+// i teorien også nevne et navn - udokumentert restrisiko før denne runden, se TENANT_REGLER.md.
+export async function getManualIncomeLinesForApi(): Promise<ManualIncomeLine[]> {
+  const lines = await getManualIncomeLines();
+  return withProdAnonymization(lines, (ls) => ls.map((l) => ({ ...l, selskap: anonymizeIfPerson(l.selskap) })));
 }
 
 export async function addManualIncomeLine(input: NewManualIncomeLineInput): Promise<ManualIncomeLine> {

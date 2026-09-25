@@ -12,6 +12,15 @@ minnefilene alene lett blir.
 Kronologisk endringslogg (hva som ble bygget når) finnes i
 `docs/inntektsprognose-endringslogg.md` — denne filen dupliserer ikke den
 historien, men refererer til den der det er nyttig.
+**MERK (funnet ved runde 2 av pipeline-revisjonen, 2026-09-25): den
+endringsloggen er IKKE lenger levende** — siste reelle oppføring er v27
+(2026-09-07), mens denne filen og selve pipelinen står på v76 (2026-09-25).
+~46 versjoner (inkl. hele v48-mekanismen og hele denne ukens revisjon) er
+udokumentert der. Ingen kommentar i den filen sier at vedlikehold bevisst
+ble stanset — den ble rett og slett glemt. Denne filen (TENANT_REGLER.md)
+er det som faktisk har blitt den levende referansen siden da. Avklar med
+Morten om endringsloggen skal gjenopplives eller formelt legges ned før
+2027 (ikke avgjort her).
 
 ## 0. Anonymisering — les dette først
 
@@ -32,27 +41,112 @@ historien, men refererer til den der det er nyttig.
   gitignored — men `.md`- og `.js`-filer direkte i `scripts/refresh-data/`
   (som denne filen, README.md og `assemble-nxt-booked-tenants.js`) er
   IKKE gitignored og blir committet som normalt.
+- **KRITISK, uløst (funnet ved runde 2 av pipeline-revisjonen, 2026-09-25)**:
+  commit `b18762e` ("Inntektsprognose: to alias-mal rettet etter
+  v48-fiksen"), allerede pushet til GitHub, har en ekte privatpersons
+  fulle navn skrevet ut flere ganger I SELVE COMMIT-MELDINGEN (koden selv
+  var korrekt — navnet ble riktig holdt ute og lagt i en gitignored
+  `_private-*.json`-fil). Commit-meldinger er like permanente/pushede som
+  kode, og retting krever historikk-omskriving (`git rebase`/
+  `filter-repo`), som er eksplisitt underlagt CLAUDE.md sin
+  sikkerhetsregel om å alltid spørre om bekreftelse først — et tidligere,
+  urelatert forsøk på nettopp dette ble i tillegg blokkert av Claude
+  Code sin egen plattform-klassifiserer ("Git Destructive"). **Ingen
+  handling gjort her ennå — krever Mortens eksplisitte beslutning om
+  hvordan (om i det hele tatt) historikken skal ryddes.**
 
-## 0.1 To verktøy som gjør denne filen sjekkbar, ikke bare lesbar (2026-09-23)
+## 0.1 To verktøy som gjør denne filen sjekkbar, ikke bare lesbar (2026-09-23, utvidet 2026-09-25)
 
 - **`node scripts/check-override-freshness.js [--ar=2027]`** — leser `@override`-tagger rett
-  etter hver override-definisjon i de fire pipeline-scriptene (se seksjon 3) og
-  `_bekreftetForAr`-feltet i hver gitignoret `_private-*.json`-fil, og lister konkret hva som
+  etter hver override-definisjon i de **seks** committede pipeline-scriptene (utvidet fra fire
+  2026-09-25: `build-omsetningsavregning.js` og `refresh-fazile-kontrakt-crosswalk.js` var tidligere
+  ALDRI skannet - ingen aktive tagger der i dag, men `build-omsetningsavregning.js` skal få en ekte
+  2026-avregning bygget for 2027, se seksjon 2/3, og ville da fått en tagg dette verktøyet aldri så)
+  og `_bekreftetForAr`-feltet i hver gitignoret `_private-*.json`-fil, og lister konkret hva som
   IKKE er bekreftet for målåret ennå, pluss det som uansett MÅ bygges/rettes
   (`status=todo`-tagger). Kjør denne FØRST når 2027-prognosen settes opp - den er den faktiske,
   maskinsjekkbare versjonen av seksjon 3 under. Rent tekst-skann, kjører ALDRI noen kode fra
-  build-scriptene.
-- **`node scripts/verify-income-forecast.js`** — kjøres ETTER hele pipelinen (alle tre steg).
-  Fanger opp: (1) at REMAINING/BOOKED_3600_3699/INVOICED-konstantene i
-  `lib/incomeForecast.local.ts`/`.anon.ts` faktisk stemmer med det som ligger i Redis akkurat nå
-  (den klart vanligste "glemt å lime inn på nytt"-feilen denne høsten), (2) at
-  build-tenant-forecast-table.js faktisk er kjørt på nytt etter siste
-  build-remaining-summary.js-kjøring, (3) informativt: leieforhold med budsjett men
-  ~0 kr fakturert+gjenstår, og stort negativt gjenstår uten forklaringstekst. Exit code 1 ved
-  reelt avvik.
+  build-scriptene. Fanger nå også (2026-09-25) linjer som inneholder `@override` men IKKE matcher
+  det strenge tag-formatet (f.eks. feil feltrekkefølge) - disse forsvant tidligere 100% stille.
+- **`node scripts/verify-income-forecast.js`** — kjøres ETTER hele pipelinen. Fanger opp: (1) at
+  REMAINING/BOOKED_3600_3699/INVOICED-konstantene i `lib/incomeForecast.local.ts`/`.anon.ts`
+  faktisk stemmer med det som ligger i Redis akkurat nå (den klart vanligste "glemt å lime inn på
+  nytt"-feilen denne høsten), (2) at build-tenant-forecast-table.js faktisk er kjørt på nytt etter
+  siste build-remaining-summary.js-kjøring, (3) ferskheten til Omsetningsavregning- og
+  Kontraktsutløp-2026-satellittsnapshottene (lagt til 2026-09-25 - kun ferskhet, ikke en full
+  finansiell kryssjekk, se seksjon 1 for hvorfor de trengte dette), (4) informativt: leieforhold
+  med budsjett men ~0 kr fakturert+gjenstår, og stort negativt gjenstår uten forklaringstekst.
+  Exit code 1 ved reelt avvik. `sumField()` stripper nå (2026-09-25) `//`-linjekommentarer før
+  summering og validerer forventet antall treff — fanget en reell (demonstrert, ikke bare
+  teoretisk) sårbarhet der en kommentar med "feltnavn: tall"-mønster ble summert inn ved en
+  feiltakelse.
 
 Legg til en `@override`-tag (se eksisterende for mønster) eller et `_bekreftetForAr`-felt når du
 lager en NY tidsbestemt override, ellers blir den usynlig for `check-override-freshness.js`.
+
+## 0.2 Anonymisering av leietakernavn i prod/`/dele` — funnet ved runde 2 (2026-09-25)
+
+`lib/tenantAnonymize.ts` (`withProdAnonymization()`) er den delte vakten som anonymiserer
+privatperson-leietakernavn i produksjon/`/dele` (se ANONYMISERING.md). Runde 2 av
+pipeline-revisjonen fant og rettet **fire** steder der ekte navn lekket gjennom uendret:
+
+1. `avstemmingMotNxt.ikkeKonsumertNxt.storste[].navn`
+   (`lib/incomeForecastRemainingTenants.ts`) — glemt i `anonymizeSnapshot()` selv om resten av
+   snapshotet ble anonymisert. Rettet.
+2. `lib/incomeForecastReviewMarks.ts` (Morten sine vurderinger av leieforhold) — manglet
+   anonymisering HELT, sto likevel på `/dele` sin `DELE_TILLATTE_GET_API`-liste. Rettet
+   (`leietaker`-feltet anonymiseres nå; `notat` er fritekst og IKKE anonymisert, se punkt under).
+3. `app/api/income-forecast/tenant-comments` sin GET (`lib/tenantForecastComments.ts`) — returnerte
+   et kart med EKTE leietakernavn som nøkkel uansett miljø. Rettet med en ny, egen
+   `getTenantForecastCommentsForApi()` som anonymiserer nøkkelen i prod — den opprinnelige
+   `getTenantForecastComments()`/`-Authors()` MÅ forbli rå, siden `lib/tenantForecastTable.ts`
+   kobler kommentarer inn på ekte navn FØR sin egen anonymisering, og
+   `app/api/income-forecast/backup` (Redis-only disaster-recovery-eksport) også trenger ekte data.
+4. `lib/incomeForecastManual.ts` (manuelle inntektslinjer) — samme mønster. Rettet med en egen
+   `getManualIncomeLinesForApi()` (anonymiserer `selskap`-feltet) brukt KUN av
+   `app/api/income-forecast/manual-lines` sin GET — `getManualIncomeLines()` selv MÅ forbli rå,
+   siden den også brukes av `lib/backup.ts` (den CRON_SECRET-autoriserte `/api/backup`, en reell
+   katastrofe-sikring av EKTE data som kjører i produksjon).
+
+**Mønster å huske ved en FREMTIDIG ny Redis-only-getter i denne pipelinen**: sjekk ALLTID om (a)
+en API-rute eksponerer resultatet direkte til klienten (spesielt om ruten står på `/dele`-listen i
+`middleware.ts`) og (b) om en backup-/eksport-rute (`lib/backup.ts`, `app/api/income-forecast/
+backup`) trenger RÅ data fra samme getter — disse to kravene kan motsi hverandre, og løsningen er
+da to separate eksporterte funksjoner (rå + en `-ForApi()`-variant), ikke én funksjon med en
+miljøsjekk inni.
+
+**IKKE rettet, kjent restrisiko (fritekst kan ikke pålitelig maskeres)**: `ReviewMark.notat`,
+`TenantForecastComment.kommentar` (Mortens/Claudes egne analysekommentarer),
+`ManualIncomeLine.beskrivelse`, og `OmsetningsavregningButikk.kommentar`
+(`lib/omsetningsavregning.ts`) er alle frie tekstfelt som i teorien kan nevne et leietakernavn i
+selve teksten — ingen av dem anonymiseres. Kun `LEDIG_AUTO_KOMMENTAR_PREFIX`-den autogenererte
+Ledig-kommentaren i `lib/tenantForecastTable.ts`, bygges korrekt på nytt fra anonymiserte poster.
+
+**Åpent, arkitektonisk spørsmål til Morten, IKKE avgjort her**: anonymisering styres utelukkende av
+`NODE_ENV === "production"`, uavhengig av om forespørselen kom fra Morten sin egen `auth`-cookie
+eller en ekstern `/dele`-bruker sin `dele_auth`-cookie — begge kjører mot samme produksjons-Vercel-
+instans. Det betyr at Morten selv, hvis han bruker `/dele`-lenken (eller besøker produksjons-URL-en
+uten den vanlige lokale tunnelen), ville sett "Demokunde NNNN" i stedet for ekte navn i de fem
+anonymiserte snapshotene — mens de fire lekkasjene over (før denne rettingen) samtidig viste ekte
+navn til akkurat samme `/dele`-bruker. Om `/dele` er ment å vise ekte tall til en navngitt kollega,
+løser IKKE dagens NODE_ENV-baserte vakt det for privatperson-leietakere. Ikke endret her — krever
+en bevisst beslutning (f.eks. en cookie-basert i stedet for miljø-basert vakt) fra Morten.
+
+## 0.3 Øvrige mindre kodefiks — runde 2 (2026-09-25)
+
+- To Excel-eksport-ruter (`contract-expiry-2026/export`, `remaining-tenants/export`) manglet fra
+  `middleware.ts` sin `DELE_TILLATTE_GET_API` — "Eksporter til Excel"-knappene ville feilet stille
+  for en `/dele`-bruker. Begge er trygge GET-er (går via de anonymiserende snapshot-getterne).
+  Lagt til.
+- `lib/incomeForecastBookedTenants.ts` brukte en egen
+  `if (NODE_ENV === "production")`-sjekk i stedet for den delte `withProdAnonymization()`-vakten —
+  funksjonelt likt, men usikret mot fremtidige endringer i vakten selv. Rettet.
+- `app/api/income-forecast/manual-lines/[id]/route.ts` sin PATCH returnerte 500 på ALLE feil,
+  inkl. vanlige valideringsfeil (manglende beskrivelse/selskap/bygg/konto) som søsterruta
+  (`manual-lines/route.ts` sin POST) riktig svarer 400 på. Rettet til 400, matcher CLAUDE.md sin
+  feilhåndteringskonvensjon.
+- Misvisende kommentar i `scripts/lib/refresh-helpers.js` hevdet `coreName()` var delt med
+  `build-omsetningsavregning.js` — verifisert (grep) at den fila aldri bruker funksjonen. Rettet.
 
 ## 1. Pipeline — rekkefølge og datastrøm
 
@@ -88,6 +182,46 @@ build-tenant-forecast-table.js  -> Redis: jobb:inntektsprognose-leietaker-tabell
 - **Hardingsplan-tiltak 1** (se seksjon 7) foreslår å gjøre REMAINING
   Redis-basert i stedet for hardkodet konstant — ikke gjort ennå, men
   vurder ved neste større ombygging av pipelinen.
+- **Diagrammet over viser kun 3 av de FAKTISKE 8 scriptene** som
+  `scripts/refresh-income-forecast.js` (`npm run refresh:income-forecast`)
+  kjører automatisk, pluss en blokkerende preflight-dato-konsistenssjekk
+  (funnet ved runde 2 av pipeline-revisjonen, 2026-09-25 — verken denne
+  filen eller `verify-income-forecast.js` kjente til de resterende fem:
+  `build-contract-expiry-2026.js`, `build-omsetningsavregning.js`,
+  `build-nxt-budget.js`, `build-tenant-signals.js`,
+  `build-vacant-areas.js`). `verify-income-forecast.js` fikk 2026-09-25
+  utvidet ferskhetssjekk for Omsetningsavregning/Kontraktsutløp-2026 (se
+  0.1) — de tre andre (`nxt-budget`, `tenant-signals`, `vacant-areas)`
+  har fortsatt INGEN post-kjøring-verifisering.
+- **`scripts/build-tenant-signals.js`** hadde en frosset ABSOLUTT
+  tidsstempel (`new Date("2026-08-24T00:00:00Z")`, ikke bare et
+  årstall) brukt til å avgjøre om en Salesforce-reforhandlingspost er
+  ">12 mnd gammel". Rettet 2026-09-25 til `new Date()` — i motsetning
+  til årstall-konstantene i seksjon 3 (feil FRA en bestemt dato), ble
+  denne feil MER for hver dag som gikk uten at noen rørte filen.
+- **Kundefordringer/garanti-undermodulen** (`RECEIVABLES`,
+  `GARANTI_SJEKKET_NAVN/-DATO`, `computeFordringer()`, del av samme
+  Inntektsprognose-seksjon) er UDOKUMENTERT i denne filen og usporet av
+  `check-override-freshness.js`, til tross for å være nøyaktig samme
+  "manuelt datert, blir stille foreldet"-risikoklasse som resten av
+  pipelinen (funnet ved runde 2, 2026-09-25). Selve
+  `RECEIVABLES`↔`GARANTI_SJEKKET_NAVN`-interaksjonen ble sjekket og er
+  korrekt selvforsvarende — ingen bug der, kun en dokumentasjons-/
+  sporings-mangel. Den ukentlige `receivables-snapshot`-Vercel-cronen
+  friskner IKKE opp selve dataen — den re-tidsstempler kun agings-grafen
+  på hva som til enhver tid ligger hardkodet i `RECEIVABLES` (sist rørt
+  2026-09-18), som vil se fersk ut i trend-grafen mens
+  underliggende tall stille eldes. Ikke i seg selv ødelagt i dag, men en
+  felle å kjenne til før 2027.
+- **`scripts/assemble-nxt-booked-tenants.js`** har sin egen, separate
+  hardkodet 9-selskapsliste OG en egen eierandel-halvering som IKKE går
+  via den delte `lib/data/ownership-shares.json`-mekanismen (seksjon 2) —
+  usporet av dagens dokumentasjon/verktøy (funnet ved runde 2,
+  2026-09-25). Reverifiser begge (selskapslisten og at eierandel-logikken
+  fortsatt gir samme svar som `ownership-shares.json`) før 2027, og
+  vurder å konsolidere til den delte mekanismen for å unngå fremtidig
+  desync (samme feilklasse som `ownership-shares.json` selv ble innført
+  for å løse én gang før).
 
 ## 2. Strukturelle mekanismer (arkitektur — skal bestå til 2027 uendret)
 
@@ -571,6 +705,22 @@ privatpersoner er bevisst utelatt her, se seksjon 8.
   døde/utdaterte oppføringer, eller å bekrefte at konsern-sammenslåingen
   fortsatt matcher per juridisk enhet slik seksjon 2 beskriver. Verdt en
   egen, kort runde senere.
+- **Ekte privatpersonnavn i git-historikken (commit b18762e), IKKE
+  ryddet** — se seksjon 0, krever Mortens eksplisitte beslutning før noe
+  rørt (historikk-omskriving er en risikabel operasjon underlagt
+  CLAUDE.md sin sikkerhetsregel).
+- **Fritekst-kommentarfelt anonymiseres ikke** (ReviewMark.notat,
+  TenantForecastComment.kommentar, ManualIncomeLine.beskrivelse,
+  OmsetningsavregningButikk.kommentar) — se seksjon 0.2, dokumentert
+  restrisiko, ikke strukturelt løsbart uten å risikere å ødelegge
+  meningsfulle kommentarer.
+- **Arkitektonisk `/dele`-spørsmål uavklart**: anonymisering styres av
+  `NODE_ENV`, ikke av hvilken cookie som faktisk autentiserte — se
+  seksjon 0.2 for full forklaring. Avklar med Morten om dette er tiltenkt
+  atferd.
+- **`docs/inntektsprognose-endringslogg.md` er foreldet siden v27
+  (2026-09-07)**, ikke bevisst frosset — se filhodet over. Avklar om den
+  skal gjenopplives eller legges ned.
 
 Ikke-navngitte, lavere-prioritet åpne punkter (private boligleietakere,
 enkeltbudsjettlinjer) står i minnefilen `project_pending-small-fixes.md` —
@@ -584,6 +734,21 @@ punktene kan gjelde privatpersoner.
 - `jobb:inntektsprognose-leietaker-budsjett` (fra build-tenant-budget.js)
 - `jobb:inntektsprognose-leietaker-tabell` (endelig tabell, fra
   build-tenant-forecast-table.js)
+- `jobb:inntektsprognose-omsetningsavregning` (fra
+  build-omsetningsavregning.js) — kun ferskhet sjekket av
+  verify-income-forecast.js (lagt til 2026-09-25), ingen finansiell
+  kryssjekk ennå.
+- `jobb:inntektsprognose-kontraktsutlop-2026` (+ tilsvarende
+  parkering-variant, fra build-contract-expiry-2026.js) — samme,
+  kun ferskhet sjekket.
+- `jobb:inntektsprognose-bokfort-leietakere` (fra
+  refresh-nxt-booked-tenants.js, kjøres separat, se seksjon 1)
+- Redis-only støttedata (ALDRI overskrevet av en pipeline-kjøring, egne
+  hasher): `jobb:inntektsprognose-vurderinger` (vurderinger/review marks),
+  `jobb:inntektsprognose-leietaker-kommentarer` (kommentarer),
+  `jobb:inntektsprognose-linjer` (manuelle inntektslinjer),
+  `jobb:inntektsprognose-signaler` (reforhandlings-/utleiesignaler,
+  seedet av build-tenant-signals.js).
 
 ## 8. Gitignorede støttefiler (`scripts/refresh-data/_private-*.json`)
 

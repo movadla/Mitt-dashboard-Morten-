@@ -26,7 +26,12 @@ const STALE_MONTHS = 12;
 
 function monthsAgo(dateStr) {
   const then = new Date(`${dateStr}T00:00:00Z`);
-  const now = new Date(`2026-08-24T00:00:00Z`); // "i dag" i denne sesjonen - se ScheduleWakeup/systemklokke-begrensning i andre kontekster
+  // v76 (2026-09-25, revisjonsrunde 2): var frosset til "2026-08-24T00:00:00Z" - i motsetning til
+  // årstall-konstantene fikset i runde 1 (som var feil FRA en bestemt dato), ble denne feil MER
+  // for hver dag som gikk uten at noen rørte filen - stille under-/overtalte "foreldet"-grensen på
+  // 12 mnd (STALE_MONTHS) uten noen egen-sjekk til å fange det opp. Skriptet er ment å kunne kjøres
+  // på nytt når som helst (idempotent), så "nå" skal alltid være ekte nå.
+  const now = new Date();
   return (now.getFullYear() - then.getFullYear()) * 12 + (now.getMonth() - then.getMonth());
 }
 

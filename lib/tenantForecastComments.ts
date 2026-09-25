@@ -1,4 +1,5 @@
 import { hgetallJSON, hsetJSON } from "./kv";
+import { anonymizeIfPerson } from "./tenantAnonymize";
 
 // Frie kommentarer pr. leietaker i "Gjenstår per leietaker"/"Leieinntekter"-tabellene
 // (Inntektsprognose). Holdes i en EGEN Redis-hash, ikke i selve tenant-forecast-table-
@@ -39,6 +40,30 @@ export async function getTenantForecastCommentAuthors(): Promise<Record<string, 
     if (entry.kommentar) result[normalizeKey(entry.navn)] = entry.forfatter === "claude" ? "claude" : "morten";
   }
   return result;
+}
+
+// v76 (2026-09-25, revisjonsrunde 2): getTenantForecastComments()/-Authors() over er UENDRET og
+// brukes fortsatt server-side i lib/tenantForecastTable.ts, som kobler kommentarer inn på EKTE
+// navn FØR sin egen snapshot-anonymisering kjører - de må derfor forbli rå.
+// app/api/income-forecast/tenant-comments sin GET derimot sender kartet DIREKTE til klienten
+// (også /dele-brukere) uten noen mellomliggende anonymisering - dette var uoppdaget frem til nå.
+// Denne varianten anonymiserer NAVNET i nøkkelen (kommentarteksten selv er fortsatt fritekst og
+// anonymiseres ikke - kjent, dokumentert restrisiko, se TENANT_REGLER.md).
+export async function getTenantForecastCommentsForApi(): Promise<{
+  kommentarer: Record<string, string>;
+  forfattere: Record<string, "claude" | "morten">;
+}> {
+  const stored = await hgetallJSON<TenantForecastComment>(HASH_KEY);
+  const erProd = process.env.NODE_ENV === "production";
+  const kommentarer: Record<string, string> = {};
+  const forfattere: Record<string, "claude" | "morten"> = {};
+  for (const entry of Object.values(stored)) {
+    if (!entry.kommentar) continue;
+    const key = normalizeKey(erProd ? anonymizeIfPerson(entry.navn) : entry.navn);
+    kommentarer[key] = entry.kommentar;
+    forfattere[key] = entry.forfatter === "claude" ? "claude" : "morten";
+  }
+  return { kommentarer, forfattere };
 }
 
 export async function setTenantForecastComment(navn: string, kommentar: string): Promise<TenantForecastComment> {

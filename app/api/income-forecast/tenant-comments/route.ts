@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantForecastCommentAuthors, getTenantForecastComments, setTenantForecastComment } from "@/lib/tenantForecastComments";
+import { getTenantForecastCommentsForApi, setTenantForecastComment } from "@/lib/tenantForecastComments";
 
 export const dynamic = "force-dynamic";
 
 // v51: hele kommentarkartet. Leietakerkommentarene flettes inn i tabell-snapshotet ved lesing, men
 // LINJEkommentarene har sammensatt nøkkel ("<leietaker>||<linjenøkkel>") og hører ikke til noen rad
 // i snapshotet - de må hentes separat.
+// v76 (2026-09-25): brukte tidligere getTenantForecastComments()/-Authors() direkte, som returnerer
+// EKTE leietakernavn i nøkkelen uansett miljø - lekket til /dele. Se getTenantForecastCommentsForApi().
 export async function GET() {
   try {
-    const [kommentarer, forfattere] = await Promise.all([getTenantForecastComments(), getTenantForecastCommentAuthors()]);
+    const { kommentarer, forfattere } = await getTenantForecastCommentsForApi();
     return NextResponse.json({ kommentarer, forfattere });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });

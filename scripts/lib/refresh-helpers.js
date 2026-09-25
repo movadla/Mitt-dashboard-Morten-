@@ -46,8 +46,11 @@ function normalizeName(name) {
 }
 
 // "Kjerne-navn" uten selskapsform/tegnsetting - fallback når eksakt normalisert navn ikke
-// matcher (f.eks. et leietakernavn skrevet med "A/S" i Fazile mot "AS" i NXT). Delt mellom
-// build-remaining-summary.js og build-omsetningsavregning.js - hold i sync hvis endret.
+// matcher (f.eks. et leietakernavn skrevet med "A/S" i Fazile mot "AS" i NXT).
+// v76 (2026-09-25, revisjonsrunde 2): kommentaren hevdet tidligere at denne var delt med
+// build-omsetningsavregning.js - verifisert (grep) at den fila ALDRI importerer/bruker coreName().
+// Brukes i dag kun av build-remaining-summary.js. Rettet for å unngå å lete etter en avhengighet
+// som ikke finnes neste gang noen endrer denne funksjonen.
 function coreName(name) {
   return normalizeName(name)
     .replace(/[.,\-'’´`]/g, " ")

@@ -187,6 +187,20 @@ function anonymizeSnapshot(snapshot: RemainingTenantsSnapshot): RemainingTenants
     tenants: snapshot.tenants.map((t) => ({ ...t, navn: anonymizeIfPerson(t.navn) })),
     usikreInntekter: snapshot.usikreInntekter?.map((u) => ({ ...u, leietaker: anonymizeIfPerson(u.leietaker) })),
     ovrigRisikoManuell: snapshot.ovrigRisikoManuell?.map((r) => ({ ...r, leietaker: anonymizeIfPerson(r.leietaker) })),
+    // v76 (2026-09-25, revisjonsrunde 2): dette feltet ble oversett da anonymizeSnapshot ble
+    // skrevet - "navn" her er et ekte NXT-kundenavn (se build-remaining-summary.js sin
+    // `tenantNames[String(customerNo)]`), akkurat som tenants[].navn over, men lekket uendret
+    // gjennom til prod/`/dele` frem til nå.
+    avstemmingMotNxt: snapshot.avstemmingMotNxt && {
+      ...snapshot.avstemmingMotNxt,
+      ikkeKonsumertNxt: {
+        ...snapshot.avstemmingMotNxt.ikkeKonsumertNxt,
+        storste: snapshot.avstemmingMotNxt.ikkeKonsumertNxt.storste.map((r) => ({
+          ...r,
+          navn: anonymizeIfPerson(r.navn),
+        })),
+      },
+    },
   };
 }
 

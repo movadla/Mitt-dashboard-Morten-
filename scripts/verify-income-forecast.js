@@ -32,6 +32,12 @@ const INCOME_FORECAST_ANON = path.join(__dirname, "..", "lib", "incomeForecast.a
 const REMAINING_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const BUDGET_KEY = "jobb:inntektsprognose-leietaker-budsjett";
 const TABLE_KEY = "jobb:inntektsprognose-leietaker-tabell";
+// v76 (2026-09-25, revisjonsrunde 2): scripts/refresh-income-forecast.js kjører faktisk 8 scripts
+// (ikke bare de 3 over) + en blokkerende preflight-dato-sjekk - disse to hadde null oppfølging her
+// eller i check-override-freshness.js. Kun ferskhet sjekkes (samme lavterskel-varsel som seksjon 3
+// ellers), ikke en full finansiell kryssjekk - se TENANT_REGLER.md for hvorfor.
+const OMSETNINGSAVREGNING_KEY = "jobb:inntektsprognose-omsetningsavregning";
+const KONTRAKTSUTLOP_KEY = "jobb:inntektsprognose-kontraktsutlop-2026";
 const FIELD = "snapshot";
 
 const TOLERANSE_PROSENT = 0.5; // samme terskel som verifyTotal() ellers i pipelinen
@@ -49,16 +55,39 @@ function extractBlock(text, constName) {
   return nextIdx === -1 ? rest : rest.slice(0, nextIdx + 1);
 }
 
-function sumField(block, field) {
+// v76 (2026-09-25, revisjonsrunde 2): stripper `//`-linjekommentarer FØR regex-skanning.
+// Tidligere ble HELE blokken (inkl. kommentarer) skannet rått - en kommentar som selv inneholder
+// "feltnavn: tall" (f.eks. "// v80: totalDelA: 8321432.09 var feil før fiksen") ble telt MED i
+// summen. Filens egen etablerte forklaringsstil ("v74: totalDelA falt X kr") unngår dette kun ved
+// tilfeldighet (ingen kolon rett etter feltnavnet) - demonstrert som en reell, ikke bare teoretisk,
+// sårbarhet i denne runden. Enkel strip (ikke en full TS-parser) er trygt nok her: blokkene er
+// generert av build-scriptene selv, ingen strenger inneholder "//".
+function stripLineComments(text) {
+  return text
+    .split("\n")
+    .map((linje) => {
+      const idx = linje.indexOf("//");
+      return idx === -1 ? linje : linje.slice(0, idx);
+    })
+    .join("\n");
+}
+
+function sumField(block, field, forventetAntall = null) {
+  const uten_kommentarer = stripLineComments(block);
   const re = new RegExp(`\\b${field}:\\s*(-?[\\d.]+)`, "g");
   let m;
   let sum = 0;
   let count = 0;
-  while ((m = re.exec(block))) {
+  while ((m = re.exec(uten_kommentarer))) {
     sum += Number(m[1]);
     count += 1;
   }
   if (count === 0) throw new Error(`Fant ikke feltet "${field}" i blokken.`);
+  // v76: sanity-sjekk mot forventet antall treff - fanger f.eks. en fremtidig nøstet struktur som
+  // gjenbruker feltnavnet på flere nivåer (ville da blitt summert inn uten varsel før denne sjekken).
+  if (forventetAntall !== null && count !== forventetAntall) {
+    throw new Error(`Feltet "${field}" hadde ${count} treff, forventet ${forventetAntall} - sjekk om strukturen i blokken er endret.`);
+  }
   return { sum: round2(sum), count };
 }
 
@@ -103,16 +132,19 @@ async function main() {
   const invoicedBlock = extractBlock(tsText, "INVOICED");
 
   const remainingConst = {
-    totalDelA: sumField(remainingBlock, "totalDelA").sum,
-    totalDelB: sumField(remainingBlock, "totalDelB").sum,
+    totalDelA: sumField(remainingBlock, "totalDelA", 1).sum,
+    totalDelB: sumField(remainingBlock, "totalDelB", 1).sum,
     sistOppdatert: extractString(remainingBlock, "sistOppdatert"),
   };
   const bookedConst = {
-    totalDelA: sumField(bookedBlock, "totalDelA").sum,
-    totalDelB: sumField(bookedBlock, "totalDelB").sum,
+    totalDelA: sumField(bookedBlock, "totalDelA", 1).sum,
+    totalDelB: sumField(bookedBlock, "totalDelB", 1).sum,
     sistOppdatert: extractString(bookedBlock, "sistOppdatert"),
   };
   const invoicedPeriods = { delA: sumField(invoicedBlock, "delA"), delB: sumField(invoicedBlock, "delB") };
+  if (invoicedPeriods.delA.count !== invoicedPeriods.delB.count) {
+    throw new Error(`INVOICED: delA hadde ${invoicedPeriods.delA.count} periode-treff mot delB sine ${invoicedPeriods.delB.count} - forventet likt antall perioder.`);
+  }
   const invoicedConst = {
     totalDelA: invoicedPeriods.delA.sum,
     totalDelB: invoicedPeriods.delB.sum,
@@ -172,6 +204,10 @@ async function main() {
       console.log(`  ADVARSEL: REMAINING-snapshotet er ${dagerSiden} dager gammelt (over terskelen på ${STALENESS_VARSEL_DAGER}) - vurder å friske opp Fazile/NXT-rådata og kjøre pipelinen på nytt.`);
     }
   }
+  const omsetningsavregningSnap = await getFromRedis(OMSETNINGSAVREGNING_KEY, FIELD);
+  const kontraktsutlopSnap = await getFromRedis(KONTRAKTSUTLOP_KEY, FIELD);
+  console.log(`  Omsetningsavregning (satellitt-script, kun ferskhet sjekket): ${omsetningsavregningSnap ? omsetningsavregningSnap.sistOppdatert : "(ingen snapshot funnet)"}`);
+  console.log(`  Kontraktsutløp 2026 (satellitt-script, kun ferskhet sjekket): ${kontraktsutlopSnap ? kontraktsutlopSnap.sistOppdatert : "(ingen snapshot funnet)"}`);
   console.log("");
 
   console.log("4) Budsjett-konstantenes årstall (kun en påminnelse - se scripts/check-override-freshness.js for full sjekk):");

@@ -29,9 +29,20 @@ const COMMITTEDE_FILER = [
   "build-tenant-budget.js",
   "build-tenant-forecast-table.js",
   "build-contract-expiry-2026.js",
+  // v76 (2026-09-25, revisjonsrunde 2): manglet fra starten - ingen @override-tagger i disse to
+  // I DAG (verifisert), men build-omsetningsavregning.js er eksplisitt planlagt ombygd med en ekte
+  // 2026-avregning FOR 2027-prognosen (se TENANT_REGLER.md), og ville da fatt en tagg dette
+  // scriptet aldri sa siden fila ikke var med i lista.
+  "build-omsetningsavregning.js",
+  "refresh-fazile-kontrakt-crosswalk.js",
 ];
 
+// Rekkefolgen pa feltene (ar, navn, antall, status) er FAST - se ADVARSEL_OM_NESTEN_TREFF under
+// for hvorfor en ombyttet feltrekkefolge ikke lenger forsvinner helt stille (v76, 2026-09-25).
 const OVERRIDE_TAG_REGEX = /\/\/\s*@override\s+ar=(\d+)\s+navn=(\S+)(?:\s+antall=(\d+))?(?:\s+status=(\S+))?\s*(?:--\s*(.*))?$/;
+// Losere sjekk: fanger enhver linje som INNEHOLDER "@override" i det hele tatt, uansett
+// feltrekkefolge/format - brukes kun til a oppdage tagger den strenge regexen over ikke traff.
+const OVERRIDE_TAG_LOOSE = /\/\/\s*@override\b/;
 
 const PRIVATE_FILER = [
   "_private-tenant-aliases.json",
@@ -49,6 +60,7 @@ const PRIVATE_FILER = [
 
 function samleCommittedeOverrides() {
   const funnet = [];
+  const nesteTreff = [];
   for (const filnavn of COMMITTEDE_FILER) {
     const fil = path.join(__dirname, filnavn);
     if (!fs.existsSync(fil)) {
@@ -56,21 +68,29 @@ function samleCommittedeOverrides() {
       continue;
     }
     const linjer = fs.readFileSync(fil, "utf8").split("\n");
-    for (const rawLinje of linjer) {
+    linjer.forEach((rawLinje, i) => {
       const linje = rawLinje.replace(/\r$/, "");
       const m = linje.match(OVERRIDE_TAG_REGEX);
-      if (!m) continue;
-      funnet.push({
-        kilde: filnavn,
-        ar: Number(m[1]),
-        navn: m[2],
-        antall: m[3] !== undefined ? Number(m[3]) : null,
-        status: m[4] || null,
-        notat: m[5] || "",
-      });
-    }
+      if (m) {
+        funnet.push({
+          kilde: filnavn,
+          ar: Number(m[1]),
+          navn: m[2],
+          antall: m[3] !== undefined ? Number(m[3]) : null,
+          status: m[4] || null,
+          notat: m[5] || "",
+        });
+        return;
+      }
+      // v76 (2026-09-25): linjen har "@override" men matchet ikke det strenge mønsteret -
+      // tidligere forsvant dette 100% stille (samme feilklasse som gjorde at en fremtidig
+      // ombyttet feltrekkefolge aldri ville blitt oppdaget).
+      if (OVERRIDE_TAG_LOOSE.test(linje)) {
+        nesteTreff.push({ kilde: filnavn, linjenummer: i + 1, tekst: linje.trim() });
+      }
+    });
   }
-  return funnet;
+  return { funnet, nesteTreff };
 }
 
 function samlePrivateOverrides() {
@@ -102,7 +122,7 @@ function samlePrivateOverrides() {
 }
 
 function main() {
-  const committede = samleCommittedeOverrides();
+  const { funnet: committede, nesteTreff } = samleCommittedeOverrides();
   const private_ = samlePrivateOverrides();
   const alle = [...committede, ...private_];
 
@@ -113,6 +133,14 @@ function main() {
   const bekreftetForMalar = alle.filter((o) => o.status !== "todo" && o.ar === MALAR);
 
   console.log(`\nInntektsprognose - override-friskhet, malar ${MALAR}\n${"=".repeat(50)}\n`);
+
+  if (nesteTreff.length) {
+    console.log(`ADVARSEL - linjer med "@override" som IKKE matchet det forventede formatet - ${nesteTreff.length} stk (sjekk manuelt, sannsynlig skrivefeil/feil feltrekkefolge):`);
+    for (const n of nesteTreff) {
+      console.log(`  [${n.kilde}:${n.linjenummer}] ${n.tekst}`);
+    }
+    console.log("");
+  }
 
   if (trengerAlltid.length) {
     console.log(`MA BYGGES/RETTES (uavhengig av ar) - ${trengerAlltid.length} stk:`);
@@ -150,7 +178,7 @@ function main() {
   console.log(`\nTotalt sporet: ${alle.length} overrides pa tvers av ${COMMITTEDE_FILER.length} committede scripts + ${PRIVATE_FILER.length} gitignorede filer.`);
   console.log("Se scripts/refresh-data/TENANT_REGLER.md for full kontekst/metodikk bak hvert punkt.\n");
 
-  const kritiske = trengerAlltid.length + ikkeBekreftetForMalar.length;
+  const kritiske = trengerAlltid.length + ikkeBekreftetForMalar.length + nesteTreff.length;
   if (kritiske > 0) {
     process.exitCode = 1;
   }

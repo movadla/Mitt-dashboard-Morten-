@@ -1,5 +1,6 @@
 import { hdel, hgetallJSON, hsetJSON } from "./kv";
 import { markKey, type ReviewMark, type ReviewMarkStatus } from "./incomeForecastReviewMarkTypes";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 // Morten sine egne vurderinger av leieforholdene i "Leieforhold til gjennomgang" (v35,
 // 2026-09-11). Bakgrunn: lista er en arbeidsliste på ~80 rader, og når han har tatt stilling til
@@ -21,9 +22,17 @@ export type { ReviewMark, ReviewMarkStatus } from "./incomeForecastReviewMarkTyp
 
 const HASH_KEY = "jobb:inntektsprognose-vurderinger";
 
+// v76 (2026-09-25, revisjonsrunde 2): denne modulen manglet anonymisering helt - stod likevel på
+// /dele sin DELE_TILLATTE_GET_API-liste, altså ekte leietakernavn ut til eksterne /dele-brukere.
+// `notat` er fritekst og anonymiseres ikke (kan i teorien nevne et navn i selve teksten) - kjent,
+// udokumentert restrisiko før denne runden, se scripts/refresh-data/TENANT_REGLER.md seksjon 2.
+function anonymizeMarks(marks: ReviewMark[]): ReviewMark[] {
+  return marks.map((m) => ({ ...m, leietaker: anonymizeIfPerson(m.leietaker) }));
+}
+
 export async function getReviewMarks(): Promise<ReviewMark[]> {
   const stored = await hgetallJSON<ReviewMark>(HASH_KEY);
-  return Object.values(stored);
+  return withProdAnonymization(Object.values(stored), anonymizeMarks);
 }
 
 export async function setReviewMark(

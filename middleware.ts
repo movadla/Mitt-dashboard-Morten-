@@ -13,6 +13,11 @@ const DELE_TILLATTE_GET_API = new Set([
   "/api/income-forecast/booked-tenants",
   "/api/income-forecast/contract-expiry-2026",
   "/api/income-forecast/contract-expiry-2026-parkering",
+  // v76 (2026-09-25, revisjonsrunde 2): de to under manglet - "Eksporter til Excel"-knappene ville
+  // ha feilet stille for en /dele-bruker (redirect til /login i stedet for xlsx-fil). Begge er
+  // rene GET-er som allerede går via de anonymiserende snapshot-getterne, så trygt å legge til.
+  "/api/income-forecast/contract-expiry-2026/export",
+  "/api/income-forecast/remaining-tenants/export",
   "/api/income-forecast/history",
   "/api/income-forecast/manual-lines",
   "/api/income-forecast/nxt-budget",

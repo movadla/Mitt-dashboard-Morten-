@@ -1,5 +1,5 @@
 import { hgetJSON } from "./kv";
-import { anonymizeIfPerson } from "./tenantAnonymize";
+import { anonymizeIfPerson, withProdAnonymization } from "./tenantAnonymize";
 
 interface BookedTenantLine {
   selskap: string;
@@ -40,6 +40,8 @@ export async function getBookedTenantsSnapshot(): Promise<BookedTenantsSnapshot 
   // Samme app kjører både lokalt (ekte data ønsket) og på den offentlige Vercel-siden
   // (kun demokunder tillatt) mot SAMME Redis - anonymiser derfor privatpersoner i farten
   // her, ikke ved lagring, se ANONYMISERING.md.
-  if (process.env.NODE_ENV === "production") return anonymizeSnapshot(snapshot);
-  return snapshot;
+  // v76 (2026-09-25): brukte tidligere en egen `if (NODE_ENV === "production")`-sjekk i stedet
+  // for den delte withProdAnonymization()-vakten (se tenantAnonymize.ts) - funksjonelt likt i dag,
+  // men usikret mot fremtidige endringer i vakten selv.
+  return withProdAnonymization(snapshot, anonymizeSnapshot);
 }
