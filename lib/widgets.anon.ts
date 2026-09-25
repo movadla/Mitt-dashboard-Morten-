@@ -857,171 +857,310 @@ export interface ExpiringTenant {
 
 /**
  * MIDLERTIDIG ANONYMISERT — se merknad over CONTRACTS. Beløp/datoer/arealtype ekte (fra Fazile,
- * hentet 2026-08-12 via kontraktsutlop-verktøyet, maneder_frem=1, hele porteføljen). Vinduet er
- * 2026-08-12 til 2026-09-12 (31 dager — verktøyet støtter kun hele måneder). Leietakernavn byttet
- * til samme "Demokunde N"-nummerering som CONTRACTS/GUARANTEES/RECEIVABLES der samme leietaker
- * opptrer flere steder (Demokunde 1, 10, 13 — se lib/widgets.local.ts for hvilken ekte leietaker
- * hvert nummer tilsvarer; navnene skal IKKE stå i denne filen). "kontraktsutløp" er LINJENS
- * sluttdato, ikke kontraktens. Rene "leiefritak"-linjer er filtrert bort (2 linjer, hver eneste
- * linje for sin leietaker, fjernet 2026-08-12 — derfor "hopper" Demokunde-nummereringen over 17 og
- * 28). `status`/`statusKilde` er et manuelt kryssreferert øyeblikksbilde (Fazile
- * `reforhandlet`-flagg + Salesforce Case/Prosjekt-søk 2026-08-12), IKKE en live sjekk — se
- * AGENTS.md-historikk for research-grunnlaget. `ExpiringTenant.bygg` er leietakerens HOVEDBYGG
- * (bygget knyttet til kontor-/husleielinjen, ikke en kommaseparert liste over alle bygg) —
- * leietakere med linjer i flere bygg viser de andre byggene per linje i `ExpiringLine.bygg` i stedet.
+ * hentet 2026-09-25 via kontraktsutlop-verktøyet, maneder_frem=1, hele porteføljen). Vinduet er
+ * 2026-09-25 til 2026-10-25. Leietakernavn byttet til "Demokunde N"-nummerering — se
+ * lib/widgets.local.ts for hvilken ekte leietaker hvert nummer tilsvarer; navnene skal IKKE stå
+ * i denne filen. "kontraktsutløp" er LINJENS sluttdato, ikke kontraktens. `status` settes nå
+ * AUTOMATISK fra Fazile sitt eget reforhandlet-flagg, ikke lenger en manuell
+ * Salesforce-kryssreferanse som i 2026-08-12-runden — se scripts/build-new-expiries.js for
+ * metodikk og kjente manuelle unntak. `ExpiringTenant.bygg` er leietakerens HOVEDBYGG (bygget
+ * knyttet til den linjen med høyest årsleie) — leietakere med linjer i flere bygg viser de andre
+ * byggene per linje i `ExpiringLine.bygg` i stedet.
+ *
+ * EXPIRIES_TOTAL_ARSLEIE/EXPIRIES_REELL_EKSPONERING fjernet 2026-09-25 (drev fra selve tabellen,
+ * se lib/widgets.local.ts sin kommentar) — summene regnes nå live fra EXPIRIES i stedet.
  */
-export const EXPIRIES_WINDOW = { fraDato: "2026-08-12", tilDato: "2026-09-12" };
-export const EXPIRIES_TOTAL_ARSLEIE = 9109581.5;
-export const EXPIRIES_REELL_EKSPONERING = 8922781.5;
+export const EXPIRIES_WINDOW = { fraDato: "2026-09-25", tilDato: "2026-10-25" };
 export const EXPIRIES: ExpiringTenant[] = [
   {
-    leietaker: "Demokunde 16", customerId: 67110, bygg: "Lilleakerveien 4A", totalArsleie: 384649.65,
+    leietaker: "Demokunde 254 AS", customerId: 67228, bygg: "Lilleakerveien 2C", totalArsleie: 109082.32,
     status: "Ingen varsel",
     lines: [
-      { linjeId: 158079, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-14", dagerTilUtlop: 2, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158080, beskrivelse: "Husleie avg.fritt", bygg: "Lilleakerveien 4A", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-14", dagerTilUtlop: 2, totalArsleie: 384649.65, reforhandlet: false }
+      { linjeId: 164059, beskrivelse: "Felleskostnader for Kantinebidrag avg.fritt (1)", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 157830, beskrivelse: "Felleskostnader for Kontorleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 157642, beskrivelse: "Felleskostnader for Garasje avg.pl. Fri-flyt ", bygg: "(ukjent bygg)", arealtype: "Fri flyt", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 164160, beskrivelse: "Kantinebidrag avg.fritt (1)", bygg: "Lilleakerveien 2A", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 6500, reforhandlet: false },
+      { linjeId: 157831, beskrivelse: "Kontorleie avg.pl.", bygg: "Lilleakerveien 2C", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 76936.74, reforhandlet: false },
+      { linjeId: 157643, beskrivelse: "Garasje avg.pl. Fri-flyt ", bygg: "Lilleakerveien 2 Garasje", arealtype: "Fri flyt", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 25645.58, reforhandlet: false },
+      { linjeId: 164060, beskrivelse: "Kantinebidrag avg.fritt (1)", bygg: "Lilleakerveien 2A", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 29", customerId: 101620, bygg: "Lilleakerveien 8", totalArsleie: 26000,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 226388, beskrivelse: "Felleskostnader for Kantinebidrag  (4)", bygg: "(ukjent bygg)", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 226575, beskrivelse: "Kantinebidrag avg.fritt (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 26000, reforhandlet: false },
+      { linjeId: 226389, beskrivelse: "Kantinebidrag  (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 287", customerId: 68162, bygg: "Sponhoggveien 2", totalArsleie: 15869.55,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158833, beskrivelse: "Felleskostnader for Parkering avg.fritt", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158834, beskrivelse: "Parkering avg.fritt", bygg: "Sponhoggveien 2", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 15869.55, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 288", customerId: 68161, bygg: "Sponhoggveien 2", totalArsleie: 31739.1,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158829, beskrivelse: "Felleskostnader for Parkering avg.fritt 2 pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158830, beskrivelse: "Parkering avg.fritt 2 pl", bygg: "Sponhoggveien 2", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 31739.1, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 289 AS", customerId: 67381, bygg: "Lilleakerveien 31", totalArsleie: 1361518.07,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 156728, beskrivelse: "Felleskostnader for Parkering avg.pl. 6  pl", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 156726, beskrivelse: "Felleskostnader for Kontorleie avg.pl. U.01", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 80000, reforhandlet: false },
+      { linjeId: 156725, beskrivelse: "Felleskostnader for Kontorleie avg.pl. U.02-U.03", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 135000, reforhandlet: false },
+      { linjeId: 156727, beskrivelse: "Felleskostnader for Lagerleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 90000, reforhandlet: false },
+      { linjeId: 156730, beskrivelse: "Kontorleie avg.pl. U.01", bygg: "Lilleakerveien 31", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 230758.64, reforhandlet: false },
+      { linjeId: 156729, beskrivelse: "Kontorleie avg.pl. U.02-U.03", bygg: "Lilleakerveien 31", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 366040.13, reforhandlet: false },
+      { linjeId: 156732, beskrivelse: "Parkering avg.pl. 6  pl", bygg: "Lilleakerveien 31", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 46438.2, reforhandlet: false },
+      { linjeId: 156731, beskrivelse: "Lagerleie avg.pl.", bygg: "Lilleakerveien 31", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 381945.77, reforhandlet: false },
+      { linjeId: 161230, beskrivelse: "Eiendomsskatt avg.pl. lager", bygg: "Lilleakerveien 31", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 10096.32, reforhandlet: false },
+      { linjeId: 161229, beskrivelse: "Eiendomsskatt avg.pl. kontor", bygg: "Lilleakerveien 31", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 21239.01, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 260 AS", customerId: 67122, bygg: "Lilleakerveien 14", totalArsleie: 5819897.75,
+    status: "Reforhandling pågår",
+    statusKilde: "Morten (bekreftet muntlig, se prosjektnotat 2026-09-04/24): reforhandling er avtalt, ny kontrakt ikke signert i Fazile ennå.",
+    lines: [
+      { linjeId: 156900, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 156899, beskrivelse: "Felleskostnader for Minimumsleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Butikk", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 169360, beskrivelse: "à konto felleskost avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 426513.35, reforhandlet: false },
+      { linjeId: 171797, beskrivelse: "Felleskostnader for Garasje avg.pl. 2 pl", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 163525, beskrivelse: "Felleskostnader for Markedsbidrag avg.pl. assosiert", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Markedsføringsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 169361, beskrivelse: "à konto felleskost avg.pl. lager", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 94999.2, reforhandlet: false },
+      { linjeId: 161276, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 693842.88, reforhandlet: false },
+      { linjeId: 163524, beskrivelse: "Markedsbidrag avg.pl. assosiert", bygg: "Lilleakerveien 16", arealtype: "Annet", leietype: "Markedsføringsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 70466, reforhandlet: false },
+      { linjeId: 171796, beskrivelse: "Garasje avg.pl. 2 pl", bygg: "P-Bro mellom LV8 og LV4", arealtype: "Fast plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 47288, reforhandlet: false },
+      { linjeId: 156902, beskrivelse: "Parkering avg.pl.", bygg: "Lilleakerveien 14 Uteparkering", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 10759, reforhandlet: false },
+      { linjeId: 156901, beskrivelse: "Minimumsleie avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 4367503.16, reforhandlet: false },
+      { linjeId: 163526, beskrivelse: "Markedsbidrag avg.pl. assosiert", bygg: "Lilleakerveien 16", arealtype: "Annet", leietype: "Markedsføringsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 161277, beskrivelse: "Eiendomsskatt avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 96476, reforhandlet: false },
+      { linjeId: 161278, beskrivelse: "Eiendomsskatt avg.pl. lager", bygg: "Lilleakerveien 14", arealtype: "Butikk", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 12050.16, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 290 AS", customerId: 67645, bygg: "Strandveien 4-8", totalArsleie: 62899,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 159325, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 3840, reforhandlet: false },
+      { linjeId: 159326, beskrivelse: "Lagerleie avg.pl.", bygg: "Strandveien 4-8", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 59059, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 291 AS", customerId: 67903, bygg: "Lilleakerveien 10", totalArsleie: 108443.19,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158519, beskrivelse: "Felleskostnader for Ladestasjon leie avg.pl.2 pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158521, beskrivelse: "Felleskostnader for Ladestasjon leie avg.pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158522, beskrivelse: "Felleskostnader for Garasje avg.pl. 2 pl", bygg: "(ukjent bygg)", arealtype: "El-bil plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158524, beskrivelse: "Felleskostnader for Parkering El-bil pl. U3-32", bygg: "(ukjent bygg)", arealtype: "El-bil plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158530, beskrivelse: "Parkering El-bil pl. U3-32", bygg: "Lilleakerveien 10", arealtype: "El-bil plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 28040.43, reforhandlet: false },
+      { linjeId: 158528, beskrivelse: "Garasje avg.pl. 2 pl", bygg: "Lilleakerveien 10", arealtype: "El-bil plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 57492.23, reforhandlet: false },
+      { linjeId: 158525, beskrivelse: "Ladestasjon leie avg.pl.2 pl", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 15399.7, reforhandlet: false },
+      { linjeId: 158527, beskrivelse: "Ladestasjon leie avg.pl", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 7510.83, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 292 AS", customerId: 67787, bygg: "Vollsveien 13-17-19 Uteparkering", totalArsleie: 58432.73,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 159752, beskrivelse: "Felleskostnader for Parkering avg.pl. 3 pl fri flyt", bygg: "(ukjent bygg)", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 159753, beskrivelse: "Parkering avg.pl. 3 pl fri flyt", bygg: "Vollsveien 13-17-19 Uteparkering", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 58432.73, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 293 AS", customerId: 67804, bygg: "Vollsveien 13B", totalArsleie: 263621.65,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 159776, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158891, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 60178, reforhandlet: false },
+      { linjeId: 161885, beskrivelse: "à konto energi avg.pl.", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 16936.68, reforhandlet: false },
+      { linjeId: 158892, beskrivelse: "Husleie avg.pl.", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 170456.76, reforhandlet: false },
+      { linjeId: 159777, beskrivelse: "Parkering avg.pl.", bygg: "Vollsveien 13-17-19 Uteparkering", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 16050.21, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 294 AS", customerId: 66906, bygg: "Lilleakerveien 16", totalArsleie: 518374.83,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 157272, beskrivelse: "Felleskostnader for Minimumsleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 163124, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 84700, reforhandlet: false },
+      { linjeId: 157271, beskrivelse: "Markedsføringsbidrag for Minimumsleie avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Markedsføringsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 24780.62, reforhandlet: false },
+      { linjeId: 157273, beskrivelse: "Minimumsleie avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 408894.21, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 295 AS", customerId: 67005, bygg: "Lilleakerveien 8 Uteparkering", totalArsleie: 83413.11,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158269, beskrivelse: "Felleskostnader for Gjesteparkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Gjesteparkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158277, beskrivelse: "Gjesteparkering avg.pl.", bygg: "Lilleakerveien 8 Uteparkering", arealtype: "Fast plass", leietype: "Gjesteparkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 83413.11, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 296 AS", customerId: 67668, bygg: "Lilleakerveien 16", totalArsleie: 8575.68,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 157287, beskrivelse: "Felleskostnader for Lagerleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 157288, beskrivelse: "Lagerleie avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 8575.68, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 297 AS", customerId: 67505, bygg: "Vollsveien 17-19-21 Uteparkering", totalArsleie: 347482.66,
+    status: "Reforhandlet",
+    lines: [
+      { linjeId: 159828, beskrivelse: "Felleskostnader for Parkering avg.fritt fri-flyt", bygg: "(ukjent bygg)", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 159827, beskrivelse: "Felleskostnader for Parkering avg.fritt 6 pl fri-flyt", bygg: "(ukjent bygg)", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 159826, beskrivelse: "Felleskostnader for Parkering avg.fritt 9 pl fri-flyt", bygg: "(ukjent bygg)", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 159829, beskrivelse: "Parkering avg.fritt 9 pl fri-flyt", bygg: "Vollsveien 17-19-21 Uteparkering", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 195159.13, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 159831, beskrivelse: "Parkering avg.fritt fri-flyt", bygg: "Vollsveien 17-19-21 Uteparkering", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 22217.78, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 159830, beskrivelse: "Parkering avg.fritt 6 pl fri-flyt", bygg: "Vollsveien 17-19-21 Uteparkering", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 130105.75, reforhandlet: true, nyKontraktsnokkel: "OO8135", nyKontraktStart: "2026-10-01", gapDager: 1 },
+    ],
+  },
+  {
+    leietaker: "Demokunde 199", customerId: 67683, bygg: "Vollsveien 13B", totalArsleie: 54643.01,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 173680, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 9811, reforhandlet: false },
+      { linjeId: 173682, beskrivelse: "à konto energi avg.pl", bygg: "Vollsveien 13B", arealtype: "Lager", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 3143.01, reforhandlet: false },
+      { linjeId: 173679, beskrivelse: "Lagerleie avg.pl.", bygg: "Vollsveien 13B", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 41689, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 298 AS", customerId: 67670, bygg: "Lilleakerveien 16", totalArsleie: 22054.85,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 157339, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 157340, beskrivelse: "Husleie avg.fritt", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 22054.85, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 299 AS", customerId: 67639, bygg: "Lilleakerveien 10", totalArsleie: 26465.4,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158593, beskrivelse: "Felleskostnader for Garasje avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158594, beskrivelse: "Garasje avg.pl.", bygg: "Lilleakerveien 10", arealtype: "Fast plass", leietype: "Garasjeleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 26465.4, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 300 AS", customerId: 97860, bygg: "Lilleakerveien 16", totalArsleie: 267500,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 209755, beskrivelse: "Felleskostnader for Pop up leie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Butikk", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 229874, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 229875, beskrivelse: "Parkering avg.pl.", bygg: "Lilleakerveien 14 Uteparkering", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 27500, reforhandlet: false },
+      { linjeId: 209754, beskrivelse: "Pop up leie avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 240000, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 301", customerId: 68160, bygg: "Sponhoggveien 2", totalArsleie: 15869.55,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158831, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158832, beskrivelse: "Parkering avg.pl.", bygg: "Sponhoggveien 2", arealtype: "Parkering Ute", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 15869.55, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 284 AS", customerId: 67303, bygg: "Lilleakerveien 8", totalArsleie: 370198,
+    status: "Reforhandlet",
+    lines: [
+      { linjeId: 158341, beskrivelse: "Felleskostnader for Husleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 56583, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 158342, beskrivelse: "Felleskostnader for Lagerleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 2815, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161791, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 20830.06, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161794, beskrivelse: "à konto energi avg.pl. lager", bygg: "Lilleakerveien 8", arealtype: "Lager", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 1965, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161793, beskrivelse: "Kantinebidrag avg.fritt (1)", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 6000, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 158343, beskrivelse: "Husleie avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 255632.63, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 158344, beskrivelse: "Lagerleie avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 18070.39, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161792, beskrivelse: "Eiendomsskatt avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 8301.92, reforhandlet: true, nyKontraktsnokkel: "FA0929", nyKontraktStart: "2026-10-01", gapDager: 1 },
+    ],
+  },
+  {
+    leietaker: "Demokunde 283 AS", customerId: 67181, bygg: "Lilleakerveien 8", totalArsleie: 928660.72,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158325, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 122240, reforhandlet: false },
+      { linjeId: 161784, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 45003.08, reforhandlet: false },
+      { linjeId: 167766, beskrivelse: "Kantinebidrag avg.fritt (8)", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 52000, reforhandlet: false },
+      { linjeId: 158326, beskrivelse: "Husleie avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 691486.94, reforhandlet: false },
+      { linjeId: 161785, beskrivelse: "Eiendomsskatt avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 17930.7, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 302 AS", customerId: 67354, bygg: "Vollsveien 19", totalArsleie: 124860.94,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158871, beskrivelse: "Felleskostnader for Husleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158872, beskrivelse: "Husleie avg.pl.", bygg: "Vollsveien 19", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 124860.94, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 244 AS", customerId: 66977, bygg: "Sponhoggveien 2", totalArsleie: 50400.09,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 158835, beskrivelse: "Felleskostnader for Enøk tiltak avg.pl.", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 158836, beskrivelse: "Enøk tiltak avg.pl.", bygg: "Sponhoggveien 2", arealtype: "Annet", leietype: "Enøk", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 50400.09, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 303", customerId: 66960, bygg: "Lilleakerveien 2E", totalArsleie: 20000,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 157959, beskrivelse: "Felleskostnader for Lagerleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 157960, beskrivelse: "Lagerleie avg.pl.", bygg: "Lilleakerveien 2E", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 20000, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 304 AS", customerId: 67666, bygg: "Lilleakerveien 16", totalArsleie: 148215.97,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 161520, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 123199.8, reforhandlet: false },
+      { linjeId: 161522, beskrivelse: "Administrasjonsbidrag avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Administrasjonsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 13000, reforhandlet: false },
+      { linjeId: 161523, beskrivelse: "Eiendomsskatt avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 12016.17, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 265", customerId: 67523, bygg: "Sponhoggveien 2", totalArsleie: 49600,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 163680, beskrivelse: "ENØK-støtte i hht tilleggsavtale 21.03.2018", bygg: "Sponhoggveien 2", arealtype: "Kontor", leietype: "Enøk", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 49600, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 24", customerId: 67521, bygg: "Lilleakerveien 10", totalArsleie: 247000,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 233679, beskrivelse: "Kantinebidrag avg.fritt (38)", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 247000, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 305 AS", customerId: 67138, bygg: "Lilleakerveien 8", totalArsleie: 136500,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 214978, beskrivelse: "Kantinebidrag avg.fritt (21)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 136500, reforhandlet: false },
+    ],
+  },
+  {
+    leietaker: "Demokunde 237", customerId: 86042, bygg: "(ukjent bygg)", totalArsleie: -19999.46,
+    status: "Ingen varsel",
+    lines: [
+      { linjeId: 189372, beskrivelse: "Leierabatt for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: -19999.46, reforhandlet: false },
     ],
   },
   {
     leietaker: "Demokunde 13", customerId: 67267, bygg: "Lilleakerveien 2E", totalArsleie: 101081,
-    status: "Reforhandling pågår",
-    statusKilde: "SF-prosjekt (Reforhandling, Gjennomføring): «Selskapslokaler - Lilleakerveien 2 E» — byggnavn-match, ikke direkte kontraktkobling",
-    lines: [
-      { linjeId: 185901, beskrivelse: "Felleskostnader for Husleie avg.pl", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-18", dagerTilUtlop: 6, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 185902, beskrivelse: "Husleie avg.pl", bygg: "Lilleakerveien 2E", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-18", dagerTilUtlop: 6, totalArsleie: 101081, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 18", customerId: 67199, bygg: "Vollsveien 13D", totalArsleie: 4318.1,
     status: "Ingen varsel",
     lines: [
-      { linjeId: 159175, beskrivelse: "Felleskostnader for Lagerleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-30", dagerTilUtlop: 18, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 213729, beskrivelse: "Energi fast avg.pl.", bygg: "Vollsveien 13D", arealtype: "Lager", leietype: "Energi", slutt: "2026-08-30", dagerTilUtlop: 18, totalArsleie: 1816.05, reforhandlet: false },
-      { linjeId: 159176, beskrivelse: "Lagerleie avg.fritt", bygg: "Vollsveien 13D", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-30", dagerTilUtlop: 18, totalArsleie: 2502.05, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 19", customerId: 68074, bygg: "Gamle Drammensvei 10", totalArsleie: 120000,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 186558, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 186559, beskrivelse: "Husleie avg.fritt", bygg: "Gamle Drammensvei 10", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 120000, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 20", customerId: 68084, bygg: "Gamle Drammensvei 10", totalArsleie: 171587.88,
-    status: "Mulig endring",
-    statusKilde: "SF-sak: «Flytte ut?» / «Re: Flytte ut?» (uklart utfall)",
-    lines: [
-      { linjeId: 214104, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 214105, beskrivelse: "Husleie avg.fritt", bygg: "Gamle Drammensvei 10", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 171587.88, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 21", customerId: 68091, bygg: "Gamle Drammensvei 10", totalArsleie: 184367.88,
-    status: "Mulig endring",
-    statusKilde: "SF-sak: «Flyttedato» (Avventer kunde)",
-    lines: [
-      { linjeId: 159219, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 159220, beskrivelse: "Husleie avg.fritt", bygg: "Gamle Drammensvei 10", arealtype: "Lager", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 184367.88, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 22", customerId: 68163, bygg: "Arnstein Arnebergsvei 4", totalArsleie: 279731.6,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 159211, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 159212, beskrivelse: "Husleie avg.fritt", bygg: "Arnstein Arnebergsvei 4", arealtype: "Annet", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 279731.6, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 23", customerId: 67275, bygg: "Lilleakerveien 4CDEF Uteparkering", totalArsleie: 86623.05,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 158099, beskrivelse: "Felleskostnader for Parkering avg.pl. fri flyt 3 pl.", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158101, beskrivelse: "Parkering avg.pl. fri flyt 3 pl.", bygg: "Lilleakerveien 4CDEF Uteparkering", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 86623.05, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 24", customerId: 67521, bygg: "Lilleakerveien 10", totalArsleie: 5249828.64,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 159924, beskrivelse: "Felleskostnader", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Felleskostnader", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158611, beskrivelse: "Felleskostnader for Garasje avg.pl. 19 pl", bygg: "(ukjent bygg)", arealtype: "El-bil plass", leietype: "Garasjeleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158610, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 727430, reforhandlet: false },
-      { linjeId: 158609, beskrivelse: "Felleskostnader for Parkering avg.pl. 2 pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158778, beskrivelse: "Felleskostnader", bygg: "(ukjent bygg)", arealtype: "El-bil plass", leietype: "Felleskostnader", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 156917, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Felleskostnader", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 36639, reforhandlet: false },
-      { linjeId: 161284, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Lager", leietype: "Energi", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 116601.44, reforhandlet: false },
-      { linjeId: 161848, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 10", arealtype: "Kontor", leietype: "Energi", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 304885.56, reforhandlet: false },
-      { linjeId: 161849, beskrivelse: "Kantinebidrag avg.fritt (47)", bygg: "Lilleakerveien 10", arealtype: "Kontor", leietype: "Kantinebidrag", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 200000.04, reforhandlet: false },
-      { linjeId: 158613, beskrivelse: "Husleie avg.pl.", bygg: "Lilleakerveien 10", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 2461799.14, reforhandlet: false },
-      { linjeId: 158779, beskrivelse: "Parkering avg.pl. el-bil", bygg: "P-Bro Uteparkering", arealtype: "El-bil plass", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 17875.78, reforhandlet: false },
-      { linjeId: 158614, beskrivelse: "Garasje avg.pl. 19 pl", bygg: "Lilleakerveien 10", arealtype: "El-bil plass", leietype: "Garasjeleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 433921.95, reforhandlet: false },
-      { linjeId: 159925, beskrivelse: "Parkering avg.pl. 5 pl", bygg: "Lilleakerveien 6 Uteparkering", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 113852.7, reforhandlet: false },
-      { linjeId: 158612, beskrivelse: "Parkering avg.pl. 2 pl", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Parkering", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 26482.64, reforhandlet: false },
-      { linjeId: 156918, beskrivelse: "Lagerleie avg.pl.", bygg: "Lilleakerveien 14", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 719355.79, reforhandlet: false },
-      { linjeId: 161850, beskrivelse: "Eiendomsskatt avg.pl.", bygg: "Lilleakerveien 10", arealtype: "Kontor", leietype: "Annet", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 90984.6, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 25", customerId: 66939, bygg: "Lilleakerveien 31", totalArsleie: 92535.21,
-    status: "Terminert",
-    statusKilde: "SF-sak: «Oppsigelse - Lilleakerveien 31, oppgang B» (Lukket)",
-    lines: [
-      { linjeId: 156850, beskrivelse: "Felleskostnader for Kontorleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 156852, beskrivelse: "Kontorleie avg.pl.", bygg: "Lilleakerveien 31", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 92535.21, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 1", customerId: 68049, bygg: "Lilleakerveien 31", totalArsleie: 186800,
-    status: "Reforhandlet",
-    statusKilde: "Fazile: signert etterfølgerkontrakt RM6909",
-    lines: [
-      { linjeId: 156687, beskrivelse: "Felleskostnader for Lagerleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: true, nyKontraktsnokkel: "RM6909", nyKontraktStart: "2026-09-01", gapDager: 1 },
-      { linjeId: 156688, beskrivelse: "Felleskostnader for Lagerleie avg.fritt.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: true, nyKontraktsnokkel: "RM6909", nyKontraktStart: "2026-09-01", gapDager: 1 },
-      { linjeId: 156689, beskrivelse: "Lagerleie avg.fritt", bygg: "Lilleakerveien 31", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 95600, reforhandlet: true, nyKontraktsnokkel: "RM6909", nyKontraktStart: "2026-09-01", gapDager: 1 },
-      { linjeId: 156690, beskrivelse: "Lagerleie avg.fritt.", bygg: "Lilleakerveien 31", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 91200, reforhandlet: true, nyKontraktsnokkel: "RM6909", nyKontraktStart: "2026-09-01", gapDager: 1 }
-    ],
-  },
-  {
-    leietaker: "Demokunde 26", customerId: 67290, bygg: "Vollsveien 13D", totalArsleie: 22957.17,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 159165, beskrivelse: "Felleskostnader for Lagerleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 159166, beskrivelse: "Lagerleie avg.pl.", bygg: "Vollsveien 13D", arealtype: "Lager", leietype: "Lagerleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 22957.17, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 27", customerId: 67283, bygg: "Vollsveien 13B", totalArsleie: 211694.04,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 178697, beskrivelse: "Felleskostnader for Kantine", bygg: "(ukjent bygg)", arealtype: "Kantine", leietype: "Felleskostnader", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 158931, beskrivelse: "Felleskostnader for Husleie avg.fritt", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 48256, reforhandlet: false },
-      { linjeId: 161914, beskrivelse: "à konto energi avg.pl.", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Energi", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 13581.3, reforhandlet: false },
-      { linjeId: 161916, beskrivelse: "Kantinebidrag avg.fritt (1)", bygg: "Vollsveien 19", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 6000, reforhandlet: false },
-      { linjeId: 158932, beskrivelse: "Husleie avg.fritt", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 143856.74, reforhandlet: false },
-      { linjeId: 178698, beskrivelse: "Kantine", bygg: "Vollsveien 19", arealtype: "Kantine", leietype: "Annet", slutt: "2026-08-31", dagerTilUtlop: 19, totalArsleie: 0, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 10", customerId: 67352, bygg: "Vollsveien 13B", totalArsleie: 1383407.28,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 159040, beskrivelse: "Felleskostnader kontor avg.pl", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-03", dagerTilUtlop: 22, totalArsleie: 302592, reforhandlet: false },
-      { linjeId: 161954, beskrivelse: "à konto energi avg.pl. kontor", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-03", dagerTilUtlop: 22, totalArsleie: 85162.74, reforhandlet: false },
-      { linjeId: 159044, beskrivelse: "Kontorleie avg.pl", bygg: "Vollsveien 13B", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-03", dagerTilUtlop: 22, totalArsleie: 995652.54, reforhandlet: false }
-    ],
-  },
-  {
-    leietaker: "Demokunde 29", customerId: 101620, bygg: "Lilleakerveien 8", totalArsleie: 630000,
-    status: "Ingen varsel",
-    lines: [
-      { linjeId: 226388, beskrivelse: "Felleskostnader for Kantinebidrag  (4)", bygg: "(ukjent bygg)", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-04", dagerTilUtlop: 23, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 215236, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-04", dagerTilUtlop: 23, totalArsleie: 82500, reforhandlet: false },
-      { linjeId: 215238, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-04", dagerTilUtlop: 23, totalArsleie: 22500, reforhandlet: false },
-      { linjeId: 215235, beskrivelse: "Kontorleie avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-04", dagerTilUtlop: 23, totalArsleie: 525000, reforhandlet: false },
-      { linjeId: 226389, beskrivelse: "Kantinebidrag  (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-04", dagerTilUtlop: 23, totalArsleie: 0, reforhandlet: false }
+      { linjeId: 185901, beskrivelse: "Felleskostnader for Husleie avg.pl", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-10-18", dagerTilUtlop: 23, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 185902, beskrivelse: "Husleie avg.pl", bygg: "Lilleakerveien 2E", arealtype: "Lager", leietype: "Husleie", slutt: "2026-10-18", dagerTilUtlop: 23, totalArsleie: 101081, reforhandlet: false },
     ],
   },
 ];
@@ -1071,9 +1210,16 @@ export function buildDashboardContext(): string {
 
   lines.push(`\n${buildIncomeForecastContext()}`);
 
+  // Regnes live fra EXPIRIES (2026-09-25), ikke fra hånd-vedlikeholdte konstanter — se
+  // merknaden over EXPIRIES_WINDOW.
+  const expiriesTotalArsleie = EXPIRIES.reduce((sum, t) => sum + t.totalArsleie, 0);
+  const expiriesReellEksponering = EXPIRIES.reduce(
+    (sum, t) => sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet ? linjeSum : linjeSum + l.totalArsleie), 0),
+    0,
+  );
   lines.push(
     `\nUTLØPSLISTE (ekte, fra Fazile — kontraktslinjer som utløper ${EXPIRIES_WINDOW.fraDato} til ${EXPIRIES_WINDOW.tilDato}): ` +
-      `${formatKr(EXPIRIES_TOTAL_ARSLEIE)} total eksponering, ${formatKr(EXPIRIES_REELL_EKSPONERING)} reell eksponering (ekskl. reforhandlede linjer)`,
+      `${formatKr(expiriesTotalArsleie)} total eksponering, ${formatKr(expiriesReellEksponering)} reell eksponering (ekskl. reforhandlede linjer)`,
   );
   for (const t of EXPIRIES) {
     const nearest = Math.min(...t.lines.map((l) => l.dagerTilUtlop));

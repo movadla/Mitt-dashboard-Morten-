@@ -257,6 +257,16 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
     (t) => Math.min(...t.lines.map((l) => daysBetween(today, l.slutt))) < 0,
   ).length;
 
+  // Rekkefølgen i tabellen er sortert etter nærmeste linjes utløpsdato PÅ UTTREKKSTIDSPUNKTET
+  // (scripts/build-new-expiries.js) — den driver ut av synk med dagens dato etter hvert som
+  // uttrekket blir noen dager gammelt, akkurat som URGENCY_BUCKETS-tallene gjorde før
+  // 2026-09-08-fiksen over. Sorterer derfor live her også, mest presserende (og utløpte) øverst.
+  const sortertEtterHastegrad = [...EXPIRIES].sort((a, b) => {
+    const naermesteA = Math.min(...a.lines.map((l) => daysBetween(today, l.slutt)));
+    const naermesteB = Math.min(...b.lines.map((l) => daysBetween(today, l.slutt)));
+    return naermesteA - naermesteB;
+  });
+
   // Samme feilhåndtering som Nye kontrakter (2026-09-07): useComments ruller tilbake den
   // optimistiske endringen selv, men returverdien ble kastet — en mislykket kommentar
   // forsvant lydløst fra skjermen uten at brukeren fikk vite at den ikke ble lagret.
@@ -327,7 +337,7 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
                     </td>
                   </tr>
                 )}
-                {EXPIRIES.map((t) => {
+                {sortertEtterHastegrad.map((t) => {
                   const targetId = String(t.customerId);
                   return (
                     <ExpiryTenantRow
