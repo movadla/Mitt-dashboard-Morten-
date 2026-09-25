@@ -32,3 +32,13 @@ export const LEDIG_ROW_PREFIX = "Ledig";
 export function isSystemRow(navn: string): boolean {
   return SYSTEM_ROW_LABELS.has(navn) || navn.startsWith(LEDIG_ROW_PREFIX);
 }
+
+// PIPELINE-REVISJON (2026-09-25): denne listen er HAaNDDUPLISERT to andre steder fordi denne
+// fila er TypeScript/ESM (importeres av Next.js), mens byggescriptene er plain Node CommonJS:
+//   - scripts/build-tenant-forecast-table.js (rundt "Ledig"-sjekken i auto-kommentar-logikken)
+//   - scripts/verify-income-forecast.js (SYSTEM_ROW_LABELS-konstanten der)
+// Endrer du en label-tekst eller legger til en ny systemrad-type HER, må begge de andre stedene
+// oppdateres manuelt - det er nøyaktig denne typen glipp som gjorde at "Ukodet bokføring" aldri
+// ble behandlet som systemrad i én av kopiene (v3, 2026-09-22). Vurder å konsolidere til én
+// delt kilde (f.eks. en ren .json-fil begge sider kan lese) før 2027 i stedet for å fortsette
+// å holde tre kopier manuelt i sync.

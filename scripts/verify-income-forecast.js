@@ -68,7 +68,9 @@ function extractString(block, field) {
 }
 
 // Speiler lib/tenantForecastSystemRow.ts (kan ikke importeres direkte fra et CommonJS-script) -
-// hold disse i sync manuelt hvis label-tekstene der endres.
+// hold disse i sync manuelt hvis label-tekstene der endres. TREDJE kopi finnes ogsaa i
+// scripts/build-tenant-forecast-table.js sin auto-kommentar-logikk - se pipeline-revisjon
+// (2026-09-25) i lib/tenantForecastSystemRow.ts for full kontekst om hvorfor tre kopier.
 const SYSTEM_ROW_LABELS = new Set([
   "Mustad Eiendom (intern bruk, ikke leieforhold)",
   "Avstemmingsdifferanse (Excel redigert etter at 'harde tall' ble limt inn i Oppsummering-arket)",

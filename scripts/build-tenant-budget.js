@@ -159,7 +159,14 @@ const fs = require("fs");
 const path = require("path");
 const { loadEnvLocal, getFromRedis, pushToRedis, normalizeName, coreName, verifyTotal, konsernNavn } = require("./lib/refresh-helpers");
 
-const RAW_FILE = path.join(__dirname, "refresh-data", "budsjett-2026-excel-raw.json");
+// v75 (2026-09-25, pipeline-revisjon foer 2027): AR/RAW_FILE er de TO tingene som faktisk maa
+// endres for hvert nytt aar - selve raadata-uttrekket (RAW_FILE) maa uansett byttes ut med en ny
+// fil naar Morten sender neste aars Excel-ark (se filhodet over for uttrekksprosedyren), sa dette
+// er IKKE en "sett og glem"-konstant slik AR i build-remaining-summary.js er - men a ha AArstallet
+// pa ETT sted her (i stedet for a matte huske at det ogsaa star i selve filnavnet OG i `ar: 2026`
+// -feltet nedenfor) gjor det umulig aa oppdatere det ene og glemme det andre.
+const AR = 2026;
+const RAW_FILE = path.join(__dirname, "refresh-data", `budsjett-${AR}-excel-raw.json`);
 const REMAINING_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REMAINING_FIELD = "snapshot";
 const REDIS_HASH_KEY = "jobb:inntektsprognose-leietaker-budsjett";
@@ -637,8 +644,11 @@ async function main() {
     .forEach((r) => console.log(`    ${r.kontrakt} | ${r.bygg} | ${r.belop.toLocaleString("nb-NO")} kr | ${r.kommentar || "(ingen kommentar)"}`));
 
   const snapshot = {
+    // MERK: sistOppdatert her er IKKE en kjoredato - det er datoen Excel-ARKET faktisk ble
+    // mottatt fra Morten (Excel-fil-vintage). Ma oppdateres manuelt hver gang et nytt ark
+    // mottas, uavhengig av AR-konstanten over.
     sistOppdatert: "2026-08-26",
-    ar: 2026,
+    ar: AR,
     delA,
     delB,
     totalDelA: OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026,

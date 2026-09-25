@@ -104,11 +104,21 @@ fornyes.
   er primærkilde for gjenstår; den kontraktsverdi-baserte modellen er kun
   fallback. Fanger automatisk rabattlinjer, trappetrinn, kreditnotaer og
   nye kontrakter uten manuell sweep.
-- **Matching-rekkefølge i `findTenant()`**: kundenummer (`erp_code` ===
-  NXT `customerNo`) først, deretter navnealias
-  (`EXCEL_TO_FAZILE_ALIASES` + gitignored privatfil), deretter
-  bygg+beskrivelse-fallback, deretter fuzzy. Bygg+beskrivelse-fallbacken er
-  sårbar for generiske linjetekster ("Husleie avg.pl.") — verifiser et nytt
+- **Matching-rekkefølge — TO SEPARATE funksjoner, IKKE én** (rettet
+  2026-09-25 etter pipeline-revisjon, tidligere versjon av dette punktet
+  slo de sammen til én feil, sammensmeltet rekkefølge):
+  - **Fazile ↔ NXT** (`build-remaining-summary.js`, ingen funksjon heter
+    `findTenant` her): `matchViaCustomerNo()` (kundenr) → `navn-eksakt` →
+    `resolveNxtTenantName()`/kjerne-navn → `FAZILE_TO_NXT_ALIASES`-alias
+    (SIST i kjeden, ikke nr. 2). "Bygg+beskrivelse" finnes IKKE i denne
+    kjeden i det hele tatt.
+  - **Excel ↔ REMAINING** (`build-tenant-budget.js` sin egen
+    `findTenant()`): `EXCEL_TO_FAZILE_ALIASES`-alias → eksakt → kjerne-navn
+    → bygg+beskrivelse → **`delstreng`** (et femte fallback-nivå, reelt
+    brukt — 40 treff i en typisk kjøring — men manglet helt fra denne
+    dokumentasjonen inntil nå). Ingen kundenummer-steg her.
+  Bygg+beskrivelse-fallbacken (kun i Excel↔REMAINING-kjeden) er sårbar for
+  generiske linjetekster ("Husleie avg.pl.") — verifiser et nytt
   `via: "bygg+beskrivelse"`-treff mot Fazile `customers`-søk før det stoles
   på; legg falske positiver i `BYGG_BESKRIVELSE_FALSE_POSITIVES`.
 - **Del A/B-splitt** sjekker BÅDE seksjonsnavn (`isDelB`) OG linjebeskrivelse
@@ -143,9 +153,15 @@ fornyes.
   finnes ekte NXT-bokføring før den konklusjonen trekkes.
   `FLYTTET_INN_OVERRIDE_KOLLISJON` (5 navn, se kildekoden for hvilke) er
   eksplisitt unntatt fra denne mekanismen pga. kollisjon med to andre
-  fuzzy-matching-mekanismer i `build-tenant-forecast-table.js` — **dette er
-  en reell, uløst kodegap**, ikke bare en glemt detalj: disse 5 faller
-  tilbake til budsjett=0 i dag.
+  fuzzy-matching-mekanismer i `build-tenant-forecast-table.js`.
+  **STATUS USIKKER (funnet ved pipeline-revisjon 2026-09-25) — IKKE stol
+  blindt på at alle 5 fortsatt faller til budsjett=0**: en direkte sjekk
+  mot dagens Redis-data viste at minst 2 av 5 (`mustad eiendomsdrift as`,
+  `urbanium eiendom as`) IKKE lenger viser budsjett=0 - senere endringer
+  (v48-v74) kan ha løst deler av roten uten at denne notisen ble oppdatert.
+  **Før 2027**: verifiser alle 5 navn på nytt fra bunnen (er kollisjonen
+  fortsatt reell, eller kan unntaket fjernes helt?) i stedet for å anta at
+  denne beskrivelsen fortsatt er korrekt.
 - **Proporsjonal linjefordeling MÅ ha en eksplisitt fallback** for "gruppe
   med beløp men ingen klassifiserte linjer å fordele over" — denne bug-
   klassen har rammet minst 3 uavhengige steder (Bygg-/Leietype-gruppering,
@@ -158,6 +174,29 @@ fornyes.
   som viser "samme" tall, PR. LEIETAKERNAVN (ikke pr. kontrakt — viktig for
   leietakere med flere åpne kontrakter i ulike bygg), og må ha en synlig
   "syntetisk linje" i eventuelle drilldowns av samme tall.
+- **Dobbelttellingsrisiko mellom `gjenstår` (REMAINING) og
+  `reforhandlingFull`** (MainForecastBox-formelen i
+  `app/IncomeForecastSection.tsx`): disse to komponentene av toppboksen KAN
+  dobbelttelle samme beløp hvis en kontraktsfornyelse ikke er lenket via
+  Fazile sin `renewed_contract_id`. Delvis håndtert via
+  `MANUELT_BEKREFTET_REFORHANDLET`-kartet i `build-contract-expiry-2026.js`
+  (kobler en gammel kontraktsnøkkel til sin ikke-lenkede etterfølger), men
+  dette prinsippet sto tidligere KUN spredt i seksjon 5 sine
+  enkelttilfeller (Erco Lighting, Møllefossen Cafe, Follestad Trend) - løftet
+  hit som en generell regel 2026-09-25 (pipeline-revisjon) slik at en NY
+  reforhandlingssak i 2027 blir sjekket mot dette mønsteret fra start,
+  ikke oppdaget på nytt via en tilfeldig dobbelttelling.
+- **Systemrad-navn (`isSystemRow()`/`SYSTEM_ROW_LABELS`) er HÅNDDUPLISERT
+  TRE steder** (`lib/tenantForecastSystemRow.ts` er kanonisk kilde,
+  `scripts/build-tenant-forecast-table.js` og
+  `scripts/verify-income-forecast.js` har hver sin egne, separate kopi -
+  TypeScript/ESM vs. plain Node CommonJS kan ikke trivielt dele én fil i
+  dag). Funnet og rettet et reelt avvik her 2026-09-25 ("Ledig " med
+  mellomrom i én kopi matchet ikke kanonisk "Ledig" uten mellomrom - virket
+  i praksis, men er nøyaktig samme feilklasse som traff "Ukodet bokføring"
+  én gang før, v3 2026-09-22). **Legger du til en ny systemrad-type: rett
+  ALLE TRE stedene**, eller bedre - konsolider til én delt kilde (f.eks. en
+  ren `.json`-fil) før 2027.
 - **Omsetningsavregning (CC Vest)**: `forventet omsetningsleie = omsetning
   (rullerende 12 mnd) × avtalt %` minus `fakturertPlusGjenstår` (full
   årsverdi), gulvet på 0. Kontorer avregnes ALDRI ved omsetning — scope
@@ -169,6 +208,18 @@ fornyes.
   **Åpent for 2027**: en genuin 2026-omsetningsavregning (som forfaller i
   starten av 2027) er eksplisitt IKKE bygget ennå — dette MÅ bygges før
   2027-prognosen, ikke bare kopiere 2025-mekanismen med nytt årstall.
+- **Negativ-gjenstår-forklaring for CC Vest-bygg er SLÅTT SAMMEN med den
+  generelle kontraktsendring-forklaringen** (rettet 2026-09-25, pipeline-
+  revisjon): en tidligere, egen bygg-basert CC Vest-heuristikk ("trolig
+  omsetningsleie") sto FØR den generelle kontraktsendring-grenen i
+  if/else-kjeden i `build-remaining-summary.js`, og "vant" derfor for ALLE
+  negative CC Vest-tilfeller - selv om heuristikkens EGEN kommentar sa at
+  den ene gangen den faktisk ble etterprøvd (Legevakt Vest AS), var
+  rotårsaken kontraktsendring, ikke omsetningsleie. Nå er kontraktsendring
+  standardforklaringen for ALLE bygg (den eneste bekreftet flere ganger),
+  med en tilleggsnote for CC Vest-bygg om at omsetningsleie også kan være
+  en medvirkende, ikke-bekreftet årsak. Ren tekstendring - ingen tall
+  endret seg.
 - **"0 kr fakturert/gjenstår mot stor omsetning"** er en gjenbrukbar
   diagnosemetode for feil match (feil selskap/manglende bygg-scope) — kjør
   denne skanningen på nytt datasett før noe konkluderes som "ny/ukjent
@@ -190,6 +241,39 @@ fornyes.
 
 Disse er tidsbestemte og vil være FEIL hvis de gjenbrukes uendret:
 
+- **KRITISK, rettet delvis 2026-09-25 (pipeline-revisjon)**: kalenderåret
+  2026 lå tidligere spredt som løsrevne strenglitteraler ("2026-01-01",
+  "2026-12-31") på minst 9 steder på tvers av 4 filer, UTEN én felles
+  kilde - å bytte til 2027 krevde å finne ALLE, og å glemme ett sted ville
+  gitt et stille feil tall (f.eks. at 2027-fakturaer filtreres bort ett
+  sted, men ikke et annet). **Nå konsolidert** til `const AR = 2026` (+
+  `AR_ISO_START`/`AR_ISO_SLUTT`) øverst i `build-remaining-summary.js` og
+  `build-tenant-budget.js` (samme mønster som allerede fantes i
+  `build-contract-expiry-2026.js`/`build-omsetningsavregning.js`) - **for
+  2027 holder det å endre ÉN linje pr. fil**, IKKE lete gjennom hele filen
+  på nytt. MERK likevel:
+  - `build-tenant-budget.js` sin `AR`-konstant styrer OGSÅ filnavnet på
+    råtataen (`budsjett-${AR}-excel-raw.json`) - selve råtatafilen må
+    likevel hentes/bygges på nytt for 2027 (se filhodet for prosedyren),
+    kun filnavnet oppdateres automatisk når `AR` endres.
+  - `scripts/build-contract-expiry-2026.js` har ÅRSTALLET I SELVE
+    FILNAVNET (ikke bare i en intern konstant) - må enten omdøpes (og alle
+    referanser til den) eller parametriseres før 2027.
+  - `scripts/refresh-nxt-booked-tenants.js` bruker allerede riktig mønster
+    (eksplisitt `<ÅR>`-plassholder i sin egen dokumentasjon) - IKKE
+    berørt av dette funnet, men reverifiser likevel at de 9 hardkodede
+    NXT-selskapene i kommentaren der (Mustad Eiendom AS, Fåbro Eiendom AS,
+    Lilleaker Næring AS, Lilleaker Sentrum AS, Lilleakerveien 14 AS,
+    Lilleakerveien 32B AS, Mustadboliger AS, Strandveien 10 AS, Strandveien
+    4-8 AS) fortsatt er de aktive selskapene før 2027 - listen hentes IKKE
+    dynamisk.
+- `ONEPARK_ESTIMAT_2026 = 9 457 370,44` (`build-remaining-summary.js`) —
+  et manuelt anslag fra et gammelt Excel-ark
+  (`2026_08_04_Inntektsprognose_Juli_2026.xlsx`, fane "Onepark") som
+  trolig ikke finnes lenger. Manglet `@override`-tag helt frem til
+  2026-09-25 (nå rettet, sporet av `check-override-freshness.js`) - dette
+  er nøyaktig den typen konstant som ellers ville blitt stille gjenbrukt
+  uendret i 2027.
 - `OFFICIAL_LEIEINNTEKTER_BUDSJETT_2026 = 665 780 066` og
   `OFFICIAL_PARKERING_BUDSJETT_2026 = 58 970 570,16` (`build-tenant-budget.js`)
   — erstatt med 2027-Excel-arkets "Oppsummering"-totaler.
@@ -275,6 +359,19 @@ Disse er tidsbestemte og vil være FEIL hvis de gjenbrukes uendret:
 12. **Ved leietaker-spesifikt "finnes ikke"/uforklart avvik: sjekk
     tenant-fakta-minnet FØRST**, før noe Fazile/NXT-kall dispatches — unngå
     å re-undersøke allerede avklarte fakta fra bunnen.
+13. **`REMAINING.sistOppdatert` reflekterer KUN fakturaplanens alder, ALDRI
+    rent_roll-siden sin** (funnet ved pipeline-revisjon 2026-09-25): de to
+    kildene aldres uavhengig av hverandre (fornyet kun rent_roll 2026-09-24
+    uten å røre fakturaplanen, og `sistOppdatert` viste fortsatt riktig
+    21.09 - fakturaplanens dato, ikke rent_roll sin ferskere 24.09). Stol
+    ALDRI på at "sist oppdatert" i UI-en betyr at BEGGE kildene er ferske -
+    sjekk begge eksplisitt (`fazileFakturaplan.uttrekksdato` i snapshotet
+    vs. når `fazile-remaining-tenants/`-filene faktisk ble skrevet).
+    Mangler fakturaplan-mappen HELT, faller `sistOppdatert` tilbake til
+    dagens dato (rettet 2026-09-25, var tidligere en evig hardkodet, stadig
+    mer misvisende "2026-08-26"-streng) - kombinert med en ADVARSEL i
+    `advarsler`-lista (allerede fantes) er dette nå et ærligere signal enn
+    før, men fortsatt ikke det samme som en ekte fersk fakturaplan.
 
 ## 5. Selskapsspesifikke fakta og alias (ikke uttømmende — se også koden selv)
 
@@ -306,10 +403,13 @@ privatpersoner er bevisst utelatt her, se seksjon 8.
   `"dr ing aas-jakobsen as": "norconsult norge as"`. Historisk
   kundenummerbytte (11134/10455 → 10619) kodet i `KUNDENUMMER_ALIASER`.
   [KODET, liten uforklart restdiff −179 062 kr]
-- **Eviny Elektrifisering AS** — ny "budsjett>0/fakturert≈0"-kategori
-  oppdaget 2026-09-22/23: omsetningsbasert leie tracked separat (samme
-  mekanisme som CC Vest-omsetningsavregning). [ÅPENT, ikke undersøkt om
-  flere CC Vest-leietakere har samme mønster]
+- **Eviny Elektrifisering AS** — "budsjett>0/fakturert≈0"-tilfelle
+  (Lilleakerveien 16, kontrakt MD0731): Fazile-kontraktslinjen "Omsetningsbasert
+  leie avg.pl." har en nominell plassholderverdi (0,05 kr) - samme mønster
+  som 4Service Facility AS. Lagt til `OMSETNINGSLEIE_LEIETAKERE` 2026-09-24
+  med tydelig "IKKE individuelt verifisert mot NXT-bokføring"-merking.
+  [KODET (forklaring), men IKKE bekreftet mot faktisk NXT-tall — ikke
+  undersøkt om flere CC Vest-leietakere har samme mønster]
 - **Erco Lighting Ab Norsk Filial NUF** — signert fornyelse fra
   2026-10-01, uendret kjerneleie. [KODET i `MANUELT_BEKREFTET_REFORHANDLET`]
 - **First Rent A Car Norway AS (Hertz)** — reell, ny leietaker (4,5 mill
@@ -457,6 +557,20 @@ privatpersoner er bevisst utelatt her, se seksjon 8.
   (erstattes uansett av hardingsplan-tiltak 1).
 - Genuin 2026-omsetningsavregning som forfaller ~2027 — se seksjon 2/3,
   må bygges før 2027-prognosen.
+- **Fakturaplan-fornyelse mislyktes 2026-09-24**: et forsøk på å fornye
+  `scripts/refresh-data/fazile-fakturaplan/` (primærkilden) via en
+  bakgrunnsagent kjørte seg fast (123 verktøykall, ingen filer skrevet) og
+  ga opp uten resultat. Data står fortsatt på 21.09-uttrekket (kun
+  rent_roll-siden, fallback-kilden, ble fornyet 24.09 via 55 parallelle
+  Fazile-kall). Metoden er dokumentert i filens egen `meta.json`
+  ("metode"-feltet) - krever 5 sveip + paginering + 26 batchede
+  kontokoblinger, se der for eksakt fremgangsmåte hvis noen prøver igjen.
+- **Alias-dødsjekk og konsern-verifisering ikke fullført** (pipeline-
+  revisjon 2026-09-25): ble ikke rukket innenfor tiden å systematisk
+  kryssjekke ALLE `@override`-alias-lister mot faktisk Redis-innhold for
+  døde/utdaterte oppføringer, eller å bekrefte at konsern-sammenslåingen
+  fortsatt matcher per juridisk enhet slik seksjon 2 beskriver. Verdt en
+  egen, kort runde senere.
 
 Ikke-navngitte, lavere-prioritet åpne punkter (private boligleietakere,
 enkeltbudsjettlinjer) står i minnefilen `project_pending-small-fixes.md` —

@@ -192,6 +192,15 @@ const NXT_BOOKED_TENANTS_DIR = path.join(__dirname, "refresh-data", "nxt-booked-
 const FAZILE_KONTRAKT_CROSSWALK_FILE = path.join(__dirname, "refresh-data", "fazile-kontrakt-customerno-crosswalk.json");
 const REDIS_HASH_KEY = "jobb:inntektsprognose-gjenstar-leietakere";
 const REDIS_FIELD = "snapshot";
+// v75 (2026-09-25, pipeline-revisjon foer 2027): AArstallet var tidligere spredt som losrevne
+// "2026-12-31"-strenglitteraler pa minst 6 steder i denne fila (linje ~634/1800/1897/1899/1933)
+// UTEN noen felles kilde - a bytte til 2027 krevde a finne ALLE, og a glemme ETT sted ville gitt
+// et stille feil tall (f.eks. at 2027-fakturaer filtreres bort et sted, men ikke et annet). Same
+// monster som allerede brukes i build-contract-expiry-2026.js/build-omsetningsavregning.js -
+// bruk AR/AR_ISO_START/AR_ISO_SLUTT konsekvent overalt i STEDET for a skrive arstallet pa nytt.
+const AR = 2026;
+const AR_ISO_START = `${AR}-01-01`;
+const AR_ISO_SLUTT = `${AR}-12-31`;
 
 // v17 (2026-09-07): samler ADVARSEL-linjene som tidligere kun gikk til konsollen i en array som
 // legges ved i snapshotet - se RemainingTenantsSnapshot sitt `advarsler`-felt og
@@ -255,6 +264,7 @@ const { loadEnvLocal, pushToRedis, getFromRedis, normalizeName, coreName, verify
 // bygg-alias-tabell som ikke er bekreftet.
 const ONEPARK_LEIETAKER_KEY = "onepark as";
 const ONEPARK_ESTIMAT_2026 = 9457370.44; // Kilde: 2026_08_04_Inntektsprognose_Juli_2026.xlsx, fane "Onepark", rad "Estimert inntekt 2025"-linjen (P40)
+// @override ar=2026 navn=ONEPARK_ESTIMAT_2026 antall=1 status=todo -- manuelt anslag uten koblet datakilde (kildefilen finnes trolig ikke lenger). MA hentes/anslas pa nytt for 2027 - se TENANT_REGLER.md. Se scripts/check-override-freshness.js.
 
 // Konto 3632 = avregning av 2025-omsetningsleien, IKKE en 2026-inntekt (funnet 2026-08-25
 // etter Mortens spørsmål om en CC Vest-leietaker med fakturert > Fazile sin årsverdi). Bevis fra NXT generalLedgerTransaction (Mustad
@@ -358,8 +368,14 @@ const DRAFT_KONTRAKT_LEIETAKERE = new Map([
 // siden begge beskriver samme underliggende fenomen).
 const OMSETNINGSLEIE_LEIETAKERE = new Map([
   ["4service facility as", "Omsetningsleie (Fazile-kontraktslinjen har kun en nominell plassholderverdi på 0,10 kr siden omsetningsleie ikke er et fast årsbeløp) - NXT sitt bokførte beløp er reell omsetningsbasert fakturering, ikke et avvik."],
+  // Funnet 2026-09-24 (controller-notat punkt 5-oppfølging): Fazile-kontraktslinjen "Omsetningsbasert
+  // leie avg.pl." (kontrakt MD0731, Lilleakerveien 16) har en nominell plassholderverdi på 0,05 kr -
+  // samme mønster som 4Service Facility AS over. IKKE individuelt verifisert mot en faktisk NXT-
+  // bokføring ennå (NXT-tilkoblingen krevde re-autentisering denne runden) - budsjett>0/fakturert≈0
+  // for denne leietakeren står fortsatt i "uten treff"-lista til Morten bekrefter mekanismen.
+  ["eviny elektrifisering as", "Omsetningsleie (Fazile-kontraktslinjen «Omsetningsbasert leie avg.pl.» har kun en nominell plassholderverdi på 0,05 kr siden omsetningsleie ikke er et fast årsbeløp) - samme mønster som 4Service Facility AS, IKKE individuelt verifisert mot NXT-bokføring ennå."],
 ]);
-// @override ar=2026 navn=OMSETNINGSLEIE_LEIETAKERE antall=1 -- strukturelt mønster, men verifiser leietakeren fortsatt finnes i 2027-uttrekket. Se scripts/check-override-freshness.js.
+// @override ar=2026 navn=OMSETNINGSLEIE_LEIETAKERE antall=2 -- strukturelt mønster, men verifiser leietakerne fortsatt finnes i 2027-uttrekket. Se scripts/check-override-freshness.js.
 
 // Leieforhold der negativ gjenstår skyldes en BEKREFTET feilkoding i NXT sin egen bokføring
 // (ikke en Fazile/matching-feil) - grundig verifisert direkte mot faktiske NXT-transaksjoner
@@ -625,8 +641,8 @@ function round2(n) {
 async function main() {
   loadEnvLocal();
 
-  const yearStart = new Date("2026-01-01");
-  const yearEnd = new Date("2026-12-31");
+  const yearStart = new Date(AR_ISO_START);
+  const yearEnd = new Date(AR_ISO_SLUTT);
   const daysInYear = daysBetweenInclusive(yearStart, yearEnd);
 
   const nxtData = JSON.parse(fs.readFileSync(NXT_BOOKED_SNAPSHOT, "utf8"));
@@ -1344,15 +1360,22 @@ async function main() {
       status = "forklart-nxt-feilkoding";
       forklaring = NXT_FEILKODING_LEIETAKERE.get(normalizeName(g.leietaker));
       countKontraktsendring++; // telles inn under samme "forklart"-paraply i konsollutskriften
-    } else if ((gjenstarA < -100 || gjenstarB < -100) && normalizeName(g.resolvedBygg || g.bygg) === normalizeName(CC_VEST_NXT_BYGG)) {
-      status = "forklart-omsetningsleie";
-      forklaring =
-        "CC Vest-leieforhold: NXT har trolig bokført en omsetningsleie-/minimumsleie-avregning (periodisk 'Overført fra Fazile'-beløp) i tillegg til grunnleien - fanges ikke opp av Fazile sin kontraktslinje-baserte årsverdi (verifisert mot faktiske NXT-transaksjoner for én CC Vest-leietaker, 2026-08-24). MERK (2026-08-26): denne bygg-baserte auto-merkingen er IKKE pr.-leietaker-bekreftet - sjekket Legevakt Vest AS (en legevakt, ikke en butikk med omsetningsleie) og fant i stedet SAMME rot-årsak som 'forklart-kontraktsendring' under (en linje byttet areal/beskrivelse midt i 2026 innenfor samme kontrakt, og den gamle linjen falt ut av Fazile-uttrekket siden det kun henter det som er aktivt i dag) - reell omsetningsleie er trolig kun en delmengde av disse.";
-      countOmsetning++;
     } else if (gjenstarA < -100 || gjenstarB < -100) {
+      // v75 (2026-09-25, pipeline-revisjon): tidligere sto en egen, bygg-basert CC Vest-gren HER,
+      // FØR denne generelle grenen, og "vant" derfor automatisk for ALLE negative CC Vest-tilfeller
+      // - selv om dens EGEN kommentar (fra 2026-08-26) sa at den ene gangen den faktisk ble
+      // etterprøvd (Legevakt Vest AS), var rotårsaken IKKE omsetningsleie, men nøyaktig det samme
+      // kontraktsfornyelses-mønsteret som denne generelle grenen dekker. Slått sammen til ÉN gren:
+      // kontraktsendring er nå standardforklaringen (den eneste som faktisk er bekreftet flere
+      // ganger), med CC Vest-omsetningsleie kun nevnt som en mulig, IKKE bekreftet årsak i tillegg
+      // - i stedet for at en uverifisert bygg-heuristikk fikk forrang over en verifisert forklaring.
+      const erCcVest = normalizeName(g.resolvedBygg || g.bygg) === normalizeName(CC_VEST_NXT_BYGG);
       status = "forklart-kontraktsendring";
       forklaring =
-        "Fazile-uttrekket vårt henter KUN kontraktslinjer som er aktive på uttrekksdatoen (rent_roll sin default aktiv_dato = i dag) - når en kontrakt er FORNYET midt i 2026 (ny kontrakt-ID, ofte samme/lignende leiesats), forsvinner den utløpte linjens del av året helt fra vårt datagrunnlag, selv om NXT korrekt har fakturert for hele perioden. 'Full 2026-verdi' blir da kunstig lav, og alt som faktisk er fakturert ser ut som et overforbruk. IKKE en reell indeksregulering/prisøkning i de fleste tilfeller - bekreftet konkret (2026-08-26) mot faktiske Fazile-kontraktshistorikker for 9 leieforhold (bedrifter + én privat leietaker - se memory/project_income-forecast-negative-gjenstar-root-cause-2026-08-26.md for detaljer, ikke navngitt her), som alle viste ny kontrakt fra samme dato til nesten identisk/EKSAKT samme sats som den utløpte. Reell fiks krever et bredere Fazile-uttrekk (kun_aktive_linjer:false / flere aktiv_dato-tidspunkt gjennom året), ikke gjort her ennå - se prosjektnotat i minnet.";
+        "Fazile-uttrekket vårt henter KUN kontraktslinjer som er aktive på uttrekksdatoen (rent_roll sin default aktiv_dato = i dag) - når en kontrakt er FORNYET midt i 2026 (ny kontrakt-ID, ofte samme/lignende leiesats), forsvinner den utløpte linjens del av året helt fra vårt datagrunnlag, selv om NXT korrekt har fakturert for hele perioden. 'Full 2026-verdi' blir da kunstig lav, og alt som faktisk er fakturert ser ut som et overforbruk. IKKE en reell indeksregulering/prisøkning i de fleste tilfeller - bekreftet konkret (2026-08-26) mot faktiske Fazile-kontraktshistorikker for 9 leieforhold (bedrifter + én privat leietaker - se memory/project_income-forecast-negative-gjenstar-root-cause-2026-08-26.md for detaljer, ikke navngitt her), som alle viste ny kontrakt fra samme dato til nesten identisk/EKSAKT samme sats som den utløpte. Reell fiks krever et bredere Fazile-uttrekk (kun_aktive_linjer:false / flere aktiv_dato-tidspunkt gjennom året), ikke gjort her ennå - se prosjektnotat i minnet." +
+        (erCcVest
+          ? " MERK (CC Vest-bygg): kan i tillegg/i stedet skyldes en omsetningsleie-/minimumsleie-avregning NXT har bokført utenfor Fazile sin kontraktslinje - IKKE individuelt bekreftet for dette leieforholdet (se TENANT_REGLER.md)."
+          : "");
       countKontraktsendring++;
     }
 
@@ -1791,7 +1814,7 @@ async function main() {
     // Betalte kreditnotaer er allerede gjort opp i NXT.
     const maalFakturaer = new Map();
     for (const i of planInvoices) {
-      if (!i.date_from || i.date_from > "2026-12-31") continue;
+      if (!i.date_from || i.date_from > AR_ISO_SLUTT) continue;
       if (i.type === "TURNOVER_DIFFERENCE" || i.type === "TENANT_OWNER_SETTLEMENT") continue;
       if (i.type === "CREDIT_NOTE" && i.status === "PAID") continue;
       if (i.sending_status === "SENT" && i.sent_at && i.sent_at.slice(0, 10) <= planCacheDato) continue;
@@ -1888,9 +1911,9 @@ async function main() {
       return d.getUTCDate() === 1;
     };
     for (const [clId, s] of sistePeriodePrLinje) {
-      if (s.to >= "2026-12-31" || !erKalendermaaned(s.from, s.to)) continue;
+      if (s.to >= AR_ISO_SLUTT || !erKalendermaaned(s.from, s.to)) continue;
       const rrRad = radPrLinjeId.get(clId);
-      let horisont = "2026-12-31";
+      let horisont = AR_ISO_SLUTT;
       if (rrRad && rrRad.slutt_dato && rrRad.slutt_dato < horisont) horisont = rrRad.slutt_dato;
       const linjeSlutt = planLinjeSlutt[String(clId)];
       if (linjeSlutt && linjeSlutt < horisont) horisont = linjeSlutt;
@@ -1924,7 +1947,7 @@ async function main() {
       if (!(row.arsleie_nok > 0) || linjerMedPlan.has(row.linje_id)) continue;
       if (normalizeName(row.leietaker) === ONEPARK_LEIETAKER_KEY) continue;
       if (row.slutt_dato && row.slutt_dato <= kvartalSlutt) continue;
-      if (row.start_dato && row.start_dato > "2026-12-31") continue;
+      if (row.start_dato && row.start_dato > AR_ISO_SLUTT) continue;
       const key = leieforholdKey(row.leietaker, row.seksjon);
       if (!plan.has(key)) continue; // helt uten plan -> håndteres som "fazile-plan-mangler" under
       if (!manglendeLinjerPrKey.has(key)) manglendeLinjerPrKey.set(key, []);
@@ -2601,9 +2624,16 @@ async function main() {
     for (const r of ikkeKonsumert.slice(0, 25)) console.log(`    ${r.belop.toLocaleString("nb-NO").padStart(12)}  ${r.navn} | ${r.bygg} | ${r.selskap} | kunde ${r.customerNo}`);
   }
 
+  // v75 (2026-09-25, pipeline-revisjon): fallback-verdien var tidligere en hardkodet, evig
+  // "2026-08-26" - stemte en gang (foer fakturaplan-mekanismen fantes), men ville blitt en
+  // STILLE FEIL, misvisende dato for alltid hvis fazile-fakturaplan/ noensinne mangler igjen
+  // (f.eks. glemt fornyelse i 2027). advarsler-lista far allerede en ADVARSEL i dette tilfellet
+  // (se else-grenen over) - fallback-datoen her er dagens dato i stedet, slik at "sist oppdatert"
+  // i det minste ALDRI ser eldre/tryggere ut enn den faktisk er.
+  const sistOppdatertFallback = new Date().toISOString().slice(0, 10);
   const snapshot = {
-    sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : "2026-08-26",
-    ar: 2026,
+    sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : sistOppdatertFallback,
+    ar: AR,
     totalBelop: round2(sumTotalDelA + sumTotalDelB),
     antallLeietakere: tenantList.length,
     tenants: tenantList,
@@ -2626,7 +2656,7 @@ async function main() {
     // v13 - metadata om fakturaplan-kilden (null hvis mappen manglet og modellen ble brukt alene)
     fazileFakturaplan: fakturaplanInfo,
     // v70 - se fullstendighetssjekk-blokken over (controller-notat punkt 3)
-    fullstendighetssjekk: { ...fullstendighetssjekk, sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : "2026-08-26" },
+    fullstendighetssjekk: { ...fullstendighetssjekk, sistOppdatert: fakturaplanInfo ? fakturaplanInfo.uttrekksdato : sistOppdatertFallback },
     ...(ADVARSLER.length ? { advarsler: ADVARSLER } : {}),
   };
 

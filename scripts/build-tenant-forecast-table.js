@@ -158,8 +158,17 @@ async function settAutoKommentarAggregat(rader, leietakerRader) {
   }
   const erSelskap = (navn) => /\b(as|asa|nuf|ab|a\/s|ltd|gmbh|kommune|forening|forbund|klubb|club|senter|drift|holding)\b/i.test(navn) || /\d/.test(navn);
   const fmt = (n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString("nb-NO")} kr`;
+  // v75 (2026-09-25, pipeline-revisjon): dette er en HAaNDDUPLISERT kopi av
+  // isSystemRow()/SYSTEM_ROW_LABELS i lib/tenantForecastSystemRow.ts (kan ikke importeres
+  // direkte herfra - den fila er TypeScript/ESM for Next.js, dette er et plain Node CommonJS-
+  // script). En TREDJE kopi finnes i scripts/verify-income-forecast.js. Fant og rettet et reelt
+  // avvik her: "Ledig " (MED mellomrom) matchet aldri kanoniskLEDIG_ROW_PREFIX ("Ledig", UTEN
+  // mellomrom) - virket i praksis siden alle ekte radnavn er "Ledig <kode>" (mellomrom finnes
+  // uansett etter prefikset), men er samme feilklasse som traff "Ukodet bokføring" én gang før
+  // (v3, 2026-09-22 - manglet i ÉN av flere separate lister). Hold disse TRE stedene i sync
+  // manuelt inntil de er slått sammen til én delt kilde.
   for (const rad of rader) {
-    if (rad.navn.startsWith("Ledig ") || rad.navn === MUSTAD_INTERN_LABEL || rad.navn === USPORET_OVERTAKELSE_LABEL || rad.navn.startsWith("Avstemmingsdifferanse") || rad.navn.startsWith("Ukodet bokføring")) {
+    if (rad.navn.startsWith("Ledig") || rad.navn === MUSTAD_INTERN_LABEL || rad.navn === USPORET_OVERTAKELSE_LABEL || rad.navn.startsWith("Avstemmingsdifferanse") || rad.navn.startsWith("Ukodet bokføring")) {
       continue; // egne, allerede selvforklarende systemrader - ikke overskriv med en generisk kommentar
     }
     if (rad.avvik === null || rad.avvik === undefined || Math.abs(rad.avvik) < AVVIK_TERSKEL) {

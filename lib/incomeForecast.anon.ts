@@ -213,7 +213,10 @@ export interface RemainingSnapshot {
 export const REMAINING: RemainingSnapshot = {
   sistOppdatert: "2026-09-21",
   ar: 2026,
-  totalDelA: 8410292.72,
+  // v74 (2026-09-24, full fornyelse av Fazile rent_roll for alle 55 bygg): totalDelA falt
+  // 88 860,63 kr. Kun rent_roll-siden (fallback) fornyet, ikke fakturaplanen (primaerkilden) -
+  // se lib/incomeForecast.local.ts for full forklaring.
+  totalDelA: 8321432.09,
   totalDelB: 5576512.88,
   // v28 (2026-09-08): 724 -> 715. Var Fazile-sidens leietaker||bygg-nøkler FØR sammenslåing;
   // teller nå byggGrupper i snapshotet, samme definisjon som "N av 715 leieforhold" i Leieforhold
