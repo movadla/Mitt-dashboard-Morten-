@@ -24,12 +24,16 @@ import { ArrowUpRight, CalendarClock } from "lucide-react";
 // Summeres fra EXPIRIES her i stedet for å importere EXPIRIES_TOTAL_ARSLEIE/
 // EXPIRIES_REELL_EKSPONERING (2026-09-07): de er hånd-vedlikeholdte konstanter i datafilen
 // og kan drifte fra tabellen de står under, på samme måte som Fazilesjekk-tellingene gjorde.
-// Reell eksponering = linjer UTEN signert etterfølger-kontrakt (reforhandlet=true er reelt
-// sikret, se merknaden over EXPIRIES i lib/widgets). EXPIRIES_WINDOW importeres fortsatt —
-// uttrekksvinduet er en egenskap ved spørringen mot Fazile og finnes ikke i radene.
+// Reell eksponering ekskluderer linjer som enten er reforhandlet (signert etterfølger-KONTRAKT,
+// se merknaden over EXPIRIES i lib/widgets) ELLER erstattet (en ny linje i SAMME kontrakt
+// viderefører saken — Morten flagget 2026-09-25 at f.eks. Kantinebidrag reindekseres etter
+// antall ansatte og ikke er en reell risiko selv om Fazile sitt reforhandlet-flagg ikke ser det).
+// EXPIRIES_WINDOW importeres fortsatt — uttrekksvinduet er en egenskap ved spørringen mot
+// Fazile og finnes ikke i radene.
 const TOTAL_ARSLEIE = EXPIRIES.reduce((sum, t) => sum + t.totalArsleie, 0);
 const REELL_EKSPONERING = EXPIRIES.reduce(
-  (sum, t) => sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet ? linjeSum : linjeSum + l.totalArsleie), 0),
+  (sum, t) =>
+    sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet || l.erstattet ? linjeSum : linjeSum + l.totalArsleie), 0),
   0,
 );
 
@@ -212,35 +216,46 @@ function ExpiryTenantRow({
           </td>
         </tr>
       )}
+      {/* Linjeradene bruker de SAMME 7 kolonnene som hovedraden og tabellhodet over (2026-09-25) —
+          en tidligere variant la alt i én sammenslått <td colSpan={7}> med sitt eget interne grid,
+          som ikke fulgte kolonnegrensene og så rotete/tilfeldig plassert ut, særlig på mobil der
+          kolonnene er trange nok at avviket ble tydelig. */}
       {open &&
-        tenant.lines.map((l) => (
-          <tr key={l.linjeId} className="border-t border-line border-l-2 border-l-line-strong bg-surface-3/50">
-            <td colSpan={7} className="px-3 py-2 pl-8">
-              <div className="grid grid-cols-[1fr_auto_auto_auto_auto] items-baseline gap-x-4 gap-y-1 text-sm">
-                <span className="min-w-0 truncate text-ink-2">
-                  {l.beskrivelse}
-                  {l.bygg !== "(ukjent bygg)" && l.bygg !== tenant.bygg && (
-                    <span className="ml-1.5 text-2xs text-ink-4">· {l.bygg}</span>
-                  )}
+        tenant.lines.map((l) => {
+          const annetBygg = l.bygg !== "(ukjent bygg)" && l.bygg !== tenant.bygg ? l.bygg : null;
+          return (
+            <tr key={l.linjeId} className="border-t border-line border-l-2 border-l-line-strong bg-surface-3/50">
+              <td className="px-3 py-2 pl-8">
+                <span className="block min-w-0 truncate text-ink-2">{l.beskrivelse}</span>
+                <span className="block truncate text-2xs text-ink-4">
+                  {l.arealtype} · {l.leietype}
                 </span>
-                <span className="whitespace-nowrap text-2xs text-ink-4">{l.arealtype}</span>
-                <span className="whitespace-nowrap text-2xs text-ink-4">{l.leietype}</span>
-                <span className="whitespace-nowrap tabular-nums font-medium text-ink-2">{formatKr(l.totalArsleie)}</span>
-                <span
-                  className={`whitespace-nowrap tabular-nums text-2xs ${daysBetween(today, l.slutt) < 10 ? "font-medium text-status-danger" : "text-ink-4"}`}
-                >
-                  {formatDateDMY(l.slutt)}
-                </span>
-              </div>
-              {l.reforhandlet && l.nyKontraktsnokkel && (
-                <p className="mt-1 text-2xs text-status-positive">
-                  → Reforhandlet: {l.nyKontraktsnokkel}, ny start {formatDateDMY(l.nyKontraktStart!)}
-                  {l.gapDager !== undefined && l.gapDager > 0 ? ` (${l.gapDager}d opphold)` : ""}
-                </p>
-              )}
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">{annetBygg ?? ""}</td>
+              <td className="px-3 py-2" />
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-ink-2">{formatKr(l.totalArsleie)}</td>
+              <td
+                className={`whitespace-nowrap px-3 py-2 tabular-nums text-2xs ${daysBetween(today, l.slutt) < 10 ? "font-medium text-status-danger" : "text-ink-4"}`}
+              >
+                {formatDateDMY(l.slutt)}
+              </td>
+              <td className="px-3 py-2 text-2xs">
+                {l.reforhandlet && l.nyKontraktsnokkel && (
+                  <span className="text-status-positive">
+                    → {l.nyKontraktsnokkel}, {formatDateDMY(l.nyKontraktStart!)}
+                    {l.gapDager !== undefined && l.gapDager > 0 ? ` (${l.gapDager}d)` : ""}
+                  </span>
+                )}
+                {l.erstattet && (
+                  <span className="text-ink-4" title="Ny linje i samme kontrakt viderefører saken — ikke en reell risiko">
+                    → erstattes, ny start {formatDateDMY(l.erstattesAvStart!)}
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-2" />
+            </tr>
+          );
+        })}
     </>
   );
 }
@@ -248,12 +263,22 @@ function ExpiryTenantRow({
 export default function JobbExpirySection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const { comments, addComment, removeComment, toggleRelevance, confirmDelete } = useComments();
   const mutationError = useMutationError();
+  const [erstattetOpen, setErstattetOpen] = useState(false);
 
   // Uttrekksvinduet er en egenskap ved spørringen mot Fazile, og det ligger fast i fila.
   // Er starten passert, beskriver vinduet ikke lenger «neste 30 dager» — og det er verdt
   // å si høyt, for da er det uttrekket som må kjøres på nytt, ikke kortet som er i stykker.
   const vinduAlderDager = daysBetween(EXPIRIES_WINDOW.fraDato, today);
-  const antallUtlopt = EXPIRIES.filter(
+
+  // Leietakere der ALLE linjer erstattes av en ny linje i samme kontrakt (se merknaden over
+  // REELL_EKSPONERING) er ikke reell risiko — de holdes utenfor hovedlista/stat/hastegrad-baren,
+  // men vises fortsatt (i en egen, dempet seksjon under) i stedet for å forsvinne sporløst.
+  // Morten (2026-09-25): «det skal ikke dukke opp på denne listen». Delvis erstattet (noen, ikke
+  // alle linjer) blir værende i hovedlista — det ER fortsatt noe reelt å følge opp der.
+  const reelle = EXPIRIES.filter((t) => !t.lines.every((l) => l.erstattet));
+  const heltErstattet = EXPIRIES.filter((t) => t.lines.every((l) => l.erstattet));
+
+  const antallUtlopt = reelle.filter(
     (t) => Math.min(...t.lines.map((l) => daysBetween(today, l.slutt))) < 0,
   ).length;
 
@@ -261,7 +286,7 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
   // (scripts/build-new-expiries.js) — den driver ut av synk med dagens dato etter hvert som
   // uttrekket blir noen dager gammelt, akkurat som URGENCY_BUCKETS-tallene gjorde før
   // 2026-09-08-fiksen over. Sorterer derfor live her også, mest presserende (og utløpte) øverst.
-  const sortertEtterHastegrad = [...EXPIRIES].sort((a, b) => {
+  const sortertEtterHastegrad = [...reelle].sort((a, b) => {
     const naermesteA = Math.min(...a.lines.map((l) => daysBetween(today, l.slutt)));
     const naermesteB = Math.min(...b.lines.map((l) => daysBetween(today, l.slutt)));
     return naermesteA - naermesteB;
@@ -296,7 +321,7 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
           uttrekket, som er det tallet faktisk teller. (2026-09-08) */}
       <CardHeader
         title="Utløpsliste"
-        stat={{ value: EXPIRIES.length, label: "i uttrekket" }}
+        stat={{ value: reelle.length, label: "reell eksponering" }}
         icon={CalendarClock}
         iconColorClass="text-orange-400"
       />
@@ -312,7 +337,7 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
             </p>
           )}
           <div className="mb-3">
-            <ExpiryUrgencyBar tenants={EXPIRIES} today={today} colorClass="text-orange-400" />
+            <ExpiryUrgencyBar tenants={reelle} today={today} colorClass="text-orange-400" />
           </div>
           <div className="-mx-1 overflow-x-auto">
             <table className="w-full min-w-[700px] text-sm">
@@ -330,7 +355,7 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
               <tbody>
                 {/* Tomtilstand (2026-09-07): en tom utløpsliste er GOD nyhet, men en tabell
                     uten rader og uten tekst leste som en lastefeil. */}
-                {EXPIRIES.length === 0 && (
+                {reelle.length === 0 && (
                   <tr className="border-t border-line">
                     <td colSpan={7} className="px-3 py-2 text-sm text-ink-3">
                       Ingen kontraktslinjer utløper i dette vinduet.
@@ -357,9 +382,51 @@ export default function JobbExpirySection({ today, onJumpToOppslag }: { today: s
               </tbody>
             </table>
           </div>
+          {/* Leietakere der ALLE linjer erstattes automatisk (se merknaden over REELL_EKSPONERING)
+              vises her, ikke i hovedlista — synlige for etterprøving, men uten å telle med som
+              risiko. (2026-09-25) */}
+          {heltErstattet.length > 0 && (
+            <div className="mt-3 rounded-lg border border-line bg-surface-2/40 px-3 py-2">
+              <button
+                type="button"
+                onClick={() => setErstattetOpen((v) => !v)}
+                aria-expanded={erstattetOpen}
+                className="flex w-full items-center gap-2 text-left text-2xs text-ink-4"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className={`h-3 w-3 shrink-0 transition-transform ${erstattetOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 6l4 4 4-4" />
+                </svg>
+                {heltErstattet.length} erstattes automatisk (ikke reell risiko — se forklaring)
+              </button>
+              {erstattetOpen && (
+                <div className="mt-2 space-y-1.5 border-t border-line pt-2">
+                  {heltErstattet.map((t) => (
+                    <div key={t.customerId} className="text-2xs text-ink-3">
+                      <span className="text-ink-2">{t.leietaker}</span>
+                      <span className="text-ink-4"> — {formatKr(t.totalArsleie)}/år, {t.bygg}. </span>
+                      {t.lines.map((l, i) => (
+                        <span key={l.linjeId} className="text-ink-4">
+                          {i > 0 ? "; " : ""}
+                          «{l.beskrivelse}» → «{l.erstattesAvBeskrivelse}» fra {formatDateDMY(l.erstattesAvStart!)}
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <p className="mt-3 text-2xs text-ink-4">
             {formatDateDMY(EXPIRIES_WINDOW.fraDato)}–{formatDateDMY(EXPIRIES_WINDOW.tilDato)} · Total eksponering{" "}
-            {formatKr(TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet) {formatKr(REELL_EKSPONERING)}
+            {formatKr(TOTAL_ARSLEIE)} · Reell eksponering (ekskl. reforhandlet/erstattet) {formatKr(REELL_EKSPONERING)}
           </p>
         </>
       <ConfirmDialog

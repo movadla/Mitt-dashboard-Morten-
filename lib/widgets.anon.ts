@@ -841,6 +841,10 @@ export interface ExpiringLine {
   nyKontraktsnokkel?: string;
   nyKontraktStart?: string;
   gapDager?: number;
+  // v81 (2026-09-25): se widgets.local.ts sin fyldige kommentar.
+  erstattet?: boolean;
+  erstattesAvBeskrivelse?: string;
+  erstattesAvStart?: string;
 }
 
 export type ExpiryStatus = "Reforhandlet" | "Terminert" | "Mulig endring" | "Reforhandling pågår" | "Ingen varsel";
@@ -889,9 +893,9 @@ export const EXPIRIES: ExpiringTenant[] = [
     leietaker: "Demokunde 29", customerId: 101620, bygg: "Lilleakerveien 8", totalArsleie: 26000,
     status: "Ingen varsel",
     lines: [
-      { linjeId: 226388, beskrivelse: "Felleskostnader for Kantinebidrag  (4)", bygg: "(ukjent bygg)", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
-      { linjeId: 226575, beskrivelse: "Kantinebidrag avg.fritt (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 26000, reforhandlet: false },
-      { linjeId: 226389, beskrivelse: "Kantinebidrag  (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
+      { linjeId: 226388, beskrivelse: "Felleskostnader for Kantinebidrag  (4)", bygg: "(ukjent bygg)", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false, erstattet: true, erstattesAvBeskrivelse: "Felleskostnader for Kantinebidrag (6)", erstattesAvStart: "2026-10-01" },
+      { linjeId: 226575, beskrivelse: "Kantinebidrag avg.fritt (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 26000, reforhandlet: false, erstattet: true, erstattesAvBeskrivelse: "Kantinebidrag avg.fritt (6)", erstattesAvStart: "2026-10-01" },
+      { linjeId: 226389, beskrivelse: "Kantinebidrag  (4)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false, erstattet: true, erstattesAvBeskrivelse: "Kantinebidrag (6)", erstattesAvStart: "2026-10-01" },
     ],
   },
   {
@@ -1138,14 +1142,14 @@ export const EXPIRIES: ExpiringTenant[] = [
     leietaker: "Demokunde 24", customerId: 67521, bygg: "Lilleakerveien 10", totalArsleie: 247000,
     status: "Ingen varsel",
     lines: [
-      { linjeId: 233679, beskrivelse: "Kantinebidrag avg.fritt (38)", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 247000, reforhandlet: false },
+      { linjeId: 233679, beskrivelse: "Kantinebidrag avg.fritt (38)", bygg: "Lilleakerveien 10", arealtype: "Annet", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 247000, reforhandlet: false, erstattet: true, erstattesAvBeskrivelse: "Kantinebidrag avg.fritt (20)", erstattesAvStart: "2026-10-01" },
     ],
   },
   {
     leietaker: "Demokunde 305 AS", customerId: 67138, bygg: "Lilleakerveien 8", totalArsleie: 136500,
     status: "Ingen varsel",
     lines: [
-      { linjeId: 214978, beskrivelse: "Kantinebidrag avg.fritt (21)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 136500, reforhandlet: false },
+      { linjeId: 214978, beskrivelse: "Kantinebidrag avg.fritt (21)", bygg: "Lilleakerveien 8", arealtype: "Kantine", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 136500, reforhandlet: false, erstattet: true, erstattesAvBeskrivelse: "Kantinebidrag avg.fritt (4)", erstattesAvStart: "2026-10-01" },
     ],
   },
   {
@@ -1214,12 +1218,13 @@ export function buildDashboardContext(): string {
   // merknaden over EXPIRIES_WINDOW.
   const expiriesTotalArsleie = EXPIRIES.reduce((sum, t) => sum + t.totalArsleie, 0);
   const expiriesReellEksponering = EXPIRIES.reduce(
-    (sum, t) => sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet ? linjeSum : linjeSum + l.totalArsleie), 0),
+    (sum, t) =>
+      sum + t.lines.reduce((linjeSum, l) => (l.reforhandlet || l.erstattet ? linjeSum : linjeSum + l.totalArsleie), 0),
     0,
   );
   lines.push(
     `\nUTLØPSLISTE (ekte, fra Fazile — kontraktslinjer som utløper ${EXPIRIES_WINDOW.fraDato} til ${EXPIRIES_WINDOW.tilDato}): ` +
-      `${formatKr(expiriesTotalArsleie)} total eksponering, ${formatKr(expiriesReellEksponering)} reell eksponering (ekskl. reforhandlede linjer)`,
+      `${formatKr(expiriesTotalArsleie)} total eksponering, ${formatKr(expiriesReellEksponering)} reell eksponering (ekskl. reforhandlede/erstattede linjer)`,
   );
   for (const t of EXPIRIES) {
     const nearest = Math.min(...t.lines.map((l) => l.dagerTilUtlop));

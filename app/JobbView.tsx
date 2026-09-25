@@ -646,9 +646,11 @@ export default function JobbView({
   // dagerTilUtlop er frosset i datafilen fra uttrekksdatoen og blir feil så snart fila er
   // noen dager gammel — badgen viste 2 «innen 10 dager» der begge i realiteten hadde gått
   // ut over tre uker tidligere. Regnes nå fra `slutt` mot dagens dato. (2026-09-08)
+  // Leietakere der ALLE linjer erstattes automatisk i samme kontrakt telles heller ikke som
+  // urgent (2026-09-25) — samme prinsipp som "Reforhandlet", se JobbExpirySection.tsx.
   const expiryUrgentCount = EXPIRIES.filter((t) => {
     const nearest = Math.min(...t.lines.map((l) => daysBetween(today, l.slutt)));
-    return nearest < 10 && t.status !== "Reforhandlet";
+    return nearest < 10 && t.status !== "Reforhandlet" && !t.lines.every((l) => l.erstattet);
   }).length;
   const guaranteeUrgentCount = GUARANTEES.filter((g) => daysBetween(today, g.frist) <= 10).length;
   const receivableHighRiskCount = RECEIVABLES.filter((r) => computeAutoRisk(r, today) === "hoy").length;
