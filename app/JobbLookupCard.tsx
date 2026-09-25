@@ -44,8 +44,11 @@ function matchesTenant(t: Tenant, query: string): boolean {
   );
 }
 
-function TenantRow({ tenant }: { tenant: Tenant }) {
-  const [open, setOpen] = useState(false);
+// v79 (2026-09-26): eksportert - gjenbrukt av app/JobbContractsSection.tsx sin
+// kontraktsdetalj-boks ("Om leietaker") for å slippe å duplisere kontaktperson-/
+// siste saker-visningen.
+export function TenantRow({ tenant, defaultOpen = false }: { tenant: Tenant; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
 
   return (
     <div className="rounded-xl border border-line bg-surface-2">

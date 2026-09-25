@@ -11,7 +11,20 @@ import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
 import { CONTRACT_DETALJER, CONTRACTS, type Contract, type ContractDetaljer, formatDateDMY, formatKr } from "@/lib/widgets";
+import { TENANTS } from "@/lib/tenants";
+import { TenantRow } from "./JobbLookupCard";
 import { ArrowUpRight, FileSignature } from "lucide-react";
+
+// v79 (2026-09-26, Morten: "hvis det er en ny leietaker, må vi hente data for dem"): enkel
+// eksakt (case-insensitive) match på kontonavn - de 10 nyeste kontraktene finnes IKKE i
+// TENANTS ennå (verifisert), så "ikke funnet ennå" er i dag den vanlige, forventede tilstanden,
+// ikke en feil. Ingen automatisk henting herfra - Salesforce er ikke autentisert i denne appens
+// kjøremiljø (samme MCP-only-begrensning som Fazile/Asana), se lib/tenants.ts sin egen
+// oppdateringsprosess (manuell, samme mønster som resten av "Oppslag").
+function finnTenant(kunde: string) {
+  const q = kunde.trim().toLowerCase();
+  return TENANTS.find((t) => t.kontonavn.trim().toLowerCase() === q);
+}
 
 function ContractRow({
   contract: c,
@@ -84,7 +97,7 @@ function ContractRow({
       {detaljerOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={8} className="px-3 py-2 pl-9">
-            <ContractDetaljerPanel detaljer={detaljer} />
+            <ContractDetaljerPanel contract={c} detaljer={detaljer} />
           </td>
         </tr>
       )}
@@ -99,46 +112,89 @@ function ContractRow({
   );
 }
 
-// v78 (2026-09-26): nøkkelinfo + oppsummering hentet fra Asana-prosjektet "Signerte dokumenter"
-// (se lib/widgets.local.ts sin fyldige kommentar ved CONTRACT_DETALJER for metodikk og hvorfor
+// Delt seksjonstittel-stil for panelet under - samme visuelle mønster som "Kontaktpersoner"/
+// "Siste saker" i JobbLookupCard sin TenantRow, slik at de to henger sammen når "Om leietaker"
+// vises rett under (v79).
+function Seksjonstittel({ children }: { children: React.ReactNode }) {
+  return <p className="text-2xs font-semibold uppercase tracking-wider text-ink-4">{children}</p>;
+}
+
+// v78/v79 (2026-09-26, Morten: "det trenger å være mer strukturert ... først en seksjon som sier
+// sammendrag ... så nøkkelinfo, alignet så det er lett å lese ... og til slutt særlige
+// bestemmelser ... og en seksjon der du kan trykke på leietakeren for å få info om dem"):
+// nøkkelinfo + sammendrag hentet fra Asana-prosjektet "Signerte dokumenter" (se
+// lib/widgets.local.ts sin fyldige kommentar ved CONTRACT_DETALJER for metodikk og hvorfor
 // signatarer/kontaktinfo bevisst ikke er med). Kun de 10 nyeste kontraktene har en oppføring så
-// langt - resten viser en nøytral "ikke hentet ennå"-tekst, ikke en feilmelding.
-function ContractDetaljerPanel({ detaljer }: { detaljer: ContractDetaljer | undefined }) {
-  if (!detaljer) {
-    return <p className="text-2xs text-ink-4">Ingen kontraktsdetaljer hentet fra Asana ennå.</p>;
-  }
-  const rad = (label: string, verdi: string | null) =>
-    verdi ? (
-      <div className="flex gap-1.5">
-        <span className="shrink-0 text-ink-4">{label}:</span>
-        <span className="text-ink-2">{verdi}</span>
-      </div>
-    ) : null;
+// langt - resten viser en nøytral "ikke hentet ennå"-tekst der Nøkkelinfo ellers ville vært.
+// "Om leietaker" er ALLTID forsøkt vist (uavhengig av om Asana-detaljer finnes), siden den
+// slår opp i et helt annet, uavhengig datasett (TENANTS/Oppslag).
+function ContractDetaljerPanel({ contract, detaljer }: { contract: Contract; detaljer: ContractDetaljer | undefined }) {
+  const tenant = finnTenant(contract.kunde);
+  const dt = (label: string) => <dt className="text-2xs text-ink-4">{label}</dt>;
+  const dd = (verdi: React.ReactNode) => <dd className="text-sm text-ink-2">{verdi}</dd>;
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-ink-1">{detaljer.oppsummering}</p>
-      <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-2xs sm:grid-cols-2">
-        {rad("Kontraktsnummer", detaljer.kontraktsnummer)}
-        {rad("Signert", detaljer.signertDato ? formatDateDMY(detaljer.signertDato) : null)}
-        {rad("Sluttdato", detaljer.sluttdato ? formatDateDMY(detaljer.sluttdato) : "Løpende, ingen avtalt sluttdato")}
-        {rad("MVA", detaljer.mvaType)}
-        {rad("Garanti", detaljer.garantitype ? `${detaljer.garantitype}${detaljer.garantibelop ? ` (${formatKr(detaljer.garantibelop)})` : ""}` : null)}
-        {rad(
-          "Opsjon",
-          detaljer.opsjon === null
-            ? null
-            : detaljer.opsjon
-              ? `Ja${detaljer.opsjonsbetingelser ? `, ${detaljer.opsjonsbetingelser}` : ""}${detaljer.opsjonsperiodeManeder ? ` (${detaljer.opsjonsperiodeManeder} mnd)` : ""}`
-              : "Nei",
-        )}
-      </div>
-      {detaljer.saerligeBestemmelser && (
-        <p className="text-2xs text-ink-3">
-          <span className="font-medium text-ink-4">Særlige bestemmelser: </span>
-          {detaljer.saerligeBestemmelser}
+    <div className="flex flex-col gap-3">
+      <div>
+        <Seksjonstittel>Sammendrag</Seksjonstittel>
+        <p className="mt-1 text-sm text-ink-1">
+          {detaljer?.oppsummering ?? "Ingen kontraktsdetaljer hentet fra Asana ennå."}
         </p>
+      </div>
+
+      <div>
+        <Seksjonstittel>Nøkkelinfo</Seksjonstittel>
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          {dt("Startdato")}
+          {dd(formatDateDMY(contract.startdato))}
+          {dt("Sluttdato")}
+          {dd(detaljer?.sluttdato ? formatDateDMY(detaljer.sluttdato) : detaljer ? "Løpende, ingen avtalt sluttdato" : "—")}
+          {dt("Areal")}
+          {dd(`${contract.kvm.toLocaleString("nb-NO", { maximumFractionDigits: 1 })} kvm`)}
+          {detaljer?.kontraktsnummer && (
+            <>
+              {dt("Kontraktsnummer")}
+              {dd(detaljer.kontraktsnummer)}
+            </>
+          )}
+          {detaljer?.signertDato && (
+            <>
+              {dt("Signert")}
+              {dd(formatDateDMY(detaljer.signertDato))}
+            </>
+          )}
+          {detaljer?.mvaType && (
+            <>
+              {dt("MVA")}
+              {dd(detaljer.mvaType)}
+            </>
+          )}
+          {detaljer?.garantitype && (
+            <>
+              {dt("Garanti")}
+              {dd(`${detaljer.garantitype}${detaljer.garantibelop ? ` (${formatKr(detaljer.garantibelop)})` : ""}`)}
+            </>
+          )}
+          {detaljer && detaljer.opsjon !== null && (
+            <>
+              {dt("Opsjon")}
+              {dd(
+                detaljer.opsjon
+                  ? `Ja${detaljer.opsjonsbetingelser ? `, ${detaljer.opsjonsbetingelser}` : ""}${detaljer.opsjonsperiodeManeder ? ` (${detaljer.opsjonsperiodeManeder} mnd)` : ""}`
+                  : "Nei",
+              )}
+            </>
+          )}
+        </dl>
+      </div>
+
+      {detaljer?.saerligeBestemmelser && (
+        <div>
+          <Seksjonstittel>Særlige bestemmelser</Seksjonstittel>
+          <p className="mt-1 text-sm text-ink-2">{detaljer.saerligeBestemmelser}</p>
+        </div>
       )}
-      {detaljer.salesforceUrl && (
+
+      {detaljer?.salesforceUrl && (
         <a
           href={detaljer.salesforceUrl}
           target="_blank"
@@ -146,10 +202,24 @@ function ContractDetaljerPanel({ detaljer }: { detaljer: ContractDetaljer | unde
           onClick={(e) => e.stopPropagation()}
           className="inline-flex w-fit items-center gap-1 text-2xs text-accent hover:underline"
         >
-          Åpne i Salesforce
+          Åpne kontrakt i Salesforce
           <ArrowUpRight className="h-3 w-3 shrink-0" aria-hidden />
         </a>
       )}
+
+      <div className="border-t border-line pt-2">
+        <Seksjonstittel>Om leietaker</Seksjonstittel>
+        <div className="mt-1.5">
+          {tenant ? (
+            <TenantRow tenant={tenant} defaultOpen />
+          ) : (
+            <p className="text-sm text-ink-3">
+              Ikke funnet i leietakeroppslaget ennå ({TENANTS.length} av 531 leietakere i Salesforce lagt inn
+              foreløpig). Si ifra hvis denne bør legges til.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
