@@ -19,10 +19,21 @@
 //      Lagre `items`-lista i scripts/refresh-data/utlop-<dato>-lines-raw.json som { "items": [...] }.
 //      (parent_line_id viste seg IKKE å være satt på noen av kandidatene testet 2026-09-25 - stol på
 //      beskrivelse+dato-matchen i detectErstattetLinjer, ikke på det feltet.)
-//   4. Kjør: node scripts/build-new-expiries.js scripts/refresh-data/utlop-<dato>-raw.json
-//      scripts/refresh-data/utlop-<dato>-lines-raw.json (andre argumentet er valgfritt - uten det
-//      hoppes erstattet-sjekken over og alle linjer regnes som reell eksponering).
-//   5. Sjekk konsoll-outputen for leietakere scriptet IKKE fant en eksisterende
+//   4. KONTRAKTS-ETTERFØLGER-SJEKK (2026-09-25, se detectKontraktEtterfolger under): hent ut de
+//      unike customer_id-verdiene fra rows, og kjør:
+//        contract_customers(first: 200, filter: { customer_id: { in: [<customer_id-ene>] },
+//          customer_type: { eq: "TENANT" }, main: { eq: true } }) { items { contract_id customer_id } }
+//      Ta alle unike contract_id fra resultatet (maks 100 om gangen) og kjør:
+//        contracts(first: 200, filter: { contract_id: { in: [<contract_id-ene>] } }) {
+//          items { contract_id key status start_date end_date renewed_contract_id }
+//        }
+//      Lagre begge i scripts/refresh-data/utlop-<dato>-contracts-raw.json som
+//      { "contractCustomers": [[contract_id, customer_id], ...], "contracts": [...] }.
+//   5. Kjør: node scripts/build-new-expiries.js scripts/refresh-data/utlop-<dato>-raw.json
+//      scripts/refresh-data/utlop-<dato>-lines-raw.json scripts/refresh-data/utlop-<dato>-contracts-raw.json
+//      (andre og tredje argument er valgfrie - uten dem hoppes hhv. erstattet- og
+//      kontrakts-etterfølger-sjekken over).
+//   6. Sjekk konsoll-outputen for leietakere scriptet IKKE fant en eksisterende
 //      Demokunde-tildeling for - vurder manuelt om navnet er en privatperson (ingen org-suffiks)
 //      eller et selskap, scriptet gjetter konservativt (se serOmSomSelskap), men kjenner ikke
 //      navn det ikke har sett før.
@@ -49,6 +60,22 @@
 // nystartet linje i SAMME kontrakt med samme beskrivelse (uten (N)-suffiks) dagen etter. For to av
 // de tre leietakerne var dette den ENESTE linjen deres - uten denne sjekken hadde de fremstått som
 // reell risiko i lista når de i realiteten bare fortsetter uendret.
+//
+// UOFFISIELL KONTRAKTS-ETTERFØLGER (2026-09-25, se detectKontraktEtterfolger): Morten spurte
+// eksplisitt om kontrakter kan være reforhandlet UTEN at Fazile sitt eget renewed_contract_id-felt
+// er satt. Verifisert reelt for Corvita AS (kontrakt 82058/RS9012, slutt 2026-09-30): en ny,
+// SIGNED_BY_BOTH_PARTIES-kontrakt (138866/TU9305) for SAMME kunde starter 2026-10-01, men har
+// renewed_contract_id=null - et reelt hull i Fazile sin egen datafangst, ikke i metoden vår.
+// Sjekket GRUNDIG mot alle 30 leietakere 2026-09-25 (se scripts/refresh-data/utlop-2026-09-25-
+// contracts-raw.json): kun Corvita AS hadde dette gapet. Norcap AS og Erco Lighting Ab Norsk
+// Filial NUF SÅ ut til å ha samme problem ved første/naive sjekk, men viste seg begge å være
+// korrekt fanget opp av den OFFISIELLE mekanismen (en søsken-kontrakt peker riktig TILBAKE via
+// renewed_contract_id) - retningen på den koblingen er lett å sjekke feil vei, se
+// detectKontraktEtterfolger. De resterende ~22 leietakerne har INGEN kontrakt (signert eller
+// under forhandling) i Fazile som starter i nærheten av utløpsdatoen - enten reelt på vei ut,
+// eller en forhandling som ikke er formalisert i Fazile ennå (som Lyreco, se
+// MANUELLE_STATUS_OVERRIDES). Denne sjekken finner IKKE sistnevnte - det krever et Salesforce-
+// søk per leietaker, ikke gjort 2026-09-25, ikke automatisert i dette scriptet.
 
 const fs = require("fs");
 const path = require("path");
@@ -122,7 +149,60 @@ function detectErstattetLinjer(rows, contractLines) {
   return erstattet;
 }
 
-function beregnUtlop(raw, erstattetMap = new Map()) {
+// Finner kontrakter som er reelt reforhandlet uten at Fazile sitt eget renewed_contract_id-felt
+// er satt på etterfølgeren (se filhode-kommentaren for hvorfor - bekreftet reelt for Corvita AS).
+// contractCustomers = [[contract_id, customer_id], ...], contracts = rå contract-rader (steg 4).
+// Returnerer Map<kontrakt_id, {nyKontraktsnokkel, nyKontraktStart, gapDager}> for kontrakter med en
+// slik uoffisiell etterfølger. Kontrakter der Fazile ALLEREDE har koblingen riktig (en søsken-
+// kontrakt peker TILBAKE via renewed_contract_id) er IKKE med her - de er allerede reforhandlet=true
+// på linjenivå fra kontraktsutlop-verktøyet selv, og skal ikke telles/vises to ganger.
+function detectKontraktEtterfolger(rows, contractCustomers, contracts) {
+  const etterfolger = new Map();
+  if (!contractCustomers || !contracts) return etterfolger;
+
+  const contractById = new Map(contracts.map((c) => [c.contract_id, c]));
+  const byCustomer = new Map();
+  for (const [contractId, customerId] of contractCustomers) {
+    if (!byCustomer.has(customerId)) byCustomer.set(customerId, []);
+    byCustomer.get(customerId).push(contractId);
+  }
+
+  const alleredeSjekket = new Set();
+  for (const r of rows) {
+    const kontraktId = r.kontrakt_id;
+    if (alleredeSjekket.has(kontraktId) || r.reforhandlet) continue; // Fazile fant den allerede
+    alleredeSjekket.add(kontraktId);
+
+    const kontrakt = contractById.get(kontraktId);
+    if (!kontrakt) continue;
+    const sosken = byCustomer.get(r.customer_id) || [];
+
+    // Er kontrakten allerede den OFFISIELLE etterfølgeren til noe (renewed_contract_id peker ut fra
+    // den), er den ikke selv utløpende i reell forstand - urelatert her, hopp over.
+    const harOffisiellEtterfolger = sosken.some((sid) => {
+      const s = contractById.get(sid);
+      return s && s.renewed_contract_id === kontraktId && (s.status === "ACTIVE" || s.status === "SIGNED_BY_BOTH_PARTIES");
+    });
+    if (harOffisiellEtterfolger) continue;
+
+    let beste = null;
+    for (const sid of sosken) {
+      if (sid === kontraktId) continue;
+      const s = contractById.get(sid);
+      if (!s || s.status === "EXPIRED" || s.renewed_contract_id) continue;
+      const gapDager = Math.round((new Date(s.start_date) - new Date(kontrakt.end_date)) / 86400000);
+      // Samme vindu som detectErstattetLinjer, men noe romsligere (45 dager) - kontrakts-signering
+      // kan administrativt henge noen uker etter linje-nivå-fornyelser som skjer månedlig.
+      if (gapDager >= -5 && gapDager <= 45) {
+        if (!beste || Math.abs(gapDager) < Math.abs(beste.gapDager)) beste = { key: s.key, start: s.start_date, gapDager };
+      }
+    }
+    if (beste) etterfolger.set(kontraktId, { nyKontraktsnokkel: beste.key, nyKontraktStart: beste.start, gapDager: beste.gapDager });
+  }
+  return etterfolger;
+}
+
+function beregnUtlop(raw, erstattetMap = new Map(), kontraktEtterfolgerMap = new Map()) {
   const byTenant = new Map();
   for (const r of raw.rows) {
     if (!byTenant.has(r.customer_id)) byTenant.set(r.customer_id, { leietaker: r.leietaker, customerId: r.customer_id, lines: [] });
@@ -131,7 +211,36 @@ function beregnUtlop(raw, erstattetMap = new Map()) {
 
   const tenants = [...byTenant.values()].map((t) => {
     const totalArsleie = Math.round(t.lines.reduce((s, l) => s + l.total_arsleie, 0) * 100) / 100;
-    const alleReforhandlet = t.lines.every((l) => l.reforhandlet);
+    const nearestSlutt = t.lines.reduce((a, b) => (a.linje_slutt <= b.linje_slutt ? a : b)).linje_slutt;
+
+    const linjer = t.lines.map((l) => {
+      const erstattetInfo = erstattetMap.get(l.linje_id);
+      const uoffisiellEtterfolger = !l.reforhandlet ? kontraktEtterfolgerMap.get(l.kontrakt_id) : undefined;
+      const reforhandlet = l.reforhandlet || !!uoffisiellEtterfolger;
+      return {
+        linjeId: l.linje_id,
+        beskrivelse: l.linje_beskrivelse,
+        bygg: l.bygg,
+        arealtype: l.arealtype,
+        leietype: l.leietype,
+        slutt: l.linje_slutt,
+        dagerTilUtlop: l.dager_til_utlop,
+        totalArsleie: l.total_arsleie,
+        reforhandlet,
+        nyKontraktsnokkel: l.ny_kontraktsnokkel ?? uoffisiellEtterfolger?.nyKontraktsnokkel,
+        nyKontraktStart: l.ny_kontrakt_start ?? uoffisiellEtterfolger?.nyKontraktStart,
+        gapDager: l.gap_dager ?? uoffisiellEtterfolger?.gapDager,
+        erstattet: !!erstattetInfo,
+        erstattesAvBeskrivelse: erstattetInfo?.beskrivelse,
+        erstattesAvStart: erstattetInfo?.startdato,
+      };
+    });
+
+    // VIKTIG: leses fra de KORRIGERTE linjene (linjer), ikke rå t.lines - ellers overses en
+    // uoffisiell kontrakts-etterfølger her selv om selve linje-feltet over er riktig rettet
+    // (fant dette 2026-09-25: Corvita AS fikk reforhandlet:true på alle 5 linjer, men status ble
+    // stående som "Ingen varsel" fordi denne sjekket den URØRTE rå-arrayen).
+    const alleReforhandlet = linjer.every((l) => l.reforhandlet);
     let status = alleReforhandlet ? "Reforhandlet" : "Ingen varsel";
     let statusKilde;
     const override = MANUELLE_STATUS_OVERRIDES[t.customerId];
@@ -139,7 +248,6 @@ function beregnUtlop(raw, erstattetMap = new Map()) {
       status = override.status;
       statusKilde = override.statusKilde;
     }
-    const nearestSlutt = t.lines.reduce((a, b) => (a.linje_slutt <= b.linje_slutt ? a : b)).linje_slutt;
     return {
       leietaker: t.leietaker,
       customerId: t.customerId,
@@ -148,26 +256,7 @@ function beregnUtlop(raw, erstattetMap = new Map()) {
       status,
       statusKilde,
       nearestSlutt,
-      lines: t.lines.map((l) => {
-        const erstattetInfo = erstattetMap.get(l.linje_id);
-        return {
-          linjeId: l.linje_id,
-          beskrivelse: l.linje_beskrivelse,
-          bygg: l.bygg,
-          arealtype: l.arealtype,
-          leietype: l.leietype,
-          slutt: l.linje_slutt,
-          dagerTilUtlop: l.dager_til_utlop,
-          totalArsleie: l.total_arsleie,
-          reforhandlet: l.reforhandlet,
-          nyKontraktsnokkel: l.ny_kontraktsnokkel,
-          nyKontraktStart: l.ny_kontrakt_start,
-          gapDager: l.gap_dager,
-          erstattet: !!erstattetInfo,
-          erstattesAvBeskrivelse: erstattetInfo?.beskrivelse,
-          erstattesAvStart: erstattetInfo?.startdato,
-        };
-      }),
+      lines: linjer,
     };
   });
 
@@ -236,8 +325,11 @@ function nesteDemokundeNummer(tekst) {
 function main() {
   const rawPath = process.argv[2];
   const linesRawPath = process.argv[3];
+  const contractsRawPath = process.argv[4];
   if (!rawPath) {
-    console.error("Bruk: node scripts/build-new-expiries.js <sti-til-raw.json> [sti-til-lines-raw.json]");
+    console.error(
+      "Bruk: node scripts/build-new-expiries.js <sti-til-raw.json> [sti-til-lines-raw.json] [sti-til-contracts-raw.json]",
+    );
     process.exit(1);
   }
   const raw = JSON.parse(fs.readFileSync(rawPath, "utf8"));
@@ -248,12 +340,22 @@ function main() {
   } else {
     console.warn("Ingen lines-raw.json oppgitt - hopper over erstattet-linje-sjekken (se filhode-kommentaren).");
   }
-  const tenants = beregnUtlop(raw, erstattetMap);
+  let kontraktEtterfolgerMap = new Map();
+  if (contractsRawPath) {
+    const contractsRaw = JSON.parse(fs.readFileSync(contractsRawPath, "utf8"));
+    kontraktEtterfolgerMap = detectKontraktEtterfolger(raw.rows, contractsRaw.contractCustomers, contractsRaw.contracts);
+  } else {
+    console.warn("Ingen contracts-raw.json oppgitt - hopper over kontrakts-etterfølger-sjekken (se filhode-kommentaren).");
+  }
+  const tenants = beregnUtlop(raw, erstattetMap, kontraktEtterfolgerMap);
   console.log(
     `${raw.rows.length} linjer, ${tenants.length} leietakere i uttrekket (${raw.aggregat.fra_dato} til ${raw.aggregat.til_dato}).`,
   );
   if (erstattetMap.size > 0) {
     console.log(`${erstattetMap.size} linje(r) er erstattet av en ny linje i samme kontrakt (se erstattet-feltet).`);
+  }
+  if (kontraktEtterfolgerMap.size > 0) {
+    console.log(`${kontraktEtterfolgerMap.size} kontrakt(er) har en uoffisiell etterfølger Fazile ikke selv koblet.`);
   }
 
   let localTekst = fs.readFileSync(LOCAL_FILE, "utf8");
@@ -313,4 +415,11 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { beregnUtlop, hovedbygg, serOmSomSelskap, detectErstattetLinjer, baseBeskrivelse };
+module.exports = {
+  beregnUtlop,
+  hovedbygg,
+  serOmSomSelskap,
+  detectErstattetLinjer,
+  baseBeskrivelse,
+  detectKontraktEtterfolger,
+};

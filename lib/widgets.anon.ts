@@ -1089,13 +1089,13 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 283 AS", customerId: 67181, bygg: "Lilleakerveien 8", totalArsleie: 928660.72,
-    status: "Ingen varsel",
+    status: "Reforhandlet",
     lines: [
-      { linjeId: 158325, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 122240, reforhandlet: false },
-      { linjeId: 161784, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 45003.08, reforhandlet: false },
-      { linjeId: 167766, beskrivelse: "Kantinebidrag avg.fritt (8)", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 52000, reforhandlet: false },
-      { linjeId: 158326, beskrivelse: "Husleie avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 691486.94, reforhandlet: false },
-      { linjeId: 161785, beskrivelse: "Eiendomsskatt avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 17930.7, reforhandlet: false },
+      { linjeId: 158325, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 122240, reforhandlet: true, nyKontraktsnokkel: "TU9305", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161784, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 45003.08, reforhandlet: true, nyKontraktsnokkel: "TU9305", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 167766, beskrivelse: "Kantinebidrag avg.fritt (8)", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Kantinebidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 52000, reforhandlet: true, nyKontraktsnokkel: "TU9305", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 158326, beskrivelse: "Husleie avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 691486.94, reforhandlet: true, nyKontraktsnokkel: "TU9305", nyKontraktStart: "2026-10-01", gapDager: 1 },
+      { linjeId: 161785, beskrivelse: "Eiendomsskatt avg.fritt", bygg: "Lilleakerveien 8", arealtype: "Kontor", leietype: "Annet", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 17930.7, reforhandlet: true, nyKontraktsnokkel: "TU9305", nyKontraktStart: "2026-10-01", gapDager: 1 },
     ],
   },
   {
