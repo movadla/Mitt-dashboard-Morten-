@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: [
-    "usage-answer-double-worker.trycloudflare.com",
+    "kennedy-mail-demonstrated-vessels.trycloudflare.com",
   ] as string[],
 };
 

@@ -435,7 +435,10 @@ const JOBB_SECONDARY_NAV_IDS = ["oppslag", "mustad-nyheter", "data-sources"];
 const SECTION_DATA_SOURCE: Record<string, string> = {
   today: "tasks",
   oppgaver: "tasks",
-  contracts: "widgets",
+  // v77 (2026-09-26, presentasjonsrevisjon): egen kilde-id, atskilt fra "widgets" - Kontrakter
+  // har nå sin egen CONTRACTS_SIST_OPPDATERT (se app/api/data-sources/route.ts), presis for
+  // akkurat dette datasettet i stedet for widgets.local.ts sin delte fil-mtid.
+  contracts: "contracts",
   expiry: "widgets",
   guarantees: "widgets",
   receivables: "widgets",
@@ -446,7 +449,7 @@ const SECTION_DATA_SOURCE: Record<string, string> = {
 };
 
 // Den omvendte koblingen: kilde-id → seksjonen den mater, men BARE der bare én
-// seksjon bruker kilden. «widgets» mater fem seksjoner og «tasks» to, og for dem
+// seksjon bruker kilden. «widgets» mater fire seksjoner og «tasks» to, og for dem
 // finnes det ikke ett riktig sted å hoppe — de utelates i stedet for at Datakilder
 // skal gjette. Utledes av SECTION_DATA_SOURCE over, ikke skrevet opp på nytt, så
 // de to ikke kan drifte fra hverandre. (2026-09-08)

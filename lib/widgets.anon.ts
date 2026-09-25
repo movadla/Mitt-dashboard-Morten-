@@ -146,7 +146,19 @@ export const CALENDAR_EVENTS: { id: string; dato: string; start: string; slutt: 
  * SF-lenker finnes i lib/widgets.local.ts (gitignored) — spør Morten før du bytter tilbake.
  * Nummer gjenbrukt fra RECEIVABLES der samme leietaker opptrer der; nye leietakere denne
  * runden er nummerert 220–277.
+ *
+ * OPPDATERING 2026-09-26 (c140-c147, se widgets.local.ts sin egen kommentar for metodikk):
+ * forsøkte å gjenbruke RECEIVABLES-nummer for disse 6 (samme leietakernavn finnes der), men
+ * fant at RECEIVABLES sine "r"-IDer IKKE er stabile mellom denne anon-fila og dagens
+ * widgets.local.ts (utestående beløp under samme r-ID stemte ikke overens - antagelig fra to
+ * ulike Kundefordringer-oppdateringer) - EGEN, uavhengig funn, ikke rettet her, utenfor denne
+ * rundens omfang. Disse 6 fikk derfor FRISKE, sekvensielle numre (278-284) i stedet, samme
+ * mønster som 220-277-serien (selskapsnavn med kjent selskapsform får " AS" lagt til for
+ * visuell realisme; SGM Technology AS gjenbrukte sin eksisterende "Demokunde 29" fra c1/c17/c21
+ * i denne samme fila - det ENESTE trygt bekreftede gjenbruket).
  */
+export const CONTRACTS_SIST_OPPDATERT = "2026-09-26";
+
 export interface Contract {
   id: string;
   kunde: string;
@@ -302,7 +314,194 @@ export const CONTRACTS: Contract[] = [
   { id: "c137", kunde: "Demokunde 275", signeringsdato: "2026-02-05", startdato: "2026-01-01", arsbelop: 25683, bygg: "Lilleakerveien 2E", kvm: 9.6, leietype: "Kontorleie", sfUrl: null },
   { id: "c138", kunde: "Demokunde 276 AS", signeringsdato: "2026-01-16", startdato: "2025-11-17", arsbelop: 50326.56, bygg: "Vollsveien 13-19", kvm: 25, leietype: "Parkering", sfUrl: null },
   { id: "c139", kunde: "Demokunde 277 AS", signeringsdato: "2026-01-16", startdato: "2026-01-01", arsbelop: 75000, bygg: "Vollsveien 13-19", kvm: 37.5, leietype: "Parkering", sfUrl: null },
+  { id: "c140", kunde: "Demokunde 278 AS", signeringsdato: "2026-09-18", startdato: "2026-09-23", arsbelop: 523200, bygg: "Vollsveien 13-19", kvm: 159, leietype: "Kontorleie", sfUrl: null },
+  { id: "c141", kunde: "Demokunde 29", signeringsdato: "2026-09-09", startdato: "2026-09-04", arsbelop: 690000, bygg: "Lilleakerveien 8", kvm: 163.3, leietype: "Husleie", sfUrl: null },
+  { id: "c142", kunde: "Demokunde 279", signeringsdato: "2026-09-09", startdato: "2026-09-01", arsbelop: 288120, bygg: "Arnstein Arnebergsvei 4", kvm: 0, leietype: "Husleie", sfUrl: null },
+  { id: "c143", kunde: "Demokunde 280", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 143856.74, bygg: "Vollsveien 13-19", kvm: 65.2, leietype: "Husleie", sfUrl: null },
+  { id: "c144", kunde: "Demokunde 281 AS", signeringsdato: "2026-09-01", startdato: "2026-09-01", arsbelop: 1050600, bygg: "Lilleakerveien 14", kvm: 511.6, leietype: "Kontorleie/Husleie", sfUrl: null },
+  { id: "c145", kunde: "Demokunde 282 AS", signeringsdato: "2026-08-28", startdato: "2026-09-01", arsbelop: 1986400, bygg: "Lilleakerveien 10", kvm: 601.9, leietype: "Husleie", sfUrl: null },
+  { id: "c146", kunde: "Demokunde 283 AS", signeringsdato: "2026-08-27", startdato: "2026-10-01", arsbelop: 1200000, bygg: "Lilleakerveien 8", kvm: 289.1, leietype: "Husleie", sfUrl: null },
+  { id: "c147", kunde: "Demokunde 284 AS", signeringsdato: "2026-08-26", startdato: "2026-10-01", arsbelop: 273703.02, bygg: "Lilleakerveien 8", kvm: 105.4, leietype: "Kontorleie/Lagerleie", sfUrl: null },
+  { id: "c148", kunde: "Demokunde 285 AS", signeringsdato: "2026-08-20", startdato: "2026-09-01", arsbelop: 280000, bygg: "Lilleakerveien 2 Garasje", kvm: 126.8, leietype: "Parkering", sfUrl: null },
+  { id: "c149", kunde: "Demokunde 286 AS", signeringsdato: "2026-08-18", startdato: "2026-07-01", arsbelop: 454581.82, bygg: "Lilleakerveien 14", kvm: 456.8, leietype: "Husleie", sfUrl: null },
 ];
+
+// v78 (2026-09-26): se widgets.local.ts sin fyldige kommentar for hva dette er og hvorfor.
+// Denne varianten anonymiserer i tillegg SELSKAPSNAVN nevnt inni fritekstfeltene
+// (saerligeBestemmelser/oppsummering) - denne fila sin egen, strengere policy for akkurat
+// CONTRACTS/CONTRACT_DETALJER anonymiserer ALLE selskapsnavn (ikke bare privatpersoner, se
+// filhodet over) på Mortens eksplisitte forespørsel, så det gjelder også her. Salesforce-lenker
+// er beholdt (samme som CONTRACTS sfUrl-feltet - peker uansett til et system kun Morten når).
+export interface ContractDetaljer {
+  kontraktsnummer: string | null;
+  sluttdato: string | null;
+  opsjon: boolean | null;
+  opsjonsbetingelser: string | null;
+  opsjonsperiodeManeder: number | null;
+  mvaType: string | null;
+  garantitype: string | null;
+  garantibelop: number | null;
+  saerligeBestemmelser: string | null;
+  signertDato: string | null;
+  salesforceUrl: string | null;
+  oppsummering: string;
+}
+
+export const CONTRACT_DETALJER: Record<string, ContractDetaljer> = {
+  c140: {
+    kontraktsnummer: "00003338",
+    sluttdato: "2029-09-30",
+    opsjon: true,
+    opsjonsbetingelser: "Markedsvilkår",
+    opsjonsperiodeManeder: 24,
+    mvaType: "Avgiftspliktig",
+    garantitype: "Depositum",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Leiefritak i innflyttingsperioden til og med 31.10.2026 (øvrige kostnader betales som avtalt). Rett til forlengelse i 2 år på markedsvilkår. Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes.",
+    signertDato: "2026-09-18",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000vIos4IAC",
+    oppsummering:
+      "Kontorleie i Vollsveien 19 (1. etg) til 30.09.2029, med rett til forlengelse i 2 år på markedsvilkår. Leiefritak i innflyttingsperioden til og med 31.10.2026.",
+  },
+  c141: {
+    kontraktsnummer: "00003329",
+    sluttdato: "2031-09-03",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Avgiftspliktig",
+    garantitype: "Depositum",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Erstatter tidligere avtale for 150 kvm i 5. etasje - overtar lokalene etter Demokunde 281 AS (som flytter til 5. etasje i samme bygg, anslått 4. september 2026). Leietaker kan si opp med 6 måneders varsel etter 3 års leietid.",
+    signertDato: "2026-09-07",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000u0Xa5IAE",
+    oppsummering:
+      "Kontorleie i Lilleakerveien 8 (1. etg) til 03.09.2031 - overtar lokalene etter forrige leietaker, som flytter til 5. etasje i samme bygg.",
+  },
+  c142: {
+    kontraktsnummer: "00002567",
+    sluttdato: "2029-08-30",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Ikke avgiftspliktig",
+    garantitype: "Depositum",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Boligleie (3 rom, kjøkken og bad, underetasje) underlagt husordensregler og antikvariske føringer (Byantikvaren) - ingen interiørendringer tillatt. Koblet til en 25%-stilling i et tilknyttet selskap med ansvar for oppfølging av eiendommene på stedet.",
+    signertDato: "2026-09-07",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/8009J0000001rykQAA",
+    oppsummering:
+      "Boligleiekontrakt i Arnstein Arnebergsvei 4 (underetasje) til 30.08.2029, koblet til en 25 %-ansettelse i et tilknyttet selskap med ansvar for eiendomsoppfølging på stedet.",
+  },
+  c143: {
+    kontraktsnummer: "00002111",
+    sluttdato: "2031-08-31",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: null,
+    garantitype: "Depositum",
+    garantibelop: null,
+    saerligeBestemmelser: null,
+    signertDato: "2026-08-31",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/8005I000000hWKJQA2",
+    oppsummering: "Tilleggsavtale (lokaler i Vollsveien 13B, 1. etg) til 31.08.2031.",
+  },
+  c144: {
+    kontraktsnummer: "00003327",
+    sluttdato: "2031-08-31",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Avgiftspliktig",
+    garantitype: "Bankgaranti",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Rett til å fremleie deler av lokalet til et datterselskap og andre virksomheter (kun mva-pliktig kontorvirksomhet godkjennes). Tilgang til sykkelrom/garderobe i «P-bro» mellom Lilleakerveien 4C og 8. Fremtidig treningsromtilgang i Lilleakerveien 2B ventet (kr 3 000/bruker/år).",
+    signertDato: "2026-08-31",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000trdurIAA",
+    oppsummering:
+      "Kontorleie i Lilleakerveien 14 (2. etg) til 31.08.2031, med rett til å fremleie deler av lokalet til et datterselskap.",
+  },
+  c145: {
+    kontraktsnummer: "00003328",
+    sluttdato: "2031-08-31",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Avgiftspliktig",
+    garantitype: "Morselskapsgaranti",
+    garantibelop: 1986000,
+    saerligeBestemmelser: "Utleier planlegger en fremtidig sambruksordning for fellestjenester i «Lilleakerbyen» - egen tilleggsavtale ventes.",
+    signertDato: "2026-08-28",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000u0PshIAE",
+    oppsummering:
+      "Kontorleie i Lilleakerveien 10 (4. etg) til 31.08.2031, sikret med morselskapsgaranti tilsvarende ett års leie.",
+  },
+  c146: {
+    kontraktsnummer: "00003326",
+    sluttdato: "2031-08-31",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Ikke avgiftspliktig",
+    garantitype: "Depositum",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Intern relokalisering fra 1. til 5. etasje i samme bygg (Demokunde 29 overtar de gamle lokalene i 1. etasje). Egen sambruksavtale for fellestjenester i «Lilleakerbyen» signeres separat.",
+    signertDato: "2026-08-25",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000tjMfxIAE",
+    oppsummering:
+      "Kontorleie i Lilleakerveien 8 (5. etg) til 31.08.2031 - intern relokalisering fra 1. etasje, som overtas av en annen leietaker i samme bygg.",
+  },
+  c147: {
+    kontraktsnummer: "00002134",
+    sluttdato: "2027-09-30",
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: null,
+    garantitype: null,
+    garantibelop: null,
+    saerligeBestemmelser: null,
+    signertDato: "2026-08-25",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/8005I000000hYmbQAE",
+    oppsummering: "Tilleggsavtale (kontor/lager i Lilleakerveien 8) til 30.09.2027.",
+  },
+  c148: {
+    kontraktsnummer: "00003322",
+    sluttdato: null,
+    opsjon: false,
+    opsjonsbetingelser: null,
+    opsjonsperiodeManeder: null,
+    mvaType: "Avgiftspliktig",
+    garantitype: null,
+    garantibelop: null,
+    saerligeBestemmelser: null,
+    signertDato: "2026-08-18",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/800Oj00000raL7TIAU",
+    oppsummering: "Parkeringsavtale (fri-flyt) i Lilleakerveien 2B, løpende uten avtalt sluttdato.",
+  },
+  c149: {
+    kontraktsnummer: "00001473",
+    sluttdato: "2030-04-30",
+    opsjon: true,
+    opsjonsbetingelser: "Markedsvilkår",
+    opsjonsperiodeManeder: 60,
+    mvaType: "Ikke avgiftspliktig",
+    garantitype: "Selvskyldnergaranti",
+    garantibelop: null,
+    saerligeBestemmelser:
+      "Overtar (transportavtale) forrige leietakers eksisterende leieavtale som den er. Betinget opsjon på ytterligere 5 år til markedsleie, forutsatt at bygget ikke rives som ledd i «Lilleakerbyen»-utviklingen. Fortrinnsrett til relokalisering av treningssenter i nytt prosjekt.",
+    signertDato: "2026-06-09",
+    salesforceUrl: "https://mustadeiendom.my.salesforce.com/8001t000000hNQLAA2",
+    oppsummering:
+      "Overtar (transportavtale) forrige leietakers kontorleie i Lilleakerveien 14 (2. etg) til 30.04.2030, med betinget opsjon på 5 nye år til markedsleie.",
+  },
+};
 
 export type GuaranteeStatus = "Mangler" | "Forespurt" | "Kommer";
 

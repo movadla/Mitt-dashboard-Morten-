@@ -10,7 +10,7 @@ import {
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
-import { CONTRACTS, type Contract, formatDateDMY, formatKr } from "@/lib/widgets";
+import { CONTRACT_DETALJER, CONTRACTS, type Contract, type ContractDetaljer, formatDateDMY, formatKr } from "@/lib/widgets";
 import { ArrowUpRight, FileSignature } from "lucide-react";
 
 function ContractRow({
@@ -29,13 +29,41 @@ function ContractRow({
   onJumpToOppslag: (name: string) => void;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  // v78 (2026-09-26, Morten: "nøkkelinfo og en oppsummering når jeg trykker på en kontrakt og
+  // den boksen utvider seg"): klikk hvor som helst på selve raden (ikke et eget ikon/knapp) -
+  // matcher mønsteret i Inntektsprognose sine leietaker-tabeller. Ikonene/kommentar-knappen
+  // inni raden stopper egen event-boble (stopPropagation) slik at de ikke også åpner/lukker
+  // denne, se OppslagLink og de to andre klikkbare elementene under.
+  const [detaljerOpen, setDetaljerOpen] = useState(false);
+  const detaljer = CONTRACT_DETALJER[c.id];
   return (
     <>
-      <tr className="border-t border-line transition-colors hover:bg-surface-2/50">
+      <tr
+        className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50"
+        onClick={() => setDetaljerOpen((v) => !v)}
+      >
         <td className="whitespace-nowrap px-3 py-2 text-ink-2">
           <div className="flex items-center gap-1">
             <span className="truncate">{c.kunde}</span>
             <OppslagLink name={c.kunde} onJump={onJumpToOppslag} />
+            {/* v77 (2026-09-26, presentasjonsrevisjon): "Kontrakt"-kolonnen (lenke til
+                Salesforce) er fjernet - sfUrl er null for ~136 av ~149 rader (kun 3 gamle rader
+                har den bevart, bulk-henting for resten ble ansett for kostbart), så en egen,
+                alltid synlig kolonne var "—" nesten hele tiden. Vises nå kun som et lite ikon
+                her, ved siden av kundenavnet, når lenken faktisk finnes - ingen tom kolonne. */}
+            {c.sfUrl && (
+              <a
+                href={c.sfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Åpne ${c.kunde} i Salesforce`}
+                title="Åpne i Salesforce"
+                className="shrink-0 text-ink-4 hover:text-accent"
+              >
+                <ArrowUpRight className="h-3 w-3" aria-hidden />
+              </a>
+            )}
           </div>
         </td>
         <td className="whitespace-nowrap px-3 py-2 tabular-nums text-right text-ink-2">{formatDateDMY(c.signeringsdato)}</td>
@@ -49,36 +77,80 @@ function ContractRow({
           {c.kvm.toLocaleString("nb-NO", { maximumFractionDigits: 1 })}
         </td>
         <td className="whitespace-nowrap px-3 py-2 text-ink-2">{c.leietype}</td>
-        <td className="whitespace-nowrap px-3 py-2">
-          {c.sfUrl ? (
-            <a
-              href={c.sfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={`Åpne ${c.kunde} i Salesforce`}
-              className="inline-flex items-center gap-1 text-accent hover:underline"
-            >
-              {/* Het «Link», som sier hva elementet ER og ikke hvor det går.
-                  (2026-09-08) */}
-              Salesforce
-              <ArrowUpRight className="h-3 w-3 shrink-0" aria-hidden />
-            </a>
-          ) : (
-            <span className="text-ink-4">—</span>
-          )}
-        </td>
-        <td className="whitespace-nowrap px-3 py-2">
+        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
+      {detaljerOpen && (
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={8} className="px-3 py-2 pl-9">
+            <ContractDetaljerPanel detaljer={detaljer} />
+          </td>
+        </tr>
+      )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={9} className="px-3 py-2 pl-9">
+          <td colSpan={8} className="px-3 py-2 pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+// v78 (2026-09-26): nøkkelinfo + oppsummering hentet fra Asana-prosjektet "Signerte dokumenter"
+// (se lib/widgets.local.ts sin fyldige kommentar ved CONTRACT_DETALJER for metodikk og hvorfor
+// signatarer/kontaktinfo bevisst ikke er med). Kun de 10 nyeste kontraktene har en oppføring så
+// langt - resten viser en nøytral "ikke hentet ennå"-tekst, ikke en feilmelding.
+function ContractDetaljerPanel({ detaljer }: { detaljer: ContractDetaljer | undefined }) {
+  if (!detaljer) {
+    return <p className="text-2xs text-ink-4">Ingen kontraktsdetaljer hentet fra Asana ennå.</p>;
+  }
+  const rad = (label: string, verdi: string | null) =>
+    verdi ? (
+      <div className="flex gap-1.5">
+        <span className="shrink-0 text-ink-4">{label}:</span>
+        <span className="text-ink-2">{verdi}</span>
+      </div>
+    ) : null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm text-ink-1">{detaljer.oppsummering}</p>
+      <div className="grid grid-cols-1 gap-x-4 gap-y-1 text-2xs sm:grid-cols-2">
+        {rad("Kontraktsnummer", detaljer.kontraktsnummer)}
+        {rad("Signert", detaljer.signertDato ? formatDateDMY(detaljer.signertDato) : null)}
+        {rad("Sluttdato", detaljer.sluttdato ? formatDateDMY(detaljer.sluttdato) : "Løpende, ingen avtalt sluttdato")}
+        {rad("MVA", detaljer.mvaType)}
+        {rad("Garanti", detaljer.garantitype ? `${detaljer.garantitype}${detaljer.garantibelop ? ` (${formatKr(detaljer.garantibelop)})` : ""}` : null)}
+        {rad(
+          "Opsjon",
+          detaljer.opsjon === null
+            ? null
+            : detaljer.opsjon
+              ? `Ja${detaljer.opsjonsbetingelser ? `, ${detaljer.opsjonsbetingelser}` : ""}${detaljer.opsjonsperiodeManeder ? ` (${detaljer.opsjonsperiodeManeder} mnd)` : ""}`
+              : "Nei",
+        )}
+      </div>
+      {detaljer.saerligeBestemmelser && (
+        <p className="text-2xs text-ink-3">
+          <span className="font-medium text-ink-4">Særlige bestemmelser: </span>
+          {detaljer.saerligeBestemmelser}
+        </p>
+      )}
+      {detaljer.salesforceUrl && (
+        <a
+          href={detaljer.salesforceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex w-fit items-center gap-1 text-2xs text-accent hover:underline"
+        >
+          Åpne i Salesforce
+          <ArrowUpRight className="h-3 w-3 shrink-0" aria-hidden />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -161,7 +233,6 @@ export default function JobbContractsSection({ today, onJumpToOppslag }: { today
                 <th className="px-3 py-2 text-2xs font-medium">Bygg</th>
                 <th className="px-3 py-2 text-2xs font-medium text-right">Kvm</th>
                 <th className="px-3 py-2 text-2xs font-medium">Type</th>
-                <th className="px-3 py-2 text-2xs font-medium">Kontrakt</th>
                 <th className="px-3 py-2 text-2xs font-medium">Notat</th>
               </tr>
             </thead>
@@ -170,7 +241,7 @@ export default function JobbContractsSection({ today, onJumpToOppslag }: { today
                   et ord — det leste som en lastefeil, ikke som "ingenting signert". */}
               {visibleRows.length === 0 && (
                 <tr className="border-t border-line">
-                  <td colSpan={9} className="px-3 py-2 text-sm text-ink-3">
+                  <td colSpan={8} className="px-3 py-2 text-sm text-ink-3">
                     {expanded
                       ? `Ingen kontrakter signert siden ${yearCutoff.slice(0, 4)}.`
                       : "Ingen kontrakter signert siste måned."}
