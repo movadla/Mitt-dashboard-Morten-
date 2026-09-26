@@ -552,16 +552,20 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
           mønster som KPI-stripen i Inntektsprognose (v56, 2026-09-18: "tre bokser på samme
           linje", alltid tre kolonner selv på mobil). Erstatter den gamle femdelte
           aldersstolpen, som viste alle bøttene samtidig og var nettopp det rotete Morten pekte
-          på. */}
-      <div className="mb-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+          på.
+          Korte etiketter ("Totalt", ikke "Totalt utestående") og stram padding (2026-09-26
+          fiks, Morten: "her brytes teksten") - en 9-sifret totalsum ("310 849 782 kr") ble
+          klippet med bare 4px på et 390px mobilskjermbilde med de opprinnelige lengre
+          etikettene og px-1.5. Målt i en iframe på ekte telefonbredde, ikke gjettet. */}
+      <div className="mb-3 grid grid-cols-3 gap-1 sm:gap-2">
         {(
           [
-            ["Totalt utestående", total, "text-ink-1"],
-            ["Utestående 30+ dager", totalAging.forfalt30Plus, "text-status-warning"],
-            ["Utestående 90+ dager", totalAging.d91Plus, "text-status-danger"],
+            ["Totalt", total, "text-ink-1"],
+            ["30+ dager", totalAging.forfalt30Plus, "text-status-warning"],
+            ["90+ dager", totalAging.d91Plus, "text-status-danger"],
           ] as const
         ).map(([label, belop, color]) => (
-          <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1.5 py-2 sm:px-3 sm:py-2.5">
+          <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1 py-2 sm:px-3 sm:py-2.5">
             <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
             <p className={`mt-1 truncate text-xs font-semibold tabular-nums sm:text-lg ${color}`}>{formatKr(belop)}</p>
           </div>
@@ -580,7 +584,12 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
                   <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} />
                   <th className="px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
-                <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
+                {/* Samme tekststørrelse som datarradene under (2026-09-26 fiks, Morten:
+                    "tallene har mindre størrelse ved total som er rart") - text-2xs her gjorde at
+                    totalsummen så svakere/mindre viktig ut enn hver enkelt rad, i stedet for
+                    motsatt. Arver nå tabellens text-sm, med font-semibold for å skille den fra
+                    en vanlig rad. */}
+                <tr className="border-t border-line bg-surface-2/70 font-semibold text-ink-1">
                   <td className="px-2 py-2">Totalt</td>
                   <td className="px-2 py-2"></td>
                   <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(total)}</td>
