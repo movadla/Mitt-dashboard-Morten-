@@ -100,7 +100,7 @@ function ReceivableRow({
           stablet mobil-layout lenger, tabellen skroller horisontalt på smale skjermer i
           stedet (se overflow-x-auto-wrapperen rundt <table>). */}
       <tr className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50" onClick={() => setDetailsOpen((v) => !v)}>
-        <td className="px-3 py-2 text-ink-2">
+        <td className="px-2 py-2 text-ink-2">
           <div className="flex min-w-0 items-center gap-1.5">
             {/* role="img" + aria-label (2026-09-07): en tom, ikke-interaktiv <span> med kun
                 `title` blir ikke pålitelig lest opp av skjermlesere, så inkasso-flagget var
@@ -117,41 +117,44 @@ function ReceivableRow({
             <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">{bygg}</td>
-        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${overdue30 > 0 ? "font-medium text-status-warning" : "text-ink-4"}`}>
+        <td className="whitespace-nowrap px-2 py-2 text-2xs text-ink-4">{bygg}</td>
+        <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2">{formatKr(r.utestaende)}</td>
+        <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${overdue30 > 0 ? "font-medium text-status-warning" : "text-ink-4"}`}>
           {overdue30 > 0 ? formatKr(overdue30) : "–"}
         </td>
-        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${overdue90 > 0 ? "font-medium text-status-danger" : "text-ink-4"}`}>
+        <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${overdue90 > 0 ? "font-medium text-status-danger" : "text-ink-4"}`}>
           {overdue90 > 0 ? formatKr(overdue90) : "–"}
         </td>
-        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+        {/* Ingen w-full på select-en (2026-09-26 fiks, Morten: "risikoteksten er kuttet"): en
+            select strukket til 100% av en tabellkolonne uten egen bredde blir en sirkulær
+            størrelsesberegning i nettleserens auto-tabell-layout, og cellen kollapser til
+            nesten ingenting. Uten w-full sizes select-en naturlig etter sin lengste
+            option-tekst ("Medium (auto)"), som er akkurat den bredden kolonnen trenger. */}
+        <td className="whitespace-nowrap px-2 py-2" onClick={(e) => e.stopPropagation()}>
           <select
             value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
             title={isOverride ? "Manuelt satt" : "Automatisk satt basert på forfalt beløp"}
             aria-label={`Risiko for ${r.leietaker}`}
-            className={`w-full max-w-full rounded-lg border bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${RISK_META[effectiveRisk].textClass} ${isOverride ? "border-line" : "border-dashed border-line"}`}
+            className={`rounded-lg border bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${RISK_META[effectiveRisk].textClass} ${isOverride ? "border-line" : "border-dashed border-line"}`}
           >
             <option value="lav">Lav{effectiveRisk === "lav" && !isOverride ? " (auto)" : ""}</option>
             <option value="medium">Medium{effectiveRisk === "medium" && !isOverride ? " (auto)" : ""}</option>
             <option value="hoy">Høy{effectiveRisk === "hoy" && !isOverride ? " (auto)" : ""}</option>
           </select>
         </td>
-        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+        <td className="whitespace-nowrap px-2 py-2" onClick={(e) => e.stopPropagation()}>
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {detailsOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={6} className="p-0">
+          <td colSpan={7} className="p-0">
             {/* Sticky-wrap (samme mønster som Garantioversikt sin DetailRow): holder
                 detaljpanelet synlig når tabellen er skrollet horisontalt i stedet for å bli
                 klippet av utenfor viewporten. */}
             <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[520px] px-3 py-2 pl-9">
-              <div className="mb-1.5 flex items-center justify-between text-2xs text-ink-4">
-                <span>Bygg: {bygg}</span>
-                <span className="font-medium text-ink-2">Totalt: {formatKr(r.utestaende)}</span>
-              </div>
+              <div className="mb-1.5 text-2xs text-ink-4">Bygg: {bygg}</div>
               <div className="flex flex-col gap-2.5">
                 {r.selskaper.map((s, i) => (
                   <div key={i}>
@@ -180,7 +183,7 @@ function ReceivableRow({
       )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
-          <td colSpan={6} className="p-0">
+          <td colSpan={7} className="p-0">
             <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[520px] px-3 py-2 pl-9">
               <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
             </div>
@@ -311,7 +314,7 @@ function ReceivableChangeRow({ change }: { change: ReceivableChange }) {
 // egen `forfalt30Plus`), `d91Plus` er 90+-boksen.
 type PortfolioTotals = Pick<ReceivableAging, "forfalt30Plus" | "d91Plus">;
 
-type ReceivableSortKey = "leietaker" | "bygg" | "overdue30" | "overdue90" | "risiko";
+type ReceivableSortKey = "leietaker" | "bygg" | "utestaende" | "overdue30" | "overdue90" | "risiko";
 
 const RISK_ORDER: Record<ReceivableRiskLevel, number> = { lav: 1, medium: 2, hoy: 3 };
 
@@ -334,7 +337,7 @@ function ReceivablesSortHeader({
 }) {
   const Icon = active ? (dir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
   return (
-    <th className={`px-3 py-2 text-2xs font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-2 py-2 text-2xs font-medium ${align === "right" ? "text-right" : "text-left"}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
@@ -451,6 +454,9 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         case "bygg":
           cmp = getMainBuilding(a.leietaker).localeCompare(getMainBuilding(b.leietaker));
           break;
+        case "utestaende":
+          cmp = a.utestaende - b.utestaende;
+          break;
         case "overdue30":
           cmp = (agingById.get(a.id)?.forfalt30Plus ?? 0) - (agingById.get(b.id)?.forfalt30Plus ?? 0);
           break;
@@ -563,23 +569,25 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
       </div>
         <>
           <div className={`-mx-1 mt-2 overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto" : ""}`}>
-            <table className="w-full min-w-[680px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
                   <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} />
                   <ReceivablesSortHeader label="Bygg" sortKey="bygg" active={sort?.key === "bygg"} dir={sort?.dir ?? "asc"} onSort={handleSort} />
+                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" />
                   <ReceivablesSortHeader label="30+ dager" sortKey="overdue30" active={sort?.key === "overdue30"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" />
                   <ReceivablesSortHeader label="90+ dager" sortKey="overdue90" active={sort?.key === "overdue90"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" />
                   <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} />
-                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
+                  <th className="px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
-                  <td className="px-3 py-2">Totalt</td>
-                  <td className="px-3 py-2"></td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
-                  <td className="px-3 py-2"></td>
-                  <td className="px-3 py-2"></td>
+                  <td className="px-2 py-2">Totalt</td>
+                  <td className="px-2 py-2"></td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(total)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
+                  <td className="px-2 py-2"></td>
+                  <td className="px-2 py-2"></td>
                 </tr>
               </thead>
               <tbody>
