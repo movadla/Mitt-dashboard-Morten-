@@ -6,7 +6,7 @@ import type { TaskFilter } from "@/lib/taskTypes";
 import {
   CALENDAR_EVENTS,
   EXPIRIES,
-  GUARANTEES,
+  MANGLER_GARANTI,
   RECEIVABLES,
   formatDateDMY,
 } from "@/lib/widgets";
@@ -652,7 +652,10 @@ export default function JobbView({
     const nearest = Math.min(...t.lines.map((l) => daysBetween(today, l.slutt)));
     return nearest < 10 && t.status !== "Reforhandlet" && !t.lines.every((l) => l.erstattet);
   }).length;
-  const guaranteeUrgentCount = GUARANTEES.filter((g) => daysBetween(today, g.frist) <= 10).length;
+  // "Mangler garanti"-lista har ikke lenger en ren frist-dato på alle rader (2026-09-26 full
+  // research-runde, mange kilder mangler en klar dato) - urgent telles derfor som bekreftet
+  // FERSKE (ikke usikker) åpne saker, ikke en datosortering.
+  const guaranteeUrgentCount = MANGLER_GARANTI.filter((g) => !g.usikker).length;
   const receivableHighRiskCount = RECEIVABLES.filter((r) => computeAutoRisk(r, today) === "hoy").length;
 
   // iOS-appens badge-tall speilet kun påminnelser fra Privat uansett hvilken

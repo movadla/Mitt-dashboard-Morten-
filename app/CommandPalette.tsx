@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Search, X } from "lucide-react";
 import { jsonFetcher } from "@/lib/swrFetcher";
 import { navigateTo, type AppMode } from "@/lib/appNavigation";
-import { CONTRACTS, EXPIRIES, GUARANTEES, RECEIVABLES, formatKr } from "@/lib/widgets";
+import { CONTRACTS, EXPIRIES, HAR_GARANTI, MANGLER_GARANTI, RECEIVABLES, formatKr } from "@/lib/widgets";
 import { TENANTS } from "@/lib/tenants";
 import type { Reminder } from "@/lib/reminders";
 import type { Note } from "@/lib/notes";
@@ -106,7 +106,7 @@ export default function CommandPalette({ onClose }: { onClose: () => void }) {
         text: e.leietaker,
         meta: formatKr(e.totalArsleie),
       })),
-      GUARANTEES.filter((g) => matches(g.leietaker, q)).map((g) => ({
+      [...HAR_GARANTI, ...MANGLER_GARANTI].filter((g) => matches(g.leietaker, q)).map((g) => ({
         key: `g-${g.id}`,
         mode: "jobb" as const,
         sectionId: "guarantees",
