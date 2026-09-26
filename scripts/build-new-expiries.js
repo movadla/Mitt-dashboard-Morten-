@@ -78,14 +78,22 @@
 // Salesforce-søk per leietaker.
 //
 // SALESFORCE-SØK (2026-09-26, Morten ba eksplisitt om dette etter kontrakts-etterfølger-funnet):
-// søkte Case (Subject) og Prosjekt__c (Account__c) for alle 22 gjenværende "Ingen varsel"-
-// leietakere mot søkeord (reforhandl/forny/leiekontrakt/termin/flytt/oppsigelse/opsjon/avslutt/
-// si opp). Fant 3 reelle treff, lagt inn under - resten (18 leietakere) har INGEN sak eller
-// prosjekt i Salesforce som tyder på verken reforhandling eller terminering; de er enten reelt
-// på vei ut, eller en forhandling som ikke er logget noe sted ennå. Merk: Afry Group Norway AS
-// har en fersk sak "Si opp garasjeplasser" (2026-09-10), men den gjelder navngitte garasjeplasser
-// (U2 nr 21/23) - et ANNET areal enn den utløpende linjen (Gjesteparkering, Lilleakerveien 8
-// Uteparkering) - IKKE lagt inn som override, siden den ikke er samme sak.
+// søkte Case (Subject), Opportunity (Account) og Prosjekt__c (Account__c) for alle 22 gjenværende
+// "Ingen varsel"-leietakere mot søkeord (reforhandl/forny/leiekontrakt/termin/flytt/oppsigelse/
+// opsjon/avslutt/si opp). Fant 3 reelle treff (Møllefossen/Reitan/Dhj Consult) + to Opportunity-
+// falske spor som IKKE ble lagt inn: Afry Group Norway AS har en fersk sak "Si opp garasjeplasser"
+// (2026-09-10, U2 nr 21/23) og BRGN/Human Care har åpne Opportunity-er - alle gjelder et ANNET
+// areal enn selve den utløpende linjen (hhv. garasje vs. Gjesteparkering for Afry; lager/kontor-
+// utvidelse for Human Care) - ikke samme sak, derfor ikke brukt.
+//
+// ASANA/OUTLOOK/TEAMS-SØK (2026-09-26, Morten ba eksplisitt om å utvide utover Salesforce): søkte
+// "Signerte dokumenter"-prosjektet og fritekst i Asana per leietakernavn, Outlook-epost og Teams-
+// meldinger for nøkkelord (konkurs/nedrigg/oppsigelse/reforhandling m.fl.). Fant 3 nye reelle
+// treff (Heco/BRGN/Lemonwax/Human Care - se egne kommentarer per override under) + kryssjekket mot
+// en tidligere, uavhengig kontraktsutløps-revisjon (prosjektnotat 2026-09-04/05) som allerede
+// hadde bekreftet Heco-konkurs, BRGN-pop-up-nedrigg, Falcon "trolig avsluttet" (usikker) og at
+// Morten selv har bekreftet Oslo Kommune Bydel 6 Ullern BLIR reforhandlet. Resten av de opprinnelig
+// 22 (nå 22 minus disse 6 = 16 leietakere) har fortsatt INGEN spor i noen av de fire systemene.
 
 const fs = require("fs");
 const path = require("path");
@@ -130,6 +138,40 @@ const MANUELLE_STATUS_OVERRIDES = {
       "SF-sak «Oppsigelse av ekstra plass rom 07» (2026-07-10, Vollsveien 19 - samme bygg som linjen): reduserer fra 2 til 1 kontorplass, ber om ny avtale - ikke reflektert i Fazile ennå.",
     statusKildeAnon:
       "SF-sak om oppsigelse av ekstra kontorplass (2026-07-10, samme bygg som linjen): reduserer fra 2 til 1 kontorplass, ber om ny avtale - ikke reflektert i Fazile ennå.",
+  },
+  // Asana/Outlook/Teams-søk 2026-09-26 (Morten ba eksplisitt om å utvide søket utover Salesforce):
+  67381: {
+    status: "Terminert",
+    statusKilde:
+      "Konkurs bekreftet (Teams 2026-08-18/25/31 + Outlook 2026-08-20, fordringsanmeldelse i konkursbo): bostyrer har bekreftet ikke-inntreden i boet og tilbakelevering av lokalene. Samme fakta som Kontrakter-på-utløp-revisjonen 2026-09-04.",
+  },
+  97860: {
+    status: "Terminert",
+    statusKilde:
+      "Asana-prosjekt «Offboarding Retail_CCVest_BRGN_300926» (10 fullførte oppgaver - senterleder/utleiesjef/drift/økonomi m.fl., frist 2026-09-30) + tidligere bekreftet SF-sak om nedrigg av pop-up (Kontrakter-på-utløp-revisjonen 2026-09-04): pop-up-leieforholdet avsluttes som planlagt.",
+    statusKildeAnon:
+      "Asana-prosjekt for offboarding av pop-up-leietaker (10 fullførte oppgaver - senterleder/utleiesjef/drift/økonomi m.fl., frist 2026-09-30) + tidligere bekreftet SF-sak om nedrigg av pop-up: leieforholdet avsluttes som planlagt.",
+  },
+  67804: {
+    status: "Mulig endring",
+    statusKilde:
+      "Fazile-kontraktene (82294/82767) har status EXPIRED med end_date 2026-09-30 - sannsynligvis oppsagt/avsluttet, men usikker (samme vurdering som Kontrakter-på-utløp-revisjonen 2026-09-04, ikke ytterligere verifisert i denne runden).",
+  },
+  66906: {
+    status: "Reforhandling pågår",
+    statusKilde:
+      "Signert tilleggsavtale i Asana («Lemonwax_forlengelse_31.12.2026», signert 2026-09-24): forlenger kun til 31.12.2026, ingen forpliktelse for utleier utover det - reell, men kortsiktig.",
+    statusKildeAnon:
+      "Signert tilleggsavtale i Asana (kortsiktig forlengelse til 31.12.2026, signert 2026-09-24): ingen forpliktelse for utleier utover det - reell, men kortsiktig.",
+  },
+  67903: {
+    status: "Mulig endring",
+    statusKilde:
+      "Asana (2026-07/09): leietaker har sagt opp 3 av 4 parkeringsplasser i LV10 (stoppdato 30.09.26), 1 plass (U3-74) videreføres sammen med hovedkontrakt - delvis reduksjon, ikke full oppsigelse.",
+  },
+  67523: {
+    status: "Reforhandling pågår",
+    statusKilde: "Morten (bekreftet 2026-09-05, se Kontrakter-på-utløp-revisjonen): blir reforhandlet, ikke reflektert i Fazile ennå.",
   },
 };
 

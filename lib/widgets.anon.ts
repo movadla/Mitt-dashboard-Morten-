@@ -916,7 +916,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 289 AS", customerId: 67381, bygg: "Lilleakerveien 31", totalArsleie: 1361518.07,
-    status: "Ingen varsel",
+    status: "Terminert",
+    statusKilde: "Konkurs bekreftet (Teams 2026-08-18/25/31 + Outlook 2026-08-20, fordringsanmeldelse i konkursbo): bostyrer har bekreftet ikke-inntreden i boet og tilbakelevering av lokalene. Samme fakta som Kontrakter-på-utløp-revisjonen 2026-09-04.",
     lines: [
       { linjeId: 156728, beskrivelse: "Felleskostnader for Parkering avg.pl. 6  pl", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 156726, beskrivelse: "Felleskostnader for Kontorleie avg.pl. U.01", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 80000, reforhandlet: false },
@@ -961,7 +962,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 291 AS", customerId: 67903, bygg: "Lilleakerveien 10", totalArsleie: 108443.19,
-    status: "Ingen varsel",
+    status: "Mulig endring",
+    statusKilde: "Asana (2026-07/09): leietaker har sagt opp 3 av 4 parkeringsplasser i LV10 (stoppdato 30.09.26), 1 plass (U3-74) videreføres sammen med hovedkontrakt - delvis reduksjon, ikke full oppsigelse.",
     lines: [
       { linjeId: 158519, beskrivelse: "Felleskostnader for Ladestasjon leie avg.pl.2 pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 158521, beskrivelse: "Felleskostnader for Ladestasjon leie avg.pl", bygg: "(ukjent bygg)", arealtype: "Annet", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
@@ -983,7 +985,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 293 AS", customerId: 67804, bygg: "Vollsveien 13B", totalArsleie: 263621.65,
-    status: "Ingen varsel",
+    status: "Mulig endring",
+    statusKilde: "Fazile-kontraktene (82294/82767) har status EXPIRED med end_date 2026-09-30 - sannsynligvis oppsagt/avsluttet, men usikker (samme vurdering som Kontrakter-på-utløp-revisjonen 2026-09-04, ikke ytterligere verifisert i denne runden).",
     lines: [
       { linjeId: 159776, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fri flyt", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 158891, beskrivelse: "Felleskostnader avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 60178, reforhandlet: false },
@@ -994,7 +997,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 294 AS", customerId: 66906, bygg: "Lilleakerveien 16", totalArsleie: 518374.83,
-    status: "Ingen varsel",
+    status: "Reforhandling pågår",
+    statusKilde: "Signert tilleggsavtale i Asana (kortsiktig forlengelse til 31.12.2026, signert 2026-09-24): ingen forpliktelse for utleier utover det - reell, men kortsiktig.",
     lines: [
       { linjeId: 157272, beskrivelse: "Felleskostnader for Minimumsleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 163124, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Lager", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 84700, reforhandlet: false },
@@ -1057,7 +1061,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 300 AS", customerId: 97860, bygg: "Lilleakerveien 16", totalArsleie: 267500,
-    status: "Ingen varsel",
+    status: "Terminert",
+    statusKilde: "Asana-prosjekt for offboarding av pop-up-leietaker (10 fullførte oppgaver - senterleder/utleiesjef/drift/økonomi m.fl., frist 2026-09-30) + tidligere bekreftet SF-sak om nedrigg av pop-up: leieforholdet avsluttes som planlagt.",
     lines: [
       { linjeId: 209755, beskrivelse: "Felleskostnader for Pop up leie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Butikk", leietype: "Felleskostnader", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 229874, beskrivelse: "Felleskostnader for Parkering avg.pl.", bygg: "(ukjent bygg)", arealtype: "Fast plass", leietype: "Parkering", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
@@ -1135,7 +1140,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 265", customerId: 67523, bygg: "Sponhoggveien 2", totalArsleie: 49600,
-    status: "Ingen varsel",
+    status: "Reforhandling pågår",
+    statusKilde: "Morten (bekreftet 2026-09-05, se Kontrakter-på-utløp-revisjonen): blir reforhandlet, ikke reflektert i Fazile ennå.",
     lines: [
       { linjeId: 163680, beskrivelse: "ENØK-støtte i hht tilleggsavtale 21.03.2018", bygg: "Sponhoggveien 2", arealtype: "Kontor", leietype: "Enøk", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 49600, reforhandlet: false },
     ],
