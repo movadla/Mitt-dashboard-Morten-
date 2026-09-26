@@ -86,22 +86,19 @@ function ReceivableRow({
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const multiCompany = r.selskaper.length > 1;
   const underInkasso = r.selskaper.some((s) => s.underInkasso);
   const aging = computeAging(r, today);
-  const band6190 = aging.d61_90;
-  const overdue91 = aging.d91Plus;
+  const overdue30 = aging.forfalt30Plus;
+  const overdue90 = aging.d91Plus;
   const isOverride = risk !== null;
   const effectiveRisk = risk ?? computeAutoRisk(r, today);
   const bygg = getMainBuilding(r.leietaker);
   return (
     <>
-      {/* Under sm er raden et 3-kolonners rutenett i stedet for sju tabellceller
-          (2026-09-07). Sju kolonner får aldri plass på en telefon: den gamle
-          tabellen presset navnene ned til «Møller ...» og lot beløpene renne
-          utover cellene sine og oppå hverandre. Stablet:
-            navn ........................... utestående
-            selskap        61-90            91+
+      {/* Under sm er raden et 3-kolonners rutenett i stedet for seks tabellceller
+          (2026-09-26 forenkling: "kun det mest nødvendige" - Morten). Stablet:
+            navn ........................... 90+ dager
+            bygg           30+ dager
             risiko ......................... notat
           Fra sm og opp er alt tilbake til vanlige tabellceller. */}
       <tr className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 border-t border-line px-2 py-2.5 transition-colors hover:bg-surface-2/50 sm:table-row sm:gap-0 sm:px-0 sm:py-0">
@@ -139,29 +136,19 @@ function ReceivableRow({
             bestemmer hvilken kolonne cellen havner i. Mobilplasseringen styres av
             eksplisitte col-start/row-start, så rutenettet trenger ingen omstokking. */}
         <td className="col-start-1 row-start-2 min-w-0 break-words text-2xs text-ink-3 sm:max-w-0 sm:table-cell sm:truncate sm:px-2 sm:py-2">
-          {multiCompany ? `${r.selskaper.length} selskaper` : r.selskaper[0]?.selskap ?? "—"}
+          {bygg}
         </td>
-        <td className="col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium text-ink-1 sm:table-cell sm:px-2 sm:py-2 sm:font-normal sm:text-ink-2">
-          {formatKr(r.utestaende)}
+        <td className={`col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium sm:table-cell sm:px-2 sm:py-2 sm:font-normal ${overdue90 > 0 ? "text-status-danger" : "text-ink-1 sm:text-ink-2"}`}>
+          {overdue90 > 0 ? formatKr(overdue90) : <span className="hidden sm:inline text-ink-4">–</span>}
         </td>
         {/* Nullbeløp vises som tomt på mobil og som «–» i tabellen: en kolonne full av
             tankestreker trenger plassen sin på et bredt skjermbilde for å holde
             rutenettet lesbart, men på mobil er det bare støy under navnet. */}
-        <td className={`col-start-2 row-start-2 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${band6190 > 0 ? "text-status-warning" : "text-ink-4"}`}>
-          {band6190 > 0 ? (
+        <td className={`col-start-2 row-start-2 col-end-4 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${overdue30 > 0 ? "text-status-warning" : "text-ink-4"}`}>
+          {overdue30 > 0 ? (
             <>
-              <span className="text-ink-4 sm:hidden">61-90&nbsp;</span>
-              {formatKr(band6190)}
-            </>
-          ) : (
-            <span className="hidden sm:inline">–</span>
-          )}
-        </td>
-        <td className={`col-start-3 row-start-2 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${overdue91 > 0 ? "text-status-danger" : "text-ink-4"}`}>
-          {overdue91 > 0 ? (
-            <>
-              <span className="text-ink-4 sm:hidden">91+&nbsp;</span>
-              {formatKr(overdue91)}
+              <span className="text-ink-4 sm:hidden">30+&nbsp;</span>
+              {formatKr(overdue30)}
             </>
           ) : (
             <span className="hidden sm:inline">–</span>
@@ -186,8 +173,11 @@ function ReceivableRow({
       </tr>
       {detailsOpen && (
         <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
-          <td colSpan={7} className="block px-3 py-2 sm:table-cell sm:pl-9">
-            <div className="mb-1.5 text-2xs text-ink-4">Bygg: {bygg}</div>
+          <td colSpan={6} className="block px-3 py-2 sm:table-cell sm:pl-9">
+            <div className="mb-1.5 flex items-center justify-between text-2xs text-ink-4">
+              <span>Bygg: {bygg}</span>
+              <span className="font-medium text-ink-2">Totalt: {formatKr(r.utestaende)}</span>
+            </div>
             <div className="flex flex-col gap-2.5">
               {r.selskaper.map((s, i) => (
                 <div key={i}>
@@ -215,7 +205,7 @@ function ReceivableRow({
       )}
       {notesOpen && (
         <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
-          <td colSpan={7} className="block px-3 py-2 sm:table-cell sm:pl-9">
+          <td colSpan={6} className="block px-3 py-2 sm:table-cell sm:pl-9">
             <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
           </td>
         </tr>
@@ -338,64 +328,13 @@ function ReceivableChangeRow({ change }: { change: ReceivableChange }) {
   );
 }
 
-// Aldersfordeling for HELE porteføljen samlet (summert på tvers av alle rader, samme bøtter
-// som computeAging pr. rad) - egne statusfarger, ikke en kopi av LedigStolpe i
-// IncomeForecastSection: 91+ dager er den alarmerende enden og får status-danger, resten
-// trappes ned derfra (ikke-forfalt er grønt, 0-30 er nøytralt grått).
-// Kun bøttene — ikke `forfalt`/`forfalt30Plus` fra ReceivableAging (2026-09-07). Den
-// aggregerte stolpen summerer bare de fem bøttene, og de to avledede feltene lå igjen som
-// evige nuller i aggregatet uten at noe leste dem. Egen type i stedet for de døde feltene.
-type AgingBuckets = Pick<ReceivableAging, "ikkeForfalt" | "d0_30" | "d31_60" | "d61_90" | "d91Plus">;
+// Portefølje-totaler for de to toppboksene 30+/90+ (2026-09-26 forenkling, Morten: "bare det
+// mest nødvendige" - erstatter den gamle femdelte aldersstolpen som viste alle bøttene på én
+// gang). `forfalt30Plus` summerer 31-60+61-90+91+ (samme definisjon som ReceivableAging sin
+// egen `forfalt30Plus`), `d91Plus` er 90+-boksen.
+type PortfolioTotals = Pick<ReceivableAging, "forfalt30Plus" | "d91Plus">;
 
-const AGING_BUCKETS: {
-  key: keyof AgingBuckets;
-  label: string;
-  colorClass: string;
-  // Egen, alltid full-styrke tekstfarge (2026-09-07): colorClass sin /60-uttoning på 31-60-
-  // bøtta gir en fin, lesbar ESKALERING på selve STOLPEN (31-60 svakere enn 61-90/91+), men
-  // brukt på selve TALL-etiketten ga den en kontrast på ~2,4:1 mot hvitt kort i dagmodus - godt
-  // under WCAG sin 4,5:1 for tekst, og leste som deaktivert/nøytral i stedet for et
-  // alvorlighetssignal. Etiketten skal alltid være lesbar; kun stolpen toner ned.
-  textColorClass: string;
-}[] = [
-  { key: "ikkeForfalt", label: "Ikke forfalt", colorClass: "text-status-positive", textColorClass: "text-status-positive" },
-  { key: "d0_30", label: "0-30 dager", colorClass: "text-ink-3", textColorClass: "text-ink-3" },
-  { key: "d31_60", label: "31-60 dager", colorClass: "text-status-warning/60", textColorClass: "text-status-warning" },
-  { key: "d61_90", label: "61-90 dager", colorClass: "text-status-warning", textColorClass: "text-status-warning" },
-  { key: "d91Plus", label: "91+ dager", colorClass: "text-status-danger", textColorClass: "text-status-danger" },
-];
-
-function ReceivablesAgingBar({ aging, total }: { aging: AgingBuckets; total: number }) {
-  if (total <= 0) return null;
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span
-        className="flex h-1.5 w-full gap-px overflow-hidden rounded-full bg-ink-4/25"
-        role="img"
-        aria-label="Aldersfordeling av utestående kundefordringer"
-      >
-        {AGING_BUCKETS.map(({ key, colorClass }) =>
-          aging[key] > 0 ? (
-            <span
-              key={key}
-              className={`${colorClass} block h-full bg-current`}
-              style={{ width: `${(Math.max(0, aging[key]) / total) * 100}%` }}
-            />
-          ) : null,
-        )}
-      </span>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs">
-        {AGING_BUCKETS.map(({ key, label, textColorClass }) => (
-          <span key={key} className={textColorClass}>
-            {label}: <span className="font-medium tabular-nums">{formatKr(aging[key])}</span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-type ReceivableSortKey = "leietaker" | "utestaende" | "overdue6190" | "overdue91" | "risiko";
+type ReceivableSortKey = "leietaker" | "bygg" | "overdue30" | "overdue90" | "risiko";
 
 const RISK_ORDER: Record<ReceivableRiskLevel, number> = { lav: 1, medium: 2, hoy: 3 };
 
@@ -437,11 +376,11 @@ type ReceivableSort = { key: ReceivableSortKey; dir: "asc" | "desc" };
 // retningsvalg ved siden av ville vært to kontroller for én beslutning.
 const MOBILE_SORTS: { id: string; label: string; sort: ReceivableSort | null }[] = [
   { id: "default", label: "Standardrekkefølge", sort: null },
-  { id: "utestaende", label: "Størst utestående", sort: { key: "utestaende", dir: "desc" } },
-  { id: "overdue91", label: "Mest 91+ dager", sort: { key: "overdue91", dir: "desc" } },
-  { id: "overdue6190", label: "Mest 61-90 dager", sort: { key: "overdue6190", dir: "desc" } },
+  { id: "overdue90", label: "Mest 90+ dager", sort: { key: "overdue90", dir: "desc" } },
+  { id: "overdue30", label: "Mest 30+ dager", sort: { key: "overdue30", dir: "desc" } },
   { id: "risiko", label: "Høyest risiko", sort: { key: "risiko", dir: "desc" } },
   { id: "leietaker", label: "Leietaker A-Å", sort: { key: "leietaker", dir: "asc" } },
+  { id: "bygg", label: "Bygg A-Å", sort: { key: "bygg", dir: "asc" } },
 ];
 
 function ReceivablesMobileSort({ sort, onChange }: { sort: ReceivableSort | null; onChange: (next: ReceivableSort | null) => void }) {
@@ -538,8 +477,8 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
 
   useEffect(refreshSnapshots, []);
 
-  // Full ReceivableAging pr. rad (ikke bare 61-90/91+) - trengs også av den aggregerte
-  // aldersstolpen under overskriften (ReceivablesAgingBar).
+  // Full ReceivableAging pr. rad - trengs til 30+/90+-kolonnene og portefølje-totalene i
+  // toppboksene.
   const agingById = useMemo(() => {
     const map = new Map<string, ReceivableAging>();
     for (const r of RECEIVABLES) {
@@ -549,12 +488,9 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
   }, [today]);
 
   const totalAging = useMemo(() => {
-    const agg: AgingBuckets = { ikkeForfalt: 0, d0_30: 0, d31_60: 0, d61_90: 0, d91Plus: 0 };
+    const agg: PortfolioTotals = { forfalt30Plus: 0, d91Plus: 0 };
     for (const v of agingById.values()) {
-      agg.ikkeForfalt += v.ikkeForfalt;
-      agg.d0_30 += v.d0_30;
-      agg.d31_60 += v.d31_60;
-      agg.d61_90 += v.d61_90;
+      agg.forfalt30Plus += v.forfalt30Plus;
       agg.d91Plus += v.d91Plus;
     }
     return agg;
@@ -569,13 +505,13 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         case "leietaker":
           cmp = a.leietaker.localeCompare(b.leietaker);
           break;
-        case "utestaende":
-          cmp = a.utestaende - b.utestaende;
+        case "bygg":
+          cmp = getMainBuilding(a.leietaker).localeCompare(getMainBuilding(b.leietaker));
           break;
-        case "overdue6190":
-          cmp = (agingById.get(a.id)?.d61_90 ?? 0) - (agingById.get(b.id)?.d61_90 ?? 0);
+        case "overdue30":
+          cmp = (agingById.get(a.id)?.forfalt30Plus ?? 0) - (agingById.get(b.id)?.forfalt30Plus ?? 0);
           break;
-        case "overdue91":
+        case "overdue90":
           cmp = (agingById.get(a.id)?.d91Plus ?? 0) - (agingById.get(b.id)?.d91Plus ?? 0);
           break;
         case "risiko": {
@@ -648,12 +584,7 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
 
   return (
     <div className="border-t-2 border-t-fuchsia-400/60 p-4">
-      <CardHeader
-        title="Kundefordringer"
-        stat={{ value: formatKr(total), label: "utestående" }}
-        icon={Receipt}
-        iconColorClass="text-fuchsia-400"
-      />
+      <CardHeader title="Kundefordringer" icon={Receipt} iconColorClass="text-fuchsia-400" />
       <p className="mb-2 text-2xs text-ink-3">
         {RECEIVABLES.length} leietakere{antallUnderInkasso > 0 ? ` · ${antallUnderInkasso} under inkasso` : ""}
       </p>
@@ -668,8 +599,24 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         </p>
       )}
       <MutationError message={mutationError.message} />
-      <div className="mb-3">
-        <ReceivablesAgingBar aging={totalAging} total={total} />
+      {/* Tre bokser på samme linje (2026-09-26, Morten: "bare det mest nødvendige") - samme
+          mønster som KPI-stripen i Inntektsprognose (v56, 2026-09-18: "tre bokser på samme
+          linje", alltid tre kolonner selv på mobil). Erstatter den gamle femdelte
+          aldersstolpen, som viste alle bøttene samtidig og var nettopp det rotete Morten pekte
+          på. */}
+      <div className="mb-3 grid grid-cols-3 gap-1.5 sm:gap-2">
+        {(
+          [
+            ["Totalt utestående", total, "text-ink-1"],
+            ["Utestående 30+ dager", totalAging.forfalt30Plus, "text-status-warning"],
+            ["Utestående 90+ dager", totalAging.d91Plus, "text-status-danger"],
+          ] as const
+        ).map(([label, belop, color]) => (
+          <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1.5 py-2 sm:px-3 sm:py-2.5">
+            <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
+            <p className={`mt-1 truncate text-xs font-semibold tabular-nums sm:text-lg ${color}`}>{formatKr(belop)}</p>
+          </div>
+        ))}
       </div>
         <>
           {/* Sortering på mobil: kolonneoverskriftene er skjult der (se thead under),
@@ -677,30 +624,24 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
               (2026-09-07) */}
           <ReceivablesMobileSort sort={sort} onChange={setSort} />
           <div className={`-mx-1 sm:overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto sm:max-h-[480px]" : ""}`}>
-            {/* Bredden er regnet ut fra innholdet, ikke gjettet: «14 253 410 kr» er ~100 px
-                bredt, risiko-nedtrekket trenger ~125 px for «Medium (auto)» og
-                notat-merkelappen ~110 px for «Kommentar (1)». Sju kolonner kan derfor ikke
-                presses under ~900 px. Den gamle min-w-[460px] ga beløpskolonnene 55 px, og
-                siden cellene er whitespace-nowrap rant tallene utover og ble malt oppå
-                nabokolonnen i stedet for å bli avkortet. Under sm er tabellen lagt om til
-                stablede rader (block/grid), så min-bredden gjelder kun fra sm og opp.
-                (2026-09-07) */}
-            <table className="block w-full text-sm sm:table sm:min-w-[900px] sm:table-fixed">
+            {/* Bredden er regnet ut fra innholdet, ikke gjettet - seks kolonner presses ikke
+                under ~760 px uten at beløpene renner utover cellene sine (whitespace-nowrap).
+                Under sm er tabellen lagt om til stablede rader (block/grid), så min-bredden
+                gjelder kun fra sm og opp. (2026-09-26, forenklet fra sju til seks kolonner) */}
+            <table className="block w-full text-sm sm:table sm:min-w-[760px] sm:table-fixed">
               <thead className={`hidden sm:table-header-group ${showAll ? "sticky top-0 z-10 bg-surface-1" : ""}`}>
                 <tr className="text-left text-ink-4">
-                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[20%]" />
-                  <th className="w-[13%] px-2 py-2 text-2xs font-medium">Selskap</th>
-                  <ReceivablesSortHeader label="Utestående" sortKey="utestaende" active={sort?.key === "utestaende"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[14%] text-right" />
-                  <ReceivablesSortHeader label="61-90 dgr" sortKey="overdue6190" active={sort?.key === "overdue6190"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
-                  <ReceivablesSortHeader label="91+ dgr" sortKey="overdue91" active={sort?.key === "overdue91"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[12%] text-right" />
-                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[15%] px-1" />
+                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[24%]" />
+                  <ReceivablesSortHeader label="Bygg" sortKey="bygg" active={sort?.key === "bygg"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[18%]" />
+                  <ReceivablesSortHeader label="30+ dager" sortKey="overdue30" active={sort?.key === "overdue30"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
+                  <ReceivablesSortHeader label="90+ dager" sortKey="overdue90" active={sort?.key === "overdue90"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
+                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[14%] px-1" />
                   <th className="w-[14%] px-2 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
                   <td className="px-2 py-2">Totalt</td>
                   <td className="px-2 py-2"></td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(total)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.d61_90)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
                   <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
                   <td className="px-1 py-2"></td>
                   <td className="px-2 py-2"></td>
