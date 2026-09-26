@@ -1100,7 +1100,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 302 AS", customerId: 67354, bygg: "Vollsveien 19", totalArsleie: 124860.94,
-    status: "Ingen varsel",
+    status: "Reforhandling pågår",
+    statusKilde: "SF-sak om oppsigelse av ekstra kontorplass (2026-07-10, samme bygg som linjen): reduserer fra 2 til 1 kontorplass, ber om ny avtale - ikke reflektert i Fazile ennå.",
     lines: [
       { linjeId: 158871, beskrivelse: "Felleskostnader for Husleie avg.pl.", bygg: "(ukjent bygg)", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 0, reforhandlet: false },
       { linjeId: 158872, beskrivelse: "Husleie avg.pl.", bygg: "Vollsveien 19", arealtype: "Kontor", leietype: "Husleie", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 124860.94, reforhandlet: false },
@@ -1124,7 +1125,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 304 AS", customerId: 67666, bygg: "Lilleakerveien 16", totalArsleie: 148215.97,
-    status: "Ingen varsel",
+    status: "Terminert",
+    statusKilde: "SF-sak om terminering/utkjøp + utbetaling av tilgodehavende (2026-09-09/10): bekreftet utkjøp/oppgjør, leietaker avslutter.",
     lines: [
       { linjeId: 161520, beskrivelse: "à konto energi avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Energi", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 123199.8, reforhandlet: false },
       { linjeId: 161522, beskrivelse: "Administrasjonsbidrag avg.pl.", bygg: "Lilleakerveien 16", arealtype: "Butikk", leietype: "Administrasjonsbidrag", slutt: "2026-09-30", dagerTilUtlop: 5, totalArsleie: 13000, reforhandlet: false },
@@ -1161,7 +1163,8 @@ export const EXPIRIES: ExpiringTenant[] = [
   },
   {
     leietaker: "Demokunde 13", customerId: 67267, bygg: "Lilleakerveien 2E", totalArsleie: 101081,
-    status: "Ingen varsel",
+    status: "Reforhandling pågår",
+    statusKilde: "SF-prosjekt «Selskapslokaler - Lilleakerveien 2 E» (status Gjennomføring) + tilhørende SF-sak om reforhandling - byggnavn-match, ikke direkte kontraktkobling.",
     lines: [
       { linjeId: 185901, beskrivelse: "Felleskostnader for Husleie avg.pl", bygg: "(ukjent bygg)", arealtype: "Lager", leietype: "Husleie", slutt: "2026-10-18", dagerTilUtlop: 23, totalArsleie: 0, reforhandlet: false },
       { linjeId: 185902, beskrivelse: "Husleie avg.pl", bygg: "Lilleakerveien 2E", arealtype: "Lager", leietype: "Husleie", slutt: "2026-10-18", dagerTilUtlop: 23, totalArsleie: 101081, reforhandlet: false },

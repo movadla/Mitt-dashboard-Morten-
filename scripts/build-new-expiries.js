@@ -74,8 +74,18 @@
 // detectKontraktEtterfolger. De resterende ~22 leietakerne har INGEN kontrakt (signert eller
 // under forhandling) i Fazile som starter i nærheten av utløpsdatoen - enten reelt på vei ut,
 // eller en forhandling som ikke er formalisert i Fazile ennå (som Lyreco, se
-// MANUELLE_STATUS_OVERRIDES). Denne sjekken finner IKKE sistnevnte - det krever et Salesforce-
-// søk per leietaker, ikke gjort 2026-09-25, ikke automatisert i dette scriptet.
+// MANUELLE_STATUS_OVERRIDES). Denne sjekken finner IKKE sistnevnte automatisk - det krever et
+// Salesforce-søk per leietaker.
+//
+// SALESFORCE-SØK (2026-09-26, Morten ba eksplisitt om dette etter kontrakts-etterfølger-funnet):
+// søkte Case (Subject) og Prosjekt__c (Account__c) for alle 22 gjenværende "Ingen varsel"-
+// leietakere mot søkeord (reforhandl/forny/leiekontrakt/termin/flytt/oppsigelse/opsjon/avslutt/
+// si opp). Fant 3 reelle treff, lagt inn under - resten (18 leietakere) har INGEN sak eller
+// prosjekt i Salesforce som tyder på verken reforhandling eller terminering; de er enten reelt
+// på vei ut, eller en forhandling som ikke er logget noe sted ennå. Merk: Afry Group Norway AS
+// har en fersk sak "Si opp garasjeplasser" (2026-09-10), men den gjelder navngitte garasjeplasser
+// (U2 nr 21/23) - et ANNET areal enn den utløpende linjen (Gjesteparkering, Lilleakerveien 8
+// Uteparkering) - IKKE lagt inn som override, siden den ikke er samme sak.
 
 const fs = require("fs");
 const path = require("path");
@@ -95,6 +105,31 @@ const MANUELLE_STATUS_OVERRIDES = {
     status: "Reforhandling pågår",
     statusKilde:
       "Morten (bekreftet muntlig, se prosjektnotat 2026-09-04/24): reforhandling er avtalt, ny kontrakt ikke signert i Fazile ennå.",
+  },
+  // Salesforce-søk 2026-09-26 (se filhode-kommentaren). statusKildeAnon er en SANITERT variant
+  // uten leietakerens eget navn/kjente merkevarenavn (f.eks. "Narvesen" for Reitan) - brukt kun
+  // ved rendering til widgets.anon.ts, se main(). Samme "ALLE selskapsnavn anonymiseres i
+  // fritekstfelt"-policy som CONTRACT_DETALJER (se widgets.anon.ts sin kommentar der).
+  67267: {
+    status: "Reforhandling pågår",
+    statusKilde:
+      "SF-prosjekt «Selskapslokaler - Lilleakerveien 2 E» (status Gjennomføring) + SF-sak «Onboarding - reforhandling Møllefossen Cafe» - byggnavn-match, ikke direkte kontraktkobling.",
+    statusKildeAnon:
+      "SF-prosjekt «Selskapslokaler - Lilleakerveien 2 E» (status Gjennomføring) + tilhørende SF-sak om reforhandling - byggnavn-match, ikke direkte kontraktkobling.",
+  },
+  67666: {
+    status: "Terminert",
+    statusKilde:
+      "SF-sak «Terminering - Utkjøp Narvesen» + «...Utbetaling av tilgodehavende» (2026-09-09/10): bekreftet utkjøp/oppgjør, leietaker avslutter.",
+    statusKildeAnon:
+      "SF-sak om terminering/utkjøp + utbetaling av tilgodehavende (2026-09-09/10): bekreftet utkjøp/oppgjør, leietaker avslutter.",
+  },
+  67354: {
+    status: "Reforhandling pågår",
+    statusKilde:
+      "SF-sak «Oppsigelse av ekstra plass rom 07» (2026-07-10, Vollsveien 19 - samme bygg som linjen): reduserer fra 2 til 1 kontorplass, ber om ny avtale - ikke reflektert i Fazile ennå.",
+    statusKildeAnon:
+      "SF-sak om oppsigelse av ekstra kontorplass (2026-07-10, samme bygg som linjen): reduserer fra 2 til 1 kontorplass, ber om ny avtale - ikke reflektert i Fazile ennå.",
   },
 };
 
@@ -277,10 +312,11 @@ function renderLine(l) {
   return s;
 }
 
-function renderTenant(t, leietaker) {
+function renderTenant(t, leietaker, statusKildeOverride) {
+  const statusKilde = statusKildeOverride !== undefined ? statusKildeOverride : t.statusKilde;
   let out = `  {\n    leietaker: "${esc(leietaker)}", customerId: ${t.customerId}, bygg: "${esc(t.bygg)}", totalArsleie: ${t.totalArsleie},\n`;
   out += `    status: "${t.status}",\n`;
-  if (t.statusKilde) out += `    statusKilde: "${esc(t.statusKilde)}",\n`;
+  if (statusKilde) out += `    statusKilde: "${esc(statusKilde)}",\n`;
   out += "    lines: [\n";
   out += t.lines.map(renderLine).join("\n") + "\n";
   out += "    ],\n";
@@ -383,7 +419,11 @@ function main() {
       anonNavn = `Demokunde ${demokundeTeller++}` + (serOmSomSelskap(t.leietaker) ? " AS" : "");
       ikkeGjenfunnet.push(t.leietaker);
     }
-    anonBlokker.push(renderTenant(t, anonNavn));
+    // statusKildeAnon (se MANUELLE_STATUS_OVERRIDES) - fritekst kan nevne leietakerens eget navn
+    // eller kjente merkevarenavn (f.eks. "Narvesen"), som IKKE skal stå i anon-fila.
+    const override = MANUELLE_STATUS_OVERRIDES[t.customerId];
+    const statusKildeAnon = override && "statusKildeAnon" in override ? override.statusKildeAnon : undefined;
+    anonBlokker.push(renderTenant(t, anonNavn, statusKildeAnon));
   }
 
   const nyLocalArray = `export const EXPIRIES: ExpiringTenant[] = [\n${localBlokker.join("\n")}\n];`;
