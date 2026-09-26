@@ -21,7 +21,7 @@ import {
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
-import { ArrowUpRight, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronsUpDown, ChevronUp, Receipt } from "lucide-react";
 
 // Delt hoppeknapp brukt i Kontrakter/Utløp/Garantier/Kundefordringer for å
 // hoppe til Oppslag med leietakernavnet forhåndsutfylt i søket der — det
@@ -95,24 +95,13 @@ function ReceivableRow({
   const bygg = getMainBuilding(r.leietaker);
   return (
     <>
-      {/* Under sm er raden et 3-kolonners rutenett i stedet for seks tabellceller
-          (2026-09-26 forenkling: "kun det mest nødvendige" - Morten). Stablet:
-            navn ........................... 90+ dager
-            bygg           30+ dager
-            risiko ......................... notat
-          Fra sm og opp er alt tilbake til vanlige tabellceller. */}
-      <tr className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1 border-t border-line px-2 py-2.5 transition-colors hover:bg-surface-2/50 sm:table-row sm:gap-0 sm:px-0 sm:py-0">
-        {/* col-start-1 + col-end-3, ikke col-span-2: span-varianten setter hele
-            grid-column-shorthanden og kan slå ut col-start avhengig av
-            regelrekkefølgen i den genererte CSS-en. */}
-        <td className="col-start-1 col-end-3 row-start-1 min-w-0 sm:max-w-0 sm:table-cell sm:px-2 sm:py-2">
-          <div className="flex min-w-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setDetailsOpen((v) => !v)}
-            aria-expanded={detailsOpen}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-ink-1 hover:text-ink-1 sm:font-normal sm:text-ink-2"
-          >
+      {/* Vanlig tabellrad, samme mønster som Garantioversikt/Utløp/Kontrakter (2026-09-26,
+          Morten: "vises som en vanlig tabell slik som de andre tabellene") - ingen egen
+          stablet mobil-layout lenger, tabellen skroller horisontalt på smale skjermer i
+          stedet (se overflow-x-auto-wrapperen rundt <table>). */}
+      <tr className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50" onClick={() => setDetailsOpen((v) => !v)}>
+        <td className="px-3 py-2 text-ink-2">
+          <div className="flex min-w-0 items-center gap-1.5">
             {/* role="img" + aria-label (2026-09-07): en tom, ikke-interaktiv <span> med kun
                 `title` blir ikke pålitelig lest opp av skjermlesere, så inkasso-flagget var
                 usynlig for dem. `title` beholdes for musepekeren. */}
@@ -124,37 +113,18 @@ function ReceivableRow({
                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger"
               />
             )}
-            {/* Brytes over to linjer på mobil i stedet for å avkortes — å se hvilken
-                leietaker det gjelder er hele poenget med raden. Avkortingen beholdes
-                fra sm, der kolonnen har en fast bredde å avkorte mot. */}
-            <span className="min-w-0 break-words sm:truncate">{r.leietaker}</span>
-          </button>
-          <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
+            <span className="truncate">{r.leietaker}</span>
+            <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
           </div>
         </td>
-        {/* DOM-rekkefølgen MÅ følge kolonneoverskriftene: i en tabell er det den som
-            bestemmer hvilken kolonne cellen havner i. Mobilplasseringen styres av
-            eksplisitte col-start/row-start, så rutenettet trenger ingen omstokking. */}
-        <td className="col-start-1 row-start-2 min-w-0 break-words text-2xs text-ink-3 sm:max-w-0 sm:table-cell sm:truncate sm:px-2 sm:py-2">
-          {bygg}
+        <td className="whitespace-nowrap px-3 py-2 text-2xs text-ink-4">{bygg}</td>
+        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${overdue30 > 0 ? "font-medium text-status-warning" : "text-ink-4"}`}>
+          {overdue30 > 0 ? formatKr(overdue30) : "–"}
         </td>
-        <td className={`col-start-3 row-start-1 whitespace-nowrap text-right tabular-nums font-medium sm:table-cell sm:px-2 sm:py-2 sm:font-normal ${overdue90 > 0 ? "text-status-danger" : "text-ink-1 sm:text-ink-2"}`}>
-          {overdue90 > 0 ? formatKr(overdue90) : <span className="hidden sm:inline text-ink-4">–</span>}
+        <td className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${overdue90 > 0 ? "font-medium text-status-danger" : "text-ink-4"}`}>
+          {overdue90 > 0 ? formatKr(overdue90) : "–"}
         </td>
-        {/* Nullbeløp vises som tomt på mobil og som «–» i tabellen: en kolonne full av
-            tankestreker trenger plassen sin på et bredt skjermbilde for å holde
-            rutenettet lesbart, men på mobil er det bare støy under navnet. */}
-        <td className={`col-start-2 row-start-2 col-end-4 whitespace-nowrap text-right text-2xs tabular-nums sm:table-cell sm:px-2 sm:py-2 sm:text-sm ${overdue30 > 0 ? "text-status-warning" : "text-ink-4"}`}>
-          {overdue30 > 0 ? (
-            <>
-              <span className="text-ink-4 sm:hidden">30+&nbsp;</span>
-              {formatKr(overdue30)}
-            </>
-          ) : (
-            <span className="hidden sm:inline">–</span>
-          )}
-        </td>
-        <td className="col-start-1 row-start-3 whitespace-nowrap sm:table-cell sm:px-1 sm:py-2">
+        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <select
             value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
@@ -167,46 +137,53 @@ function ReceivableRow({
             <option value="hoy">Høy{effectiveRisk === "hoy" && !isOverride ? " (auto)" : ""}</option>
           </select>
         </td>
-        <td className="col-start-3 row-start-3 flex justify-end whitespace-nowrap sm:table-cell sm:px-2 sm:py-2">
+        <td className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
       {detailsOpen && (
-        <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
-          <td colSpan={6} className="block px-3 py-2 sm:table-cell sm:pl-9">
-            <div className="mb-1.5 flex items-center justify-between text-2xs text-ink-4">
-              <span>Bygg: {bygg}</span>
-              <span className="font-medium text-ink-2">Totalt: {formatKr(r.utestaende)}</span>
-            </div>
-            <div className="flex flex-col gap-2.5">
-              {r.selskaper.map((s, i) => (
-                <div key={i}>
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="min-w-0 truncate font-medium text-ink-2">
-                      {s.selskap}
-                      {s.underInkasso && (
-                        <span className="ml-1.5 rounded-full bg-status-danger/12 px-1.5 py-0.5 text-2xs font-medium text-status-danger">
-                          Inkasso
-                        </span>
-                      )}
-                    </span>
-                    <span className="shrink-0 tabular-nums text-ink-2">{formatKr(s.belop)}</span>
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={6} className="p-0">
+            {/* Sticky-wrap (samme mønster som Garantioversikt sin DetailRow): holder
+                detaljpanelet synlig når tabellen er skrollet horisontalt i stedet for å bli
+                klippet av utenfor viewporten. */}
+            <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[520px] px-3 py-2 pl-9">
+              <div className="mb-1.5 flex items-center justify-between text-2xs text-ink-4">
+                <span>Bygg: {bygg}</span>
+                <span className="font-medium text-ink-2">Totalt: {formatKr(r.utestaende)}</span>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {r.selskaper.map((s, i) => (
+                  <div key={i}>
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="min-w-0 truncate font-medium text-ink-2">
+                        {s.selskap}
+                        {s.underInkasso && (
+                          <span className="ml-1.5 rounded-full bg-status-danger/12 px-1.5 py-0.5 text-2xs font-medium text-status-danger">
+                            Inkasso
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-ink-2">{formatKr(s.belop)}</span>
+                    </div>
+                    <div className="mt-1 border-l border-line pl-2">
+                      {s.fakturaer.map((f, j) => (
+                        <ReceivableInvoiceRow key={j} invoice={f} />
+                      ))}
+                    </div>
                   </div>
-                  <div className="mt-1 border-l border-line pl-2">
-                    {s.fakturaer.map((f, j) => (
-                      <ReceivableInvoiceRow key={j} invoice={f} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </td>
         </tr>
       )}
       {notesOpen && (
-        <tr className="block border-t border-line bg-surface-2/40 sm:table-row">
-          <td colSpan={6} className="block px-3 py-2 sm:table-cell sm:pl-9">
-            <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
+        <tr className="border-t border-line bg-surface-2/40">
+          <td colSpan={6} className="p-0">
+            <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[520px] px-3 py-2 pl-9">
+              <CommentThreadBody comments={comments} onAdd={onAdd} onDelete={onRequestDelete} onToggleRelevance={onToggleRelevance} />
+            </div>
           </td>
         </tr>
       )}
@@ -338,6 +315,8 @@ type ReceivableSortKey = "leietaker" | "bygg" | "overdue30" | "overdue90" | "ris
 
 const RISK_ORDER: Record<ReceivableRiskLevel, number> = { lav: 1, medium: 2, hoy: 3 };
 
+// Samme visuelle mønster som SortableTh i Garantioversikt (2026-09-26): alltid synlig
+// sorteringsikon (nøytralt når inaktiv, retning når aktiv), ikke bare på wide skjermer.
 function ReceivablesSortHeader({
   label,
   sortKey,
@@ -345,7 +324,6 @@ function ReceivablesSortHeader({
   dir,
   onSort,
   align = "left",
-  className = "",
 }: {
   label: string;
   sortKey: ReceivableSortKey;
@@ -353,58 +331,23 @@ function ReceivablesSortHeader({
   dir: "asc" | "desc";
   onSort: (key: ReceivableSortKey) => void;
   align?: "left" | "right";
-  className?: string;
 }) {
+  const Icon = active ? (dir === "asc" ? ChevronUp : ChevronDown) : ChevronsUpDown;
   return (
-    <th className={`px-3 py-2 text-2xs font-medium ${className}`}>
+    <th className={`px-3 py-2 text-2xs font-medium ${align === "right" ? "text-right" : "text-left"}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className={`flex items-center gap-0.5 hover:text-ink-1 ${align === "right" ? "ml-auto flex-row-reverse" : ""} ${active ? "text-ink-1" : ""}`}
+        className={`inline-flex items-center gap-0.5 transition hover:text-ink-2 ${active ? "text-ink-2" : "text-ink-4"}`}
       >
         {label}
-        {active ? dir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} /> : null}
+        <Icon className={`h-3 w-3 ${active ? "" : "opacity-50"}`} />
       </button>
     </th>
   );
 }
 
 type ReceivableSort = { key: ReceivableSortKey; dir: "asc" | "desc" };
-
-// Sorteringsvalgene som er nyttige i praksis, ferdig kombinert med retning —
-// på mobil er det ingen kolonneoverskrifter å trykke på, og et eget
-// retningsvalg ved siden av ville vært to kontroller for én beslutning.
-const MOBILE_SORTS: { id: string; label: string; sort: ReceivableSort | null }[] = [
-  { id: "default", label: "Standardrekkefølge", sort: null },
-  { id: "overdue90", label: "Mest 90+ dager", sort: { key: "overdue90", dir: "desc" } },
-  { id: "overdue30", label: "Mest 30+ dager", sort: { key: "overdue30", dir: "desc" } },
-  { id: "risiko", label: "Høyest risiko", sort: { key: "risiko", dir: "desc" } },
-  { id: "leietaker", label: "Leietaker A-Å", sort: { key: "leietaker", dir: "asc" } },
-  { id: "bygg", label: "Bygg A-Å", sort: { key: "bygg", dir: "asc" } },
-];
-
-function ReceivablesMobileSort({ sort, onChange }: { sort: ReceivableSort | null; onChange: (next: ReceivableSort | null) => void }) {
-  // Faller tilbake til "default" når tabellen er sortert stigende via en
-  // kolonneoverskrift på et bredt skjermbilde — den tilstanden finnes ikke som
-  // et valg her, og da er det ærligere å vise ingenting enn feil valg.
-  const current = MOBILE_SORTS.find((o) => o.sort?.key === sort?.key && o.sort?.dir === sort?.dir)?.id ?? "default";
-  return (
-    <label className="mb-2 flex items-center gap-2 text-2xs text-ink-4 sm:hidden">
-      Sorter
-      <select
-        value={current}
-        onChange={(e) => onChange(MOBILE_SORTS.find((o) => o.id === e.target.value)?.sort ?? null)}
-        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-2 px-2 py-1 text-2xs text-ink-2 outline-none focus:border-line-strong"
-      >
-        {MOBILE_SORTS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export default function JobbReceivablesSection({ today, onJumpToOppslag }: { today: string; onJumpToOppslag: (name: string) => void }) {
   const [showAll, setShowAll] = useState(false);
@@ -619,35 +562,27 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         ))}
       </div>
         <>
-          {/* Sortering på mobil: kolonneoverskriftene er skjult der (se thead under),
-              så uten denne var tabellen låst til den rekkefølgen den ble lastet i.
-              (2026-09-07) */}
-          <ReceivablesMobileSort sort={sort} onChange={setSort} />
-          <div className={`-mx-1 sm:overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto sm:max-h-[480px]" : ""}`}>
-            {/* Bredden er regnet ut fra innholdet, ikke gjettet - seks kolonner presses ikke
-                under ~760 px uten at beløpene renner utover cellene sine (whitespace-nowrap).
-                Under sm er tabellen lagt om til stablede rader (block/grid), så min-bredden
-                gjelder kun fra sm og opp. (2026-09-26, forenklet fra sju til seks kolonner) */}
-            <table className="block w-full text-sm sm:table sm:min-w-[760px] sm:table-fixed">
-              <thead className={`hidden sm:table-header-group ${showAll ? "sticky top-0 z-10 bg-surface-1" : ""}`}>
+          <div className={`-mx-1 mt-2 overflow-x-auto ${showAll ? "max-h-[70vh] overflow-y-auto" : ""}`}>
+            <table className="w-full min-w-[680px] text-sm">
+              <thead className={showAll ? "sticky top-0 z-10 bg-surface-1" : ""}>
                 <tr className="text-left text-ink-4">
-                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[24%]" />
-                  <ReceivablesSortHeader label="Bygg" sortKey="bygg" active={sort?.key === "bygg"} dir={sort?.dir ?? "asc"} onSort={handleSort} className="w-[18%]" />
-                  <ReceivablesSortHeader label="30+ dager" sortKey="overdue30" active={sort?.key === "overdue30"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
-                  <ReceivablesSortHeader label="90+ dager" sortKey="overdue90" active={sort?.key === "overdue90"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" className="w-[15%] text-right" />
-                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} className="w-[14%] px-1" />
-                  <th className="w-[14%] px-2 py-2 text-2xs font-medium">Notat</th>
+                  <ReceivablesSortHeader label="Leietaker" sortKey="leietaker" active={sort?.key === "leietaker"} dir={sort?.dir ?? "asc"} onSort={handleSort} />
+                  <ReceivablesSortHeader label="Bygg" sortKey="bygg" active={sort?.key === "bygg"} dir={sort?.dir ?? "asc"} onSort={handleSort} />
+                  <ReceivablesSortHeader label="30+ dager" sortKey="overdue30" active={sort?.key === "overdue30"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" />
+                  <ReceivablesSortHeader label="90+ dager" sortKey="overdue90" active={sort?.key === "overdue90"} dir={sort?.dir ?? "desc"} onSort={handleSort} align="right" />
+                  <ReceivablesSortHeader label="Risiko" sortKey="risiko" active={sort?.key === "risiko"} dir={sort?.dir ?? "desc"} onSort={handleSort} />
+                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
                 </tr>
                 <tr className="border-t border-line bg-surface-2/70 text-2xs font-medium text-ink-1">
-                  <td className="px-2 py-2">Totalt</td>
-                  <td className="px-2 py-2"></td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
-                  <td className="px-1 py-2"></td>
-                  <td className="px-2 py-2"></td>
+                  <td className="px-3 py-2">Totalt</td>
+                  <td className="px-3 py-2"></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
+                  <td className="px-3 py-2"></td>
+                  <td className="px-3 py-2"></td>
                 </tr>
               </thead>
-              <tbody className="block sm:table-row-group">
+              <tbody>
                 {visible.map((r) => (
                   <ReceivableRow
                     key={r.id}
