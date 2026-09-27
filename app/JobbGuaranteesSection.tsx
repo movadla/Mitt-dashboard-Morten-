@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   CardHeader,
   ConfirmDialog,
@@ -10,6 +10,7 @@ import {
 import { CommentBadge, CommentThreadBody } from "./CommentsCell";
 import { commentKey, useComments } from "./useComments";
 import type { Comment } from "@/lib/comments";
+import { finnLeietakerFact } from "@/lib/leietakerFactsLookup";
 import {
   HAR_GARANTI,
   MANGLER_GARANTI,
@@ -149,18 +150,52 @@ function UsikkerMarker({ arsak }: { arsak?: string }) {
   );
 }
 
-function DetailRow({ colSpan, kilde, usikkerhetsArsak, fritekst }: { colSpan: number; kilde: string; usikkerhetsArsak?: string; fritekst?: string | null }) {
+type Fact = { label: string; value: string };
+
+// Aligned fakta-liste (2026-09-27, Morten: "listet opp fakta aligned") - egen grid i stedet
+// for løpende prosa, delt av Har- og Mangler-radene under. "Start kontrakt" hentes fra den
+// delte lib/leietakerFacts-tabellen (Fazile, navnematch via finnLeietakerFact) - ikke en del
+// av selve GuaranteeSecured/GuaranteeMissing, siden hverken SharePoint/Fenistra-kilden eller
+// den ferske 2026-09-22/26-krysssjekken har kontraktens startdato. Leietakere uten treff i
+// leietakerFacts viser "—", aldri en gjettet dato.
+function FactGrid({ facts }: { facts: Fact[] }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-0.5">
+      {facts.map((f) => (
+        <Fragment key={f.label}>
+          <dt className="text-ink-4">{f.label}</dt>
+          <dd className="text-ink-2">{f.value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function DetailRow({
+  colSpan,
+  facts,
+  kilde,
+  usikkerhetsArsak,
+  fritekst,
+}: {
+  colSpan: number;
+  facts: Fact[];
+  kilde: string;
+  usikkerhetsArsak?: string;
+  fritekst?: string | null;
+}) {
   return (
     <tr className="border-t border-line bg-surface-3/50">
       <td colSpan={colSpan} className="p-0">
-        <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[560px] space-y-1 px-3 py-2 pl-8 text-2xs text-ink-3">
+        <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[560px] space-y-2 px-3 py-2 pl-8 text-2xs">
+          <FactGrid facts={facts} />
           {usikkerhetsArsak && (
             <p className="text-status-warning">
               <span className="font-medium">Usikker: </span>
               {usikkerhetsArsak}
             </p>
           )}
-          {fritekst && <p>{fritekst}</p>}
+          {fritekst && <p className="text-ink-3">{fritekst}</p>}
           <p className="text-ink-4">Kilde: {kilde}</p>
         </div>
       </td>
@@ -185,6 +220,7 @@ function SecuredRow({
 }) {
   const [open, setOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const fact = finnLeietakerFact(g.leietaker);
   return (
     <>
       <tr className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50" onClick={() => setOpen((v) => !v)}>
@@ -221,7 +257,22 @@ function SecuredRow({
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
-      {open && <DetailRow colSpan={7} kilde={g.kilde} usikkerhetsArsak={g.usikkerhetsArsak} />}
+      {open && (
+        <DetailRow
+          colSpan={7}
+          facts={[
+            { label: "Bygg", value: g.bygg ?? fact?.bygg ?? "—" },
+            { label: "Start kontrakt", value: fact?.kontraktStart ? formatDateDMY(fact.kontraktStart) : "—" },
+            { label: "Sluttkontrakt", value: g.leieforholdUtlop ? formatDateDMY(g.leieforholdUtlop) : "—" },
+            { label: "Garanti/depositum", value: g.type },
+            { label: "Garantibeløp", value: formatKr(g.belop) },
+            { label: "Garanti utløper", value: g.garantiUtlop ? formatDateDMY(g.garantiUtlop) : "—" },
+            { label: "Status", value: "Har garanti" },
+          ]}
+          kilde={g.kilde}
+          usikkerhetsArsak={g.usikkerhetsArsak}
+        />
+      )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={7} className="px-3 py-2 pl-9">
@@ -250,6 +301,7 @@ function MissingRow({
 }) {
   const [open, setOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const fact = finnLeietakerFact(g.leietaker);
   return (
     <>
       <tr className="cursor-pointer border-t border-line transition-colors hover:bg-surface-2/50" onClick={() => setOpen((v) => !v)}>
@@ -271,7 +323,22 @@ function MissingRow({
           <CommentBadge count={comments.length} open={notesOpen} onClick={() => setNotesOpen((v) => !v)} />
         </td>
       </tr>
-      {open && <DetailRow colSpan={7} kilde={g.kilde} usikkerhetsArsak={g.usikkerhetsArsak} fritekst={g.sisteStatusFritekst} />}
+      {open && (
+        <DetailRow
+          colSpan={7}
+          facts={[
+            { label: "Bygg", value: g.bygg ?? fact?.bygg ?? "—" },
+            { label: "Start kontrakt", value: fact?.kontraktStart ? formatDateDMY(fact.kontraktStart) : "—" },
+            { label: "Garanti/depositum", value: g.type ?? "—" },
+            { label: "Avtalt beløp", value: g.belopAvtalt !== null ? formatKr(g.belopAvtalt) : "—" },
+            { label: "Innflytting/frist", value: g.innflytting ? formatDateDMY(g.innflytting) : "—" },
+            { label: "Status", value: g.status },
+          ]}
+          kilde={g.kilde}
+          usikkerhetsArsak={g.usikkerhetsArsak}
+          fritekst={g.sisteStatusFritekst}
+        />
+      )}
       {notesOpen && (
         <tr className="border-t border-line bg-surface-2/40">
           <td colSpan={7} className="px-3 py-2 pl-9">
@@ -371,11 +438,62 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { today: stri
           className="w-full rounded-lg border border-line bg-surface-2 py-1.5 pl-8 pr-3 text-sm text-ink-1 placeholder:text-ink-4 focus:border-line-strong focus:outline-none"
         />
       </div>
-      <Tabs defaultValue="har">
+      <Tabs defaultValue="mangler">
         <TabsList variant="line">
-          <TabsTrigger value="har">Har garanti ({harFiltrert.length})</TabsTrigger>
           <TabsTrigger value="mangler">Mangler garanti ({manglerFiltrert.length})</TabsTrigger>
+          <TabsTrigger value="har">Har garanti ({harFiltrert.length})</TabsTrigger>
         </TabsList>
+        <TabsContent value="mangler">
+          <div className="-mx-1 mt-2 overflow-x-auto">
+            <table className="w-full min-w-[680px] text-sm">
+              <thead>
+                <tr className="text-left text-ink-4">
+                  <SortableTh label="Leietaker" sortKey="leietaker" active={manglerSort?.key === "leietaker"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
+                  <SortableTh label="Bygg" sortKey="bygg" active={manglerSort?.key === "bygg"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
+                  <SortableTh label="Type" sortKey="type" active={manglerSort?.key === "type"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
+                  <SortableTh
+                    label="Avtalt beløp"
+                    sortKey="belopAvtalt"
+                    active={manglerSort?.key === "belopAvtalt"}
+                    dir={manglerSort?.dir ?? 1}
+                    onSort={toggleManglerSort}
+                    align="right"
+                  />
+                  <SortableTh
+                    label="Innflytting/frist"
+                    sortKey="innflytting"
+                    active={manglerSort?.key === "innflytting"}
+                    dir={manglerSort?.dir ?? 1}
+                    onSort={toggleManglerSort}
+                    align="right"
+                  />
+                  <SortableTh label="Status" sortKey="status" active={manglerSort?.key === "status"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
+                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {manglerFiltrert.length === 0 && (
+                  <tr className="border-t border-line">
+                    <td colSpan={7} className="px-3 py-2 text-sm text-ink-3">
+                      {sok ? "Ingen treff." : "Ingen innflyttinger venter på bankgaranti eller depositum."}
+                    </td>
+                  </tr>
+                )}
+                {manglerFiltrert.map((g) => (
+                  <MissingRow
+                    key={g.id}
+                    g={g}
+                    comments={comments[commentKey("guarantee", g.id)] ?? []}
+                    onAdd={(tekst) => handleAdd(g.id, tekst)}
+                    onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
+                    onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(g.id, commentId, ikkeRelevant)}
+                    onJumpToOppslag={onJumpToOppslag}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
         <TabsContent value="har">
           <div className="-mx-1 mt-2 overflow-x-auto">
             <table className="w-full min-w-[720px] text-sm">
@@ -415,57 +533,6 @@ export default function JobbGuaranteesSection({ onJumpToOppslag }: { today: stri
                 )}
                 {harFiltrert.map((g) => (
                   <SecuredRow
-                    key={g.id}
-                    g={g}
-                    comments={comments[commentKey("guarantee", g.id)] ?? []}
-                    onAdd={(tekst) => handleAdd(g.id, tekst)}
-                    onRequestDelete={(commentId, preview) => confirmDelete.request({ targetType: "guarantee", targetId: g.id, commentId, preview })}
-                    onToggleRelevance={(commentId, ikkeRelevant) => handleToggleRelevance(g.id, commentId, ikkeRelevant)}
-                    onJumpToOppslag={onJumpToOppslag}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </TabsContent>
-        <TabsContent value="mangler">
-          <div className="-mx-1 mt-2 overflow-x-auto">
-            <table className="w-full min-w-[680px] text-sm">
-              <thead>
-                <tr className="text-left text-ink-4">
-                  <SortableTh label="Leietaker" sortKey="leietaker" active={manglerSort?.key === "leietaker"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
-                  <SortableTh label="Bygg" sortKey="bygg" active={manglerSort?.key === "bygg"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
-                  <SortableTh label="Type" sortKey="type" active={manglerSort?.key === "type"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
-                  <SortableTh
-                    label="Avtalt beløp"
-                    sortKey="belopAvtalt"
-                    active={manglerSort?.key === "belopAvtalt"}
-                    dir={manglerSort?.dir ?? 1}
-                    onSort={toggleManglerSort}
-                    align="right"
-                  />
-                  <SortableTh
-                    label="Innflytting/frist"
-                    sortKey="innflytting"
-                    active={manglerSort?.key === "innflytting"}
-                    dir={manglerSort?.dir ?? 1}
-                    onSort={toggleManglerSort}
-                    align="right"
-                  />
-                  <SortableTh label="Status" sortKey="status" active={manglerSort?.key === "status"} dir={manglerSort?.dir ?? 1} onSort={toggleManglerSort} />
-                  <th className="px-3 py-2 text-2xs font-medium">Notat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {manglerFiltrert.length === 0 && (
-                  <tr className="border-t border-line">
-                    <td colSpan={7} className="px-3 py-2 text-sm text-ink-3">
-                      {sok ? "Ingen treff." : "Ingen innflyttinger venter på bankgaranti eller depositum."}
-                    </td>
-                  </tr>
-                )}
-                {manglerFiltrert.map((g) => (
-                  <MissingRow
                     key={g.id}
                     g={g}
                     comments={comments[commentKey("guarantee", g.id)] ?? []}

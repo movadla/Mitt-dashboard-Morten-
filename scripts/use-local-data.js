@@ -14,3 +14,4 @@ swap("incomeForecast");
 swap("tenants");
 swap("companyInfo");
 swap("fazilesjekk");
+swap("leietakerFacts");

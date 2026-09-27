@@ -16,3 +16,4 @@ forceAnon("incomeForecast");
 forceAnon("tenants");
 forceAnon("companyInfo");
 forceAnon("fazilesjekk");
+forceAnon("leietakerFacts");
