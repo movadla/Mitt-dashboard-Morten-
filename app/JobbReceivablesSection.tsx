@@ -44,10 +44,13 @@ function OppslagLink({ name, onJump }: { name: string; onJump: (name: string) =>
   );
 }
 
+// Dempet (2026-09-27, Morten: "litt mindre sterk") - opacity-modifier på statusfargen i
+// stedet for full styrke, siden Risiko var eneste kolonnen som fortsatt skulle beholde
+// rødt/gult/grønt etter at tallkolonnene ble nøytralisert til standard ink-farge.
 const RISK_META: Record<ReceivableRiskLevel, { label: string; textClass: string }> = {
-  lav: { label: "Lav", textClass: "text-status-positive" },
-  medium: { label: "Medium", textClass: "text-status-warning" },
-  hoy: { label: "Høy", textClass: "text-status-danger" },
+  lav: { label: "Lav", textClass: "text-status-positive/70" },
+  medium: { label: "Medium", textClass: "text-status-warning/70" },
+  hoy: { label: "Høy", textClass: "text-status-danger/70" },
 };
 
 function ReceivableInvoiceRow({ invoice: f }: { invoice: ReceivableInvoice }) {
@@ -119,11 +122,14 @@ function ReceivableRow({
         </td>
         <td className="whitespace-nowrap px-2 py-2 text-2xs text-ink-4">{bygg}</td>
         <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2">{formatKr(r.utestaende)}</td>
-        <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${overdue30 > 0 ? "font-medium text-status-warning" : "text-ink-4"}`}>
-          {overdue30 > 0 ? formatKr(overdue30) : "–"}
+        {/* Nøytralisert til standard tallfarge (2026-09-27, Morten: "for mye farger... alle
+            tall har samme hvitfarge som standard") - gult/rødt her konkurrerte med Risiko-
+            kolonnen, som er stedet fargekoding faktisk skal bo. */}
+        <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2">
+          {overdue30 > 0 ? formatKr(overdue30) : <span className="text-ink-4">–</span>}
         </td>
-        <td className={`whitespace-nowrap px-2 py-2 text-right tabular-nums ${overdue90 > 0 ? "font-medium text-status-danger" : "text-ink-4"}`}>
-          {overdue90 > 0 ? formatKr(overdue90) : "–"}
+        <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-ink-2">
+          {overdue90 > 0 ? formatKr(overdue90) : <span className="text-ink-4">–</span>}
         </td>
         {/* Ingen w-full på select-en (2026-09-26 fiks, Morten: "risikoteksten er kuttet"): en
             select strukket til 100% av en tabellkolonne uten egen bredde blir en sirkulær
@@ -561,8 +567,8 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
         {(
           [
             ["Totalt", total, "text-ink-1"],
-            ["30+ dager", totalAging.forfalt30Plus, "text-status-warning"],
-            ["90+ dager", totalAging.d91Plus, "text-status-danger"],
+            ["30+ dager", totalAging.forfalt30Plus, "text-ink-1"],
+            ["90+ dager", totalAging.d91Plus, "text-ink-1"],
           ] as const
         ).map(([label, belop, color]) => (
           <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1 py-2 sm:px-3 sm:py-2.5">
@@ -593,8 +599,8 @@ export default function JobbReceivablesSection({ today, onJumpToOppslag }: { tod
                   <td className="px-2 py-2">Totalt</td>
                   <td className="px-2 py-2"></td>
                   <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(total)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-warning">{formatKr(totalAging.forfalt30Plus)}</td>
-                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-status-danger">{formatKr(totalAging.d91Plus)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(totalAging.forfalt30Plus)}</td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">{formatKr(totalAging.d91Plus)}</td>
                   <td className="px-2 py-2"></td>
                   <td className="px-2 py-2"></td>
                 </tr>
