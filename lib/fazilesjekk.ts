@@ -1,1 +1,1 @@
-export * from "./fazilesjekk.local";
+export * from "./fazilesjekk.anon";

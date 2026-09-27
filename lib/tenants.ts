@@ -1,1 +1,1 @@
-export * from "./tenants.local";
+export * from "./tenants.anon";
