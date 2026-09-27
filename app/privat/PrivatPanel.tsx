@@ -43,7 +43,11 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
+// v2 (2026-09-27, Morten: "flytt aitips til der FPL er, forskyv de andre til
+// venstre slik at påminnelser er inntil i dag") - usePersistedOrder beholder en
+// lagret rekkefølge og legger kun NYE id-er til på slutten - uten en bump
+// hadde den gamle v1-rekkefølgen fra localStorage overstyrt hele endringen.
+const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v2";
 
 // Ligger bak "Mer"-flisen nederst til høyre i mobil-rutenettet, slik at det
 // normalt er tre rader og ikke fire. Prosjekter flyttet hit 2026-09-20 for å
@@ -52,7 +56,6 @@ const NAV_ORDER_KEY = "mitt-dashboard:privat-nav-order:v1";
 const SECONDARY_NAV_IDS = ["events", "alfred", "finance", "projects"];
 const DEFAULT_NAV_ORDER = [
   "today",
-  "aitips",
   "reminders",
   "calendar",
   "events",
@@ -67,6 +70,7 @@ const DEFAULT_NAV_ORDER = [
   "shopping",
   "news",
   "fpl",
+  "aitips",
 ];
 
 // Ikon/farge per kategori. Fargen leses fra SECTION_ACCENT (app/privat/sectionAccents.ts) —
@@ -124,13 +128,6 @@ export default function PrivatPanel() {
   // men skal ikke holde varselet oppe (jf. tilbakemelding).
   const { data: calendarBadgeData } = useSWR<{ events: { date: string; done?: boolean }[] }>("/api/privat-calendar", jsonFetcher);
   const todaysCalendarCount = (calendarBadgeData?.events ?? []).filter((e) => e.date === today && !e.done).length;
-  // Rygg-underfanen i Trening: badge teller 0-2 (dagens økt mangler / gårsdagens
-  // smertelogg mangler) — se lib/ryggWeekCycle.ts sin getRyggStatus.
-  const { data: ryggBadgeData } = useSWR<{ needsSessionToday: boolean; yesterdayLogged: boolean }>(
-    "/api/rygg/status",
-    jsonFetcher,
-  );
-  const ryggBadgeCount = (ryggBadgeData?.needsSessionToday ? 1 : 0) + (ryggBadgeData && !ryggBadgeData.yesterdayLogged ? 1 : 0);
   // Badge på AI-tips: 1 så lenge dagens tips finnes men ikke er åpnet ennå —
   // ALDRI generering herfra (se app/api/ai-tips/status), kun lesing.
   const { data: aiTipsStatusData } = useSWR<{ hasToday: boolean; opened: boolean }>("/api/ai-tips/status", jsonFetcher);
@@ -283,7 +280,6 @@ export default function PrivatPanel() {
   const navBadges: Partial<Record<string, number>> = {
     reminders: dueRemindersCount,
     calendar: todaysCalendarCount,
-    trening: ryggBadgeCount,
     aitips: aiTipsBadgeCount,
   };
   const navItems: NavItem[] = order

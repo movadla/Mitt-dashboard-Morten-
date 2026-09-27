@@ -392,28 +392,27 @@ function CalendarCard({ today }: { today: string }) {
   );
 }
 
-// v4: ny standardrekkefølge (Påminnelser/Kalender flyttet til plass 1-2 for å
-// matche Privat, Inntektsprognose til plass 3). usePersistedOrder beholder en
-// lagret rekkefølge og legger kun NYE id-er til på slutten — uten en bump
-// hadde den gamle v3-rekkefølgen fra localStorage overstyrt hele endringen.
-const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v4";
+// v5 (2026-09-27, Morten: byttet plass på Oppgaver/Inntektsprognose og på
+// Hendelser/Fazilesjekk) - usePersistedOrder beholder en lagret rekkefølge og
+// legger kun NYE id-er til på slutten - uten en bump hadde den gamle
+// v4-rekkefølgen fra localStorage overstyrt hele endringen.
+const JOBB_SECTION_ORDER_KEY = "mitt-dashboard:jobb-section-order:v5";
 // Påminnelser og Kalender ligger bevisst på plass 1 og 2, nøyaktig som i
 // Privat-fanen — de to seksjonene som finnes i begge faner skal sitte samme
 // sted uansett hvilken fane man er i, slik at muskelminnet virker på tvers.
 // (Dataene er fortsatt helt adskilte; det er kun plasseringen som er felles.)
-// Inntektsprognose står på plass 3 = øverste rad, høyre hjørne i mobilrutenettet.
 const DEFAULT_JOBB_SECTION_ORDER = [
   "today",
   "reminders",
   "calendar",
-  "income-forecast",
   "oppgaver",
+  "income-forecast",
   "contracts",
   "expiry",
   "guarantees",
   "receivables",
-  "events",
   "fazilesjekk",
+  "events",
   "oppslag",
   "mustad-nyheter",
   "data-sources",
