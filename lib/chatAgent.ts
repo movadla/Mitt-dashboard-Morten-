@@ -468,7 +468,7 @@ const ADD_SHOPPING_ITEM_TOOL: Anthropic.Tool = {
         type: "string",
         enum: [
           "frukt-gront",
-          "frysevarer",
+          "kjott",
           "palegg",
           "meieriprodukter",
           "drikke",
@@ -477,12 +477,13 @@ const ADD_SHOPPING_ITEM_TOOL: Anthropic.Tool = {
           "baby",
           "elektro",
           "snop",
+          "rengjoring",
           "annet",
         ],
         description:
-          "Butikkseksjon — velg den som passer best: frukt-gront=Frukt & grønt, frysevarer=Frysevarer, " +
+          "Butikkseksjon — velg den som passer best: frukt-gront=Frukt & grønt, kjott=Kjøtt, " +
           "palegg=Pålegg, meieriprodukter=Meieriprodukter, drikke=Drikke, snacks=Snacks, torrvarer=Tørrvarer, " +
-          "baby=Baby, elektro=Elektro, snop=Snop, annet=Annet (brukes hvis ingen andre passer).",
+          "baby=Baby, elektro=Elektro, snop=Snop, rengjoring=Rengjøring, annet=Annet (brukes hvis ingen andre passer).",
       },
       quantity: { type: "string", description: "Mengde/antall, f.eks. '2 stk' eller '1 liter'. Valgfritt." },
     },

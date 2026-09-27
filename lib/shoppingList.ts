@@ -3,7 +3,7 @@ import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
 
 export type StoreSection =
   | "frukt-gront"
-  | "frysevarer"
+  | "kjott"
   | "palegg"
   | "meieriprodukter"
   | "drikke"
@@ -12,6 +12,7 @@ export type StoreSection =
   | "baby"
   | "elektro"
   | "snop"
+  | "rengjoring"
   | "annet";
 
 export interface ShoppingItem {

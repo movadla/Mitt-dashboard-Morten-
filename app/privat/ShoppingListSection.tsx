@@ -28,7 +28,7 @@ const EMPTY_QUICK_PICKS: QuickPick[] = [];
 // i app/globals.css, slik at varelisten er rask å skanne på vei gjennom butikken.
 const SECTION_ORDER: StoreSection[] = [
   "frukt-gront",
-  "frysevarer",
+  "kjott",
   "palegg",
   "meieriprodukter",
   "drikke",
@@ -37,12 +37,13 @@ const SECTION_ORDER: StoreSection[] = [
   "baby",
   "elektro",
   "snop",
+  "rengjoring",
   "annet",
 ];
 
 const SECTION_META: Record<StoreSection, { label: string; bg: string; text: string }> = {
   "frukt-gront": { label: "Frukt & grønt", bg: "bg-emerald-500/8", text: "text-emerald-400" },
-  frysevarer: { label: "Frysevarer", bg: "bg-source-teams/8", text: "text-source-teams" },
+  kjott: { label: "Kjøtt", bg: "bg-source-teams/8", text: "text-source-teams" },
   palegg: { label: "Pålegg", bg: "bg-amber-500/8", text: "text-amber-400" },
   meieriprodukter: { label: "Meieriprodukter", bg: "bg-accent/8", text: "text-accent" },
   drikke: { label: "Drikke", bg: "bg-accent-privat/8", text: "text-accent-privat" },
@@ -51,6 +52,7 @@ const SECTION_META: Record<StoreSection, { label: string; bg: string; text: stri
   baby: { label: "Baby", bg: "bg-pink-400/8", text: "text-pink-300" },
   elektro: { label: "Elektro", bg: "bg-cyan-500/8", text: "text-cyan-400" },
   snop: { label: "Snop", bg: "bg-rose-500/8", text: "text-rose-400" },
+  rengjoring: { label: "Rengjøring", bg: "bg-violet-400/8", text: "text-violet-400" },
   annet: { label: "Annet", bg: "bg-slate-500/8", text: "text-slate-300" },
 };
 
