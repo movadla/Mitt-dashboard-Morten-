@@ -45,8 +45,8 @@ import {
   Bot,
   Moon,
   Newspaper,
-  Info,
   Dumbbell,
+  Plus,
 } from "lucide-react";
 
 const MAX_OFFSET = 365;
@@ -291,7 +291,7 @@ function WeatherInfo({ weather, nowHour }: { weather: WeatherData; nowHour: numb
   const description = weatherDescription(showTomorrow ? tomorrowHours : todayHours, weather.symbol);
 
   return (
-    <div className="mb-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+    <div className="rounded-xl border border-line bg-surface-2 px-3 py-2.5">
       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-3">{label}</p>
       <p className="mt-0.5 text-sm text-ink-1">{description}</p>
     </div>
@@ -440,8 +440,10 @@ export default function TodaySummary({
     return () => clearInterval(id);
   }, []);
 
-  const [weatherExpanded, setWeatherExpanded] = useState(false);
-  const [weatherInfoOpen, setWeatherInfoOpen] = useState(false);
+  // v2 (2026-09-28, Morten: slå sammen de to værknappene til ett panel) - var to separate knapper
+  // med to separate disclosure-tilstander (timegraf / tekstbeskrivelse) tett inntil hverandre med
+  // små touch-mål - lett å trykke feil på mobil. Nå én knapp, ett panel med begge deler.
+  const [weatherOpen, setWeatherOpen] = useState(false);
   const [viewedOffset, setViewedOffset] = useState(0);
   const [slideDirection, setSlideDirection] = useState<"forward" | "backward" | null>(null);
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
@@ -762,27 +764,16 @@ export default function TodaySummary({
           )}
         </div>
         {weather && isToday && (
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setWeatherExpanded((v) => !v)}
-              aria-expanded={weatherExpanded}
-              aria-label="Vis vær time for time"
-              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
-            >
-              <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
-              <span className="tabular-nums">{weather.temp}°</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setWeatherInfoOpen((v) => !v)}
-              aria-expanded={weatherInfoOpen}
-              aria-label="Værbeskrivelse"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-2 hover:text-ink-2"
-            >
-              <Info className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setWeatherOpen((v) => !v)}
+            aria-expanded={weatherOpen}
+            aria-label="Vis værdetaljer"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-ink-2 transition hover:bg-surface-2"
+          >
+            <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
+            <span className="tabular-nums">{weather.temp}°</span>
+          </button>
         )}
       </div>
 
@@ -831,18 +822,19 @@ export default function TodaySummary({
         </section>
       )}
 
-      {weather && weatherInfoOpen && isToday && <WeatherInfo weather={weather} nowHour={nowHour} />}
-
-      {weather && weatherExpanded && isToday && (
-        <div className="mb-3 overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
-          <div className="flex w-max gap-4">
-            {weather.hourly.map((h) => (
-              <div key={h.time} className="flex flex-col items-center gap-1 text-center">
-                <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
-                <WeatherIcon symbol={h.symbol} className="h-5 w-5" />
-                <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
-              </div>
-            ))}
+      {weather && weatherOpen && isToday && (
+        <div className="mb-3 flex flex-col gap-2.5">
+          <WeatherInfo weather={weather} nowHour={nowHour} />
+          <div className="overflow-x-auto rounded-xl border border-line bg-surface-2 p-2.5">
+            <div className="flex w-max gap-4">
+              {weather.hourly.map((h) => (
+                <div key={h.time} className="flex flex-col items-center gap-1 text-center">
+                  <span className="text-2xs text-ink-4">{hourLabel(h.time)}</span>
+                  <WeatherIcon symbol={h.symbol} className="h-5 w-5" />
+                  <span className="text-xs tabular-nums text-ink-1">{h.temp}°</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -884,7 +876,12 @@ export default function TodaySummary({
             )}
 
             {showRyggPainNudge && !showRyggPainForm && (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
+              // items-start (2026-09-28, Morten: "pass på at det kommer på én linje slik at det
+              // ser ryddig ut, og heller la teksten brytes om det er for langt") - items-center
+              // sentrerte ikon+knapp mot HELE tekstblokken, så en lang smerte-tekst som brøt til to
+              // linjer fikk knappen til å flyte midt i teksten i stedet for å ligge fint på linje
+              // med FØRSTE tekstlinje.
+              <div className="flex items-start justify-between gap-2 rounded-lg border border-status-warning/40 bg-status-warning/8 px-3 py-1.5">
                 <CategoryRow icon={Dumbbell} colorClass="text-status-warning" label="Rygg">
                   <p className="text-sm text-status-warning">{ryggPainNudgeText}</p>
                 </CategoryRow>
@@ -945,7 +942,9 @@ export default function TodaySummary({
                 øvelse, med smertelogg etterpå) — herfra bare ett tydelig hopp
                 inn, ikke et løsrevet hurtigskjema. */}
             {showRyggSessionRow && (
-              <div className="flex items-center justify-between gap-2 py-2">
+              // items-start - samme begrunnelse som rygg-smerte-varselet over: knappen skal ligge
+              // på linje med FØRSTE tekstlinje, ikke sentrert mot hele blokken hvis teksten brytes.
+              <div className="flex items-start justify-between gap-2 py-2">
                 <CategoryRow icon={Dumbbell} colorClass="text-emerald-400" label="Rygg">
                   <p className="text-sm text-ink-1">
                     Dagens ryggøkt — økt {(ryggStatus?.sessionsThisWeek ?? 0) + 1} av 3, uke {ryggStatus?.currentWeek}
@@ -1033,12 +1032,16 @@ export default function TodaySummary({
                   </CategoryRow>
                 </div>
                 {!addingReminder && (
+                  // v2 (2026-09-28, Morten: "kun pluss-ikon") - "Ny+" var en kryptisk tekst-etikett
+                  // ved første møte, byttet til samme ikon-språk resten av appen bruker.
                   <button
                     type="button"
                     onClick={() => setAddingReminder(true)}
-                    className="shrink-0 text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+                    aria-label="Ny påminnelse"
+                    title="Ny påminnelse"
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-accent-privat transition hover:bg-surface-2"
                   >
-                    Ny+
+                    <Plus className="h-4 w-4" />
                   </button>
                 )}
               </div>

@@ -13,7 +13,7 @@ import { vibrate } from "@/lib/haptics";
 import { addDaysIso, localDateString, relativeDayLabel } from "@/lib/payday";
 import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import SwipeableRow from "./SwipeableRow";
-import { ArrowUpRight, Bell, GripVertical, X } from "lucide-react";
+import { ArrowUpDown, ArrowUpRight, Bell, GripVertical, X } from "lucide-react";
 import {
   DndContext,
   PointerSensor,
@@ -212,6 +212,29 @@ function SubtaskProgress({ done, total }: { done: number; total: number }) {
         className={complete ? "text-emerald-500" : "text-accent-privat"}
       />
     </svg>
+  );
+}
+
+// Delt "vis mer/skjul"-knapp (2026-09-28, Morten: gjør de tre knappene nederst - Mer/Nylig
+// fullført/Historikk - visuelt konsekvente i stedet for at hver har sin egen tekststørrelse/
+// farge, og legg til antall på Historikk for samme mønster som de to andre.
+function ExpandToggle({
+  expanded,
+  count,
+  labelCollapsed,
+  labelExpanded,
+  onClick,
+}: {
+  expanded: boolean;
+  count: number;
+  labelCollapsed: string;
+  labelExpanded: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1">
+      {expanded ? labelExpanded : `${labelCollapsed} (${count})`}
+    </button>
   );
 }
 
@@ -950,12 +973,15 @@ export default function RemindersSection({
           <button
             type="button"
             onClick={() => setReorderMode((v) => !v)}
-            className={`self-end rounded-lg border px-2 py-1 text-2xs font-semibold uppercase transition ${
+            className={`inline-flex shrink-0 items-center gap-1 self-end rounded-lg border px-2 py-1 text-2xs font-semibold uppercase transition ${
               reorderMode
                 ? "border-accent-privat/40 bg-accent-privat/15 text-accent-privat"
                 : "border-line text-ink-3 hover:border-line-strong hover:text-ink-1"
             }`}
           >
+            {/* v2 (2026-09-28, Morten) - ikon lagt til, knappen var lett å overse uten et visuelt
+                hint om hva den faktisk gjør. */}
+            <ArrowUpDown className="h-3 w-3" />
             {reorderMode ? "Ferdig" : "Endre rekkefølge"}
           </button>
           {showForm && (
@@ -1163,13 +1189,13 @@ export default function RemindersSection({
                   })}
                 </ul>
               )}
-              <button
-                type="button"
+              <ExpandToggle
+                expanded={showAll}
+                count={rest.length}
+                labelCollapsed="Mer"
+                labelExpanded="Vis mindre"
                 onClick={() => setShowAll((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
-              >
-                {showAll ? "Vis mindre" : `Mer (${rest.length})`}
-              </button>
+              />
             </>
           )}
 
@@ -1201,25 +1227,25 @@ export default function RemindersSection({
                   ))}
                 </ul>
               )}
-              <button
-                type="button"
+              <ExpandToggle
+                expanded={showRecentlyCompleted}
+                count={recentlyCompleted.length}
+                labelCollapsed="Nylig fullført"
+                labelExpanded="Skjul nylig fullført"
                 onClick={() => setShowRecentlyCompleted((v) => !v)}
-                className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
-              >
-                {showRecentlyCompleted ? "Skjul nylig fullført" : `Nylig fullført (${recentlyCompleted.length})`}
-              </button>
+              />
             </>
           )}
 
           {history.length > 0 && (
             <>
-              <button
-                type="button"
+              <ExpandToggle
+                expanded={showHistory}
+                count={history.length}
+                labelCollapsed="Historikk"
+                labelExpanded="Skjul historikk"
                 onClick={() => setShowHistory((v) => !v)}
-                className="text-left text-2xs font-medium text-ink-4 hover:text-ink-2"
-              >
-                {showHistory ? "Skjul historikk" : "Historikk"}
-              </button>
+              />
               {showHistory && (
                 <ul className="mt-1 flex flex-col gap-1.5">
                   {history.map((r) => (

@@ -13,6 +13,16 @@ import {
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
+// Eksplisitt oppslag i stedet for activeAccentClass.replace("text-", "ring-") (Tailwind kan ikke
+// bygge et klassenavn fra en variabel i runtime - se samme advarsel i app/privat/
+// sectionAccents.ts). Fungerte i praksis siden begge disse ring-variantene allerede fantes som
+// literal-strenger andre steder i appen, men var skjørt - en fremtidig tredje fane/aksentfarge
+// ville stille sluttet å vise ringen. Fallback dekker den situasjonen i stedet for å feile stille.
+const RING_CLASS_FOR_ACCENT: Record<string, string> = {
+  "text-accent": "ring-accent",
+  "text-accent-privat": "ring-accent-privat",
+};
+
 export interface NavItem {
   id: string;
   label: string;
@@ -49,6 +59,7 @@ function NavButton({
   buttonRef,
   dense = false,
   activeAccentClass,
+  swapSelected = false,
 }: {
   item: NavItem;
   active: boolean;
@@ -65,6 +76,10 @@ function NavButton({
   // hardkodet til Privat sin farge, så Jobb-fanens valgte seksjon feilaktig
   // viste seg i oransje i stedet for blått.
   activeAccentClass: string;
+  // v2 (2026-09-28, mobil rekkefølge-fiks): "valgt for bytte"-ring i
+  // trykk-to-fliser-modus - et helt annet konsept enn `active` (hvilken
+  // seksjon som faktisk vises), derfor egen, ikke-gjensidig-utelukkende prop.
+  swapSelected?: boolean;
 }) {
   const Icon = item.icon;
   return (
@@ -83,7 +98,7 @@ function NavButton({
         // som slipper bakgrunnsgradienten gjennom, slik at navigasjonen trer
         // tilbake og bare den valgte flisen er en tett, opplyst flate.
         active ? `nav-tile-active font-semibold ${activeAccentClass}` : "nav-tile text-ink-3 hover:text-ink-1"
-      }`}
+      } ${swapSelected ? `ring-2 ${RING_CLASS_FOR_ACCENT[activeAccentClass] ?? "ring-ink-3"}` : ""}`}
     >
       <span
         className={`relative grid shrink-0 place-items-center rounded-full ${iconChipClass(item.iconColorClass)} ${
@@ -195,6 +210,12 @@ export function SidebarNav({
   const stripRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const [showSecondary, setShowSecondary] = useState(false);
+  // v2 (2026-09-28, Morten: mobil kunne ikke selv endre rekkefølge - dra-og-
+  // slipp kolliderer med skroll på touch). Trykk-to-fliser-for-å-bytte i
+  // stedet for dra: første trykk "velger" en flis (ring), andre trykk på en
+  // ANNEN flis bytter de to sin posisjon og lagrer. Helt separat fra
+  // dnd-kit-en over, som fortsatt eier desktop-railen uendret.
+  const [selectedForSwap, setSelectedForSwap] = useState<string | null>(null);
 
   const secondarySet = new Set(secondaryIds ?? []);
   const primaryItems = items.filter((i) => !secondarySet.has(i.id));
@@ -202,11 +223,32 @@ export function SidebarNav({
   const hasSecondary = secondaryItems.length > 0;
   // Er en skjult seksjon valgt (f.eks. via søk eller en hopp-lenke), må raden
   // åpnes — ellers står den aktive fanen usynlig og navigasjonen ser ut til å
-  // ikke ha noen markering i det hele tatt.
+  // ikke ha noen markering i det hele tatt. I reorder-modus åpnes den også
+  // automatisk - ellers ville de skjulte flisene aldri vært nåbare for bytte.
   const activeInSecondary = secondarySet.has(activeId);
-  const secondaryOpen = showSecondary || activeInSecondary;
+  const secondaryOpen = showSecondary || activeInSecondary || (reorderMode && hasSecondary);
   // Piltast-navigasjon på mobil skal bare treffe fliser som faktisk er synlige.
   const stripItems = secondaryOpen ? [...primaryItems, ...secondaryItems] : primaryItems;
+
+  function handleMobileReorderTap(id: string) {
+    if (!onReorder) return;
+    if (selectedForSwap === null) {
+      setSelectedForSwap(id);
+      return;
+    }
+    if (selectedForSwap === id) {
+      setSelectedForSwap(null);
+      return;
+    }
+    const ids = items.map((i) => i.id);
+    const a = ids.indexOf(selectedForSwap);
+    const b = ids.indexOf(id);
+    setSelectedForSwap(null);
+    if (a === -1 || b === -1) return;
+    const next = [...ids];
+    [next[a], next[b]] = [next[b], next[a]];
+    onReorder(next);
+  }
 
   // Piltast-navigasjon velger elementet umiddelbart (samme "automatic
   // activation"-mønster som ARIA-tabs anbefaler), men skal IKKE flytte fokus
@@ -309,11 +351,18 @@ export function SidebarNav({
 
       {/* Mobil: ekte grid (like brede kolonner) i stedet for flex-wrap — chips
           med tekst-bred bredde ga urolige, uinnrettede rader. 4 kolonner med
-          "dense" ikon-over-tekst-knapper. Fast rekkefølge (samme som railen
-          sist lagret), ingen dra — se komponent-kommentaren over.
+          "dense" ikon-over-tekst-knapper.
+
+          I reorder-modus overstyrer trykk-to-fliser-for-å-bytte den vanlige
+          "trykk for å velge seksjon"-oppførselen (handleMobileReorderTap i
+          stedet for onSelect) - dra-og-slipp kolliderer med skroll på touch,
+          se komponent-kommentaren over.
 
           De tre sjeldnest brukte seksjonene ligger bak "Mer"-flisen nederst
           til høyre, slik at rutenettet normalt er tre rader og ikke fire. */}
+      {reorderMode && (
+        <p className="text-2xs text-ink-3 md:hidden">Trykk to fliser for å bytte plass.</p>
+      )}
       <nav
         role="tablist"
         aria-label={ariaLabel}
@@ -328,20 +377,23 @@ export function SidebarNav({
               item={item}
               active={active}
               tabIndex={active ? 0 : -1}
-              onSelect={() => onSelect(item.id)}
+              onSelect={() => (reorderMode ? handleMobileReorderTap(item.id) : onSelect(item.id))}
               onKeyDown={handleStripKeyDown}
               buttonRef={(el) => {
                 stripRefs.current[item.id] = el;
               }}
               dense
               activeAccentClass={activeAccentClass}
+              swapSelected={reorderMode && selectedForSwap === item.id}
             />
           );
         })}
 
-        {hasSecondary && (
+        {hasSecondary && !reorderMode && (
           // Ikke role="tab": dette velger ingen seksjon, den bare viser flere
           // fliser. En tab uten tilhørende panel ville løyet til skjermlesere.
+          // Skjult i reorder-modus - der er secondaryOpen alt tvunget sann
+          // (se over), så en togglingsknapp ville ikke gjort noe synlig.
           <button
             type="button"
             onClick={() => setShowSecondary((v) => !v)}
@@ -373,13 +425,14 @@ export function SidebarNav({
                 item={item}
                 active={active}
                 tabIndex={active ? 0 : -1}
-                onSelect={() => onSelect(item.id)}
+                onSelect={() => (reorderMode ? handleMobileReorderTap(item.id) : onSelect(item.id))}
                 onKeyDown={handleStripKeyDown}
                 buttonRef={(el) => {
                   stripRefs.current[item.id] = el;
                 }}
                 dense
                 activeAccentClass={activeAccentClass}
+                swapSelected={reorderMode && selectedForSwap === item.id}
               />
             );
           })}

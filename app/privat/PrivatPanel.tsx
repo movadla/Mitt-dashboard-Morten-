@@ -34,7 +34,7 @@ import {
   Wallet,
   Trophy,
   Dumbbell,
-  Bot,
+  Baby,
   ShoppingCart,
   Newspaper,
   Shirt,
@@ -89,7 +89,7 @@ export const NAV_META: Record<string, { label: string; icon: NavItem["icon"]; ic
   sport: { label: "Sport", icon: Trophy, iconColorClass: SECTION_ACCENT.sport },
   worldcup: { label: "VM", icon: Trophy, iconColorClass: SECTION_ACCENT.worldcup },
   trening: { label: "Trening", icon: Dumbbell, iconColorClass: SECTION_ACCENT.trening },
-  alfred: { label: "Alfred", icon: Bot, iconColorClass: SECTION_ACCENT.alfred },
+  alfred: { label: "Alfred", icon: Baby, iconColorClass: SECTION_ACCENT.alfred },
   shopping: { label: "Handleliste", icon: ShoppingCart, iconColorClass: SECTION_ACCENT.shopping },
   news: { label: "Nyheter", icon: Newspaper, iconColorClass: SECTION_ACCENT.news },
   fpl: { label: "FPL", icon: Shirt, iconColorClass: SECTION_ACCENT.fpl },
@@ -316,14 +316,16 @@ export default function PrivatPanel() {
           onReorder={setOrder}
           secondaryIds={SECONDARY_NAV_IDS}
         />
-        {/* Dra-håndtak for å endre rekkefølge er kun tilgjengelig på desktop-
-            railen — drag-og-slipp av en horisontalt skrollet mobil-stripe
-            kolliderer med skroll-gesten, så mobil arver bare sist lagrede
-            rekkefølge uten egen dra-affordance. */}
+        {/* v2 (2026-09-28): knappen var tidligere "hidden md:block" - dra-og-
+            slipp (desktop-railen) kolliderer med skroll på en touch-skrollet
+            mobil-stripe, så mobil hadde ingen egen affordance i det hele tatt.
+            SidebarNav har nå en egen trykk-to-fliser-for-å-bytte-mekanisme for
+            mobil-griden (samme reorderMode-flagg, se komponenten selv), så
+            knappen er nå synlig på begge bredder. */}
         <button
           type="button"
           onClick={() => setReorderMode((v) => !v)}
-          className="hidden self-start rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1 md:block"
+          className="self-start rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1"
         >
           {reorderMode ? "Lagre" : "Endre rekkefølge"}
         </button>

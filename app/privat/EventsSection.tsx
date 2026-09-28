@@ -153,6 +153,7 @@ function EventRow({
   row,
   editing,
   dayLabel,
+  isToday,
   highlighted,
   setRowRef,
   onRemove,
@@ -168,6 +169,9 @@ function EventRow({
   row: Row;
   editing: boolean;
   dayLabel?: string;
+  // v2 (2026-09-28, Morten): "skjer i dag"-toning, samme mønster som Kalender/Påminnelser
+  // allerede bruker - var tidligere en flat, uskilt rad uansett hvor nær hendelsen var.
+  isToday?: boolean;
   // Kort visuell markering (~2-3 sek) etter hopp fra en lenket påminnelse.
   highlighted?: boolean;
   setRowRef?: (id: string, el: HTMLLIElement | null) => void;
@@ -192,7 +196,11 @@ function EventRow({
 
   const meta = CATEGORY_META[row.category];
   const content = (
-    <div className={`flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2 transition ${highlighted ? "ring-2 ring-accent-privat" : ""}`}>
+    <div
+      className={`flex items-center gap-3 rounded-xl px-3 py-2 transition ${isToday ? "bg-accent-privat/[0.09]" : "bg-surface-2"} ${
+        highlighted ? "ring-2 ring-accent-privat" : ""
+      }`}
+    >
       <button
         type="button"
         onClick={() => row.event && onStartEdit(row.event.id)}
@@ -567,6 +575,7 @@ export default function EventsSection({
                         key={row.key}
                         row={row}
                         dayLabel={relativeDayLabel(row.occurrence, today)}
+                        isToday={row.occurrence === today}
                         editing={editingId === row.key}
                         onRemove={confirmDelete.request}
                         onStartEdit={setEditingId}
@@ -599,6 +608,7 @@ export default function EventsSection({
                         key={row.key}
                         row={row}
                         dayLabel={relativeDayLabel(row.occurrence, today)}
+                        isToday={row.occurrence === today}
                         editing={editingId === row.key}
                         onRemove={confirmDelete.request}
                         onStartEdit={setEditingId}
@@ -631,6 +641,7 @@ export default function EventsSection({
                         key={row.key}
                         row={row}
                         dayLabel={relativeDayLabel(row.occurrence, today)}
+                        isToday={row.occurrence === today}
                         editing={editingId === row.key}
                         onRemove={confirmDelete.request}
                         onStartEdit={setEditingId}

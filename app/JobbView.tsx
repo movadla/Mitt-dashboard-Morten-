@@ -731,10 +731,13 @@ export default function JobbView({
           activeAccentClass="text-accent"
           secondaryStale={secondaryStale}
         />
+        {/* v2 (2026-09-28): var "hidden md:block" - SidebarNav har nå en egen
+            trykk-to-fliser-for-å-bytte-mekanisme for mobil-griden (samme
+            reorderMode-flagg), se app/privat/PrivatPanel.tsx for samme fiks. */}
         <button
           type="button"
           onClick={() => setReorderMode((v) => !v)}
-          className="hidden self-start rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1 md:block"
+          className="self-start rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold uppercase text-ink-3 transition hover:border-line-strong hover:text-ink-1"
         >
           {reorderMode ? "Lagre" : "Endre rekkefølge"}
         </button>

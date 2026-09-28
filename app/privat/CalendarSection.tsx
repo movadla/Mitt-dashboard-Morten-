@@ -500,20 +500,15 @@ export default function CalendarSection({
       />
       <div className="flex flex-col gap-2">
         <MutationError message={mutationError.message} />
+        {/* "N denne uken" vises kun i CardHeader sin subtitle nå (2026-09-28 fiks, Morten -
+            samme tall sto dobbelt her rett under DayAxis også, noen titalls piksler unna). */}
         {!loading && todaysEvents.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <DayAxis
-              times={todaysTimes}
-              allDayCount={todaysAllDayCount}
-              nowMinutes={nowMinutes}
-              colorClass="text-source-teams"
-            />
-            {thisWeek.length > 0 && (
-              <p className="text-[9px] font-bold uppercase tracking-[0.13em] text-ink-4">
-                {thisWeek.length} denne uken
-              </p>
-            )}
-          </div>
+          <DayAxis
+            times={todaysTimes}
+            allDayCount={todaysAllDayCount}
+            nowMinutes={nowMinutes}
+            colorClass="text-source-teams"
+          />
         )}
         {showForm && (
             <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
