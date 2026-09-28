@@ -1036,16 +1036,13 @@ export default function FinanceSection() {
 
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Sparing</p>
-                  {showSavingsForm ? (
+                  {/* v3 (2026-09-28): den gamle inline "+ Ny sparekonto"-knappen fjernet - CardHeader
+                      sin "Legg til"-meny (Lån/Sparing/Lønn/Inntekt/Utgift) er nå den ENE, konsistente
+                      inngangen til å åpne dette skjemaet, i stedet for to parallelle veier til samme
+                      handling. Selve skjema-visningen (showSavingsForm) er UENDRET og virker likt
+                      uansett hvor den ble satt til true fra. */}
+                  {showSavingsForm && (
                     <EntryForm config={SAVINGS_FIELDS} initial={EMPTY_SAVINGS_FORM} onCancel={() => setShowSavingsForm(false)} onSave={handleAddSavings} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowSavingsForm(true)}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                    >
-                      <span className="text-base leading-none">+</span> Ny sparekonto
-                    </button>
                   )}
                   {savings.length === 0 ? (
                     <p className="text-sm text-ink-3">Ingen sparing lagt inn ennå.</p>
@@ -1086,16 +1083,8 @@ export default function FinanceSection() {
 
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lån</p>
-                  {showLoanForm ? (
+                  {showLoanForm && (
                     <EntryForm config={LOAN_FIELDS} initial={EMPTY_FORM} onCancel={() => setShowLoanForm(false)} onSave={handleAddLoan} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowLoanForm(true)}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                    >
-                      <span className="text-base leading-none">+</span> Nytt lån
-                    </button>
                   )}
                   {loans.length === 0 ? (
                     <p className="text-sm text-ink-3">Ingen lån lagt inn ennå.</p>
@@ -1136,16 +1125,8 @@ export default function FinanceSection() {
 
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lønn</p>
-                  {showSalaryForm ? (
+                  {showSalaryForm && (
                     <EntryForm config={SALARY_FIELDS} initial={EMPTY_SALARY_FORM} onCancel={() => setShowSalaryForm(false)} onSave={handleAddSalary} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowSalaryForm(true)}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                    >
-                      <span className="text-base leading-none">+</span> Ny lønnsoppføring
-                    </button>
                   )}
                   {salary.length === 0 ? (
                     <p className="text-sm text-ink-3">Ingen lønn lagt inn ennå.</p>
@@ -1179,21 +1160,13 @@ export default function FinanceSection() {
 
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Inntekter</p>
-                  {showIncomeForm ? (
+                  {showIncomeForm && (
                     <EntryForm
                       config={ACCOUNTING_FIELDS}
                       initial={emptyAccountingForm()}
                       onCancel={() => setShowIncomeForm(false)}
                       onSave={(form) => handleAddAccounting("inntekt", form)}
                     />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowIncomeForm(true)}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                    >
-                      <span className="text-base leading-none">+</span> Ny inntekt
-                    </button>
                   )}
                   {income.length === 0 ? (
                     <p className="text-sm text-ink-3">Ingen inntekter lagt inn ennå.</p>
@@ -1227,21 +1200,13 @@ export default function FinanceSection() {
 
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Utgifter</p>
-                  {showExpenseForm ? (
+                  {showExpenseForm && (
                     <EntryForm
                       config={ACCOUNTING_FIELDS}
                       initial={emptyAccountingForm()}
                       onCancel={() => setShowExpenseForm(false)}
                       onSave={(form) => handleAddAccounting("utgift", form)}
                     />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowExpenseForm(true)}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-                    >
-                      <span className="text-base leading-none">+</span> Ny utgift
-                    </button>
                   )}
                   {expenses.length === 0 ? (
                     <p className="text-sm text-ink-3">Ingen utgifter lagt inn ennå.</p>
@@ -1274,13 +1239,27 @@ export default function FinanceSection() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">AI-bruk (chatbot)</p>
-                {aiUsage ? (
-                  <AiUsageBox usage={aiUsage} onSaveBalance={handleSaveBalance} />
-                ) : (
-                  <p className="text-sm text-ink-3">Fikk ikke hentet AI-bruk akkurat nå.</p>
-                )}
+              {/* v3 (2026-09-28, funnet i en verifiseringsrunde): AiUsageBox hører ikke hjemme i
+                  familiens økonomital (den er en kostnadsteller for chatboten, ikke en
+                  eiendel/gjeld/inntekt) - det finnes ingen egen chatbot-verktøy-seksjon andre
+                  steder i Privat-fanen å flytte den til (chat skjer kun via stemmekommando/API,
+                  ingen egen UI-seksjon, se app/api/chat og app/api/voice-command), så den blir
+                  værende her. Gitt en egen "Verktøy"-gruppeoverskrift (samme mønster som
+                  Eiendeler/Gjeld/Regnskap over) i stedet for å stå udelt sammen med Regnskap, slik
+                  at den i det minste er tydelig avgrenset som en ANNEN kategori enn pengene. */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-ink-2">Verktøy</p>
+                  <div className="h-px flex-1 bg-line" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">AI-bruk (chatbot)</p>
+                  {aiUsage ? (
+                    <AiUsageBox usage={aiUsage} onSaveBalance={handleSaveBalance} />
+                  ) : (
+                    <p className="text-sm text-ink-3">Fikk ikke hentet AI-bruk akkurat nå.</p>
+                  )}
+                </div>
               </div>
             </>
           )}
