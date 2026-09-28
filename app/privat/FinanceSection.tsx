@@ -108,6 +108,173 @@ function AiUsageBox({
   );
 }
 
+// ── Delt skjema-/rad-mønster (2026-09-28) ───────────────────────────────────
+// Lån/Sparing/Lønn/Regnskap hadde hver sitt eget ~90-linjers skjema og sin
+// egen swipe-og-rediger-rad, identiske i struktur og bare ulike i hvilke felt
+// som vises. EntryForm/EntryRow er de delte skjelettene; hver entitet gir kun
+// sin feltkonfigurasjon (EntryForm) eller sin tekst/farge (EntryRow) - all
+// felt-til-payload-konvertering (loanToForm/formToPayload osv.) er UENDRET og
+// ligger fortsatt separat per entitet, siden feltene faktisk betyr noe ulikt
+// (prosent vs. kroner vs. dato) og ikke bør gjettes generisk.
+interface EntryField {
+  key: string;
+  type: "text" | "number" | "date";
+  placeholder?: string;
+  // Når satt: feltet får en synlig liten etikett over seg (Lån sine tre
+  // datofelt) i stedet for placeholder-stilen de andre feltene bruker.
+  label?: string;
+  step?: string;
+  // Full bredde på egen rad (navn/beskrivelse/notat) i stedet for gruppert
+  // side ved side med naboene i samme rad.
+  full?: boolean;
+}
+
+interface EntryFormConfig {
+  rows: EntryField[][];
+  requiredKeys: string[];
+}
+
+function EntryForm<F extends Record<string, string>>({
+  config,
+  initial,
+  onCancel,
+  onSave,
+}: {
+  config: EntryFormConfig;
+  initial: F;
+  onCancel: () => void;
+  onSave: (form: F) => Promise<boolean>;
+}) {
+  const [form, setForm] = useState<F>(initial);
+  const [submitting, setSubmitting] = useState(false);
+  const valid = config.requiredKeys.every((k) => form[k]?.trim());
+
+  function set(key: string, value: string) {
+    setForm((f) => ({ ...f, [key]: value }) as F);
+  }
+
+  async function save() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+      {config.rows.map((row, i) => {
+        const singleFull = row.length === 1 && row[0].full;
+        return (
+          <div key={i} className={singleFull ? undefined : "flex flex-wrap items-center gap-2"}>
+            {row.map((field) =>
+              field.label ? (
+                <label key={field.key} className="flex flex-col gap-0.5 text-2xs text-ink-4">
+                  {field.label}
+                  <input
+                    type={field.type}
+                    value={form[field.key] ?? ""}
+                    onChange={(e) => set(field.key, e.target.value)}
+                    className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
+                  />
+                </label>
+              ) : (
+                <input
+                  key={field.key}
+                  type={field.type}
+                  step={field.step}
+                  value={form[field.key] ?? ""}
+                  onChange={(e) => set(field.key, e.target.value)}
+                  placeholder={field.placeholder}
+                  className={
+                    field.full
+                      ? "rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+                      : "min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
+                  }
+                />
+              ),
+            )}
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={!valid || submitting}
+          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+        >
+          Lagre
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Delt rad-skjelett: swipe-for-å-slette, trykk-for-å-redigere, beløp til
+// høyre for navnet. `amountColorClass` er bevisst valgfri og default nøytral
+// - kun Regnskap sitt inntekt/utgift-fortegn får farge (se AccountingRow),
+// Lån/Sparing/Lønn har ingen "denne raden er god/dårlig"-egenskap i seg selv
+// og skal derfor IKKE farges (samme "ett signal, ikke overalt"-prinsipp som
+// Kundefordringer ble ryddet etter denne økten - se toppnivå-stripen i
+// FinanceSection under for hvor "penger inn vs. penger ut" faktisk vises).
+function EntryRow({
+  editing,
+  editForm,
+  primary,
+  amount,
+  amountColorClass = "text-ink-1",
+  secondary,
+  extra,
+  editLabel,
+  deleteLabel,
+  onStartEdit,
+  onRemove,
+}: {
+  editing: boolean;
+  editForm: React.ReactNode;
+  primary: string;
+  amount: string;
+  amountColorClass?: string;
+  secondary: string;
+  extra?: React.ReactNode;
+  editLabel: string;
+  deleteLabel: string;
+  onStartEdit: () => void;
+  onRemove: () => void;
+}) {
+  if (editing) return <li>{editForm}</li>;
+  return (
+    <li>
+      <SwipeableRow onSwipeLeft={onRemove} leftLabel="Slett">
+        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+          <button type="button" onClick={onStartEdit} aria-label={editLabel} className="min-w-0 flex-1 text-left">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="truncate text-sm font-medium text-ink-1">{primary}</p>
+              <p className={`shrink-0 text-sm font-semibold tabular-nums ${amountColorClass}`}>{amount}</p>
+            </div>
+            <p className="mt-0.5 text-2xs text-ink-4">{secondary}</p>
+            {extra}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={deleteLabel}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </SwipeableRow>
+    </li>
+  );
+}
+
 type LoanFormValues = {
   name: string;
   lender: string;
@@ -132,6 +299,30 @@ const EMPTY_FORM: LoanFormValues = {
   maturityDate: "",
   rateFixedUntil: "",
   coBorrower: "",
+};
+
+const LOAN_FIELDS: EntryFormConfig = {
+  rows: [
+    [{ key: "name", type: "text", placeholder: "Navn (f.eks. Fastrente 5 år annuitet)", full: true }],
+    [
+      { key: "lender", type: "text", placeholder: "Bank" },
+      { key: "coBorrower", type: "text", placeholder: "Medlåntaker (valgfritt)" },
+    ],
+    [
+      { key: "remainingAmount", type: "number", placeholder: "Gjenstående (kr)" },
+      { key: "originalAmount", type: "number", placeholder: "Opprinnelig (kr)" },
+    ],
+    [
+      { key: "nominalRate", type: "number", step: "0.01", placeholder: "Nominell rente %" },
+      { key: "effectiveRate", type: "number", step: "0.01", placeholder: "Effektiv rente %" },
+    ],
+    [
+      { key: "nextPaymentDate", type: "date", label: "Neste betaling" },
+      { key: "rateFixedUntil", type: "date", label: "Fastrente til" },
+      { key: "maturityDate", type: "date", label: "Innfrielsesdato" },
+    ],
+  ],
+  requiredKeys: ["name", "lender", "remainingAmount"],
 };
 
 function loanToForm(loan: Loan): LoanFormValues {
@@ -162,138 +353,6 @@ function formToPayload(form: LoanFormValues) {
     rateFixedUntil: form.rateFixedUntil || null,
     coBorrower: form.coBorrower.trim() || null,
   };
-}
-
-function LoanForm({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: LoanFormValues;
-  onCancel: () => void;
-  onSave: (form: LoanFormValues) => Promise<boolean>;
-}) {
-  const [form, setForm] = useState(initial);
-  const [submitting, setSubmitting] = useState(false);
-  const valid = form.name.trim() && form.lender.trim() && form.remainingAmount.trim();
-
-  function set<K extends keyof LoanFormValues>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function save() {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSave(form);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-      <input
-        type="text"
-        value={form.name}
-        onChange={(e) => set("name", e.target.value)}
-        placeholder="Navn (f.eks. Fastrente 5 år annuitet)"
-        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="text"
-          value={form.lender}
-          onChange={(e) => set("lender", e.target.value)}
-          placeholder="Bank"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={form.coBorrower}
-          onChange={(e) => set("coBorrower", e.target.value)}
-          placeholder="Medlåntaker (valgfritt)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="number"
-          value={form.remainingAmount}
-          onChange={(e) => set("remainingAmount", e.target.value)}
-          placeholder="Gjenstående (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="number"
-          value={form.originalAmount}
-          onChange={(e) => set("originalAmount", e.target.value)}
-          placeholder="Opprinnelig (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="number"
-          step="0.01"
-          value={form.nominalRate}
-          onChange={(e) => set("nominalRate", e.target.value)}
-          placeholder="Nominell rente %"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="number"
-          step="0.01"
-          value={form.effectiveRate}
-          onChange={(e) => set("effectiveRate", e.target.value)}
-          placeholder="Effektiv rente %"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
-          Neste betaling
-          <input
-            type="date"
-            value={form.nextPaymentDate}
-            onChange={(e) => set("nextPaymentDate", e.target.value)}
-            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
-          Fastrente til
-          <input
-            type="date"
-            value={form.rateFixedUntil}
-            onChange={(e) => set("rateFixedUntil", e.target.value)}
-            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-2xs text-ink-4">
-          Innfrielsesdato
-          <input
-            type="date"
-            value={form.maturityDate}
-            onChange={(e) => set("maturityDate", e.target.value)}
-            className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-          />
-        </label>
-      </div>
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-          Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!valid || submitting}
-          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-        >
-          Lagre
-        </button>
-      </div>
-    </div>
-  );
 }
 
 // Gjenværende tid TIL FASTRENTEN UTLØPER (ikke til lånet er nedbetalt —
@@ -327,62 +386,59 @@ function LoanRow({
   onSaveEdit: (id: string, form: LoanFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
-  if (editing) {
-    return (
-      <li>
-        <LoanForm initial={loanToForm(loan)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(loan.id, form)} />
-      </li>
+  let extra: React.ReactNode = null;
+  if (loan.rateFixedUntil) {
+    const label = remainingFixedTermLabel(loan.rateFixedUntil, localDateString());
+    // v2 (2026-09-28, Morten: fastrente-varsel skal skille seg ut): kun den
+    // UTLØPTE meldingen er handlingskrevende - "X år Y mnd igjen" er bare
+    // informasjon og skal ikke se ut som et problem.
+    const expired = label === "Fastrenten er utløpt";
+    extra = <p className={`mt-1.5 text-2xs ${expired ? "font-medium text-status-warning" : "text-ink-4"}`}>{label}</p>;
+  } else if (loan.originalAmount && loan.originalAmount > 0) {
+    const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount));
+    const pct = Math.round(paidDown * 100);
+    extra = (
+      <div className="mt-1.5 flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <RatioBar done={pct} total={100} colorClass="text-accent-privat" label={`${pct}% nedbetalt`} />
+        </div>
+        <span className="shrink-0 text-2xs tabular-nums text-ink-4">{pct}% nedbetalt</span>
+      </div>
     );
   }
 
   return (
-    <li>
-      <SwipeableRow onSwipeLeft={() => onRemove(loan.id)} leftLabel="Slett">
-      <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-        <button type="button" onClick={() => onStartEdit(loan.id)} aria-label="Rediger lån" className="min-w-0 flex-1 text-left">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium text-ink-1">{loan.name}</p>
-            <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(loan.remainingAmount)}</p>
-          </div>
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {loan.lender}
-            {loan.coBorrower ? ` · med ${loan.coBorrower}` : ""}
-            {loan.nominalRate !== undefined ? ` · ${loan.nominalRate.toLocaleString("nb-NO")}% rente` : ""}
-            {loan.nextPaymentDate ? ` · neste betaling ${formatDateDMY(loan.nextPaymentDate)}` : ""}
-          </p>
-          {loan.rateFixedUntil ? (
-            <p className="mt-1.5 text-2xs text-ink-4">{remainingFixedTermLabel(loan.rateFixedUntil, localDateString())}</p>
-          ) : (
-            loan.originalAmount && loan.originalAmount > 0 && (() => {
-              const paidDown = Math.min(1, Math.max(0, 1 - loan.remainingAmount / loan.originalAmount!));
-              const pct = Math.round(paidDown * 100);
-              return (
-                <div className="mt-1.5 flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <RatioBar done={pct} total={100} colorClass="text-accent-privat" label={`${pct}% nedbetalt`} />
-                  </div>
-                  <span className="shrink-0 text-2xs tabular-nums text-ink-4">{pct}% nedbetalt</span>
-                </div>
-              );
-            })()
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => onRemove(loan.id)}
-          aria-label="Slett lån"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      </SwipeableRow>
-    </li>
+    <EntryRow
+      editing={editing}
+      editForm={<EntryForm config={LOAN_FIELDS} initial={loanToForm(loan)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(loan.id, form)} />}
+      primary={loan.name}
+      amount={formatKr(loan.remainingAmount)}
+      secondary={`${loan.lender}${loan.coBorrower ? ` · med ${loan.coBorrower}` : ""}${
+        loan.nominalRate !== undefined ? ` · ${loan.nominalRate.toLocaleString("nb-NO")}% rente` : ""
+      }${loan.nextPaymentDate ? ` · neste betaling ${formatDateDMY(loan.nextPaymentDate)}` : ""}`}
+      extra={extra}
+      editLabel="Rediger lån"
+      deleteLabel="Slett lån"
+      onStartEdit={() => onStartEdit(loan.id)}
+      onRemove={() => onRemove(loan.id)}
+    />
   );
 }
 
 type SavingsFormValues = { name: string; institution: string; balance: string; note: string };
 const EMPTY_SAVINGS_FORM: SavingsFormValues = { name: "", institution: "", balance: "", note: "" };
+
+const SAVINGS_FIELDS: EntryFormConfig = {
+  rows: [
+    [{ key: "name", type: "text", placeholder: "Navn (f.eks. Fondskonto)", full: true }],
+    [
+      { key: "institution", type: "text", placeholder: "Bank/plattform" },
+      { key: "balance", type: "number", placeholder: "Saldo (kr)" },
+    ],
+    [{ key: "note", type: "text", placeholder: "Notat (valgfritt)", full: true }],
+  ],
+  requiredKeys: ["name", "institution", "balance"],
+};
 
 function savingsToForm(a: SavingsAccount): SavingsFormValues {
   return { name: a.name, institution: a.institution, balance: String(a.balance), note: a.note ?? "" };
@@ -395,82 +451,6 @@ function savingsToPayload(form: SavingsFormValues) {
     balance: Number(form.balance.replace(",", ".")),
     note: form.note.trim() || null,
   };
-}
-
-function SavingsForm({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: SavingsFormValues;
-  onCancel: () => void;
-  onSave: (form: SavingsFormValues) => Promise<boolean>;
-}) {
-  const [form, setForm] = useState(initial);
-  const [submitting, setSubmitting] = useState(false);
-  const valid = form.name.trim() && form.institution.trim() && form.balance.trim();
-
-  function set<K extends keyof SavingsFormValues>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function save() {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSave(form);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-      <input
-        type="text"
-        value={form.name}
-        onChange={(e) => set("name", e.target.value)}
-        placeholder="Navn (f.eks. Fondskonto)"
-        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="text"
-          value={form.institution}
-          onChange={(e) => set("institution", e.target.value)}
-          placeholder="Bank/plattform"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="number"
-          value={form.balance}
-          onChange={(e) => set("balance", e.target.value)}
-          placeholder="Saldo (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <input
-        type="text"
-        value={form.note}
-        onChange={(e) => set("note", e.target.value)}
-        placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-          Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!valid || submitting}
-          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-        >
-          Lagre
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function SavingsRow({
@@ -488,44 +468,40 @@ function SavingsRow({
   onSaveEdit: (id: string, form: SavingsFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
-  if (editing) {
-    return (
-      <li>
-        <SavingsForm initial={savingsToForm(account)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(account.id, form)} />
-      </li>
-    );
-  }
-
   return (
-    <li>
-      <SwipeableRow onSwipeLeft={() => onRemove(account.id)} leftLabel="Slett">
-      <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-        <button type="button" onClick={() => onStartEdit(account.id)} aria-label="Rediger sparekonto" className="min-w-0 flex-1 text-left">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium text-ink-1">{account.name}</p>
-            <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(account.balance)}</p>
-          </div>
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {account.institution}
-            {account.note ? ` · ${account.note}` : ""}
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => onRemove(account.id)}
-          aria-label="Slett sparekonto"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      </SwipeableRow>
-    </li>
+    <EntryRow
+      editing={editing}
+      editForm={
+        <EntryForm config={SAVINGS_FIELDS} initial={savingsToForm(account)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(account.id, form)} />
+      }
+      primary={account.name}
+      amount={formatKr(account.balance)}
+      secondary={`${account.institution}${account.note ? ` · ${account.note}` : ""}`}
+      editLabel="Rediger sparekonto"
+      deleteLabel="Slett sparekonto"
+      onStartEdit={() => onStartEdit(account.id)}
+      onRemove={() => onRemove(account.id)}
+    />
   );
 }
 
 type SalaryFormValues = { person: string; employer: string; grossMonthly: string; netMonthly: string; note: string };
 const EMPTY_SALARY_FORM: SalaryFormValues = { person: "", employer: "", grossMonthly: "", netMonthly: "", note: "" };
+
+const SALARY_FIELDS: EntryFormConfig = {
+  rows: [
+    [
+      { key: "person", type: "text", placeholder: "Person" },
+      { key: "employer", type: "text", placeholder: "Arbeidsgiver" },
+    ],
+    [
+      { key: "grossMonthly", type: "number", placeholder: "Bruttolønn/mnd (kr)" },
+      { key: "netMonthly", type: "number", placeholder: "Nettolønn/mnd (valgfritt)" },
+    ],
+    [{ key: "note", type: "text", placeholder: "Notat (valgfritt)", full: true }],
+  ],
+  requiredKeys: ["person", "employer", "grossMonthly"],
+};
 
 function salaryToForm(s: SalaryEntry): SalaryFormValues {
   return {
@@ -547,91 +523,6 @@ function salaryToPayload(form: SalaryFormValues) {
   };
 }
 
-function SalaryForm({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: SalaryFormValues;
-  onCancel: () => void;
-  onSave: (form: SalaryFormValues) => Promise<boolean>;
-}) {
-  const [form, setForm] = useState(initial);
-  const [submitting, setSubmitting] = useState(false);
-  const valid = form.person.trim() && form.employer.trim() && form.grossMonthly.trim();
-
-  function set<K extends keyof SalaryFormValues>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function save() {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSave(form);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="text"
-          value={form.person}
-          onChange={(e) => set("person", e.target.value)}
-          placeholder="Person"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="text"
-          value={form.employer}
-          onChange={(e) => set("employer", e.target.value)}
-          placeholder="Arbeidsgiver"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="number"
-          value={form.grossMonthly}
-          onChange={(e) => set("grossMonthly", e.target.value)}
-          placeholder="Bruttolønn/mnd (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="number"
-          value={form.netMonthly}
-          onChange={(e) => set("netMonthly", e.target.value)}
-          placeholder="Nettolønn/mnd (valgfritt)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-      </div>
-      <input
-        type="text"
-        value={form.note}
-        onChange={(e) => set("note", e.target.value)}
-        placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-          Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!valid || submitting}
-          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-        >
-          Lagre
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function SalaryRow({
   entry,
   editing,
@@ -647,40 +538,20 @@ function SalaryRow({
   onSaveEdit: (id: string, form: SalaryFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
-  if (editing) {
-    return (
-      <li>
-        <SalaryForm initial={salaryToForm(entry)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(entry.id, form)} />
-      </li>
-    );
-  }
-
   return (
-    <li>
-      <SwipeableRow onSwipeLeft={() => onRemove(entry.id)} leftLabel="Slett">
-      <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-        <button type="button" onClick={() => onStartEdit(entry.id)} aria-label="Rediger lønn" className="min-w-0 flex-1 text-left">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-sm font-medium text-ink-1">{entry.person}</p>
-            <p className="shrink-0 text-sm font-semibold tabular-nums text-ink-1">{formatKr(entry.grossMonthly)}/mnd</p>
-          </div>
-          <p className="mt-0.5 text-2xs text-ink-4">
-            {entry.employer}
-            {entry.netMonthly !== undefined ? ` · ${formatKr(entry.netMonthly)} netto` : ""}
-            {entry.note ? ` · ${entry.note}` : ""}
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => onRemove(entry.id)}
-          aria-label="Slett lønnsoppføring"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      </SwipeableRow>
-    </li>
+    <EntryRow
+      editing={editing}
+      editForm={<EntryForm config={SALARY_FIELDS} initial={salaryToForm(entry)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(entry.id, form)} />}
+      primary={entry.person}
+      amount={`${formatKr(entry.grossMonthly)}/mnd`}
+      secondary={`${entry.employer}${entry.netMonthly !== undefined ? ` · ${formatKr(entry.netMonthly)} netto` : ""}${
+        entry.note ? ` · ${entry.note}` : ""
+      }`}
+      editLabel="Rediger lønn"
+      deleteLabel="Slett lønnsoppføring"
+      onStartEdit={() => onStartEdit(entry.id)}
+      onRemove={() => onRemove(entry.id)}
+    />
   );
 }
 
@@ -689,6 +560,18 @@ type AccountingFormValues = { description: string; amount: string; date: string;
 function emptyAccountingForm(): AccountingFormValues {
   return { description: "", amount: "", date: localDateString(), note: "" };
 }
+
+const ACCOUNTING_FIELDS: EntryFormConfig = {
+  rows: [
+    [{ key: "description", type: "text", placeholder: "Beskrivelse", full: true }],
+    [
+      { key: "amount", type: "number", placeholder: "Beløp (kr)" },
+      { key: "date", type: "date" },
+    ],
+    [{ key: "note", type: "text", placeholder: "Notat (valgfritt)", full: true }],
+  ],
+  requiredKeys: ["description", "amount", "date"],
+};
 
 function accountingToForm(entry: AccountingEntry): AccountingFormValues {
   return { description: entry.description, amount: String(entry.amount), date: entry.date, note: entry.note ?? "" };
@@ -706,81 +589,6 @@ function accountingToPayload(type: AccountingEntryType, form: AccountingFormValu
 
 // Delt av både Inntekter- og Utgifter-listen (samme felter, kun `type`
 // skiller dem) — samme skjema-/rad-mønster som Sparing/Lønn over.
-function AccountingForm({
-  initial,
-  onCancel,
-  onSave,
-}: {
-  initial: AccountingFormValues;
-  onCancel: () => void;
-  onSave: (form: AccountingFormValues) => Promise<boolean>;
-}) {
-  const [form, setForm] = useState(initial);
-  const [submitting, setSubmitting] = useState(false);
-  const valid = form.description.trim() && form.amount.trim() && form.date;
-
-  function set<K extends keyof AccountingFormValues>(key: K, value: string) {
-    setForm((f) => ({ ...f, [key]: value }));
-  }
-
-  async function save() {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      await onSave(form);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-      <input
-        type="text"
-        value={form.description}
-        onChange={(e) => set("description", e.target.value)}
-        placeholder="Beskrivelse"
-        className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex flex-wrap gap-2">
-        <input
-          type="number"
-          value={form.amount}
-          onChange={(e) => set("amount", e.target.value)}
-          placeholder="Beløp (kr)"
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-        />
-        <input
-          type="date"
-          value={form.date}
-          onChange={(e) => set("date", e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 outline-none focus:border-line-strong"
-        />
-      </div>
-      <input
-        type="text"
-        value={form.note}
-        onChange={(e) => set("note", e.target.value)}
-        placeholder="Notat (valgfritt)"
-        className="rounded-lg border border-transparent bg-surface-1 px-2 py-1.5 text-xs text-ink-2 placeholder-ink-4 outline-none focus:border-line-strong"
-      />
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onCancel} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-          Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!valid || submitting}
-          className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-        >
-          Lagre
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AccountingRow({
   entry,
   editing,
@@ -796,44 +604,28 @@ function AccountingRow({
   onSaveEdit: (id: string, form: AccountingFormValues) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
-  if (editing) {
-    return (
-      <li>
-        <AccountingForm initial={accountingToForm(entry)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(entry.id, form)} />
-      </li>
-    );
-  }
-
   return (
-    <li>
-      <SwipeableRow onSwipeLeft={() => onRemove(entry.id)} leftLabel="Slett">
-        <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-          <button type="button" onClick={() => onStartEdit(entry.id)} aria-label="Rediger post" className="min-w-0 flex-1 text-left">
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="truncate text-sm font-medium text-ink-1">{entry.description}</p>
-              <p className={`shrink-0 text-sm font-semibold tabular-nums ${entry.type === "inntekt" ? "text-status-positive" : "text-ink-1"}`}>
-                {entry.type === "inntekt" ? "+" : "−"}
-                {formatKr(entry.amount)}
-              </p>
-            </div>
-            <p className="mt-0.5 text-2xs text-ink-4">
-              {formatDateDMY(entry.date)}
-              {entry.note ? ` · ${entry.note}` : ""}
-            </p>
-          </button>
-          <button
-            type="button"
-            onClick={() => onRemove(entry.id)}
-            aria-label="Slett post"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-4 transition hover:bg-surface-3 hover:text-rose-400"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </SwipeableRow>
-    </li>
+    <EntryRow
+      editing={editing}
+      editForm={
+        <EntryForm config={ACCOUNTING_FIELDS} initial={accountingToForm(entry)} onCancel={onCancelEdit} onSave={(form) => onSaveEdit(entry.id, form)} />
+      }
+      primary={entry.description}
+      amount={`${entry.type === "inntekt" ? "+" : "−"}${formatKr(entry.amount)}`}
+      // Eneste stedet en rad-farge faktisk sier noe (inn/ut) - se begrunnelsen
+      // i EntryRow sin kommentar.
+      amountColorClass={entry.type === "inntekt" ? "text-status-positive" : "text-ink-1"}
+      secondary={`${formatDateDMY(entry.date)}${entry.note ? ` · ${entry.note}` : ""}`}
+      editLabel="Rediger post"
+      deleteLabel="Slett post"
+      onStartEdit={() => onStartEdit(entry.id)}
+      onRemove={() => onRemove(entry.id)}
+    />
   );
 }
+
+const ADD_MENU_BTN =
+  "rounded-full border border-line bg-surface-2 px-3 py-1.5 text-2xs font-semibold text-ink-2 transition hover:border-line-strong hover:text-ink-1";
 
 export default function FinanceSection() {
   const { data: loansData, isLoading: loansLoading, mutate: mutateLoans } = useSWR<{ loans: Loan[] }>("/api/loans", jsonFetcher);
@@ -857,6 +649,7 @@ export default function FinanceSection() {
   const [showSalaryForm, setShowSalaryForm] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
@@ -1169,34 +962,66 @@ export default function FinanceSection() {
   }
 
   const totalRemaining = loans.reduce((sum, l) => sum + l.remainingAmount, 0);
+  const totalSavings = savings.reduce((sum, s) => sum + s.balance, 0);
+  const netAccounting = income.reduce((sum, e) => sum + e.amount, 0) - expenses.reduce((sum, e) => sum + e.amount, 0);
   const visibleLoans = loans.slice(0, visibleLoanCount);
   const visibleSavings = savings.slice(0, visibleSavingsCount);
   const visibleSalary = salary.slice(0, visibleSalaryCount);
   const visibleIncome = income.slice(0, visibleIncomeCount);
   const visibleExpenses = expenses.slice(0, visibleExpenseCount);
 
-  // "+"-knappen åpner Lån-skjemaet — den vanligste av de tre underseksjonene
-  // (og den eneste som vises i kortets eget sammendrag) — i stedet for at man
-  // må åpne kortet manuelt og lete opp riktig underseksjon selv, som var
-  // Økonomi sitt eneste avvik fra ett-klikks-legg-til-mønsteret resten av
-  // appen bruker.
+  // v2 (2026-09-28, Morten: "gjør 'Legg til'-knappen til en meny"): åpnet
+  // tidligere alltid Lån-skjemaet uansett hva man faktisk ville legge til -
+  // nå en liten velger med alle fem, se ADD_MENU_BTN-raden under CardHeader.
   function handleAddClick() {
-    setShowLoanForm(true);
+    setShowAddMenu((v) => !v);
+  }
+
+  function openAddForm(action: () => void) {
+    action();
+    setShowAddMenu(false);
   }
 
   return (
     <div className="border-t-2 border-t-source-outlook/60 p-4">
-      <CardHeader
-        title="Økonomi"
-        // Nøkkeltallet (gjenstående lånebeløp) løftet fra subtitle til stat —
-        // samme formatKr-verdi som JobbReceivablesSection/IncomeForecastSection
-        // allerede viser som stat, systematisk sveip 2026-09-07.
-        stat={loans.length > 0 ? { value: formatKr(totalRemaining), label: "gjenstår i lån" } : undefined}
-        onAdd={handleAddClick}
-        addLabel="Nytt lån"
-        icon={Wallet}
-        iconColorClass="text-source-outlook"
-      />
+      <CardHeader title="Økonomi" onAdd={handleAddClick} addLabel="Legg til" icon={Wallet} iconColorClass="text-source-outlook" />
+      {/* v2 (2026-09-28): tre toppnivå-summer i stedet for kun "gjenstår i lån" som
+          CardHeader-stat - Sparing og netto inntekt/utgift var usynlige uten å regne selv.
+          Kun Netto får farge (rødt/grønt) - Sparing/Gjeld er nøytrale ink-tall, samme
+          "ett fargesignal, ikke overalt"-prinsipp som Kundefordringer ble ryddet etter. */}
+      <div className="mb-3 grid grid-cols-3 gap-1 sm:gap-2">
+        {(
+          [
+            ["Sparing", totalSavings, "text-ink-1"],
+            ["Gjeld", totalRemaining, "text-ink-1"],
+            ["Netto", netAccounting, netAccounting >= 0 ? "text-status-positive" : "text-status-danger"],
+          ] as const
+        ).map(([label, belop, color]) => (
+          <div key={label} className="min-w-0 rounded-xl border border-line bg-surface-2 px-1 py-2 sm:px-3 sm:py-2.5">
+            <p className="truncate text-2xs font-semibold uppercase tracking-wide text-ink-4">{label}</p>
+            <p className={`mt-1 truncate text-xs font-semibold tabular-nums sm:text-lg ${color}`}>{formatKr(belop)}</p>
+          </div>
+        ))}
+      </div>
+      {showAddMenu && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => openAddForm(() => setShowLoanForm(true))} className={ADD_MENU_BTN}>
+            Lån
+          </button>
+          <button type="button" onClick={() => openAddForm(() => setShowSavingsForm(true))} className={ADD_MENU_BTN}>
+            Sparing
+          </button>
+          <button type="button" onClick={() => openAddForm(() => setShowSalaryForm(true))} className={ADD_MENU_BTN}>
+            Lønn
+          </button>
+          <button type="button" onClick={() => openAddForm(() => setShowIncomeForm(true))} className={ADD_MENU_BTN}>
+            Inntekt
+          </button>
+          <button type="button" onClick={() => openAddForm(() => setShowExpenseForm(true))} className={ADD_MENU_BTN}>
+            Utgift
+          </button>
+        </div>
+      )}
         <div className="flex flex-col gap-4">
           <MutationError message={mutationError.message} />
           {loading ? (
@@ -1212,7 +1037,7 @@ export default function FinanceSection() {
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Sparing</p>
                   {showSavingsForm ? (
-                    <SavingsForm initial={EMPTY_SAVINGS_FORM} onCancel={() => setShowSavingsForm(false)} onSave={handleAddSavings} />
+                    <EntryForm config={SAVINGS_FIELDS} initial={EMPTY_SAVINGS_FORM} onCancel={() => setShowSavingsForm(false)} onSave={handleAddSavings} />
                   ) : (
                     <button
                       type="button"
@@ -1262,7 +1087,7 @@ export default function FinanceSection() {
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lån</p>
                   {showLoanForm ? (
-                    <LoanForm initial={EMPTY_FORM} onCancel={() => setShowLoanForm(false)} onSave={handleAddLoan} />
+                    <EntryForm config={LOAN_FIELDS} initial={EMPTY_FORM} onCancel={() => setShowLoanForm(false)} onSave={handleAddLoan} />
                   ) : (
                     <button
                       type="button"
@@ -1312,7 +1137,7 @@ export default function FinanceSection() {
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Lønn</p>
                   {showSalaryForm ? (
-                    <SalaryForm initial={EMPTY_SALARY_FORM} onCancel={() => setShowSalaryForm(false)} onSave={handleAddSalary} />
+                    <EntryForm config={SALARY_FIELDS} initial={EMPTY_SALARY_FORM} onCancel={() => setShowSalaryForm(false)} onSave={handleAddSalary} />
                   ) : (
                     <button
                       type="button"
@@ -1355,7 +1180,8 @@ export default function FinanceSection() {
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Inntekter</p>
                   {showIncomeForm ? (
-                    <AccountingForm
+                    <EntryForm
+                      config={ACCOUNTING_FIELDS}
                       initial={emptyAccountingForm()}
                       onCancel={() => setShowIncomeForm(false)}
                       onSave={(form) => handleAddAccounting("inntekt", form)}
@@ -1402,7 +1228,8 @@ export default function FinanceSection() {
                 <div className="flex flex-col gap-1.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Utgifter</p>
                   {showExpenseForm ? (
-                    <AccountingForm
+                    <EntryForm
+                      config={ACCOUNTING_FIELDS}
                       initial={emptyAccountingForm()}
                       onCancel={() => setShowExpenseForm(false)}
                       onSave={(form) => handleAddAccounting("utgift", form)}
