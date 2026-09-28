@@ -7,7 +7,7 @@ import { CardHeader, SkeletonRows } from "../CardShell";
 import { SECTION_ACCENT } from "./sectionAccents";
 import { formatDMY } from "@/lib/payday";
 import { AI_TIPS_CATEGORY_LABELS, type AiTip, type AiTipFeedbackInput } from "@/lib/aiTipsTypes";
-import { Sparkles, Link2, CirclePlay, AtSign, ExternalLink, Highlighter, CircleHelp, Terminal } from "lucide-react";
+import { Sparkles, Link2, CirclePlay, AtSign, ExternalLink, Highlighter, CircleHelp, Terminal, X } from "lucide-react";
 
 // Seksjonen har ÉN fast aksentfarge (fuchsia-400, se sectionAccents.ts) —
 // klassene under er derfor skrevet som RENE, statiske strenger i stedet for
@@ -471,7 +471,12 @@ function DiagramBlock({ code }: { code: string }) {
   // Stille feil — diagrammet er en bonus for forståelsen, ikke kritisk
   // innhold. Resten av tipset skal fungere fint uten det.
   if (failed) return null;
-  if (!svg) return <div className="mt-3 h-28 animate-pulse rounded-xl bg-surface-2" />;
+  if (!svg)
+    return (
+      <div className="mt-3 flex h-28 animate-pulse items-center justify-center rounded-xl bg-surface-2">
+        <p className="text-2xs text-ink-4">Tegner diagram…</p>
+      </div>
+    );
   return <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-surface-1 p-3" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
@@ -683,7 +688,11 @@ function TodayCard({
   onFeedbackSubmitted?: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface-2 p-3.5">
+    // v2 (2026-09-28, Morten: dagens tips manglet visuell fremheving - samme nøytrale ramme som
+    // en gammel arkiv-rad). Aksentert ramme/bakgrunn + en liten "I DAG"-etikett skiller det nå
+    // tydelig fra historikken i Lager-fanen.
+    <div className="rounded-2xl border border-accent-privat/40 bg-accent-privat/5 p-3.5">
+      <p className="mb-2 text-2xs font-bold uppercase tracking-[0.13em] text-accent-privat">I dag</p>
       <TipBody tip={tip} onUpdate={onUpdate} onFeedbackSubmitted={onFeedbackSubmitted} />
     </div>
   );
@@ -840,10 +849,37 @@ function LagerSection() {
   );
 }
 
+// v2 (2026-09-28, Morten): dra-over-ord-markering (Viktig/Forstår ikke) hadde null
+// oppdagelses-hint - helt skjult funksjonalitet. Vis en avviselig engangs-hint til den er
+// lukket én gang, lagret i localStorage (default false til effekten bekrefter status, for å
+// unngå et kort glimt av hintet for tilbakevendende brukere som alt har lukket den).
+const HIGHLIGHT_HINT_KEY = "mitt-dashboard:aitips-highlight-hint-dismissed";
+
+function useShowHighlightHint(): [boolean, () => void] {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem(HIGHLIGHT_HINT_KEY)) setShow(true);
+    } catch {
+      /* ignore - blokkert/privat modus, hintet vises da aldri, ikke kritisk */
+    }
+  }, []);
+  function dismiss() {
+    setShow(false);
+    try {
+      window.localStorage.setItem(HIGHLIGHT_HINT_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+  return [show, dismiss];
+}
+
 function DagensSection() {
   const { data, isLoading, mutate } = useSWR<{ today: AiTip | null; archive: AiTip[] }>("/api/ai-tips", jsonFetcher);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const openedRef = useRef<string | null>(null);
+  const [showHighlightHint, dismissHighlightHint] = useShowHighlightHint();
 
   const today = data?.today ?? null;
   const archive = data?.archive ?? [];
@@ -893,7 +929,22 @@ function DagensSection() {
       {isLoading ? (
         <SkeletonRows count={2} className="h-16" />
       ) : today ? (
-        <TodayCard tip={today} onUpdate={handleUpdateToday} onFeedbackSubmitted={handleFeedbackSubmitted} />
+        <>
+          {showHighlightHint && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-line bg-surface-2 px-3 py-2 text-2xs text-ink-3">
+              <span>Tips: dra over et ord i teksten for å markere det som viktig eller uklart.</span>
+              <button
+                type="button"
+                onClick={dismissHighlightHint}
+                aria-label="Lukk hint"
+                className="shrink-0 text-ink-4 transition hover:text-ink-2"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+          <TodayCard tip={today} onUpdate={handleUpdateToday} onFeedbackSubmitted={handleFeedbackSubmitted} />
+        </>
       ) : (
         <div className="rounded-2xl border border-line bg-surface-2 p-3.5 text-sm text-ink-3">
           Dagens tips er ikke klart ennå.{" "}

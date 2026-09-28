@@ -27,6 +27,18 @@ import { Shirt, X } from "lucide-react";
 //                dag, så samme uttrykk mørkner i kveld og lysner i dag — det er
 //                dette som holder teksten lesbar over foto i BEGGE temaer.
 //   ink(%)       tekst/kant i blekkfargen når ingen av --ds-ink-trinnene passer.
+//
+// --ds-*-variablene (definert i app/globals.css, egne verdier for kveld/dag rundt linje 400/565)
+// er BEVISST et eget, isolert tokensett - IKKE et alias for DESIGN.md sine `--t-ink-*`/
+// `--t-surface-*`. Vurdert 2026-09-28 om de burde kobles sammen: de responderer allerede korrekt
+// på temabytte (verifisert - egne lys/mørk-blokker), så det finnes ingen "hvit tekst på hvitt
+// kort"-bug å fikse. Å bytte dem til å PEKE PÅ --t-ink-1 etc. i stedet for sine egne
+// finjusterte rgba-opasitetstrinn er en reell, synlig risiko for et panel som allerede har hatt
+// én visuell regresjon (mørk øy på hvitt kort) og som brukes med ~90 kall i denne filen - uten
+// mulighet til å skjermbilde-verifisere begge temaer i denne runden er det tryggere å la
+// tokensettet stå separat enn å gjette på en visuell endring. Konsekvensen å være bevisst på:
+// hvis Morten justerer hovedpaletten (--t-ink-*/--t-surface-*) senere, følger IKKE FPL-kortet
+// automatisk med - det må oppdateres her separat.
 function alpha(cssVar: string, pct: number): string {
   return `color-mix(in srgb, var(${cssVar}) ${pct}%, transparent)`;
 }

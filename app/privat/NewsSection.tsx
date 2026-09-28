@@ -23,6 +23,20 @@ const CATEGORY_COLOR: Record<string, string> = {
   Annet: "#6b7280",
 };
 
+// v2 (2026-09-28, Morten: kildeidentitet er svak med flere RSS-kilder - kun ren tekst). Bruker
+// artikkelens EGEN lenke (item.link) til å utlede domenet, i stedet for å gjette et domene fra
+// kildenavnet ("NRK" -> nrk.no er ikke alltid en trygg antagelse) - Googles favicon-tjeneste er
+// samme mønster brukt andre steder appen trenger en rask, ferdiglaget ikon-kilde for en ekstern
+// side. Returnerer null (ikke en gjettet URL) hvis lenken ikke lar seg parse.
+function faviconUrl(link: string): string | null {
+  try {
+    const host = new URL(link).hostname;
+    return `https://www.google.com/s2/favicons?domain=${host}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
 function timeLabel(pubDate?: string): string {
   if (!pubDate) return "";
   const d = new Date(pubDate);
@@ -58,6 +72,7 @@ function NewsRow({ item, expanded, showMore, enriching, onToggle, onToggleMore }
   const shortSummary = item.oneLiner ?? (item.description ? truncate(item.description, 110) : null);
   const hasMoreDetail = (item.summaryBullets && item.summaryBullets.length > 0) || !!item.description;
   const categoryColor = item.category ? (CATEGORY_COLOR[item.category] ?? CATEGORY_COLOR.Annet) : undefined;
+  const favicon = faviconUrl(item.link);
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-start gap-2.5 text-left">
@@ -75,6 +90,18 @@ function NewsRow({ item, expanded, showMore, enriching, onToggle, onToggleMore }
             )}
           </div>
           <p className="mt-0.5 flex items-center gap-1 text-2xs text-ink-4">
+            {favicon && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={favicon}
+                alt=""
+                aria-hidden="true"
+                className="h-3 w-3 shrink-0 rounded-[2px]"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            )}
             <span className="shrink-0 font-medium text-ink-3">{item.source}</span>
             {item.category && (
               <>
