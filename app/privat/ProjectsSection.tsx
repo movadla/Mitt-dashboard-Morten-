@@ -357,6 +357,10 @@ export default function ProjectsSection() {
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // v2 (2026-09-28, Morten): fullførte prosjekter (dåp/bursdag som er over) ble tidligere
+  // liggende og fylte opp lista for alltid - samme "Kjøpt (N)"-mønster som Handlelisten
+  // allerede løser dette med.
+  const [showCompleted, setShowCompleted] = useState(false);
   const confirmDeleteProject = useConfirmDelete<string>();
   const confirmDeleteItem = useConfirmDelete<{ projectId: string; kind: "checklist" | "guests" | "purchases"; itemId: string; preview: string }>();
   const mutationError = useMutationError();
@@ -480,6 +484,8 @@ export default function ProjectsSection() {
   // Nøkkeltallet er prosjekter som pågår, ikke totalt antall — det er tallet
   // som sier noe om hva som faktisk krever oppmerksomhet nå.
   const ongoingCount = projects.filter((p) => p.status === "pagar").length;
+  const completedCount = projects.filter((p) => p.status === "fullfort").length;
+  const visibleProjects = showCompleted ? projects : projects.filter((p) => p.status !== "fullfort");
 
   return (
     // Topplinjen må matche SECTION_ACCENT.projects (se ./sectionAccents.ts) —
@@ -552,7 +558,7 @@ export default function ProjectsSection() {
           </div>
         ) : (
           <ul className="flex flex-col gap-2">
-            {projects.map((project) => {
+            {visibleProjects.map((project) => {
               const total = project.checklist.length + project.guests.length + project.purchases.length;
               const checklistDone = project.checklist.filter((i) => i.done).length;
               const done =
@@ -581,20 +587,13 @@ export default function ProjectsSection() {
                           <p className="min-w-0 truncate text-sm font-medium text-ink-1">{project.name}</p>
                           <StatusBadge status={project.status} />
                         </div>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-2xs text-ink-4">
-                          {project.targetDate && <span>{formatDMY(project.targetDate)}</span>}
-                          {total > 0 && (
-                            // "totalt" er nødvendig: ringen teller ALLE tre listene (sjekkliste +
-                            // gjester + innkjøp), mens baren rett under viser sjekklista alene.
-                            // Uten etiketten sto to ulike andeler rett over hverandre, begge
-                            // umerket, og det var umulig å se hvilken som var hvilken.
-                            <span className="inline-flex items-center gap-1">
-                              {project.targetDate && <span>·</span>}
-                              <ProjectProgress done={done} total={total} />
-                              {`${done}/${total} totalt`}
-                            </span>
-                          )}
-                        </p>
+                        {/* v2 (2026-09-28, Morten): kun ÉN andel på den kollapsede raden nå -
+                            ringen her og RatioBar-en for sjekklisten rett under viste tidligere to
+                            ulike andeler (alle tre lister vs. kun sjekklisten) stablet oppå
+                            hverandre, begge umerket bortsett fra en forklarende etikett som måtte
+                            legges til i etterkant. Den kombinerte "alle tre lister"-ringen flyttet
+                            til utvidet visning i stedet, se der. */}
+                        {project.targetDate && <p className="mt-0.5 text-2xs text-ink-4">{formatDMY(project.targetDate)}</p>}
                       </button>
                       <button
                         type="button"
@@ -634,6 +633,12 @@ export default function ProjectsSection() {
                   <CollapsibleBody collapsed={!expanded}>
                     <div className="mt-2.5 flex flex-col gap-2">
                       {project.description && <p className="text-sm text-ink-3">{project.description}</p>}
+                      {total > 0 && (
+                        <p className="flex items-center gap-1.5 text-2xs text-ink-4">
+                          <ProjectProgress done={done} total={total} />
+                          {`${done}/${total} totalt (sjekkliste, gjester og innkjøp samlet)`}
+                        </p>
+                      )}
                       <ProjectSubSection title="Sjekkliste">
                         <ProjectListBlock
                           items={project.checklist.map((i) => ({ id: i.id, label: i.text, done: i.done, note: i.notes }))}
@@ -672,6 +677,15 @@ export default function ProjectsSection() {
               );
             })}
           </ul>
+        )}
+        {completedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowCompleted((v) => !v)}
+            className="self-start text-xs font-medium text-ink-3 hover:text-ink-1"
+          >
+            {showCompleted ? "Skjul fullførte" : `Vis fullførte (${completedCount})`}
+          </button>
         )}
       </div>
       <ConfirmDialog

@@ -207,6 +207,9 @@ function NoteRow({
     if (!editing) setMode("edit");
   }
 
+  // amber-400 her må matche SECTION_ACCENT.notes (sectionAccents.ts) - samme literal-klasse-
+  // begrensning som kort-topplinjen lenger ned i filen (Tailwind kan ikke bygge klassenavn fra en
+  // variabel i runtime), så dette må holdes synkront for hånd hvis fargen noensinne endres.
   const content = (
     <div className={`rounded-xl border px-3 py-2 ${note.pinned ? "border-amber-400/50 bg-amber-400/8" : "border-line bg-surface-2"}`}>
       <div className="flex items-start gap-2">
