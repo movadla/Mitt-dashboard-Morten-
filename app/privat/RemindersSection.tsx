@@ -232,7 +232,12 @@ function ExpandToggle({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      className="mt-1 text-left text-xs font-medium text-ink-3 hover:text-ink-1"
+    >
       {expanded ? labelExpanded : `${labelCollapsed} (${count})`}
     </button>
   );

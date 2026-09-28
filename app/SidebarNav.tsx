@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical, MoreHorizontal } from "lucide-react";
 import {
   DndContext,
@@ -216,6 +216,12 @@ export function SidebarNav({
   // ANNEN flis bytter de to sin posisjon og lagrer. Helt separat fra
   // dnd-kit-en over, som fortsatt eier desktop-railen uendret.
   const [selectedForSwap, setSelectedForSwap] = useState<string | null>(null);
+  // v2.1 (2026-09-28, funnet i en verifiseringsrunde): uten dette hang en valgt flis sin ring
+  // igjen til neste gang reorder-modus åpnes, selv om ingenting faktisk er "valgt" lenger - man
+  // kan avslutte reorder-modus (trykk "Ferdig") midt i et halvferdig bytte.
+  useEffect(() => {
+    if (!reorderMode) setSelectedForSwap(null);
+  }, [reorderMode]);
 
   const secondarySet = new Set(secondaryIds ?? []);
   const primaryItems = items.filter((i) => !secondarySet.has(i.id));
@@ -238,6 +244,15 @@ export function SidebarNav({
     }
     if (selectedForSwap === id) {
       setSelectedForSwap(null);
+      return;
+    }
+    // v2.1 (2026-09-28, funnet i en verifiseringsrunde): et bytte på TVERS av primær/sekundær-
+    // grensen (skjult bak "Mer") endrer bare den innbyrdes rekkefølgen INNENFOR hver gruppe -
+    // flisen "flytter" seg aldri synlig ut fra/inn i "Mer", siden hvilke id-er som er sekundære
+    // styres av et fast sett (secondaryIds), ikke posisjon. Et slikt bytte ville sett ut som det
+    // ikke gjorde noe. Flytt heller valget til den nye flisen i stedet for å bytte stille.
+    if (secondarySet.has(selectedForSwap) !== secondarySet.has(id)) {
+      setSelectedForSwap(id);
       return;
     }
     const ids = items.map((i) => i.id);

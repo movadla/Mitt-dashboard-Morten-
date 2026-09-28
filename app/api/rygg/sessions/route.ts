@@ -48,11 +48,17 @@ export async function POST(request: NextRequest) {
         : undefined,
       exerciseRpe,
     });
-    // v1 (2026-09-28): kun ekte fullførte økter (ikke avkortede/hoppet-over, se completed-feltet
-    // over) skal telle som "trent" i den generelle Trening-loggen - samme prinsipp som gjelder for
-    // ukens 3-av-3-telling i selve rygg-modulen.
+    // v2 (2026-09-28, fanget opp i en verifiseringsrunde): egen try/catch, IKKE del av den ytre -
+    // rygg-økten er allerede lagret på dette tidspunktet (addRyggSessionLog over), så en feil her
+    // (transient Redis-feil, addExercise-feil) skal aldri kunne få klienten til å tro at HELE
+    // lagringen feilet. Uten dette ville en feilet sekundær-logging vist "Kunne ikke lagre økten"
+    // for en økt som faktisk ble lagret - brukeren prøver på nytt og risikerer en duplikat.
     if (entry.completed) {
-      await logRyggSessionAsWorkout(entry.date);
+      try {
+        await logRyggSessionAsWorkout(entry.date);
+      } catch (err) {
+        console.error("logRyggSessionAsWorkout feilet (rygg-økten er likevel lagret):", err);
+      }
     }
     return NextResponse.json(entry, { status: 201 });
   } catch (err) {
