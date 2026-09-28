@@ -25,6 +25,10 @@ export interface DartsStats {
 }
 
 let cache: { data: DartsStats | null; expires: number; fetchedAt: number } | null = null;
+// v2 (2026-09-28): skiller "Supabase-kallet feilet" fra "ingen kamper spilt ennå" - begge ga
+// tidligere samme `null`, så DartsBox kunne ikke vise en feilmelding ved en reell feil, kun
+// forsvinne stille (samme buggklasse SportSection allerede fikset for /api/sports).
+let lastFetchFailed = false;
 
 interface PlayerRow {
   matches_played: number;
@@ -49,6 +53,7 @@ export async function getDartsStats(): Promise<DartsStats | null> {
     const row = rows[0];
     if (!row) {
       cache = { data: null, expires: Date.now() + 30 * 60 * 1000, fetchedAt: Date.now() };
+      lastFetchFailed = false;
       return null;
     }
 
@@ -66,12 +71,18 @@ export async function getDartsStats(): Promise<DartsStats | null> {
     };
 
     cache = { data, expires: Date.now() + 30 * 60 * 1000, fetchedAt: Date.now() };
+    lastFetchFailed = false;
     return data;
   } catch {
+    lastFetchFailed = true;
     return null;
   }
 }
 
 export function getDartsFetchedAt(): number | null {
   return cache?.fetchedAt ?? null;
+}
+
+export function getDartsLastFetchFailed(): boolean {
+  return lastFetchFailed;
 }

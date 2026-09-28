@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Trophy, Flag, Target, Timer, Award, Star } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Trophy, Flag, Target, Timer, Award, Star, ExternalLink } from "lucide-react";
 import { HIGHLIGHT_CATEGORIES, LEAGUE_ROUND_CATEGORIES } from "@/lib/sportsCategories";
 import type { SportEvent } from "@/lib/sports";
 import { CardHeader, MutationError, SkeletonRows } from "../CardShell";
@@ -125,7 +125,21 @@ function SportEventRow({ ev, border = false }: { ev: SportEvent; border?: boolea
         </p>
       </div>
       {ev.time && <span className="shrink-0 text-xs font-bold tabular-nums" style={{ color: col }}>{ev.time}</span>}
+      {/* v2 (2026-09-28): diskret lenke-hint - raden var tidligere en fullstendig usynlig ekstern
+          lenke (bevisst, ifølge tidligere ønske om ingen ekstra plass), men det ga ingen antydning
+          om at trykk åpner et Google-søk i ny fane. */}
+      <ExternalLink className="h-3 w-3 shrink-0 text-ink-4" />
     </a>
+  );
+}
+
+// Delt kollaps-animasjon (2026-09-28) - LeagueSubsection/SportDayCard/WorldCupDayCard
+// implementerte hver sin identiske "grid-template-rows 0fr/1fr"-teknikk tre separate ganger.
+function AnimatedCollapse({ open, durationMs = 250, children }: { open: boolean; durationMs?: number; children: ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: `grid-template-rows ${durationMs}ms ease` }}>
+      <div style={{ overflow: "hidden", minHeight: 0 }}>{children}</div>
+    </div>
   );
 }
 
@@ -155,15 +169,13 @@ function LeagueSubsection({ cat, matches }: { cat: string; matches: SportEvent[]
           <polyline points="4,6 8,10 12,6" />
         </svg>
       </button>
-      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.25s ease" }}>
-        <div style={{ overflow: "hidden", minHeight: 0 }}>
-          <div className="border-t border-line">
-            {matches.map((ev, i) => (
-              <SportEventRow key={ev.id} ev={ev} border={i > 0} />
-            ))}
-          </div>
+      <AnimatedCollapse open={open}>
+        <div className="border-t border-line">
+          {matches.map((ev, i) => (
+            <SportEventRow key={ev.id} ev={ev} border={i > 0} />
+          ))}
         </div>
-      </div>
+      </AnimatedCollapse>
     </div>
   );
 }
@@ -257,19 +269,17 @@ function SportDayCard({ date, allEvents }: { date: string; allEvents: SportEvent
         )}
       </button>
 
-      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.25s ease" }}>
-        <div style={{ overflow: "hidden", minHeight: 0 }}>
-          <div className="border-t border-line">
-            {[...highlightEvts, ...otherEvts].map((ev, i) => (
-              <SportEventRow key={ev.id} ev={ev} border={i > 0} />
-            ))}
-            {leagueGroups.map((g) => (
-              <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
-            ))}
-            {euroDrilldown.length > 0 && <LeagueSubsection cat="football_no_uefa" matches={euroDrilldown} />}
-          </div>
+      <AnimatedCollapse open={open}>
+        <div className="border-t border-line">
+          {[...highlightEvts, ...otherEvts].map((ev, i) => (
+            <SportEventRow key={ev.id} ev={ev} border={i > 0} />
+          ))}
+          {leagueGroups.map((g) => (
+            <LeagueSubsection key={g.cat} cat={g.cat} matches={g.matches} />
+          ))}
+          {euroDrilldown.length > 0 && <LeagueSubsection cat="football_no_uefa" matches={euroDrilldown} />}
         </div>
-      </div>
+      </AnimatedCollapse>
     </div>
   );
 }
@@ -434,15 +444,13 @@ function WorldCupDayCard({ date, matches }: { date: string; matches: SportEvent[
           <polyline points="4,6 8,10 12,6" />
         </svg>
       </button>
-      <div style={{ display: "grid", gridTemplateRows: open ? "1fr" : "0fr", transition: "grid-template-rows 0.28s ease" }}>
-        <div style={{ overflow: "hidden", minHeight: 0 }}>
-          <div className="border-t border-line">
-            {matches.map((ev, i) => (
-              <SportEventRow key={ev.id} ev={ev} border={i > 0} />
-            ))}
-          </div>
+      <AnimatedCollapse open={open} durationMs={280}>
+        <div className="border-t border-line">
+          {matches.map((ev, i) => (
+            <SportEventRow key={ev.id} ev={ev} border={i > 0} />
+          ))}
         </div>
-      </div>
+      </AnimatedCollapse>
     </div>
   );
 }

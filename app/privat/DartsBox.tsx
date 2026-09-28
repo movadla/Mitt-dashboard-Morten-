@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CardHeader, SkeletonRows } from "../CardShell";
+import useSWR from "swr";
+import { jsonFetcher } from "@/lib/swrFetcher";
+import { CardHeader, MutationError, SkeletonRows } from "../CardShell";
 import { timeAgo } from "@/lib/timeAgo";
 import { Target } from "lucide-react";
 import type { DartsMatch, DartsStats } from "@/lib/darts";
@@ -34,21 +35,20 @@ function MatchRow({ match }: { match: DartsMatch }) {
 }
 
 export default function DartsBox() {
-  const [stats, setStats] = useState<DartsStats | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  // v2 (2026-09-28, Morten): var rå useEffect+fetch - en feilet henting så identisk ut som "ingen
+  // kamper spilt ennå" (begge ga stats: null), og kortet forsvant stille i stedet for å vise en
+  // feilmelding. Samme buggklasse SportSection allerede fikset for /api/sports. `error`-feltet i
+  // svaret skiller nå de to tilfellene (se lib/darts.ts sin lastFetchFailed).
+  const { data, error: swrError, isLoading } = useSWR<{ stats: DartsStats | null; fetchedAt: number | null; error?: boolean }>(
+    "/api/darts",
+    jsonFetcher,
+  );
+  const stats = data?.stats ?? null;
+  const fetchedAt = data?.fetchedAt ?? null;
+  const failed = !!swrError || !!data?.error;
 
-  useEffect(() => {
-    fetch("/api/darts")
-      .then((r) => r.json())
-      .then((d) => {
-        setStats(d.stats ?? null);
-        setFetchedAt(d.fetchedAt ?? null);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (!loading && !stats) return null;
+  // Legitimt tomt (ingen kamper spilt ennå) og ingen feil - skjul kortet helt, som før.
+  if (!isLoading && !stats && !failed) return null;
 
   return (
     <div className="border-t-2 border-t-sky-400/60 p-4">
@@ -60,8 +60,10 @@ export default function DartsBox() {
         icon={Target}
         iconColorClass="text-sky-400"
       />
-      {loading ? (
+      {isLoading ? (
           <SkeletonRows count={1} className="h-16" />
+        ) : failed && !stats ? (
+          <MutationError message="Kunne ikke hente dart-statistikk — prøv å laste siden på nytt." />
         ) : (
           stats && (
             <div className="flex flex-col gap-3">
