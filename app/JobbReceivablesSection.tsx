@@ -21,7 +21,7 @@ import {
   formatDateDMY,
   formatKr,
 } from "@/lib/widgets";
-import { ArrowUpRight, ChevronDown, ChevronsUpDown, ChevronUp, Receipt } from "lucide-react";
+import { ArrowUpRight, ChevronDown, ChevronsUpDown, ChevronUp, Receipt, ShieldCheck } from "lucide-react";
 
 // Delt hoppeknapp brukt i Kontrakter/Utløp/Garantier/Kundefordringer for å
 // hoppe til Oppslag med leietakernavnet forhåndsutfylt i søket der — det
@@ -96,6 +96,9 @@ function ReceivableRow({
   const isOverride = risk !== null;
   const effectiveRisk = risk ?? computeAutoRisk(r, today);
   const bygg = getMainBuilding(r.leietaker);
+  // Samme dekningsvilkår som computeAutoRisk sin garanti-overstyring (lib/receivablesAging.ts) -
+  // vises som en synlig markør her, ikke bare en stille effekt på risiko-nedtrekket.
+  const garantertDekket = !!r.garanti && r.garanti.belop >= overdue30;
   return (
     <>
       {/* Vanlig tabellrad, samme mønster som Garantioversikt/Utløp/Kontrakter (2026-09-26,
@@ -115,6 +118,19 @@ function ReceivableRow({
                 title="Under inkasso"
                 className="h-1.5 w-1.5 shrink-0 rounded-full bg-status-danger"
               />
+            )}
+            {/* Garanti-markør (2026-09-28, Morten: "sjekk hvem vi har garanti på, for de er jo
+                risikofrie") - dataene lå allerede på r.garanti, men var aldri synlige i denne
+                seksjonen. Samme role="img"+aria-label-begrunnelse som inkasso-flagget over. */}
+            {garantertDekket && (
+              <span
+                role="img"
+                aria-label="Garantert"
+                title={`Garantert: ${formatKr(r.garanti!.belop)} (${r.garanti!.kilde}) - dekker forfalt beløp`}
+                className="inline-flex shrink-0 items-center text-status-positive/80"
+              >
+                <ShieldCheck className="h-3 w-3" />
+              </span>
             )}
             <span className="truncate">{r.leietaker}</span>
             <OppslagLink name={r.leietaker} onJump={onJumpToOppslag} />
@@ -140,7 +156,7 @@ function ReceivableRow({
           <select
             value={effectiveRisk}
             onChange={(e) => onSetRisk(e.target.value as ReceivableRiskLevel)}
-            title={isOverride ? "Manuelt satt" : "Automatisk satt basert på forfalt beløp"}
+            title={isOverride ? "Manuelt satt" : garantertDekket ? "Automatisk lav - garanti dekker forfalt beløp" : "Automatisk satt basert på forfalt beløp"}
             aria-label={`Risiko for ${r.leietaker}`}
             className={`rounded-lg border bg-surface-2 px-1.5 py-1 text-2xs outline-none focus:border-line-strong ${RISK_META[effectiveRisk].textClass} ${isOverride ? "border-line" : "border-dashed border-line"}`}
           >
@@ -161,6 +177,14 @@ function ReceivableRow({
                 klippet av utenfor viewporten. */}
             <div className="sticky left-0 w-[calc(100vw-2.5rem)] max-w-[520px] px-3 py-2 pl-9">
               <div className="mb-1.5 text-2xs text-ink-4">Bygg: {bygg}</div>
+              {/* Samme prinsipp som DetailRow i Garantioversikt (2026-09-27): begrunnelsen bak
+                  garanti-markøren står ALLTID her også, ikke bare i tooltipen - tooltips gir
+                  ingenting å ta på mobil. */}
+              {r.garanti && (
+                <div className="mb-1.5 text-2xs text-status-positive/80">
+                  Garanti: {formatKr(r.garanti.belop)} ({r.garanti.kilde}){garantertDekket ? "" : " - dekker ikke hele forfalt beløp"}
+                </div>
+              )}
               <div className="flex flex-col gap-2.5">
                 {r.selskaper.map((s, i) => (
                   <div key={i}>

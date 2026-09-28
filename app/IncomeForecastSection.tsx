@@ -25,7 +25,8 @@ import {
 import { CardHeader, SkeletonRows, usePersistedCollapse } from "./CardShell";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RECEIVABLES, RECEIVABLES_HENTET_DATO, GARANTI_SJEKKET_DATO, GARANTI_SJEKKET_NAVN, formatDateDMY, formatKr } from "@/lib/widgets";
+import { RECEIVABLES, RECEIVABLES_HENTET_DATO, GARANTI_SJEKKET_DATO, GARANTI_SJEKKET_NAVN, HAR_GARANTI, MANGLER_GARANTI, formatDateDMY, formatKr } from "@/lib/widgets";
+import { normaliserLeietakerNavn } from "@/lib/leietakerFactsLookup";
 import { addDaysIso, localDateString } from "@/lib/payday";
 import {
   BOOKED_3600_3699,
@@ -3011,15 +3012,27 @@ interface FordringRad {
   forfalt30: number;
   utestaende: number;
   // v2 (2026-09-22, Morten: "sjekk hvem vi har garanti på, for de er jo risikofrie"): satt kun når
-  // en verifisert garanti (Receivable.garanti, se lib/widgets.local.ts) DEKKER hele forfalt30 - en
-  // delvis/uklar garanti (kun noen av flere kontrakter dekket) skal IKKE dempes.
+  // en verifisert garanti DEKKER hele forfalt30 - en delvis/uklar garanti (kun noen av flere
+  // kontrakter dekket) skal IKKE dempes. Kilde: Receivable.garanti (lib/widgets.local.ts) hvis
+  // satt, ellers HAR_GARANTI (Garantioversikt) som fallback - se computeFordringer under.
   garantiDekket?: { belop: number; kilde: string };
   // v3 (2026-09-22, Morten: "når det dukker opp nye leietakere med forfall 30+ dager så må det
-  // sjekkes om de har garanti"): true når leietakeren ALDRI er manuelt sjekket (GARANTI_SJEKKET_NAVN,
-  // se lib/widgets.local.ts) - uavhengig av om de senere viser seg å ha garanti eller ikke. Fanger
-  // opp nye leietakere som dukker opp i et fremtidig NXT-uttrekk og som ingen har vurdert ennå.
+  // sjekkes om de har garanti"): true når leietakeren ALDRI er manuelt sjekket - verken i
+  // GARANTI_SJEKKET_NAVN (se lib/widgets.local.ts) eller i HAR_GARANTI/MANGLER_GARANTI
+  // (Garantioversikt) - uavhengig av om de senere viser seg å ha garanti eller ikke. Fanger opp
+  // nye leietakere som dukker opp i et fremtidig NXT-uttrekk og som ingen har vurdert ennå.
   ikkeSjekketForGaranti?: boolean;
 }
+
+// v2 (2026-09-28, funnet i en tverrseksjonell revisjon): supplerer GARANTI_SJEKKET_NAVN (frosset
+// 2026-09-22) med den ferske Garantioversikten (HAR_GARANTI/MANGLER_GARANTI, 2026-09-26-runden) -
+// uten dette kunne en leietaker stå riktig i Garantioversikten men fortsatt vises som "ikke
+// sjekket for garanti" her, siden de to registrene ellers aldri snakker sammen og bare drifter
+// fra hverandre over tid. Normalisert navnematch (normaliserLeietakerNavn) - samme funksjon som
+// leietakerFacts/receivableBuilding bruker.
+const HAR_GARANTI_NAVN = new Set(HAR_GARANTI.map((g) => normaliserLeietakerNavn(g.leietaker)));
+const MANGLER_GARANTI_NAVN = new Set(MANGLER_GARANTI.map((g) => normaliserLeietakerNavn(g.leietaker)));
+const HAR_GARANTI_BY_NAVN = new Map(HAR_GARANTI.map((g) => [normaliserLeietakerNavn(g.leietaker), g]));
 
 function computeFordringer(idagIso: string): FordringRad[] {
   const ar = String(PROGNOSE_AR);
@@ -3037,10 +3050,21 @@ function computeFordringer(idagIso: string): FordringRad[] {
       }
     }
     if (forfalt30 > 0) {
-      const garantiDekket = r.garanti && r.garanti.belop >= forfalt30 ? { belop: r.garanti.belop, kilde: r.garanti.kilde } : undefined;
+      const navnNorm = normaliserLeietakerNavn(r.leietaker);
+      // r.garanti (manuelt bekreftet direkte på Receivable) foretrekkes når den finnes - den er
+      // spesifikt verifisert mot DENNE leietakerens forfalte beløp. HAR_GARANTI er fallback: samme
+      // leietaker, men beløpet der er garantiens totale dekning, ikke nødvendigvis matchet mot
+      // akkurat dette forfallet.
+      const fraHarGaranti = HAR_GARANTI_BY_NAVN.get(navnNorm);
+      const garantiKilde = r.garanti ?? fraHarGaranti;
+      const garantiDekket = garantiKilde && garantiKilde.belop >= forfalt30 ? { belop: garantiKilde.belop, kilde: garantiKilde.kilde } : undefined;
       // Kun meningsfullt når registeret faktisk er fylt ut (dev/lokalt) - i prod/demo er
       // GARANTI_SJEKKET_NAVN tom med vilje, og da skal IKKE alle rader vises som usjekket.
-      const ikkeSjekketForGaranti = GARANTI_SJEKKET_NAVN.size > 0 && !GARANTI_SJEKKET_NAVN.has(r.leietaker);
+      const ikkeSjekketForGaranti =
+        GARANTI_SJEKKET_NAVN.size > 0 &&
+        !GARANTI_SJEKKET_NAVN.has(r.leietaker) &&
+        !HAR_GARANTI_NAVN.has(navnNorm) &&
+        !MANGLER_GARANTI_NAVN.has(navnNorm);
       ut.push({ leietaker: r.leietaker, forfalt30, utestaende, garantiDekket, ikkeSjekketForGaranti });
     }
   }
