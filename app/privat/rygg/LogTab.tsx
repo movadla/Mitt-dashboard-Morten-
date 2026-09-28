@@ -56,44 +56,49 @@ export default function LogTab({ dailyLogs, sessionLogs, onChanged, onError }: P
           {rows.map((row) => (
             <div
               key={`${row.kind}-${row.kind === "daily" ? row.date : row.data.id}`}
-              className="flex items-center justify-between gap-2 rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm"
+              className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm"
             >
-              <div className="min-w-0">
-                <span className="text-ink-1">{formatDMY(row.date)}</span>{" "}
-                {row.kind === "daily" ? (
-                  <span className="text-ink-3">
-                    Smerte {row.data.pain}
-                    {row.data.radiating ? " · utstråling" : ""}
-                    {row.data.walked ? " · gikk" : ""}
-                    {row.data.note ? ` · ${row.data.note}` : ""}
-                  </span>
-                ) : (
-                  <span className="text-ink-3">
-                    Uke {row.data.week} · økt {row.data.sessionNo}
-                    {row.data.variant ? ` (${row.data.variant})` : ""} · RPE {row.data.rpe}
-                    {row.data.aggravated ? " · etterreaksjon" : ""}
-                    {row.data.completedExerciseIds ? ` · ${row.data.completedExerciseIds.length} øvelser krysset av` : ""}
-                    {!row.data.completed ? " · telles ikke" : ""}
-                    {/* v2 (2026-09-28): tyngde pr. øvelse, ikke bare økten samlet - se
-                        exerciseRpe i lib/ryggLog.ts. */}
-                    {row.data.exerciseRpe && Object.keys(row.data.exerciseRpe).length > 0 && (
-                      <>
-                        {" · "}
-                        {Object.entries(row.data.exerciseRpe)
-                          .map(([id, verdi]) => `${getRyggExercise(id)?.name ?? id} ${verdi}`)
-                          .join(", ")}
-                      </>
-                    )}
-                  </span>
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <span className="text-ink-1">{formatDMY(row.date)}</span>{" "}
+                  {row.kind === "daily" ? (
+                    <span className="text-ink-3">
+                      Smerte {row.data.pain}
+                      {row.data.radiating ? " · utstråling" : ""}
+                      {row.data.walked ? " · gikk" : ""}
+                      {row.data.note ? ` · ${row.data.note}` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-ink-3">
+                      Uke {row.data.week} · økt {row.data.sessionNo}
+                      {row.data.variant ? ` (${row.data.variant})` : ""} · RPE {row.data.rpe}
+                      {row.data.aggravated ? " · etterreaksjon" : ""}
+                      {row.data.completedExerciseIds ? ` · ${row.data.completedExerciseIds.length} øvelser krysset av` : ""}
+                      {!row.data.completed ? " · telles ikke" : ""}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => (row.kind === "daily" ? handleDeleteDaily(row.date) : handleDeleteSession(row.data.id))}
+                  className="shrink-0 text-2xs font-medium text-ink-4 hover:text-status-danger"
+                >
+                  Slett
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => (row.kind === "daily" ? handleDeleteDaily(row.date) : handleDeleteSession(row.data.id))}
-                className="shrink-0 text-2xs font-medium text-ink-4 hover:text-status-danger"
-              >
-                Slett
-              </button>
+              {/* v3 (2026-09-28): egne chips per øvelse i stedet for én lang komma-separert
+                  tekststreng - samme mønster som Trening-loggens "forrige økt"-chips
+                  (EntryAndExercises.tsx), bryter pent i stedet for å bli en tekstvegg for en
+                  7-øvelsesøkt. */}
+              {row.kind === "session" && row.data.exerciseRpe && Object.keys(row.data.exerciseRpe).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  {Object.entries(row.data.exerciseRpe).map(([id, verdi]) => (
+                    <span key={id} className="rounded-md bg-surface-3 px-1.5 py-0.5 text-2xs tabular-nums text-ink-3">
+                      {getRyggExercise(id)?.name ?? id} {verdi}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

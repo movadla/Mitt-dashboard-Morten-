@@ -3,6 +3,7 @@
 import type { RyggDailyLog, RyggProgramMeta, RyggSessionLog, RyggWeekState } from "@/lib/ryggLog";
 import { addDaysIso } from "@/lib/payday";
 import { DECISION_COLOR_CLASS, formatPain } from "./ryggHelpers";
+import { RYGG_MAINTENANCE_SESSIONS_PER_WEEK, RYGG_MAINTENANCE_WEEK } from "@/lib/ryggProgram";
 
 interface Props {
   weeks: RyggWeekState[];
@@ -63,7 +64,16 @@ export default function TrendTab({ weeks, dailyLogs, sessionLogs, meta }: Props)
   }).filter((w) => w.dayCount > 0);
 
   const completedSessions = sessionLogs.filter((s) => s.completed).length;
-  const plannedSessions = weeks.reduce((sum, w) => sum + (w.decision ? 3 : 0), 0) || completedSessions;
+  // v2 (2026-09-28, fiks): var `w.decision ? 3 : 0`, som ga 0 for uka du STÅR I (den har
+  // ingen avsluttet beslutning ennå) og falt helt tilbake til completedSessions/completedSessions
+  // (alltid 100 %) hvis INGEN uker har en beslutning ennå - mest optimistisk/upresist nettopp når
+  // det var mest fristende å stole på tallet. `weeks` har uansett kun ÉN rad per ukenummer
+  // (repeat/deload gjenbruker samme rad, se lib/ryggLog.ts), så å telle hver rad med gir riktig
+  // planlagt totalt uten å måtte vente på at uka er avsluttet.
+  const plannedSessions = weeks.reduce(
+    (sum, w) => sum + (w.week > RYGG_MAINTENANCE_WEEK ? RYGG_MAINTENANCE_SESSIONS_PER_WEEK : 3),
+    0,
+  );
 
   const first3 = dailyLogs.filter((d) => d.date <= addDaysIso(firstDate, 20)).map((d) => d.pain);
   const last3 = dailyLogs.filter((d) => d.date >= addDaysIso(lastDate, -20)).map((d) => d.pain);
@@ -73,6 +83,7 @@ export default function TrendTab({ weeks, dailyLogs, sessionLogs, meta }: Props)
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-xl border border-line bg-surface-2 p-3">
+        <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">Smerte og tyngde over tid</p>
         <div className="mb-2 flex items-center gap-4 text-2xs">
           <span className="flex items-center gap-1.5 text-ink-3">
             <span className="inline-block h-0.5 w-3 rounded-full bg-emerald-400" /> Smertesnitt (7 dager)
@@ -134,6 +145,7 @@ export default function TrendTab({ weeks, dailyLogs, sessionLogs, meta }: Props)
       )}
 
       <div className="rounded-xl border border-line bg-surface-2 p-3 text-sm text-ink-2">
+        <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-4">Oppsummering</p>
         <p>
           {completedSessions} av {plannedSessions} planlagte økter gjennomført.
         </p>

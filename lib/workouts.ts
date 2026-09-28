@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { hdel, hgetJSON, hgetallJSON, hsetJSON } from "./kv";
-import { getExercises, type ExerciseCategory } from "./exercises";
+import { addExercise, getExercises, type ExerciseCategory } from "./exercises";
 
 export type SetIntensity = "lav" | "middels" | "hoy";
 
@@ -234,6 +234,49 @@ export async function deleteSet(sessionId: string, entryId: string, setId: strin
 // reorderReminders i lib/reminders.ts, som må bruke et eget order-felt siden
 // påminnelser er individuelt nøkkel-lagret) — reordering er derfor bare å
 // bygge om selve arrayet i den rekkefølgen klienten sender inn.
+const RYGG_EXERCISE_NAME = "Ryggøvelser";
+
+// v1 (2026-09-28, Morten: "registrere ryggøvelsene som en øvelse i treningen, men ikke noe
+// sett"): rygg-modulen (app/api/rygg/sessions/route.ts) kaller denne når en rehab-økt fullføres,
+// slik at Trening sin historikk/kalender viser "trente denne dagen" for rygg-økter også, uten at
+// noen må logge det to steder. Bypasser BEVISST startWorkoutSession()/getActiveWorkoutSession()
+// sin "kun én pågående økt om gangen"-sperre - dette er automatisk bakgrunnslogging, ikke en økt
+// brukeren selv holder på med, og skal aldri kapre eller blande seg inn i en ekte, pågående
+// treningsøkt. Idempotent per dato: kalles den samme dagen flere ganger, opprettes ikke en
+// duplikat-oppføring.
+export async function logRyggSessionAsWorkout(dateIso: string): Promise<void> {
+  const sessions = await getWorkoutSessions();
+  const alreadyLogged = sessions.some(
+    (s) => s.startedAt.slice(0, 10) === dateIso && s.entries.some((e) => e.exerciseName === RYGG_EXERCISE_NAME),
+  );
+  if (alreadyLogged) return;
+
+  const exercises = await getExercises();
+  const exercise =
+    exercises.find((e) => e.name.toLowerCase() === RYGG_EXERCISE_NAME.toLowerCase()) ??
+    (await addExercise({ name: RYGG_EXERCISE_NAME, category: "styrke", bodyweight: true }));
+
+  const entry: WorkoutEntry = {
+    id: randomUUID(),
+    exerciseId: exercise.id,
+    exerciseName: exercise.name,
+    category: exercise.category,
+    sets: [],
+    done: true,
+  };
+  // Midt på dagen (UTC) i stedet for midnatt - unngår enhver risiko for at datoen sklir til
+  // dagen før/etter ved skive-basert gruppering andre steder (samme prinsipp som andre rene
+  // dato-strenger i appen, se lib/payday.ts).
+  const timestamp = new Date(`${dateIso}T12:00:00.000Z`).toISOString();
+  const session: WorkoutSession = {
+    id: randomUUID(),
+    startedAt: timestamp,
+    endedAt: timestamp,
+    entries: [entry],
+  };
+  await hsetJSON(HASH_KEY, session.id, session);
+}
+
 export async function reorderEntries(sessionId: string, orderedEntryIds: string[]): Promise<WorkoutSession | null> {
   const current = await hgetJSON<WorkoutSession>(HASH_KEY, sessionId);
   if (!current) return null;

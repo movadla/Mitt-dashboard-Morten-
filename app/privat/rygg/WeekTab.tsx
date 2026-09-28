@@ -20,6 +20,17 @@ interface Props {
 
 const DECISION_OPTIONS: RyggWeekDecision[] = ["progress", "repeat", "deload", "hold"];
 
+// v2 (2026-09-28): overstyr-knappene brukte tidligere samme nøytrale emerald for ALLE fire valg
+// uansett alvorlighetsgrad - "hold" (en sikkerhetsstopp) så dermed like "trygt" ut som "fremgang"
+// å velge. Bruker nå samme fargespråk som DECISION_COLOR_CLASS (ryggHelpers.ts) - "hold" blir
+// rødt/danger her også, ikke bare i selve beslutningsteksten.
+const DECISION_ACTIVE_CLASS: Record<RyggWeekDecision, string> = {
+  progress: "bg-status-positive/15 text-status-positive",
+  repeat: "bg-status-warning/15 text-status-warning",
+  deload: "bg-status-warning/15 text-status-warning",
+  hold: "bg-status-danger/15 text-status-danger",
+};
+
 export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onError }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showOverride, setShowOverride] = useState(false);
@@ -135,7 +146,7 @@ export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onErr
                   onClick={() => setOverrideDecision(d)}
                   aria-pressed={overrideDecision === d}
                   className={`rounded-md px-2 py-1 text-2xs font-semibold uppercase transition ${
-                    overrideDecision === d ? "bg-emerald-400/15 text-emerald-400" : "bg-surface-2 text-ink-3 hover:text-ink-1"
+                    overrideDecision === d ? DECISION_ACTIVE_CLASS[d] : "bg-surface-2 text-ink-3 hover:text-ink-1"
                   }`}
                 >
                   {DECISION_LABEL[d]}
@@ -154,7 +165,7 @@ export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onErr
                 type="button"
                 disabled={!overrideReason.trim() || saving}
                 onClick={handleOverride}
-                className="rounded-lg bg-emerald-400/15 px-3 py-1.5 text-2xs font-semibold uppercase text-emerald-400 transition hover:bg-emerald-400/25 disabled:opacity-50"
+                className={`rounded-lg px-3 py-1.5 text-2xs font-semibold uppercase transition disabled:opacity-50 ${DECISION_ACTIVE_CLASS[overrideDecision]}`}
               >
                 Lagre
               </button>
@@ -193,6 +204,10 @@ export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onErr
               <span className="text-ink-3">
                 RPE {s.rpe}
                 {s.aggravated ? " · etterreaksjon" : ""}
+                {/* v2 (2026-09-28): samme "telles ikke"-merke som LogTab.tsx - en avkortet økt
+                    (ikke alle øvelser krysset av) skal ikke se ut som en fullverdig gjennomført
+                    økt her heller. */}
+                {!s.completed && <span className="ml-1.5 text-status-warning">· telles ikke</span>}
               </span>
             </div>
           ))

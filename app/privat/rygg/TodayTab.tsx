@@ -115,6 +115,20 @@ function PainFields({ values, onChange }: { values: PainValues; onChange: (next:
   );
 }
 
+// v2 (2026-09-28, Morten: "jeg vil kunne fylle ut hvor tung jeg syns hver øvelse er" - fulgt opp
+// med at feltet alltid startet blankt): finner siste registrerte tyngde PR ØVELSE på tvers av
+// alle tidligere økter (uansett uke/dato), som forhåndsutfylt startverdi - samme "spøkelses"-
+// mønster den generelle Trening-loggen allerede bruker for forrige økts vekt/reps.
+function lastExerciseRpe(sessionLogs: RyggSessionLog[]): Record<string, number> {
+  const sorted = [...sessionLogs].sort((a, b) => a.date.localeCompare(b.date));
+  const result: Record<string, number> = {};
+  for (const s of sorted) {
+    if (!s.exerciseRpe) continue;
+    for (const [id, verdi] of Object.entries(s.exerciseRpe)) result[id] = verdi;
+  }
+  return result;
+}
+
 function ExerciseDetail({ exercise, item, sets, isDeload }: { exercise: RyggExercise; item: RyggProgramItem; sets: number; isDeload: boolean }) {
   return (
     <div className="flex flex-col gap-3">
@@ -220,7 +234,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
 
   function startSession() {
     setCompletedIds(new Set());
-    setExerciseRpe({});
+    setExerciseRpe(lastExerciseRpe(sessionLogs));
     setCurrentIndex(0);
     setStage("session");
   }

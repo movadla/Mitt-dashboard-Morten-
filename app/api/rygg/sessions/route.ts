@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addRyggSessionLog, getRyggSessionLogs } from "@/lib/ryggLog";
+import { logRyggSessionAsWorkout } from "@/lib/workouts";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,12 @@ export async function POST(request: NextRequest) {
         : undefined,
       exerciseRpe,
     });
+    // v1 (2026-09-28): kun ekte fullførte økter (ikke avkortede/hoppet-over, se completed-feltet
+    // over) skal telle som "trent" i den generelle Trening-loggen - samme prinsipp som gjelder for
+    // ukens 3-av-3-telling i selve rygg-modulen.
+    if (entry.completed) {
+      await logRyggSessionAsWorkout(entry.date);
+    }
     return NextResponse.json(entry, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 400 });

@@ -88,6 +88,10 @@ export default function RyggSection() {
     <div className="flex flex-col gap-3">
       <MutationError message={mutationError.message} />
 
+      {/* v2 (2026-09-28): liten orientering lagt til - disse fire fanene og Trening-seksjonens
+          egen Trening/Rygg-toggle er visuelt identiske pill-knapper, men to ulike NIVÅER (fane
+          inni en fane). Uten dette er det ikke synlig at man er "inni" Rygg. */}
+      <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">Rygg</p>
       <div className="flex items-center gap-1.5 self-start rounded-lg border border-line bg-surface-1 p-0.5">
         {VIEWS.map((v) => (
           <button
@@ -128,16 +132,20 @@ export default function RyggSection() {
         <LogTab dailyLogs={dailyLogs} sessionLogs={sessionLogs} onChanged={refreshAll} onError={mutationError.show} />
       )}
 
-      <div className="rounded-xl border border-line bg-surface-2 p-3 text-2xs leading-relaxed text-ink-3">
-        <p className="mb-1 font-semibold uppercase tracking-wide text-ink-4">Faste regler</p>
-        <ul className="list-disc space-y-0.5 pl-4">
-          <li>Smerte opp til 3–4 av 10 under trening er greit, så lenge den roer seg innen et døgn.</li>
-          <li>Utstråling, nummenhet eller prikking ned i setet eller beinet: avslutt øvelsen og kontakt fysio.</li>
-          <li>Ikke bøy tungt den første timen etter oppvåkning.</li>
-          <li>20–30 minutter gange daglig, uansett uke.</li>
-          <li>Tre rolige økter slår fem harde. Effekten kommer av å holde ut i måneder.</li>
-        </ul>
-      </div>
+      {/* v2 (2026-09-28, Morten): vist kun på "I dag" nå - tok tidligere samme plass på alle
+          fire underfaner uansett hvilken man faktisk ville bruke, mest relevant her. */}
+      {view === "idag" && (
+        <div className="rounded-xl border border-line bg-surface-2 p-3 text-2xs leading-relaxed text-ink-3">
+          <p className="mb-1 font-semibold uppercase tracking-wide text-ink-4">Faste regler</p>
+          <ul className="list-disc space-y-0.5 pl-4">
+            <li>Smerte opp til 3–4 av 10 under trening er greit, så lenge den roer seg innen et døgn.</li>
+            <li>Utstråling, nummenhet eller prikking ned i setet eller beinet: avslutt øvelsen og kontakt fysio.</li>
+            <li>Ikke bøy tungt den første timen etter oppvåkning.</li>
+            <li>20–30 minutter gange daglig, uansett uke.</li>
+            <li>Tre rolige økter slår fem harde. Effekten kommer av å holde ut i måneder.</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
