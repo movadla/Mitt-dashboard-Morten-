@@ -2,6 +2,7 @@
 
 import { Download } from "lucide-react";
 import type { RyggDailyLog, RyggSessionLog } from "@/lib/ryggLog";
+import { getRyggExercise } from "@/lib/ryggExercises";
 import { formatDMY } from "@/lib/payday";
 
 interface Props {
@@ -72,6 +73,17 @@ export default function LogTab({ dailyLogs, sessionLogs, onChanged, onError }: P
                     {row.data.variant ? ` (${row.data.variant})` : ""} · RPE {row.data.rpe}
                     {row.data.aggravated ? " · etterreaksjon" : ""}
                     {row.data.completedExerciseIds ? ` · ${row.data.completedExerciseIds.length} øvelser krysset av` : ""}
+                    {!row.data.completed ? " · telles ikke" : ""}
+                    {/* v2 (2026-09-28): tyngde pr. øvelse, ikke bare økten samlet - se
+                        exerciseRpe i lib/ryggLog.ts. */}
+                    {row.data.exerciseRpe && Object.keys(row.data.exerciseRpe).length > 0 && (
+                      <>
+                        {" · "}
+                        {Object.entries(row.data.exerciseRpe)
+                          .map(([id, verdi]) => `${getRyggExercise(id)?.name ?? id} ${verdi}`)
+                          .join(", ")}
+                      </>
+                    )}
                   </span>
                 )}
               </div>

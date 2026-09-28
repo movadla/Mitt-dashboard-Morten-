@@ -31,6 +31,11 @@ export interface RyggSessionLog {
   // full liste ved en avkortet økt. Valgfri: gamle logger (før dette feltet
   // fantes) har ingen verdi, ikke en tom liste.
   completedExerciseIds?: string[];
+  // v2 (2026-09-28, Morten: "jeg må kunne fylle ut hvor tung jeg syns hver
+  // øvelse er"): tyngde PR ØVELSE (1-10), i tillegg til `rpe` som fortsatt er
+  // den samlede tyngden for HELE økten. Nøkkel = exerciseId. Valgfri av samme
+  // grunn som completedExerciseIds - gamle logger har ingen verdi.
+  exerciseRpe?: Record<string, number>;
 }
 
 export interface RyggSessionLogInput {
@@ -43,6 +48,7 @@ export interface RyggSessionLogInput {
   aggravated: boolean;
   note?: string;
   completedExerciseIds?: string[];
+  exerciseRpe?: Record<string, number>;
 }
 
 export type RyggWeekDecision = "progress" | "repeat" | "deload" | "hold";
@@ -109,6 +115,7 @@ export async function addRyggSessionLog(input: RyggSessionLogInput): Promise<Ryg
     aggravated: input.aggravated,
     note: input.note?.trim() || undefined,
     completedExerciseIds: input.completedExerciseIds,
+    exerciseRpe: input.exerciseRpe,
   };
   await hsetJSON(SESSION_HASH_KEY, entry.id, entry);
   return entry;

@@ -22,6 +22,17 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(rpe) || rpe < 1 || rpe > 10) {
       return NextResponse.json({ error: "RPE må være et tall mellom 1 og 10" }, { status: 400 });
     }
+    // exerciseRpe (v2, 2026-09-28): samme validering som rpe over, per øvelse - en ugyldig verdi
+    // for én øvelse skal ikke kaste bort resten av økten, den øvelsen droppes bare stille.
+    let exerciseRpe: Record<string, number> | undefined;
+    if (body.exerciseRpe && typeof body.exerciseRpe === "object") {
+      const cleaned: Record<string, number> = {};
+      for (const [id, value] of Object.entries(body.exerciseRpe as Record<string, unknown>)) {
+        const n = Number(value);
+        if (typeof id === "string" && Number.isFinite(n) && n >= 1 && n <= 10) cleaned[id] = n;
+      }
+      if (Object.keys(cleaned).length > 0) exerciseRpe = cleaned;
+    }
     const entry = await addRyggSessionLog({
       date: body.date,
       week: Number(body.week),
@@ -34,6 +45,7 @@ export async function POST(request: NextRequest) {
       completedExerciseIds: Array.isArray(body.completedExerciseIds)
         ? body.completedExerciseIds.filter((id: unknown) => typeof id === "string")
         : undefined,
+      exerciseRpe,
     });
     return NextResponse.json(entry, { status: 201 });
   } catch (err) {

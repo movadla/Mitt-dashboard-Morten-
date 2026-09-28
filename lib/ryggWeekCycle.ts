@@ -11,6 +11,7 @@ import {
   type RyggWeekState,
 } from "./ryggLog";
 import { computeWeekMetrics, evaluateWeek, shouldCloseWeek } from "./ryggAlgorithm";
+import { weekRangeContaining } from "./payday";
 
 // Maks antall uker vi lar den lazy lukke-sjekken kaskadere i ett kall — kun
 // en sikkerhetsmargin mot en uendelig løkke, ikke en reell programgrense
@@ -181,16 +182,20 @@ export async function getRyggStatus(now: Date = new Date()): Promise<RyggStatus>
 
   const today = todayIso(now);
   const yesterday = todayIso(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-  const cycleStartDate = currentWeekState.startedAt.slice(0, 10);
-  const cycleSessions = sessionLogs.filter((s) => s.week === currentWeekState.week && s.date >= cycleStartDate && s.completed);
   const isHold = currentWeekState.decision === "hold";
+  // v2 (2026-09-28, Morten: "uken må starte på mandagen" - kun det brukeren FAKTISK SER, se
+  // samme resonnement i app/privat/rygg/TodayTab.tsx): "denne uken"-tallet appen viser er en
+  // ordentlig kalenderuke (mandag-søndag), IKKE closeDueWeeksIfNeeded sin interne 7-dagers
+  // programsyklus over - den ruller fortsatt på nøyaktig samme måte som før, uendret.
+  const { start: weekStart, end: weekEnd } = weekRangeContaining(today);
+  const weekSessions = sessionLogs.filter((s) => s.completed && s.date >= weekStart && s.date <= weekEnd);
 
   return {
     currentWeek: currentWeekState.week,
     weekDecision: currentWeekState.decision ?? null,
     isHold,
-    sessionsThisWeek: cycleSessions.length,
-    needsSessionToday: !isHold && cycleSessions.length < 3 && !cycleSessions.some((s) => s.date === today),
+    sessionsThisWeek: weekSessions.length,
+    needsSessionToday: !isHold && weekSessions.length < 3 && !weekSessions.some((s) => s.date === today),
     todayLogged: dailyLogs.some((d) => d.date === today),
     yesterdayLogged: dailyLogs.some((d) => d.date === yesterday),
   };

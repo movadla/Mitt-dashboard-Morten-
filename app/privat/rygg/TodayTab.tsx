@@ -6,7 +6,7 @@ import type { RyggDailyLog, RyggProgramMeta, RyggSessionLog, RyggWeekState } fro
 import { deloadDoseWeek, deloadSets } from "@/lib/ryggAlgorithm";
 import { nextVariant, phaseForWeek, programForWeek, type RyggProgramItem } from "@/lib/ryggProgram";
 import { getRyggExercise, type RyggExercise } from "@/lib/ryggExercises";
-import { localDateString } from "@/lib/payday";
+import { localDateString, weekRangeContaining } from "@/lib/payday";
 import { vibrate } from "@/lib/haptics";
 import { DECISION_COLOR_CLASS, DECISION_LABEL, phaseLabelForWeek, ringOffset, RING_LENGTH } from "./ryggHelpers";
 import ExerciseDiagram from "./ExerciseDiagram";
@@ -145,15 +145,25 @@ function ExerciseDetail({ exercise, item, sets, isDeload }: { exercise: RyggExer
 export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onChanged, onError }: Props) {
   const today = localDateString();
   const cycleStartDate = weekState.startedAt.slice(0, 10);
+  // v2 (2026-09-28, Morten: "uken må starte på mandagen" - kun det brukeren FAKTISK SER, ikke
+  // selve programsyklusen, som fortsatt ruller på sin egen 7-dagers logikk internt uendret, se
+  // shouldCloseWeek i lib/ryggAlgorithm.ts): "X av 3"-telleren er nå en ordentlig kalenderuke
+  // (mandag-søndag, weekRangeContaining - samme delte funksjon som Kalender/Hendelser bruker),
+  // uavhengig av når programsyklusen sist ble nullstilt/gjentatt. cycleSessions beholdes egen
+  // og brukes KUN til A/B-variant-vekslingen under (fase 3) - den skal fortsatt følge
+  // programsyklusen, ikke kalenderuken, ellers mister den tråden i A-B-A-mønsteret.
   const cycleSessions = sessionLogs.filter((s) => s.week === weekState.week && s.date >= cycleStartDate && s.completed);
-  const sessionsDone = cycleSessions.length;
+  const { start: weekStart, end: weekEnd } = weekRangeContaining(today);
+  const calendarWeekSessions = sessionLogs.filter((s) => s.completed && s.date >= weekStart && s.date <= weekEnd);
+  const sessionsDone = calendarWeekSessions.length;
   const sessionsRemaining = Math.max(0, 3 - sessionsDone);
-  const todaySession = cycleSessions.find((s) => s.date === today);
+  const todaySession = calendarWeekSessions.find((s) => s.date === today);
   const todayDaily = dailyLogs.find((d) => d.date === today);
 
   const [stage, setStage] = useState<Stage>("overview");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [exerciseRpe, setExerciseRpe] = useState<Record<string, number>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPainCardOnSessionDay, setShowPainCardOnSessionDay] = useState(false);
   const [editingPain, setEditingPain] = useState(false);
@@ -210,6 +220,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
 
   function startSession() {
     setCompletedIds(new Set());
+    setExerciseRpe({});
     setCurrentIndex(0);
     setStage("session");
   }
@@ -257,10 +268,16 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
           week: weekState.week,
           sessionNo,
           variant,
-          completed: true,
+          // v2 (2026-09-28, Morten: "det er kun når jeg logger alle øvelsene at det må stå 1 av 3
+          // fullført"): var hardkodet til true uansett hvor mange øvelser som faktisk ble krysset
+          // av - en økt der alt ble hoppet over talte likevel som gjennomført. Nå kreves ALLE
+          // øvelsene for at den skal telle mot ukens 3 (getRyggStatus/TodayTab filtrerer begge på
+          // completed). Økten lagres uansett (verdifull historikk), bare uten å telle.
+          completed: completedIds.size === items.length,
           rpe,
           aggravated,
           completedExerciseIds: Array.from(completedIds),
+          exerciseRpe,
         }),
       });
       if (!sessionRes.ok) throw new Error("session log failed");
@@ -312,7 +329,24 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             <ExerciseDetail exercise={exercise} item={item} sets={setsFor(item)} isDeload={isDeload} />
           </div>
         )}
-        <button type="button" onClick={() => advance(true)} className={PRIMARY_BTN}>
+        {/* v2 (2026-09-28, Morten: "jeg må kunne fylle ut hvor tung jeg syns hver øvelse er"):
+            tyngde PR ØVELSE, ikke bare for økten samlet (det spørsmålet kommer fortsatt på
+            slutten, se "post"-steget). Kun påkrevd for å markere ØVELSEN ferdig - "Hopp over
+            denne" trenger ingen vurdering, det er jo ikke gjort. */}
+        {item && (
+          <div className="rounded-xl border border-line bg-surface-2 p-3">
+            <p className="mb-2 text-sm font-semibold text-ink-1">Hvor tung var denne øvelsen?</p>
+            <NumberScale
+              min={1}
+              max={10}
+              value={exerciseRpe[item.exerciseId] ?? null}
+              onChange={(n) => setExerciseRpe((prev) => ({ ...prev, [item.exerciseId]: n }))}
+              lowLabel="Veldig lett"
+              highLabel="Maksimalt"
+            />
+          </div>
+        )}
+        <button type="button" disabled={!item || exerciseRpe[item.exerciseId] === undefined} onClick={() => advance(true)} className={PRIMARY_BTN}>
           {isLast ? "Ferdig med siste øvelse" : "Ferdig — neste øvelse"}
         </button>
         <div className="flex items-center justify-between">
@@ -344,6 +378,14 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             </div>
           </div>
         </div>
+        {/* v2 (2026-09-28, Morten: "kun når jeg logger alle øvelsene skal det stå 1 av 3
+            fullført"): synlig varsel her, ikke bare stille i tallene - ellers ser man først etterpå
+            at "1 av 3" ikke økte. */}
+        {completedIds.size < items.length && (
+          <p className="rounded-lg bg-status-warning/10 px-3 py-2 text-2xs text-status-warning">
+            Denne økten telles ikke som en av ukens 3 før alle {items.length} øvelsene er krysset av.
+          </p>
+        )}
 
         <section className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-4">
           <div>
