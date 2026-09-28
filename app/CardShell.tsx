@@ -2,7 +2,7 @@
 
 import { Component, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Plus, GripVertical } from "lucide-react";
+import { Plus, GripVertical, X } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -611,6 +611,32 @@ export function SuggestionList<T extends { id: string; title: string; date?: str
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Delt fullskjerm-lightbox for bilder (2026-09-28) — flyttet hit fra DiarySection.tsx da Alfred
+// fikk samme behov (miniatyren alene er for liten til å faktisk se et bilde). Klikk utenfor
+// bildet eller X lukker.
+export function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Forstørret bilde"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Lukk bilde"
+        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-surface-0/70 text-white transition hover:bg-surface-0/90"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="" className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
     </div>
   );
 }

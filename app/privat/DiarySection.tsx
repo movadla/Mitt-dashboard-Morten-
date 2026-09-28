@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, SuggestionRow, useConfirmDelete, useMutationError } from "../CardShell";
+import { CardHeader, ConfirmDialog, MutationError, PhotoLightbox, SkeletonRows, SuggestionRow, useConfirmDelete, useMutationError } from "../CardShell";
 import type { DiaryEntry } from "@/lib/diary";
 import type { DiaryPreset, DiaryPresetCategory } from "@/lib/diaryPresets";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -336,31 +336,6 @@ function DayActivity({ date }: { date: string }) {
   );
 }
 
-// v2 (2026-09-28, Morten: "forstørring/lightbox på dagbokbilder") - miniatyren alene
-// (max-h-48/56) var for liten til å faktisk se et minnebilde. Klikk åpner et enkelt
-// fullskjerm-overlay, klikk utenfor bildet eller X lukker.
-function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Dagbokbilde"
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Lukk bilde"
-        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-surface-0/70 text-white transition hover:bg-surface-0/90"
-      >
-        <X className="h-5 w-5" />
-      </button>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="" className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
-    </div>
-  );
-}
 
 function EntryBody({ entry, onOpenPhoto }: { entry: DiaryEntry; onOpenPhoto?: (url: string) => void }) {
   const groups: [string, string[]][] = [

@@ -6,6 +6,7 @@ import {
   CollapsibleBody,
   ConfirmDialog,
   MutationError,
+  PhotoLightbox,
   SkeletonRows,
   useConfirmDelete,
   useMutationError,
@@ -202,10 +203,101 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
   }
 
   return (
+    // v2 (2026-09-28, Morten): samme "trykk for å legge til"-hint som EditableNote allerede har
+    // ved tom verdi - "Født —" ga ikke noe hint om at man kunne trykke for å fylle det ut.
     <button type="button" onClick={startEditing} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left">
-      <p className="text-sm text-ink-1">Født {profile.born ? formatDMY(profile.born) : "—"}</p>
+      <p className="text-sm text-ink-1">
+        {profile.born ? `Født ${formatDMY(profile.born)}` : <span className="text-ink-4">Trykk for å legge til fødselsdato</span>}
+      </p>
       <Pencil className="h-3 w-3 shrink-0 text-ink-4" />
     </button>
+  );
+}
+
+// Delt "legg til nytt punkt"-skjema (2026-09-28) - MilestoneGroup/PlayList/FreeNoteList hadde
+// hver sin nesten identiske variant (åpne skjema -> tekstfelt -> Legg til/Avbryt), samme type
+// de-duplisering som Økonomi sine fire skjemaer fikk i en tidligere runde. `multiline` dekker
+// FreeNoteList sitt behov for en flerlinjers tekstboks i stedet for et enkelt inputfelt.
+function AddItemForm({
+  placeholder,
+  triggerLabel,
+  multiline = false,
+  onAdd,
+}: {
+  placeholder: string;
+  triggerLabel: string;
+  multiline?: boolean;
+  onAdd: (text: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+
+  function submit() {
+    if (!text.trim()) return;
+    onAdd(text.trim());
+    setText("");
+    setAdding(false);
+  }
+
+  if (!adding) {
+    return (
+      <button type="button" onClick={() => setAdding(true)} className="text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80">
+        {triggerLabel}
+      </button>
+    );
+  }
+
+  if (multiline) {
+    return (
+      <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
+        <textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={3}
+          placeholder={placeholder}
+          className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+        />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setAdding(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
+            Avbryt
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!text.trim()}
+            className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+          >
+            Lagre
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && text.trim()) submit();
+          if (e.key === "Escape") setAdding(false);
+        }}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+      />
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!text.trim()}
+        className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
+      >
+        Legg til
+      </button>
+    </div>
   );
 }
 
@@ -262,8 +354,6 @@ function MilestoneGroup({
   onRemove: (id: string) => void;
   onAdd: (category: MilestoneCategory, label: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [label, setLabel] = useState("");
   const doneCount = items.filter((i) => i.done).length;
 
   return (
@@ -295,43 +385,7 @@ function MilestoneGroup({
       ) : (
         <p className="text-xs text-ink-4">Milepæler du vil holde øye med her. Legg til den første med «+ Nytt punkt».</p>
       )}
-      {adding ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            autoFocus
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && label.trim()) {
-                onAdd(category, label.trim());
-                setLabel("");
-                setAdding(false);
-              }
-              if (e.key === "Escape") setAdding(false);
-            }}
-            placeholder="Nytt punkt..."
-            className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              if (!label.trim()) return;
-              onAdd(category, label.trim());
-              setLabel("");
-              setAdding(false);
-            }}
-            disabled={!label.trim()}
-            className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-          >
-            Legg til
-          </button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setAdding(true)} className="text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80">
-          + Nytt punkt
-        </button>
-      )}
+      <AddItemForm placeholder="Nytt punkt..." triggerLabel="+ Nytt punkt" onAdd={(text) => onAdd(category, text)} />
     </div>
   );
 }
@@ -345,16 +399,6 @@ function PlayList({
   onAdd: (label: string) => void;
   onRemove: (id: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [label, setLabel] = useState("");
-
-  function submit() {
-    if (!label.trim()) return;
-    onAdd(label.trim());
-    setLabel("");
-    setAdding(false);
-  }
-
   return (
     <div className="flex flex-col gap-1.5">
       {ideas.length > 0 ? (
@@ -380,34 +424,7 @@ function PlayList({
       ) : (
         <p className="text-xs text-ink-4">Lekideer å ta frem når dagen trenger et forslag. Legg til den første med «+ Nytt punkt».</p>
       )}
-      {adding ? (
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            autoFocus
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") submit();
-              if (e.key === "Escape") setAdding(false);
-            }}
-            placeholder="Ny idé..."
-            className="min-w-0 flex-1 rounded-lg border border-line bg-surface-1 px-3 py-1.5 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!label.trim()}
-            className="rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-          >
-            Legg til
-          </button>
-        </div>
-      ) : (
-        <button type="button" onClick={() => setAdding(true)} className="text-left text-xs font-medium text-accent-privat hover:text-accent-privat/80">
-          + Nytt punkt
-        </button>
-      )}
+      <AddItemForm placeholder="Ny idé..." triggerLabel="+ Nytt punkt" onAdd={onAdd} />
     </div>
   );
 }
@@ -653,16 +670,6 @@ function FreeNoteList({
   onSave: (id: string, text: string) => void;
   onRemove: (id: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [text, setText] = useState("");
-
-  function submit() {
-    if (!text.trim()) return;
-    onAdd(text.trim());
-    setText("");
-    setAdding(false);
-  }
-
   return (
     <div className="flex flex-col gap-1.5">
       {notes.length > 0 ? (
@@ -674,39 +681,7 @@ function FreeNoteList({
       ) : (
         <p className="text-xs text-ink-4">Løpende notater med dato og klokkeslett. Skriv det første med «+ Nytt notat».</p>
       )}
-      {adding ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-line-strong bg-surface-2 p-2.5">
-          <textarea
-            autoFocus
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={3}
-            placeholder="Skriv notat..."
-            className="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
-          />
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setAdding(false)} className="text-xs font-medium text-ink-4 hover:text-ink-2">
-              Avbryt
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={!text.trim()}
-              className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
-            >
-              Lagre
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-2 rounded-xl border border-dashed border-line px-3 py-2.5 text-left text-sm text-ink-3 transition hover:border-line-strong hover:text-ink-1"
-        >
-          <span className="text-base leading-none">+</span> Nytt notat
-        </button>
-      )}
+      <AddItemForm placeholder="Skriv notat..." triggerLabel="+ Nytt notat" multiline onAdd={onAdd} />
     </div>
   );
 }
@@ -749,6 +724,9 @@ function resizeImageFile(file: File, maxSize = 480, quality = 0.8): Promise<stri
 function AlfredPhoto({ photo, onSave }: { photo?: string; onSave: (dataUri: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  // v2 (2026-09-28, Morten): forstørring på trykk - samme lightbox Dagbok fikk for sine bilder
+  // (flyttet til app/CardShell.tsx som delt komponent siden begge nå trenger den).
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -767,8 +745,8 @@ function AlfredPhoto({ photo, onSave }: { photo?: string; onSave: (dataUri: stri
     <div className="flex items-center gap-3">
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
-        aria-label={photo ? "Endre bilde av Alfred" : "Legg til bilde av Alfred"}
+        onClick={() => (photo ? setLightboxOpen(true) : inputRef.current?.click())}
+        aria-label={photo ? "Vis bilde av Alfred" : "Legg til bilde av Alfred"}
         className="relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-surface-2 transition hover:border-line-strong"
       >
         {photo ? (
@@ -777,9 +755,21 @@ function AlfredPhoto({ photo, onSave }: { photo?: string; onSave: (dataUri: stri
         ) : (
           <Baby className="h-6 w-6 text-ink-4" />
         )}
+        {/* v2 (2026-09-28, Morten): synlig spinner i stedet for bare tekst mens bildet lastes opp -
+            samme mønster som Dagbok sin tilsvarende bildeopplasting fikk denne økten. */}
+        {uploading && (
+          <span className="absolute inset-0 grid place-items-center bg-surface-0/60">
+            <span className="h-5 w-5 rounded-full border-2 border-ink-1 border-t-transparent animate-spin" />
+          </span>
+        )}
       </button>
+      {photo && (
+        <button type="button" onClick={() => inputRef.current?.click()} className="text-xs font-medium text-accent-privat hover:text-accent-privat/80">
+          Bytt bilde
+        </button>
+      )}
       <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
-      {uploading && <p className="text-2xs text-ink-4">Laster opp...</p>}
+      {photo && lightboxOpen && <PhotoLightbox url={photo} onClose={() => setLightboxOpen(false)} />}
     </div>
   );
 }
