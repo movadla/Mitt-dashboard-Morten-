@@ -530,6 +530,45 @@ export function SkeletonRows({ count = 2, className = "h-12" }: { count?: number
   );
 }
 
+// Delt klikkbar forslags-rad (2026-09-28) — kjernen felles mellom DiarySection sin
+// DiaryPicker-søkenedtrekk og ShoppingListSection sin hurtigvalg-autocomplete: skriv i et felt,
+// se filtrerte treff, klikk for å velge. De to konteksten pakker denne raden i ULIKE beholdere
+// (en absolutt-posisjonert dropdown med skygge vs. en inline liste inni et allerede-rammet
+// skjema) og eier hver sin egen søk-/åpen-tilstand, filtreringslogikk og "legg til ny"-handling -
+// kun selve raden (label + valgfri meta-chip + aktiv-farge + riktig mousedown-håndtering så
+// klikket ikke stjeler fokus fra søkefeltet før onClick rekker å fyre) er identisk nok til å dele.
+export function SuggestionRow({
+  label,
+  meta,
+  active,
+  onSelect,
+  accentClassName = "text-accent-privat",
+  variant = "flat",
+}: {
+  label: string;
+  meta?: ReactNode;
+  active?: boolean;
+  onSelect: () => void;
+  accentClassName?: string;
+  // "flat": rad i en dropdown-overlay (DiaryPicker). "card": egen avrundet boks i en vanlig liste
+  // (Handleliste sin autocomplete, som ikke ligger i en overlay).
+  variant?: "flat" | "card";
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onSelect}
+      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition ${
+        variant === "card" ? "rounded-lg bg-surface-1 hover:bg-surface-3" : "hover:bg-surface-2"
+      } ${active ? accentClassName : "text-ink-1"}`}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      {meta}
+    </button>
+  );
+}
+
 // Delt "forslag"-liste — Claude legger inn forslag til påminnelser/hendelser/
 // kalendernotater under en research-runde (lib/jobbSuggestions.ts), og
 // Morten godkjenner eller avslår hvert enkelt her, i toppen av seksjonen de

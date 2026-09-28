@@ -9,6 +9,7 @@ import {
   ConfirmDialog,
   MutationError,
   SkeletonRows,
+  SuggestionRow,
   useConfirmDelete,
   useMutationError,
 } from "../CardShell";
@@ -19,7 +20,7 @@ import { markJustToggled, useJustToggled } from "@/lib/justToggled";
 import { RatioBar } from "./DataStrips";
 import SwipeableRow from "./SwipeableRow";
 import { SECTION_ACCENT } from "./sectionAccents";
-import { Pencil, ShoppingCart, X } from "lucide-react";
+import { Pencil, Settings, ShoppingCart, X } from "lucide-react";
 
 const EMPTY_ITEMS: ShoppingItem[] = [];
 const EMPTY_QUICK_PICKS: QuickPick[] = [];
@@ -588,6 +589,34 @@ export default function ShoppingListSection() {
     setShowForm(true);
   }
 
+  // v2 (2026-09-28, Morten: flytt "Administrer hurtigvalg" til en fast knapp) - var tidligere en
+  // liten tekstlenke gjemt inni legg-til-skjemaet, kun synlig når skjemaet allerede var åpent.
+  // Fast CardHeader-knapp åpner skjemaet OG administrasjonsvisningen sammen; "Ferdig" lukker begge.
+  function handleToggleManageQuickPicks() {
+    if (managingQuickPicks) {
+      setManagingQuickPicks(false);
+      setShowForm(false);
+    } else {
+      setManagingQuickPicks(true);
+      setEditingQuickPickId(null);
+      setShowForm(true);
+    }
+  }
+
+  // v2 (2026-09-28, Morten: legg-til-boksen bytter form uten visuell atskillelse) - liten
+  // modus-etikett + skillelinje over innholdet som faktisk varierer (forslag/administrer/detaljer),
+  // så et bytte i hva som vises under "Ny vare"-feltet ikke lenger virker umerkelig.
+  const formMode: "manage" | "suggestions" | "details" = managingQuickPicks
+    ? "manage"
+    : matchingQuickPicks.length > 0
+      ? "suggestions"
+      : "details";
+  const FORM_MODE_LABEL: Record<typeof formMode, string> = {
+    manage: "Administrer hurtigvalg",
+    suggestions: "Forslag",
+    details: "Detaljer",
+  };
+
   return (
     // border-t-cyan-400 må matche SECTION_ACCENT.shopping — se sectionAccents.ts.
     <div className="border-t-2 border-t-cyan-400/60 p-4">
@@ -600,6 +629,15 @@ export default function ShoppingListSection() {
         addLabel="Ny vare"
         icon={ShoppingCart}
         iconColorClass={SECTION_ACCENT.shopping}
+        extraAction={
+          quickPicks.length > 0
+            ? {
+                icon: Settings,
+                onClick: handleToggleManageQuickPicks,
+                label: managingQuickPicks ? "Ferdig med hurtigvalg" : "Administrer hurtigvalg",
+              }
+            : undefined
+        }
       />
         <div className="flex flex-col gap-2">
           <MutationError message={mutationError.message} />
@@ -631,24 +669,13 @@ export default function ShoppingListSection() {
                 placeholder="Ny vare..."
                 className="rounded-lg border border-transparent bg-surface-1 px-3 py-2 text-sm text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
               />
-              {/* Hurtigvalg-katalogen vises IKKE lenger av seg selv — kun
-                  som treff idet man skriver (matchingQuickPicks under), eller
-                  her bak et eksplisitt "Administrer"-trykk for å redigere/
-                  slette lagrede hurtigvalg, jf. tilbakemelding om at
-                  allerede lagrede ting ikke skal vises før man skriver noe. */}
-              {quickPicks.length > 0 && !matchingQuickPicks.length && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManagingQuickPicks((v) => !v);
-                    setEditingQuickPickId(null);
-                  }}
-                  aria-expanded={managingQuickPicks}
-                  className="self-start text-xs font-medium text-ink-4 hover:text-ink-2"
-                >
-                  {managingQuickPicks ? "Ferdig med hurtigvalg" : "Administrer hurtigvalg"}
-                </button>
-              )}
+              {/* Hurtigvalg-katalogen vises IKKE lenger av seg selv — kun som treff idet man
+                  skriver (matchingQuickPicks under), eller via CardHeader sin faste
+                  "Administrer hurtigvalg"-knapp, jf. tilbakemelding om at allerede lagrede ting
+                  ikke skal vises før man skriver noe. */}
+              <div className="flex items-center border-t border-line pt-2">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">{FORM_MODE_LABEL[formMode]}</p>
+              </div>
               {managingQuickPicks ? (
                 <>
                   {quickPicks.length > VISIBLE_QUICK_PICKS && (
@@ -692,14 +719,12 @@ export default function ShoppingListSection() {
                 <ul className="flex flex-col gap-1">
                   {matchingQuickPicks.map((qp) => (
                     <li key={qp.id}>
-                      <button
-                        type="button"
-                        onClick={() => handleAddFromMatch(qp)}
-                        className="flex w-full items-center gap-2 rounded-lg bg-surface-1 px-3 py-2 text-left text-sm text-ink-1 transition hover:bg-surface-3"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{qp.name}</span>
-                        <span className={`shrink-0 text-2xs ${SECTION_META[qp.section].text}`}>{SECTION_META[qp.section].label}</span>
-                      </button>
+                      <SuggestionRow
+                        variant="card"
+                        label={qp.name}
+                        meta={<span className={`shrink-0 text-2xs ${SECTION_META[qp.section].text}`}>{SECTION_META[qp.section].label}</span>}
+                        onSelect={() => handleAddFromMatch(qp)}
+                      />
                     </li>
                   ))}
                 </ul>

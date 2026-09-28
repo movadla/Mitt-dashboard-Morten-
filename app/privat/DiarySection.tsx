@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";
-import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, useConfirmDelete, useMutationError } from "../CardShell";
+import { CardHeader, ConfirmDialog, MutationError, SkeletonRows, SuggestionRow, useConfirmDelete, useMutationError } from "../CardShell";
 import type { DiaryEntry } from "@/lib/diary";
 import type { DiaryPreset, DiaryPresetCategory } from "@/lib/diaryPresets";
 import type { PrivatCalendarEvent } from "@/lib/privatCalendar";
@@ -249,18 +249,13 @@ function DiaryPicker({
               <p className="px-3 py-2 text-xs text-ink-4">Ingen treff blant de eksisterende.</p>
             )}
             {sokTreff.map((p) => (
-              <button
+              <SuggestionRow
                 key={p.id}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => velgFraNedtrekk(p.label)}
-                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-2 ${
-                  includesLabel(selected, p.label) ? "text-accent-privat" : "text-ink-1"
-                }`}
-              >
-                {p.label}
-                {includesLabel(selected, p.label) && <span className="text-2xs uppercase text-accent-privat">Valgt</span>}
-              </button>
+                label={p.label}
+                active={includesLabel(selected, p.label)}
+                meta={includesLabel(selected, p.label) ? <span className="text-2xs uppercase text-accent-privat">Valgt</span> : undefined}
+                onSelect={() => velgFraNedtrekk(p.label)}
+              />
             ))}
             {!eksaktTreff && (
               <button
@@ -341,7 +336,33 @@ function DayActivity({ date }: { date: string }) {
   );
 }
 
-function EntryBody({ entry }: { entry: DiaryEntry }) {
+// v2 (2026-09-28, Morten: "forstørring/lightbox på dagbokbilder") - miniatyren alene
+// (max-h-48/56) var for liten til å faktisk se et minnebilde. Klikk åpner et enkelt
+// fullskjerm-overlay, klikk utenfor bildet eller X lukker.
+function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Dagbokbilde"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Lukk bilde"
+        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-surface-0/70 text-white transition hover:bg-surface-0/90"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="" className="max-h-full max-w-full rounded-lg object-contain" onClick={(e) => e.stopPropagation()} />
+    </div>
+  );
+}
+
+function EntryBody({ entry, onOpenPhoto }: { entry: DiaryEntry; onOpenPhoto?: (url: string) => void }) {
   const groups: [string, string[]][] = [
     ["Møtte", entry.people],
     ["Steder", entry.places],
@@ -364,14 +385,29 @@ function EntryBody({ entry }: { entry: DiaryEntry }) {
       {entry.notes && <p className="whitespace-pre-line text-sm text-ink-1">{entry.notes}</p>}
       {entry.photoUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={entry.photoUrl} alt="" className="mt-1 max-h-48 w-full rounded-lg object-cover" />
+        <img
+          src={entry.photoUrl}
+          alt=""
+          onClick={() => onOpenPhoto?.(entry.photoUrl!)}
+          className={`mt-1 max-h-48 w-full rounded-lg object-cover ${onOpenPhoto ? "cursor-pointer" : ""}`}
+        />
       )}
       {empty && <p className="text-sm text-ink-3">Ingenting fylt ut denne dagen.</p>}
     </div>
   );
 }
 
-function DiaryHistoryRow({ entry, onEdit, onDelete }: { entry: DiaryEntry; onEdit: () => void; onDelete: () => void }) {
+function DiaryHistoryRow({
+  entry,
+  onEdit,
+  onDelete,
+  onOpenPhoto,
+}: {
+  entry: DiaryEntry;
+  onEdit: () => void;
+  onDelete: () => void;
+  onOpenPhoto: (url: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const summary = [
     entry.people.length > 0 ? `${entry.people.length} møtt` : null,
@@ -397,7 +433,7 @@ function DiaryHistoryRow({ entry, onEdit, onDelete }: { entry: DiaryEntry; onEdi
       </SwipeableRow>
       {open && (
         <div className="flex flex-col gap-2 pb-2 pl-[4.75rem]">
-          <EntryBody entry={entry} />
+          <EntryBody entry={entry} onOpenPhoto={onOpenPhoto} />
           <DayActivity date={entry.date} />
           <div className="flex items-center gap-3">
             <button type="button" onClick={onEdit} className="text-2xs font-medium text-accent-privat hover:text-accent-privat/80">
@@ -417,10 +453,12 @@ function DiaryHistoryTable({
   entries,
   onEdit,
   onDelete,
+  onOpenPhoto,
 }: {
   entries: DiaryEntry[];
   onEdit: (entry: DiaryEntry) => void;
   onDelete: (date: string) => void;
+  onOpenPhoto: (url: string) => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(7);
   if (entries.length === 0) return null;
@@ -432,7 +470,7 @@ function DiaryHistoryTable({
       <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-ink-4">Historikk</p>
       <ul className="flex flex-col">
         {sorted.slice(0, visibleCount).map((e) => (
-          <DiaryHistoryRow key={e.date} entry={e} onEdit={() => onEdit(e)} onDelete={() => onDelete(e.date)} />
+          <DiaryHistoryRow key={e.date} entry={e} onEdit={() => onEdit(e)} onDelete={() => onDelete(e.date)} onOpenPhoto={onOpenPhoto} />
         ))}
       </ul>
       {sorted.length > visibleCount && (
@@ -454,6 +492,7 @@ export default function DiarySection() {
   const presets = presetsData?.presets ?? [];
 
   const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [draft, setDraft] = useState<DiaryDraft>(EMPTY_DRAFT);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -715,7 +754,12 @@ export default function DiarySection() {
             {draft.photoUrl && (
               <div className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={draft.photoUrl} alt="" className="max-h-56 w-full rounded-lg object-cover" />
+                <img
+                  src={draft.photoUrl}
+                  alt=""
+                  onClick={() => setLightboxUrl(draft.photoUrl)}
+                  className="max-h-56 w-full cursor-pointer rounded-lg object-cover"
+                />
                 <button
                   type="button"
                   onClick={() => setDraft((d) => ({ ...d, photoUrl: "" }))}
@@ -760,7 +804,7 @@ export default function DiarySection() {
               {todayEntry ? (
                 <>
                   <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">I dag</p>
-                  <EntryBody entry={todayEntry} />
+                  <EntryBody entry={todayEntry} onOpenPhoto={setLightboxUrl} />
                   <button
                     type="button"
                     onClick={() => openEditor(today, todayEntry)}
@@ -793,6 +837,7 @@ export default function DiarySection() {
               entries={entries.filter((e) => e.date !== today)}
               onEdit={(e) => openEditor(e.date, e)}
               onDelete={(date) => confirmDeleteEntry.request(date)}
+              onOpenPhoto={setLightboxUrl}
             />
           </>
         )}
@@ -815,6 +860,7 @@ export default function DiarySection() {
           confirmDeletePreset.cancel();
         }}
       />
+      {lightboxUrl && <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />}
     </div>
   );
 }
