@@ -193,6 +193,7 @@ export function StrengthSetRow({
   previousLabel,
   bodyweight = false,
   bestEverKg = 0,
+  stepKg = 2.5,
   onUpdate,
   onToggleDone,
   onRemove,
@@ -205,6 +206,9 @@ export function StrengthSetRow({
   // tidligere økter, ikke bare forrige) — brukt til å avgjøre om dette
   // settet er en ny personlig rekord.
   bestEverKg?: number;
+  // v2 (2026-09-28, Morten: "konfigurerbar stegstørrelse" - 2,5 kg var for grovt for
+  // isolasjonsøvelser, for fint for tunge løft) - per-øvelse steg, se Exercise.stepKg.
+  stepKg?: number;
   onUpdate: (updates: { kg: number | null; reps: number | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
@@ -253,7 +257,7 @@ export function StrengthSetRow({
         {!bodyweight && (
           <div className="flex min-w-0 flex-col items-center gap-0.5">
             <div className="flex w-full items-center gap-1">
-              <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-2.5)} />
+              <StepperButton symbol="−" label="Reduser vekt" onClick={() => adjustKg(-stepKg)} />
               <input
                 type="number"
                 step="0.5"
@@ -264,7 +268,7 @@ export function StrengthSetRow({
                 aria-label="Vekt i kg"
                 className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface-1 px-1 py-1.5 text-center text-lg font-semibold tabular-nums text-ink-1 outline-none focus:border-line-strong"
               />
-              <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(2.5)} />
+              <StepperButton symbol="+" label="Øk vekt" onClick={() => adjustKg(stepKg)} />
             </div>
             <span className="text-2xs font-medium uppercase tracking-wide text-ink-4">kg</span>
           </div>
@@ -296,6 +300,8 @@ export function CardioSetRow({
   set,
   index,
   previousLabel,
+  stepKmt = 0.5,
+  stepDistanceKm = 0.5,
   onUpdate,
   onToggleDone,
   onRemove,
@@ -303,6 +309,10 @@ export function CardioSetRow({
   set: SetLog;
   index: number;
   previousLabel?: string;
+  // v2 (2026-09-28, Morten: "konfigurerbar stegstørrelse") - per-øvelse steg, se
+  // Exercise.stepKmt/stepDistanceKm.
+  stepKmt?: number;
+  stepDistanceKm?: number;
   onUpdate: (updates: { minutes: number | null; kmt: number | null; distanceKm: number | null; intensity: SetIntensity | null }) => void;
   onToggleDone: () => void;
   onRemove: () => void;
@@ -376,7 +386,7 @@ export function CardioSetRow({
           <StepperButton symbol="+" label="Øk minutter" onClick={() => adjustMinutes(1)} />
         </div>
         <div className="flex items-center gap-1">
-          <StepperButton symbol="−" label="Reduser km/t" onClick={() => adjustKmt(-0.5)} />
+          <StepperButton symbol="−" label="Reduser km/t" onClick={() => adjustKmt(-stepKmt)} />
           <div className="relative min-w-0 flex-1">
             <input
               type="number"
@@ -392,10 +402,10 @@ export function CardioSetRow({
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km/t</span>
             )}
           </div>
-          <StepperButton symbol="+" label="Øk km/t" onClick={() => adjustKmt(0.5)} />
+          <StepperButton symbol="+" label="Øk km/t" onClick={() => adjustKmt(stepKmt)} />
         </div>
         <div className="flex items-center gap-1">
-          <StepperButton symbol="−" label="Reduser distanse" onClick={() => adjustDistanceKm(-0.5)} />
+          <StepperButton symbol="−" label="Reduser distanse" onClick={() => adjustDistanceKm(-stepDistanceKm)} />
           <div className="relative min-w-0 flex-1">
             <input
               type="number"
@@ -411,7 +421,7 @@ export function CardioSetRow({
               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-2xs text-ink-4">km</span>
             )}
           </div>
-          <StepperButton symbol="+" label="Øk distanse" onClick={() => adjustDistanceKm(0.5)} />
+          <StepperButton symbol="+" label="Øk distanse" onClick={() => adjustDistanceKm(stepDistanceKm)} />
         </div>
         <select
           value={intensity}

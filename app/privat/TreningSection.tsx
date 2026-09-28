@@ -101,6 +101,10 @@ export default function TreningSection() {
   const [showSetup, setShowSetup] = useState(false);
   const [showSetupPicker, setShowSetupPicker] = useState(false);
   const [draftExercises, setDraftExercises] = useState<{ exerciseId: string; exerciseName: string }[]>([]);
+  // v2 (2026-09-28, Morten): en rutine med mange øvelser legges til sekvensielt (én fetch pr.
+  // øvelse i seedRoutineEntries) - "starting" er enten en rutine-id eller literalen "setup", brukt
+  // til å vise en synlig lastetilstand på riktig knapp i stedet for at UI-et bare henger uresponsivt.
+  const [starting, setStarting] = useState<string | null>(null);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(VISIBLE_HISTORY);
   const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
   // Starter på "rygg" hvis "I dag"-kortet nettopp ba om det (lib/ryggNavigation.ts) —
@@ -200,15 +204,25 @@ export default function TreningSection() {
   }
 
   async function handleStartFromRoutine(routine: Routine) {
-    await handleStartWithExercises(routine.exercises);
+    setStarting(routine.id);
+    try {
+      await handleStartWithExercises(routine.exercises);
+    } finally {
+      setStarting(null);
+    }
   }
 
   async function handleSetupStart() {
     const list = draftExercises;
-    setShowSetup(false);
-    setShowSetupPicker(false);
-    setDraftExercises([]);
-    await handleStartWithExercises(list);
+    setStarting("setup");
+    try {
+      await handleStartWithExercises(list);
+    } finally {
+      setStarting(null);
+      setShowSetup(false);
+      setShowSetupPicker(false);
+      setDraftExercises([]);
+    }
   }
 
   async function handleEndSession() {
@@ -742,8 +756,17 @@ export default function TreningSection() {
                     </div>
                   </div>
                   {isLongSession && (
-                    <p className="text-2xs text-status-warning">
+                    // v2 (2026-09-28, Morten): varselet hadde ingen handling - måtte scrolle opp
+                    // til "Avslutt økt"-knappen selv. Samme handler her nå, direkte i varselet.
+                    <p className="flex items-center justify-between gap-2 text-2xs text-status-warning">
                       Denne økten har vart lenge — glemte du å avslutte den?
+                      <button
+                        type="button"
+                        onClick={handleEndSession}
+                        className="shrink-0 rounded-lg bg-status-warning/15 px-2 py-1 text-2xs font-semibold uppercase text-status-warning transition hover:bg-status-warning/25"
+                      >
+                        Avslutt økt
+                      </button>
                     </p>
                   )}
                   {restTimer.active && (
@@ -803,6 +826,9 @@ export default function TreningSection() {
                               lastEntry={findLastEntry(entry.exerciseId, sessions, activeSession.id)}
                               history={exerciseHistory(entry.exerciseId, sessions, activeSession.id)}
                               bodyweight={exercises.find((ex) => ex.id === entry.exerciseId)?.bodyweight}
+                              stepKg={exercises.find((ex) => ex.id === entry.exerciseId)?.stepKg}
+                              stepKmt={exercises.find((ex) => ex.id === entry.exerciseId)?.stepKmt}
+                              stepDistanceKm={exercises.find((ex) => ex.id === entry.exerciseId)?.stepDistanceKm}
                               startExpanded={entry.id === justAddedEntryId}
                               onAddSet={(prefill) => handleAddSet(entry.id, prefill)}
                               onUpdateSet={(setId, updates) => handleUpdateSet(entry.id, setId, updates)}
@@ -897,10 +923,10 @@ export default function TreningSection() {
                     <button
                       type="button"
                       onClick={handleSetupStart}
-                      disabled={draftExercises.length === 0}
+                      disabled={draftExercises.length === 0 || starting !== null}
                       className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
                     >
-                      Start økt
+                      {starting === "setup" ? "Starter…" : "Start økt"}
                     </button>
                   </div>
                 </div>
@@ -929,6 +955,7 @@ export default function TreningSection() {
                             key={r.id}
                             routine={r}
                             editing={editingRoutineId === r.id}
+                            starting={starting === r.id}
                             onStartEdit={() => setEditingRoutineId(r.id)}
                             onCancelEdit={() => setEditingRoutineId(null)}
                             onSave={(name) => handleRenameRoutine(r.id, name)}

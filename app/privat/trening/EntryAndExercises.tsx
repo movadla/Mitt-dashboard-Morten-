@@ -25,6 +25,9 @@ export function EntryRow({
   lastEntry,
   history,
   bodyweight = false,
+  stepKg,
+  stepKmt,
+  stepDistanceKm,
   startExpanded = false,
   onAddSet,
   onUpdateSet,
@@ -38,6 +41,11 @@ export function EntryRow({
   lastEntry: WorkoutEntry | null;
   history: ExerciseHistoryPoint[];
   bodyweight?: boolean;
+  // v2 (2026-09-28, Morten: "konfigurerbar stegstørrelse") - videreformidlet fra Exercise, se
+  // lib/exercises.ts. undefined lar SetRows sine egne standardverdier (2,5/0,5/0,5) gjelde.
+  stepKg?: number;
+  stepKmt?: number;
+  stepDistanceKm?: number;
   startExpanded?: boolean;
   onAddSet: (prefill: { kg?: number; reps?: number; minutes?: number; kmt?: number; distanceKm?: number; intensity?: SetIntensity }) => void;
   onUpdateSet: (
@@ -237,6 +245,8 @@ export function EntryRow({
                 set={s}
                 index={i}
                 previousLabel={previousLabel}
+                stepKmt={stepKmt}
+                stepDistanceKm={stepDistanceKm}
                 onUpdate={(updates) => onUpdateSet(s.id, updates)}
                 onToggleDone={() => onToggleSetDone(s.id, !s.done)}
                 onRemove={() => onRemoveSet(s.id)}
@@ -248,6 +258,7 @@ export function EntryRow({
                 index={i}
                 previousLabel={previousLabel}
                 bodyweight={bodyweight}
+                stepKg={stepKg}
                 bestEverKg={bestEverKg}
                 onUpdate={(updates) => onUpdateSet(s.id, updates)}
                 onToggleDone={() => onToggleSetDone(s.id, !s.done)}
@@ -338,19 +349,40 @@ export function ExerciseEditForm({
 }: {
   exercise: Exercise;
   onCancel: () => void;
-  onSave: (updates: { name: string; description?: string; category: ExerciseCategory; bodyweight?: boolean }) => Promise<boolean>;
+  onSave: (updates: {
+    name: string;
+    description?: string;
+    category: ExerciseCategory;
+    bodyweight?: boolean;
+    stepKg?: number | null;
+    stepKmt?: number | null;
+    stepDistanceKm?: number | null;
+  }) => Promise<boolean>;
 }) {
   const [name, setName] = useState(exercise.name);
   const [description, setDescription] = useState(exercise.description ?? "");
   const [category, setCategory] = useState<ExerciseCategory>(exercise.category);
   const [bodyweight, setBodyweight] = useState(!!exercise.bodyweight);
+  // v2 (2026-09-28, Morten: "konfigurerbar stegstørrelse") - tekstfelt (ikke number-input) siden
+  // et tomt felt skal bety "bruk standard", ikke "0".
+  const [stepKg, setStepKg] = useState(exercise.stepKg?.toString() ?? "");
+  const [stepKmt, setStepKmt] = useState(exercise.stepKmt?.toString() ?? "");
+  const [stepDistanceKm, setStepDistanceKm] = useState(exercise.stepDistanceKm?.toString() ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function save() {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await onSave({ name: name.trim(), description: description.trim() || undefined, category, bodyweight: category === "styrke" && bodyweight });
+      await onSave({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        category,
+        bodyweight: category === "styrke" && bodyweight,
+        stepKg: category === "styrke" ? (stepKg.trim() ? Number(stepKg) : null) : undefined,
+        stepKmt: category === "cardio" ? (stepKmt.trim() ? Number(stepKmt) : null) : undefined,
+        stepDistanceKm: category === "cardio" ? (stepDistanceKm.trim() ? Number(stepDistanceKm) : null) : undefined,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -369,15 +401,57 @@ export function ExerciseEditForm({
       />
       <CategoryToggle value={category} onChange={setCategory} />
       {category === "styrke" && (
-        <label className="flex items-center gap-2 text-xs text-ink-2">
-          <input
-            type="checkbox"
-            checked={bodyweight}
-            onChange={(e) => setBodyweight(e.target.checked)}
-            className="h-3.5 w-3.5 rounded border-line accent-accent-privat"
-          />
-          Kroppsvekt (skjul kg-felt)
-        </label>
+        <>
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            <input
+              type="checkbox"
+              checked={bodyweight}
+              onChange={(e) => setBodyweight(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-line accent-accent-privat"
+            />
+            Kroppsvekt (skjul kg-felt)
+          </label>
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            Steg for vekt (kg)
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={stepKg}
+              onChange={(e) => setStepKg(e.target.value)}
+              placeholder="2,5"
+              className="w-20 rounded-lg border border-transparent bg-surface-2 px-2 py-1 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+          </label>
+        </>
+      )}
+      {category === "cardio" && (
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            Steg for km/t
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={stepKmt}
+              onChange={(e) => setStepKmt(e.target.value)}
+              placeholder="0,5"
+              className="w-20 rounded-lg border border-transparent bg-surface-2 px-2 py-1 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            Steg for distanse (km)
+            <input
+              type="number"
+              step="0.5"
+              inputMode="decimal"
+              value={stepDistanceKm}
+              onChange={(e) => setStepDistanceKm(e.target.value)}
+              placeholder="0,5"
+              className="w-20 rounded-lg border border-transparent bg-surface-2 px-2 py-1 text-xs text-ink-1 placeholder-ink-4 outline-none focus:border-line-strong"
+            />
+          </label>
+        </div>
       )}
       <textarea
         value={description}
@@ -575,6 +649,7 @@ export function ExercisePicker({
 export function RoutineRow({
   routine,
   editing,
+  starting,
   onStartEdit,
   onCancelEdit,
   onSave,
@@ -583,6 +658,9 @@ export function RoutineRow({
 }: {
   routine: Routine;
   editing: boolean;
+  // v2 (2026-09-28, Morten): synlig lastetilstand mens en rutine med mange øvelser legges til
+  // sekvensielt - uten dette hang "Start"-knappen uresponsiv i flere sekunder for store rutiner.
+  starting?: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSave: (name: string) => void;
@@ -629,9 +707,10 @@ export function RoutineRow({
       <button
         type="button"
         onClick={onStart}
-        className="shrink-0 rounded-lg bg-accent-privat px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85"
+        disabled={!!starting}
+        className="shrink-0 rounded-lg bg-accent-privat px-2.5 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
       >
-        Start
+        {starting ? "Starter…" : "Start"}
       </button>
       <button
         type="button"

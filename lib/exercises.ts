@@ -17,6 +17,13 @@ export interface Exercise {
   // for kroppsvektøvelser (f.eks. hang ups, planke) der et vekt-felt uansett
   // ikke gir mening.
   bodyweight?: boolean;
+  // v2 (2026-09-28, Morten: "konfigurerbar stegstørrelse" - 2,5 kg standard var for grovt for
+  // isolasjonsøvelser og for fint for tunge løft som markløft): valgfrie per-øvelse steg for
+  // +/--knappene i settregistrering. `undefined` betyr "bruk standard" (2,5 kg / 0,5 km/t /
+  // 0,5 km, se SetRows.tsx). stepKg gjelder kun "styrke", stepKmt/stepDistanceKm kun "cardio".
+  stepKg?: number;
+  stepKmt?: number;
+  stepDistanceKm?: number;
   createdAt: string;
 }
 
@@ -25,6 +32,9 @@ export interface NewExerciseInput {
   description?: string;
   category?: ExerciseCategory;
   bodyweight?: boolean;
+  stepKg?: number;
+  stepKmt?: number;
+  stepDistanceKm?: number;
 }
 
 export interface ExerciseUpdateInput {
@@ -32,6 +42,9 @@ export interface ExerciseUpdateInput {
   description?: string | null;
   category?: ExerciseCategory;
   bodyweight?: boolean;
+  stepKg?: number | null;
+  stepKmt?: number | null;
+  stepDistanceKm?: number | null;
 }
 
 const HASH_KEY = "privat:exercises";
@@ -68,6 +81,9 @@ export async function addExercise(input: NewExerciseInput): Promise<Exercise> {
     description: input.description?.trim() || undefined,
     category: input.category ?? "styrke",
     bodyweight: input.bodyweight || undefined,
+    stepKg: input.stepKg || undefined,
+    stepKmt: input.stepKmt || undefined,
+    stepDistanceKm: input.stepDistanceKm || undefined,
     createdAt: new Date().toISOString(),
   };
   await hsetJSON(HASH_KEY, exercise.id, exercise);
@@ -87,6 +103,9 @@ export async function updateExercise(id: string, updates: ExerciseUpdateInput): 
     description: updates.description !== undefined ? (updates.description?.trim() || undefined) : current.description,
     category: updates.category !== undefined ? updates.category : current.category,
     bodyweight: updates.bodyweight !== undefined ? updates.bodyweight || undefined : current.bodyweight,
+    stepKg: updates.stepKg !== undefined ? updates.stepKg ?? undefined : current.stepKg,
+    stepKmt: updates.stepKmt !== undefined ? updates.stepKmt ?? undefined : current.stepKmt,
+    stepDistanceKm: updates.stepDistanceKm !== undefined ? updates.stepDistanceKm ?? undefined : current.stepDistanceKm,
   };
   await hsetJSON(HASH_KEY, id, next);
   return next;
