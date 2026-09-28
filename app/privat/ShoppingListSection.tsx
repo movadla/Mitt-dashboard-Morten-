@@ -614,7 +614,9 @@ export default function ShoppingListSection() {
   const FORM_MODE_LABEL: Record<typeof formMode, string> = {
     manage: "Administrer hurtigvalg",
     suggestions: "Forslag",
-    details: "Detaljer",
+    // v2 (2026-09-28, Morten): "Detaljer" var noe abstrakt - matcher nå faktisk
+    // "+ Kategori/mengde/notat"-knappen rett under.
+    details: "Flere valg",
   };
 
   return (

@@ -1,5 +1,9 @@
 "use client";
 
+// FPL-spesifikk komponent (lagoppstilling for én manager) - ligger flatt i app/privat/ sammen med
+// alle andre seksjonsfiler (samme mønster som resten av mappen, ikke en feilplassering i seg selv),
+// men ble tidligere feilaktig antatt å høre til Sport-klyngen ved en UX-gjennomgang siden navnet
+// alene ikke sier FPL. Brukes KUN av FplSection.tsx - se den filen for kontekst.
 import { useState } from "react";
 import useSWR from "swr";
 import { jsonFetcher } from "@/lib/swrFetcher";

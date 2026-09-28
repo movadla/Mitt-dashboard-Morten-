@@ -287,15 +287,31 @@ function ProjectSubSection({ title, children }: { title: string; children: React
   );
 }
 
-function ProjectEditForm({ project, onCancel, onSave }: { project: Project; onCancel: () => void; onSave: (updates: { name: string; description?: string; targetDate?: string; status: ProjectStatus }) => void }) {
+function ProjectEditForm({
+  project,
+  onCancel,
+  onSave,
+}: {
+  project: Project;
+  onCancel: () => void;
+  onSave: (updates: { name: string; description?: string; targetDate?: string; status: ProjectStatus }) => Promise<void>;
+}) {
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
   const [targetDate, setTargetDate] = useState(project.targetDate ?? "");
   const [status, setStatus] = useState<ProjectStatus>(project.status);
+  // v2 (2026-09-28): manglet samme "submitting"-beskyttelse som Økonomi sitt EntryForm-mønster -
+  // et dobbeltklikk her kunne trigget to PATCH-kall på rad.
+  const [submitting, setSubmitting] = useState(false);
 
-  function save() {
-    if (!name.trim()) return;
-    onSave({ name: name.trim(), description: description.trim() || undefined, targetDate: targetDate || undefined, status });
+  async function save() {
+    if (!name.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSave({ name: name.trim(), description: description.trim() || undefined, targetDate: targetDate || undefined, status });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -338,7 +354,7 @@ function ProjectEditForm({ project, onCancel, onSave }: { project: Project; onCa
         <button
           type="button"
           onClick={save}
-          disabled={!name.trim()}
+          disabled={!name.trim() || submitting}
           className="ml-auto rounded-lg bg-accent-privat px-3 py-1.5 text-2xs font-semibold uppercase text-surface-0 transition hover:bg-accent-privat/85 disabled:opacity-40"
         >
           Lagre
@@ -556,6 +572,11 @@ export default function ProjectsSection() {
               + Nytt prosjekt
             </button>
           </div>
+        ) : visibleProjects.length === 0 ? (
+          // v2 (2026-09-28): projects.length > 0 her (ellers ville grenen over truffet), men ALLE
+          // er fullførte og skjult - uten denne teksten viste "Vis fullførte"-knappen seg alene
+          // under en tom liste, uten noen forklaring på hvorfor lista er tom.
+          <p className="text-sm text-ink-3">Alle prosjekter er fullført.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {visibleProjects.map((project) => {

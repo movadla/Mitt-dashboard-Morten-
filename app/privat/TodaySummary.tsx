@@ -773,6 +773,8 @@ export default function TodaySummary({
           >
             <WeatherIcon symbol={weather.symbol} className="h-5 w-5" />
             <span className="tabular-nums">{weather.temp}°</span>
+            {/* v2 (2026-09-28): ingenting viste at dette faktisk var en toggle før første trykk. */}
+            <ChevronDown className={`h-3 w-3 text-ink-4 transition-transform ${weatherOpen ? "rotate-180" : ""}`} />
           </button>
         )}
       </div>
