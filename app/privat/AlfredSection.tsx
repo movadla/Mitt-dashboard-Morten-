@@ -20,7 +20,7 @@ import SwipeableRow from "./SwipeableRow";
 // Samme koordinat-hjelper som Trening sin ProgressChart bruker — vektkurven
 // under er samme teknikk (innebygd SVG-polyline), ikke et nytt bibliotek.
 import { chartCoords } from "./trening/treningHelpers";
-import { Bot, X } from "lucide-react";
+import { Baby, Pencil, X } from "lucide-react";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("nb-NO", {
@@ -107,8 +107,11 @@ function EditableNote({
           </div>
         </div>
       ) : (
-        <button type="button" onClick={startEditing} className="block w-full whitespace-pre-line text-left text-sm text-ink-1">
-          {value || <span className="text-ink-4">Trykk for å legge til</span>}
+        // v2 (2026-09-28, Morten): pil-ikon lagt til - hele boksen var klikkbar for å redigere
+        // uten noe visuelt hint om det.
+        <button type="button" onClick={startEditing} className="flex w-full items-start justify-between gap-2 whitespace-pre-line text-left text-sm text-ink-1">
+          <span className="min-w-0 flex-1">{value || <span className="text-ink-4">Trykk for å legge til</span>}</span>
+          <Pencil className="mt-0.5 h-3 w-3 shrink-0 text-ink-4" />
         </button>
       )}
     </div>
@@ -199,8 +202,9 @@ function GrunninfoBox({ profile, onSave }: { profile: AlfredProfile; onSave: (up
   }
 
   return (
-    <button type="button" onClick={startEditing} className="flex flex-col gap-1 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left">
+    <button type="button" onClick={startEditing} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left">
       <p className="text-sm text-ink-1">Født {profile.born ? formatDMY(profile.born) : "—"}</p>
+      <Pencil className="h-3 w-3 shrink-0 text-ink-4" />
     </button>
   );
 }
@@ -621,6 +625,9 @@ function FreeNoteRow({
               {note.updatedAt ? " (redigert)" : ""}
             </p>
           </button>
+          {/* v2 (2026-09-28, Morten): pil-ikon lagt til - ren visuell affordance, gjør samme
+              startEditing som å trykke på selve teksten. */}
+          <Pencil className="mt-1 h-3 w-3 shrink-0 text-ink-4" />
           <button
             type="button"
             onClick={() => onRemove(note.id)}
@@ -768,7 +775,7 @@ function AlfredPhoto({ photo, onSave }: { photo?: string; onSave: (dataUri: stri
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photo} alt="" className="h-full w-full object-cover" />
         ) : (
-          <Bot className="h-6 w-6 text-ink-4" />
+          <Baby className="h-6 w-6 text-ink-4" />
         )}
       </button>
       <input ref={inputRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
@@ -1008,7 +1015,7 @@ export default function AlfredSection() {
         title="Alfred"
         stat={stat}
         subtitle={subtitle}
-        icon={Bot}
+        icon={Baby}
         iconColorClass={SECTION_ACCENT.alfred}
       />
         <div className="flex flex-col gap-3">
@@ -1029,7 +1036,10 @@ export default function AlfredSection() {
                 <GrowthSection entries={growth} onAdd={addGrowth} onRemove={(id) => confirmDelete.request({ type: "growth", id })} />
               </AlfredSubSection>
 
-              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler">
+              {/* v2 (2026-09-28, Morten): stod kollapset som alle de andre, kortet fremstod tomt
+                  ved hvert besøk - la denne stå åpen som standard siden det er den mest
+                  verdifulle å se med en gang. */}
+              <AlfredSubSection title="Milepæler" storageKey="Alfred - Milepæler" defaultCollapsed={false}>
                 {CATEGORY_ORDER.map((category) => (
                   <MilestoneGroup
                     key={category}
