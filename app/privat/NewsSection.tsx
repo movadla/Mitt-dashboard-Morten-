@@ -13,14 +13,18 @@ const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
 // Egen fargepalett per kategori — samme mønster som SPORT_COLOR i
 // SportSection.tsx (dedikert konstant-map, ikke en gjenbruk av det
-// reserverte semantiske paletten i globals.css).
+// reserverte semantiske paletten i globals.css). v2 (2026-09-28): var rå
+// hex-verdier via inline style - byttet til literal Tailwind-klasser (samme
+// "allerede tema-omdirigert"-konvensjon DESIGN.md beskriver for raw
+// fargeskalaer), så prikkene faktisk følger dag/kveld-temaet i stedet for å
+// stå fast på én farge uansett.
 const CATEGORY_COLOR: Record<string, string> = {
-  Nyheter: "#64748b",
-  Sport: "#2563eb",
-  Underholdning: "#db2777",
-  Økonomi: "#0e9e79",
-  Utenriks: "#d97706",
-  Annet: "#6b7280",
+  Nyheter: "bg-slate-400",
+  Sport: "bg-blue-400",
+  Underholdning: "bg-pink-400",
+  Økonomi: "bg-emerald-400",
+  Utenriks: "bg-amber-400",
+  Annet: "bg-slate-500",
 };
 
 // v2 (2026-09-28, Morten: kildeidentitet er svak med flere RSS-kilder - kun ren tekst). Bruker
@@ -76,9 +80,15 @@ function NewsRow({ item, expanded, showMore, enriching, onToggle, onToggleMore }
   return (
     <li className="rounded-xl border border-line bg-surface-2 px-3 py-2">
       <button type="button" onClick={onToggle} aria-expanded={expanded} className="flex w-full items-start gap-2.5 text-left">
-        {item.image && (
+        {item.image ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={item.image} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+        ) : (
+          // v2 (2026-09-28): fallback-ikon i stedet for et tomt hull der bildet ellers ville
+          // stått - saker uten bilde ga tidligere en visuelt ujevn liste.
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-surface-3 text-ink-4">
+            <Newspaper className="h-5 w-5" />
+          </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
@@ -107,7 +117,7 @@ function NewsRow({ item, expanded, showMore, enriching, onToggle, onToggleMore }
               <>
                 <span>·</span>
                 <span className="inline-flex items-center gap-1">
-                  {categoryColor && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor }} />}
+                  {categoryColor && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${categoryColor}`} />}
                   {item.category}
                 </span>
               </>
@@ -268,7 +278,22 @@ export default function NewsSection({ pinnedItem, onPinnedHandled }: { pinnedIte
           {loading ? (
             <SkeletonRows count={3} />
           ) : items.length === 0 ? (
-            <p className="text-sm text-ink-3">Fikk ikke hentet nyheter akkurat nå.</p>
+            // v2 (2026-09-28): lagt til en "Prøv igjen"-knapp, samme mønster som AI-tips sin
+            // tilsvarende tomtilstand - manglet tidligere en vei videre utover å vente på neste
+            // automatiske oppfriskning (15 min).
+            <div className="flex flex-col items-start gap-1.5">
+              <p className="text-sm text-ink-3">Fikk ikke hentet nyheter akkurat nå.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  load();
+                }}
+                className="text-xs font-medium text-accent-privat hover:text-accent-privat/80"
+              >
+                Prøv igjen
+              </button>
+            </div>
           ) : (
             <>
               <p className="truncate text-sm text-ink-2">{items[0].aiTitle ?? items[0].title}</p>
