@@ -199,12 +199,17 @@ const EXCEL_TO_FAZILE_ALIASES = {
   "beth´s beauty": "beths beauty center as",
   "søstrene grene": "hs retail oslo2 as",
   "smoothie exchange": "smoothie xchange as",
-  // rettet 2026-09-23: "/Kiosk 814"-suffikset kom fra Fazile-siden av matchingen (2026-08-26).
-  // Leieforholdet falt siden ut av det ferske Fazile-uttrekket (kontrakt for gammel/avsluttet) og
-  // fanges nå i stedet opp av v48-fiksen i build-remaining-summary.js (leietaker med ekte NXT-
-  // bokføring uten aktiv Fazile-linje) - REMAINING sitt navn kommer da fra NXT sin egen
-  // kundenavn-post, som ikke har suffikset.
-  "narvesen cc vest": "reitan convenience norway as",
+  // RETTET 2026-09-29 (Morten, tydelig irritert - "det har jeg sagt mange ganger og bedt deg
+  // notere"): 2026-09-23-kommentaren under antok REMAINING sitt navn ville komme fra NXT sin
+  // kundenavn-post UTEN "/Kiosk 814"-suffiks - det stemmer IKKE lenger (kanskje aldri gjorde det).
+  // REMAINING.tenants lagrer fortsatt Fazile-siden sitt fulle navn "Reitan Convenience Norway
+  // AS/Kiosk 814" (se FAZILE_TO_NXT_ALIASES i build-remaining-summary.js - DEN aliasen brukes kun
+  // INTERNT for å finne NXT-bokføringen, den endrer ikke REMAINING sitt lagrede visningsnavn).
+  // findTenant() sitt alias-oppslag her er derfor et EKSAKT navnematch mot byExactName (bygget fra
+  // REMAINING.tenants[].navn) - uten suffikset i target fant den aldri treffet, og budsjettet falt
+  // gjennom til "uten treff" i stedet for å kobles til leietakeren. Se
+  // project_income-forecast-tenant-specific-facts.md for alias-historikken.
+  "narvesen cc vest": "reitan convenience norway as/kiosk 814",
   "grændsens skotøimagazin": "grensen sko drift as",
   "grændsens skotøimagazin kidz": "grensen sko drift as",
   "grensen sko cc vest a/s": "grensen sko drift as",
