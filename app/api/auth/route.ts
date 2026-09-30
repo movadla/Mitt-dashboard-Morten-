@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { del, incrWithExpiry } from "@/lib/kv";
+import { signSessionToken, SESSION_MAX_AGE_SECONDS } from "@/lib/sessionToken";
 
 // Rate-limiting mot brute-force - appen nås fra åpent internett via Cloudflare-tunnelen, og en
 // kort numerisk PIN uten dette kan i prinsippet gjettes frem. Telleren økes for HVERT forsøk
@@ -22,11 +23,11 @@ export async function POST(request: NextRequest) {
   }
   await del(forsokKey);
   const cookieStore = await cookies();
-  cookieStore.set("auth", process.env.AUTH_SECRET!, {
+  cookieStore.set("auth", await signSessionToken(process.env.AUTH_SECRET!), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE_SECONDS,
     path: "/",
   });
   return NextResponse.json({ ok: true });

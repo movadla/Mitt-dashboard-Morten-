@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addCompanyNewsItems, getAllCompanyNews, type NewNewsItemInput } from "@/lib/companyNews";
+import { verifySessionToken, SESSION_MAX_AGE_SECONDS } from "@/lib/sessionToken";
 
 export const dynamic = "force-dynamic";
 
@@ -8,16 +9,16 @@ export const dynamic = "force-dynamic";
 // da med CRON_SECRET i stedet for auth-cookien. Samme mønster som
 // app/api/backup/route.ts. Siden middlewaren ikke lenger dekker denne ruten,
 // gjøres BÅDE GET og POST-autorisering her i selve handleren.
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
   const cookie = request.cookies.get("auth")?.value;
-  if (cookie && process.env.AUTH_SECRET && cookie === process.env.AUTH_SECRET) return true;
+  if (process.env.AUTH_SECRET && (await verifySessionToken(cookie, process.env.AUTH_SECRET, SESSION_MAX_AGE_SECONDS))) return true;
   const authHeader = request.headers.get("authorization");
   if (process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`) return true;
   return false;
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
   }
   try {
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
   }
   try {

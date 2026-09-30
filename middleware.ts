@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifySessionToken, SESSION_MAX_AGE_SECONDS } from "@/lib/sessionToken";
 
 // v1 (2026-09-23, Morten: dele Inntektsprognosen med økonomisjef/utleiesjef uten full
 // dashboard-tilgang): eget passord (DELE_SECRET, cookie "dele_auth") som KUN slipper til
@@ -31,18 +32,18 @@ const DELE_TILLATTE_GET_API = new Set([
   "/api/income-forecast/vacant-areas",
 ]);
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const auth = request.cookies.get("auth")?.value;
   const secret = process.env.AUTH_SECRET;
   // `auth` og `secret` kan begge være `undefined` (secret usatt i et miljø, f.eks. en
   // Vercel-preview uten env-var) - `undefined === undefined` ville da sluppet gjennom UTEN
   // cookie i det hele tatt. `secret` må derfor eksistere og ha innhold før sammenligningen.
-  if (secret && auth === secret) return NextResponse.next();
+  if (secret && (await verifySessionToken(auth, secret, SESSION_MAX_AGE_SECONDS))) return NextResponse.next();
 
   const deleAuth = request.cookies.get("dele_auth")?.value;
   const deleSecret = process.env.DELE_SECRET;
-  if (deleSecret && deleAuth === deleSecret) {
+  if (deleSecret && (await verifySessionToken(deleAuth, deleSecret, SESSION_MAX_AGE_SECONDS))) {
     if (pathname.startsWith("/dele")) return NextResponse.next();
     if (request.method === "GET" && DELE_TILLATTE_GET_API.has(pathname)) return NextResponse.next();
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addSuggestions, getSuggestions, type NewSuggestionInput } from "@/lib/jobbSuggestions";
+import { verifySessionToken, SESSION_MAX_AGE_SECONDS } from "@/lib/sessionToken";
 
 export const dynamic = "force-dynamic";
 
@@ -7,16 +8,16 @@ export const dynamic = "force-dynamic";
 // forslag fra en research-økt uten en innlogget nettleser-sesjon — autoriseres
 // da med CRON_SECRET i stedet for auth-cookien. Samme mønster som
 // app/api/company-news/route.ts.
-function isAuthorized(request: NextRequest): boolean {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
   const cookie = request.cookies.get("auth")?.value;
-  if (cookie && process.env.AUTH_SECRET && cookie === process.env.AUTH_SECRET) return true;
+  if (process.env.AUTH_SECRET && (await verifySessionToken(cookie, process.env.AUTH_SECRET, SESSION_MAX_AGE_SECONDS))) return true;
   const authHeader = request.headers.get("authorization");
   if (process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`) return true;
   return false;
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
   }
   try {
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!(await isAuthorized(request))) {
     return NextResponse.json({ error: "Ikke autorisert" }, { status: 401 });
   }
   try {
