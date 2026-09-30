@@ -57,15 +57,25 @@ function formatSteps(steps: number): string {
 }
 
 async function downscaleImage(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.8));
+  // v3 (2026-09-30, Morten: "funker ikke å laste opp bilde"): createImageBitmap kan kaste på
+  // enkelte bildeformater/varianter mobilnettleseren leverer (t.d. HEIC-particulars som ikke
+  // dekodes) - da stanset hele opplastingen FØR fetch-kallet i det hele tatt ble forsøkt, uten
+  // at brukeren fikk noe å gå på utover en generisk feilmelding. Faller nå tilbake til å laste
+  // opp originalfilen u-nedskalert i stedet for å gi opp - serveren (MAX_BYTES) tar uansett
+  // høyde for at det kan bli et større råbilde enn den nedskalerte varianten.
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return await new Promise((resolve) => canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.8));
+  } catch {
+    return file;
+  }
 }
 
 // Delt pille-velger for begge spørsmålene (kun ulik i hvilke presets/valgt-
