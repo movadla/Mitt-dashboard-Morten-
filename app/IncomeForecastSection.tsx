@@ -1367,6 +1367,21 @@ function KpiStrip({
   // en av to halvbredde-bokser uten dette. sm:-verdiene (bredere skjerm) er uendret.
   const boks = "flex min-w-0 items-center rounded-xl border border-line bg-surface-2 px-1.5 py-2 text-left transition hover:border-line-strong sm:px-3 sm:py-2.5";
   const tall = "truncate text-xs font-semibold tabular-nums sm:text-lg";
+  // v78 (2026-09-30, Morten: skjermbilde av "+6 90…" klippet på mobil) - beløpene har vokst forbi
+  // det v58-komprimeringen (kun mindre skrift) hadde plass til. Samme direktiv som v58 ("skal
+  // komprimeres, ikke brytes/avkuttes"): under sm-brytpunktet vises "mill kr"-format i stedet for
+  // fulle kroner, over sm-brytpunktet uendret fullt tall - to <span> med hidden/sm:inline i stedet
+  // for en JS-breddemåling, siden CSS-brytpunktet uansett er kilden til sannheten her.
+  const kompaktKr = (n: number, signed: boolean) =>
+    Math.abs(n) >= 1_000_000
+      ? `${signed && n > 0 ? "+" : ""}${(n / 1_000_000).toLocaleString("nb-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} mill kr`
+      : formatKr(n, signed);
+  const responsivKrTall = (n: number, signed = false) => (
+    <>
+      <span className="hidden sm:inline">{formatKr(n, signed)}</span>
+      <span className="sm:hidden">{kompaktKr(n, signed)}</span>
+    </>
+  );
   return (
     // v52 (2026-09-18, Morten): "vs. budsjett" som to bokser - kroner og prosent - uten
     // forklaringstekst, og Risiko med kun tallet pluss et infoikon.
@@ -1382,7 +1397,7 @@ function KpiStrip({
       <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">vs. budsjett</p>
       <div className="grid min-w-0 grid-cols-2 gap-2">
         <a href="#leieinntekter" className={boks}>
-          <p className={`${tall} ${avvikFarge}`}>{formatKr(avvikTotal, true)}</p>
+          <p className={`${tall} ${avvikFarge}`}>{responsivKrTall(avvikTotal, true)}</p>
         </a>
         <a href="#leieinntekter" className={boks}>
           <p className={`${tall} ${avvikFarge}`}>
@@ -1410,7 +1425,7 @@ function KpiStrip({
         </Tooltip>
       </p>
       <a href="#kontrakter-pa-utlop" className={`${boks} min-w-0 justify-center`}>
-        <p className={`${tall} text-center text-ink-1`}>{formatKr(reforhandlingVektet)}</p>
+        <p className={`${tall} text-center text-ink-1`}>{responsivKrTall(reforhandlingVektet)}</p>
       </a>
     </div>
   );
