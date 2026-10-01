@@ -303,6 +303,44 @@ async function fetchTsdbTeamEuropean(teamName: string, category: string, limit =
 // bare vite når de spiller hjemme, uansett hvilken divisjon de ligger i akkurat
 // denne sesongen). Lag-basert oppslag (ikke en ESPN-liga-slug) fordi ESPN ikke
 // dekker de norske lavere divisjonene Lyn beveger seg mellom.
+// ── TheSportsDB: neste NM Cupen-kamp for et enkelt lag ──────────────────────
+// Samme lag-baserte oppslag som fetchTsdbTeamEuropean, men filtrert til norsk
+// cupfotball i stedet for UEFA. Oppdaget 2026-10-01 (Morten: "Madla - Viking
+// står ikke i sportsseksjonen selv om jeg har bedt om alle Viking-kamper") -
+// SOURCES hadde kun ett Viking-kall (fetchESPN("nor.1", ...) = Eliteserien),
+// aldri noen kilde for cupkampene. ESPN sin soccer-API har ingen fungerende
+// slug for NM Cupen (prøvd "nor.cup"/"norway.cup", begge 400), men
+// TheSportsDB sin lag-baserte eventsnext.php har kampen under strLeague
+// "Norwegian Cupen" (verifisert direkte mot Viking sin lag-id 2026-10-01) -
+// samme datakilde som allerede brukes for UEFA-kampene over, bare et annet
+// mønster-filter.
+const NORWEGIAN_CUP_PATTERN = /cupen|nm[\s-]?cup|norwegian cup/i;
+
+async function fetchTsdbTeamNorwegianCup(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
+  const sRes = await fetchTsdbWithRetry(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`);
+  if (!sRes) return [];
+  const sJson = await sRes.json();
+  const team: TsdbTeam | undefined = (sJson.teams ?? []).find((t: TsdbTeam) => t.strSport === "Soccer");
+  if (!team) return [];
+
+  const eRes = await fetchTsdbWithRetry(`${TSDB}/eventsnext.php?id=${team.idTeam}`);
+  if (!eRes) return [];
+  const eJson = await eRes.json();
+  const today = localDateString();
+  return ((eJson.events ?? []) as TsdbEvent[])
+    .filter(e => e.dateEvent >= today && e.strLeague && NORWEGIAN_CUP_PATTERN.test(e.strLeague))
+    .slice(0, limit)
+    .map(e => ({
+      id:          `${category}-cup-${e.idEvent}`,
+      category,
+      name:        e.strEvent,
+      venue:       e.strVenue || undefined,
+      date:        e.dateEvent,
+      time:        e.strTime ? norwayTime(e.dateEvent, e.strTime) : undefined,
+      competition: e.strLeague ?? "NM Cupen",
+    }));
+}
+
 async function fetchTsdbTeamHome(teamName: string, category: string, limit = 5): Promise<SportEvent[]> {
   const sRes = await fetchTsdbWithRetry(`${TSDB}/searchteams.php?t=${encodeURIComponent(teamName)}`);
   if (!sRes) return [];
@@ -417,6 +455,7 @@ async function fetchCustomEvents(): Promise<SportEvent[]> {
 const SOURCES: Array<() => Promise<SportEvent[]>> = [
   fetchF1,
   () => fetchESPN("nor.1", "football",      "Eliteserien",    "Viking", 10),
+  () => fetchTsdbTeamNorwegianCup("Viking", "football", 5),
   () => fetchESPN("nor.1", "football_eli",  "Eliteserien",    null,     60),
   () => fetchESPN("nor.2", "football_obos", "Obosligaen",     null,     40),
   () => fetchESPN("eng.1", "football_pl",   "Premier League", null,     60),
