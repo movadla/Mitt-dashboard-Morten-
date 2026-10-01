@@ -34,6 +34,17 @@ export async function POST(request: NextRequest) {
       }
       if (Object.keys(cleaned).length > 0) exerciseRpe = cleaned;
     }
+    // exerciseQuality (v3, 2026-10-01): samme rensemønster som exerciseRpe over, men skala 1-5
+    // (mestring), ikke 1-10 (anstrengelse) - de to må aldri valideres mot samme grense.
+    let exerciseQuality: Record<string, number> | undefined;
+    if (body.exerciseQuality && typeof body.exerciseQuality === "object") {
+      const cleaned: Record<string, number> = {};
+      for (const [id, value] of Object.entries(body.exerciseQuality as Record<string, unknown>)) {
+        const n = Number(value);
+        if (typeof id === "string" && Number.isFinite(n) && n >= 1 && n <= 5) cleaned[id] = n;
+      }
+      if (Object.keys(cleaned).length > 0) exerciseQuality = cleaned;
+    }
     const entry = await addRyggSessionLog({
       date: body.date,
       week: Number(body.week),
@@ -47,6 +58,7 @@ export async function POST(request: NextRequest) {
         ? body.completedExerciseIds.filter((id: unknown) => typeof id === "string")
         : undefined,
       exerciseRpe,
+      exerciseQuality,
     });
     // v2 (2026-09-28, fanget opp i en verifiseringsrunde): egen try/catch, IKKE del av den ytre -
     // rygg-økten er allerede lagret på dette tidspunktet (addRyggSessionLog over), så en feil her

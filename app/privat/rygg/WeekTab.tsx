@@ -128,6 +128,15 @@ export default function WeekTab({ meta, weekState, sessionLogs, onChanged, onErr
             {weekState.manualOverride ? " (overstyrt manuelt)" : ""}
           </p>
         )}
+        {/* v1 (2026-10-01, Del 2): AI-generert kommentar OPPÅ decisionReason over, aldri i
+            stedet for den - decisionReason er alltid den autoritative, regelbaserte
+            forklaringen, dette er bare et varmere lag attpå når generering har lykkes. */}
+        {weekState.coachNote && (
+          <div className="mt-2 rounded-lg border-l-2 border-accent-privat/60 bg-accent-privat/5 px-3 py-2">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-accent-privat">Fra treneren din</p>
+            <p className="mt-0.5 text-2xs leading-snug text-ink-2">{weekState.coachNote}</p>
+          </div>
+        )}
         {!showOverride ? (
           <button
             type="button"

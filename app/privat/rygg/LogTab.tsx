@@ -99,6 +99,19 @@ export default function LogTab({ dailyLogs, sessionLogs, onChanged, onError }: P
                   ))}
                 </div>
               )}
+              {/* v3 (2026-10-01): mestringsfølelse vist som egen chip-rad, IKKE blandet inn i
+                  tyngde-chippene over - to ulike skalaer (1-10 vs. 1-5) ville vært forvirrende i
+                  samme rad uten en etikett som skiller dem. */}
+              {row.kind === "session" && row.data.exerciseQuality && Object.keys(row.data.exerciseQuality).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-2xs text-ink-4">Mestring:</span>
+                  {Object.entries(row.data.exerciseQuality).map(([id, verdi]) => (
+                    <span key={id} className="rounded-md bg-surface-3 px-1.5 py-0.5 text-2xs tabular-nums text-ink-3">
+                      {getRyggExercise(id)?.name ?? id} {verdi}/5
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -36,6 +36,13 @@ export interface RyggSessionLog {
   // den samlede tyngden for HELE økten. Nøkkel = exerciseId. Valgfri av samme
   // grunn som completedExerciseIds - gamle logger har ingen verdi.
   exerciseRpe?: Record<string, number>;
+  // v3 (2026-10-01, Morten: "hvor godt følte jeg jeg fikk til øvelsen" - egen
+  // dimensjon fra tyngde, se eksempelet som utløste dette: curl-up/birddog fikk
+  // 9/10 i tyngde, men det viste seg å være nakke-/armtretthet, ikke et tegn på at
+  // korsryggen hadde problemer med øvelsen). Skala 1-5 (mestringsfølelse), IKKE
+  // samme skala som exerciseRpe (1-10, anstrengelse) - to ulike spørsmål, aldri
+  // bland dem sammen i visning eller i AI-kommentar-laget (Del 2).
+  exerciseQuality?: Record<string, number>;
 }
 
 export interface RyggSessionLogInput {
@@ -49,6 +56,7 @@ export interface RyggSessionLogInput {
   note?: string;
   completedExerciseIds?: string[];
   exerciseRpe?: Record<string, number>;
+  exerciseQuality?: Record<string, number>;
 }
 
 export type RyggWeekDecision = "progress" | "repeat" | "deload" | "hold";
@@ -59,6 +67,13 @@ export interface RyggWeekState {
   closedAt?: string; // ISO
   decision?: RyggWeekDecision;
   decisionReason?: string;
+  // v1 (2026-10-01, Del 2 av "personlig trener"-ønsket): KOMMENTAR, aldri en beslutning -
+  // evaluateWeek() i lib/ryggAlgorithm.ts bestemmer fortsatt progress/repeat/deload/hold helt
+  // alene og uendret. Dette er AI-generert tekst LAGT PÅ TOPP av `decisionReason`, samme
+  // livssyklus (satt når uka lukkes, ikke arvet inn i en ny uke ved progress - se
+  // applyDecisionConsequence i lib/ryggWeekCycle.ts). Valgfri: AI-kallet kan feile uten at
+  // noe annet i uke-lukkingen stopper opp.
+  coachNote?: string;
   // Smertesnittet DENNE syklusen endte på — lagres slik at NESTE ukes
   // evaluering kan lese "forrige ukes smertesnitt" uten å måtte grave i
   // rådataene for en uke som kan ha startet på nytt (repeat/deload).
@@ -116,6 +131,7 @@ export async function addRyggSessionLog(input: RyggSessionLogInput): Promise<Ryg
     note: input.note?.trim() || undefined,
     completedExerciseIds: input.completedExerciseIds,
     exerciseRpe: input.exerciseRpe,
+    exerciseQuality: input.exerciseQuality,
   };
   await hsetJSON(SESSION_HASH_KEY, entry.id, entry);
   return entry;
@@ -166,6 +182,9 @@ export interface RyggProgramMeta {
   totalDeloads: number;
   lastDecision?: RyggWeekDecision; // siste AVSLUTTEDE syklus sin beslutning
   highestCompletedWeek: number; // høyeste uke som noensinne har fått "progress" — brukt som gulv ved deload
+  // v1 (2026-10-01): forrige ukes AI-trenerkommentar, sendt inn som kontekst til neste
+  // generering slik at den ikke gjentar seg selv uke for uke (se lib/ryggCoach.ts).
+  lastCoachNote?: string;
 }
 
 const DEFAULT_META: RyggProgramMeta = {

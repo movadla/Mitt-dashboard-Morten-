@@ -26,7 +26,10 @@ export const RYGG_EXERCISES: RyggExercise[] = [
     id: "curlup",
     name: "Curl-up",
     how: "På rygg, ett kne bøyd, hendene under korsryggen. Løft hode og skuldre 2–3 cm og hold.",
-    cue: "Korsryggen skal ikke presses ned mot hendene. Løftet er mye mindre enn en vanlig situp.",
+    // v2 (2026-10-01, Morten: øvelsen kjentes 9/10 tung - viste seg å være nakken, ikke
+    // korsryggen, som tok belastningen). Nakken skal være helt passiv i denne øvelsen -
+    // løftet skjer i overkroppen, hodet blir bare med på kjøretur.
+    cue: "Korsryggen skal ikke presses ned mot hendene. Løftet er mye mindre enn en vanlig situp. Ikke dra med nakken - hold den slapp og se rett opp i taket hele veien, løftet skal komme fra brystkassen, ikke fra haken.",
   },
   {
     id: "spknee",

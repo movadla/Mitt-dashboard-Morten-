@@ -129,6 +129,19 @@ function lastExerciseRpe(sessionLogs: RyggSessionLog[]): Record<string, number> 
   return result;
 }
 
+// v3 (2026-10-01): samme "spøkelses"-forhåndsutfylling som lastExerciseRpe over, men for
+// mestringsfølelse (exerciseQuality) - egen funksjon i stedet for å generalisere, for å holde
+// samme eksplisitte mønster resten av fila bruker per felt.
+function lastExerciseQuality(sessionLogs: RyggSessionLog[]): Record<string, number> {
+  const sorted = [...sessionLogs].sort((a, b) => a.date.localeCompare(b.date));
+  const result: Record<string, number> = {};
+  for (const s of sorted) {
+    if (!s.exerciseQuality) continue;
+    for (const [id, verdi] of Object.entries(s.exerciseQuality)) result[id] = verdi;
+  }
+  return result;
+}
+
 function ExerciseDetail({ exercise, item, sets, isDeload }: { exercise: RyggExercise; item: RyggProgramItem; sets: number; isDeload: boolean }) {
   return (
     <div className="flex flex-col gap-3">
@@ -178,6 +191,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [exerciseRpe, setExerciseRpe] = useState<Record<string, number>>({});
+  const [exerciseQuality, setExerciseQuality] = useState<Record<string, number>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPainCardOnSessionDay, setShowPainCardOnSessionDay] = useState(false);
   const [editingPain, setEditingPain] = useState(false);
@@ -199,6 +213,12 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
           <p className="text-sm font-semibold text-status-danger">Programmet er på hold</p>
           <p className="mt-1 text-sm text-ink-2">{weekState.decisionReason}</p>
         </div>
+        {weekState.coachNote && (
+          <div className="rounded-xl border-l-2 border-accent-privat/60 bg-accent-privat/5 px-3 py-2.5">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-accent-privat">Fra treneren din</p>
+            <p className="mt-0.5 text-sm leading-snug text-ink-2">{weekState.coachNote}</p>
+          </div>
+        )}
         <button
           type="button"
           onClick={async () => {
@@ -235,6 +255,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
   function startSession() {
     setCompletedIds(new Set());
     setExerciseRpe(lastExerciseRpe(sessionLogs));
+    setExerciseQuality(lastExerciseQuality(sessionLogs));
     setCurrentIndex(0);
     setStage("session");
   }
@@ -292,6 +313,7 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
           aggravated,
           completedExerciseIds: Array.from(completedIds),
           exerciseRpe,
+          exerciseQuality,
         }),
       });
       if (!sessionRes.ok) throw new Error("session log failed");
@@ -360,7 +382,29 @@ export default function TodayTab({ meta, weekState, dailyLogs, sessionLogs, onCh
             />
           </div>
         )}
-        <button type="button" disabled={!item || exerciseRpe[item.exerciseId] === undefined} onClick={() => advance(true)} className={PRIMARY_BTN}>
+        {/* v3 (2026-10-01, Morten: "hvor godt følte jeg jeg fikk til øvelsen" - egen spørsmål fra
+            tyngde). Utløst av at curl-up/birddog fikk 9/10 i tyngde en økt der det egentlig var
+            nakke-/armtretthet, ikke et tegn på at teknikken/ryggen hadde problemer - tyngde alene
+            fanger ikke opp det skillet. */}
+        {item && (
+          <div className="rounded-xl border border-line bg-surface-2 p-3">
+            <p className="mb-2 text-sm font-semibold text-ink-1">Hvor godt fikk du til denne?</p>
+            <NumberScale
+              min={1}
+              max={5}
+              value={exerciseQuality[item.exerciseId] ?? null}
+              onChange={(n) => setExerciseQuality((prev) => ({ ...prev, [item.exerciseId]: n }))}
+              lowLabel="Mistet formen"
+              highLabel="Full kontroll"
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          disabled={!item || exerciseRpe[item.exerciseId] === undefined || exerciseQuality[item.exerciseId] === undefined}
+          onClick={() => advance(true)}
+          className={PRIMARY_BTN}
+        >
           {isLast ? "Ferdig med siste øvelse" : "Ferdig — neste øvelse"}
         </button>
         <div className="flex items-center justify-between">

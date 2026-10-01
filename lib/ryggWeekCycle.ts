@@ -6,12 +6,40 @@ import {
   getRyggWeekState,
   updateRyggProgramMeta,
   upsertRyggWeekState,
+  type RyggDailyLog,
   type RyggProgramMeta,
+  type RyggSessionLog,
   type RyggWeekDecision,
   type RyggWeekState,
 } from "./ryggLog";
 import { computeWeekMetrics, evaluateWeek, shouldCloseWeek } from "./ryggAlgorithm";
+import { generateRyggCoachNote } from "./ryggCoach";
 import { weekRangeContaining } from "./payday";
+
+// exerciseId -> alle loggede verdier denne syklusen (flere økter kan ha logget samme
+// øvelse). Kun fullførte økter telles - samme filter som computeWeekMetrics bruker internt
+// for RPE-snittet, for konsistens mellom tallet algoritmen regner på og tallet treneren ser.
+export function collectExerciseValues(
+  sessions: RyggSessionLog[],
+  field: "exerciseRpe" | "exerciseQuality",
+): Record<string, number[]> {
+  const result: Record<string, number[]> = {};
+  for (const s of sessions) {
+    if (!s.completed || !s[field]) continue;
+    for (const [id, verdi] of Object.entries(s[field]!)) {
+      (result[id] ??= []).push(verdi);
+    }
+  }
+  return result;
+}
+
+// Brukerens egne fritekstnotater denne syklusen, fra BÅDE smertelogg og øktlogg, kronologisk -
+// treneren ser det samme Morten selv har skrevet, ikke bare tallene.
+export function collectUserNotes(daily: RyggDailyLog[], sessions: RyggSessionLog[]): string[] {
+  const dailyNotes = daily.filter((d) => d.note).map((d) => `${d.date}: ${d.note}`);
+  const sessionNotes = sessions.filter((s) => s.note).map((s) => `${s.date}: ${s.note}`);
+  return [...dailyNotes, ...sessionNotes].sort();
+}
 
 // Maks antall uker vi lar den lazy lukke-sjekken kaskadere i ett kall — kun
 // en sikkerhetsmargin mot en uendelig løkke, ikke en reell programgrense
@@ -119,6 +147,30 @@ export async function closeDueWeeksIfNeeded(now: Date = new Date()): Promise<Ryg
     });
 
     const applied = applyDecisionConsequence(weekState, meta, result.decision, result.reason, metrics.painAvg ?? undefined, now, false);
+
+    // AI-trenerkommentar (Del 2, 2026-10-01) - rent additivt lag oppå den allerede ferdige
+    // beslutningen over. generateRyggCoachNote returnerer null på enhver feil (manglende
+    // API-nøkkel, nettverksfeil, tomt svar) og kaster aldri - uka lukkes helt normalt med kun
+    // decisionReason uansett om dette lykkes. Kjøres kun HER, i selve lukke-øyeblikket (ikke
+    // ved hver GET), siden shouldCloseWeek over bare slår til når en uke faktisk lukkes.
+    const coachNote = await generateRyggCoachNote({
+      week: weekState.week,
+      decision: result.decision,
+      decisionReason: result.reason,
+      painAvg: metrics.painAvg,
+      priorWeekPainAvg,
+      rpeAvg: metrics.rpeAvg,
+      sessionsCompleted: metrics.sessionsCompleted,
+      exerciseRpeByExercise: collectExerciseValues(cycleSessions, "exerciseRpe"),
+      exerciseQualityByExercise: collectExerciseValues(cycleSessions, "exerciseQuality"),
+      userNotes: collectUserNotes(cycleDaily, cycleSessions),
+      previousCoachNote: meta.lastCoachNote,
+    });
+    if (coachNote) {
+      applied.updatedWeek.coachNote = coachNote;
+      applied.meta.lastCoachNote = coachNote;
+    }
+
     await upsertRyggWeekState(applied.updatedWeek);
     if (applied.newWeek) await upsertRyggWeekState(applied.newWeek);
     meta = await updateRyggProgramMeta(applied.meta);
